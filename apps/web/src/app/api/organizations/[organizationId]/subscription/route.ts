@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getAlumniLimit, normalizeBucket } from "@/lib/alumni-quota";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { getCorsHeaders } from "@/lib/security/cors";
+import { getCorsHeadersForOrigin } from "@/lib/security/cors";
 import {
   baseSchemas,
   validateJson,
@@ -23,10 +23,13 @@ import { extractSubscriptionPeriodEndIso } from "@/lib/stripe/subscription-perio
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const corsHeaders = getCorsHeaders({ includeAllMethods: true });
+// Helper to get CORS headers for a specific request
+function getCorsHeaders(req: Request) {
+  return getCorsHeadersForOrigin(req.headers.get("origin"), { includeAllMethods: true });
+}
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+export async function OPTIONS(req: Request) {
+  return NextResponse.json({}, { headers: getCorsHeaders(req) });
 }
 
 interface RouteParams {
@@ -205,6 +208,7 @@ async function requireAdmin(
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const corsHeaders = getCorsHeaders(req);
 
   const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,
@@ -300,6 +304,7 @@ function buildQuotaResponse(params: {
 }
 
 export async function GET(req: Request, { params }: RouteParams) {
+  const corsHeaders = getCorsHeaders(req);
   const { organizationId } = await params;
   const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
   if (!orgIdParsed.success) {
@@ -414,6 +419,7 @@ export async function GET(req: Request, { params }: RouteParams) {
 }
 
 export async function POST(req: Request, { params }: RouteParams) {
+  const corsHeaders = getCorsHeaders(req);
   try {
     const { organizationId } = await params;
     const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
