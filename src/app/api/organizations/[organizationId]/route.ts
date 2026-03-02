@@ -12,6 +12,7 @@ import {
   validationErrorResponse,
 } from "@/lib/security/validation";
 import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
+import { deleteOrganizationData } from "@/lib/subscription/delete-organization";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import type { OrgRole } from "@/lib/auth/role-utils";
 import {
@@ -327,28 +328,8 @@ export async function DELETE(_req: Request, { params }: RouteParams) {
       await stripe.subscriptions.cancel(sub.stripe_subscription_id);
     }
 
-    // Delete related records (best-effort order to satisfy FKs)
-    const deletionOrder = [
-      "competition_points",
-      "competitions",
-      "members",
-      "alumni",
-      "events",
-      "announcements",
-      "donations",
-      "records",
-      "philanthropy_events",
-      "notifications",
-      "notification_preferences",
-      "organization_invites",
-      "user_organization_roles",
-      "organization_subscriptions",
-    ];
-
-    for (const table of deletionOrder) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (serviceSupabase as any).from(table).delete().eq("organization_id", organizationId);
-    }
+    // Delete all related records across all tables with organization_id FK
+    await deleteOrganizationData(serviceSupabase, organizationId);
 
     // Finally delete the organization
     const { error: orgDeleteError } = await serviceSupabase
