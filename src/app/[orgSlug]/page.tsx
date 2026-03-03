@@ -52,12 +52,16 @@ export default async function OrgDashboardPage({ params }: DashboardPageProps) {
     queryClient.from("alumni").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null),
     queryClient.from("parents").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null),
     queryClient.rpc("get_subscription_status", { p_org_id: org.id }),
-    queryClient.from("events").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null),
+    queryClient.from("events").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null).gte("start_date", new Date().toISOString()),
     queryClient.from("announcements").select("*").eq("organization_id", org.id).is("deleted_at", null).order("published_at", { ascending: false }).limit(3),
     queryClient.from("events").select("*").eq("organization_id", org.id).is("deleted_at", null).gte("start_date", new Date().toISOString()).order("start_date").limit(5),
     queryClient.from("organization_donations").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
     queryClient.from("organization_donation_stats").select("*").eq("organization_id", org.id).maybeSingle(),
   ]);
+
+  const subscriptionStatus = (subscriptionRows as { status?: string }[] | null)?.[0]?.status;
+  const alumniBucket = (subscriptionRows as { alumni_bucket?: string }[] | null)?.[0]?.alumni_bucket ?? "none";
+  const hasAlumniAccess = subscriptionStatus === "enterprise_managed" || alumniBucket !== "none";
 
   const parentsBucket = (subscriptionRows as { parents_bucket?: string }[] | null)?.[0]?.parents_bucket ?? "none";
   const hasParentsAccess = parentsBucket !== "none";
@@ -105,7 +109,7 @@ export default async function OrgDashboardPage({ params }: DashboardPageProps) {
       accentTo: "var(--color-org-secondary-dark)",
     }] : []),
     {
-      label: "Events",
+      label: "Upcoming Events",
       value: eventsCount || 0,
       href: `/${orgSlug}/events`,
       icon: CalendarClock,
