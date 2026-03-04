@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { OrgSidebar } from "./OrgSidebar";
@@ -22,6 +22,15 @@ export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAcc
   // Prevent caching issues by forcing re-render of menu when open state changes
   const toggleMenu = () => setIsOpen(!isOpen);
   const closeMenu = () => setIsOpen(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
 
   return (
     <>
@@ -56,7 +65,7 @@ export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAcc
 
         <button
           onClick={toggleMenu}
-          className="p-2 -mr-2 text-muted-foreground hover:text-foreground"
+          className="p-2 -mr-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-lg"
           aria-label="Toggle menu"
         >
           {isOpen ? (
@@ -82,7 +91,7 @@ export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAcc
 
       {/* Slide-out Drawer */}
       <div
-        className={`fixed top-0 bottom-0 left-0 w-64 bg-card z-50 transform transition-transform duration-300 ease-in-out lg:hidden ${
+        className={`fixed top-0 bottom-0 left-0 w-64 bg-card z-50 transform transition-transform duration-300 ease-in-out lg:hidden overscroll-contain ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
