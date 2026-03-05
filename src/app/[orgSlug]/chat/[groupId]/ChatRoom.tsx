@@ -315,19 +315,30 @@ export function ChatRoom({
     setMessages((prev) => [...prev, optimisticMessage]);
     setTimeout(scrollToBottom, 50);
 
-    const { data, error } = await supabase
-      .from("chat_messages")
-      .insert({
-        chat_group_id: group.id,
-        organization_id: organizationId,
-        author_id: currentUserId,
-        body: messageBody,
-        status: initialStatus,
-      })
-      .select()
-      .single();
+    let responseData: { message?: ChatMessage; error?: string } | null = null;
+    try {
+      const response = await fetch(`/api/chat/${group.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: messageBody }),
+      });
+      responseData = await response.json().catch(() => null);
 
-    if (error) {
+      if (!response.ok || !responseData?.message) {
+        console.error("Failed to send message:", responseData?.error || "request_failed");
+        trackBehavioralEvent("chat_message_send", {
+          thread_id: group.id,
+          message_type: "text",
+          result: "fail_server",
+          error_code: "send_failed",
+        }, organizationId);
+        // Remove the optimistic message on failure
+        setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        setNewMessage(messageBody); // Restore message for retry
+        setIsSending(false);
+        return;
+      }
+    } catch (error) {
       console.error("Failed to send message:", error);
       trackBehavioralEvent("chat_message_send", {
         thread_id: group.id,
@@ -338,19 +349,21 @@ export function ChatRoom({
       // Remove the optimistic message on failure
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setNewMessage(messageBody); // Restore message for retry
-    } else if (data) {
-      trackBehavioralEvent("chat_message_send", {
-        thread_id: group.id,
-        message_type: "text",
-        result: "success",
-      }, organizationId);
-      // Replace temp message with real one from server
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === tempId ? { ...data, author: currentUser } : m
-        )
-      );
+      setIsSending(false);
+      return;
     }
+
+    trackBehavioralEvent("chat_message_send", {
+      thread_id: group.id,
+      message_type: "text",
+      result: "success",
+    }, organizationId);
+    // Replace temp message with real one from server
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === tempId ? { ...responseData.message!, author: currentUser } : m
+      )
+    );
     setIsSending(false);
   };
 
@@ -441,11 +454,14 @@ export function ChatRoom({
         body: JSON.stringify(responses),
       });
       if (!res.ok) {
-        const err = await res.json();
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
         console.error("Form submit failed:", err);
+        return { ok: false, error: err?.error || "Failed to submit form response" };
       }
+      return { ok: true };
     } catch (error) {
       console.error("Form submit failed:", error);
+      return { ok: false, error: "Failed to submit form response" };
     }
   }, [group.id]);
 

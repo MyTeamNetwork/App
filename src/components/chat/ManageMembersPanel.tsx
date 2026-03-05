@@ -127,48 +127,35 @@ export function ManageMembersPanel({
     setActionInProgress(userId);
     setError(null);
 
-    // Try INSERT first; on unique violation, UPDATE to clear removed_at
-    const { error: insertError } = await supabase
-      .from("chat_group_members")
-      .insert({
-        chat_group_id: groupId,
-        user_id: userId,
-        organization_id: organizationId,
+    try {
+      const response = await fetch(`/api/chat/${groupId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_ids: [userId] }),
       });
-
-    if (insertError) {
-      if (insertError.code === "23505") {
-        // Unique violation — re-add by clearing removed_at
-        const { error: updateError } = await supabase
-          .from("chat_group_members")
-          .update({ removed_at: null })
-          .eq("chat_group_id", groupId)
-          .eq("user_id", userId);
-
-        if (updateError) {
-          console.error("[chat-members] re-add failed:", updateError);
-          trackBehavioralEvent("chat_participants_change", {
-            thread_id: groupId,
-            action: "add",
-            delta_count: 1,
-            result: "fail_server",
-          }, organizationId);
-          setError("Failed to re-add member");
-          setActionInProgress(null);
-          return;
-        }
-      } else {
-        console.error("[chat-members] add member failed:", insertError);
+      const payload: { error?: string } | null = await response.json().catch(() => null);
+      if (!response.ok) {
         trackBehavioralEvent("chat_participants_change", {
           thread_id: groupId,
           action: "add",
           delta_count: 1,
           result: "fail_server",
         }, organizationId);
-        setError(insertError.message || "Failed to add member");
+        setError(payload?.error || "Failed to add member");
         setActionInProgress(null);
         return;
       }
+    } catch (requestError) {
+      console.error("[chat-members] add member failed:", requestError);
+      trackBehavioralEvent("chat_participants_change", {
+        thread_id: groupId,
+        action: "add",
+        delta_count: 1,
+        result: "fail_server",
+      }, organizationId);
+      setError("Failed to add member");
+      setActionInProgress(null);
+      return;
     }
 
     await loadMembers();
@@ -190,20 +177,31 @@ export function ManageMembersPanel({
     setActionInProgress(userId);
     setError(null);
 
-    const { error: updateError } = await supabase
-      .from("chat_group_members")
-      .update({ removed_at: new Date().toISOString() })
-      .eq("chat_group_id", groupId)
-      .eq("user_id", userId);
+    let responseOk = false;
+    try {
+      const response = await fetch(`/api/chat/${groupId}/members`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      const payload: { error?: string } | null = await response.json().catch(() => null);
+      if (!response.ok) {
+        setError(payload?.error || "Failed to remove member");
+      } else {
+        responseOk = true;
+      }
+    } catch (requestError) {
+      console.error("[chat-members] remove member failed:", requestError);
+      setError("Failed to remove member");
+    }
 
-    if (updateError) {
+    if (!responseOk) {
       trackBehavioralEvent("chat_participants_change", {
         thread_id: groupId,
         action: "remove",
         delta_count: 1,
         result: "fail_server",
       }, organizationId);
-      setError("Failed to remove member");
       setActionInProgress(null);
       return;
     }
