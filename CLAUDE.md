@@ -151,10 +151,11 @@ Use the appropriate wrapper for different contexts:
 - `lib/supabase/service.ts` - Admin operations (service role key)
 
 ### Role-Based Access Control
-Three main roles control access throughout the app:
+Four main roles control access throughout the app:
 - **admin**: Full access, can manage settings/invites/navigation
 - **active_member**: Access to most features (events, workouts, etc.)
 - **alumni**: Read-only access to most content, limited features
+- **parent**: Access to selected org features for parents/guardians; requires org-level parents feature flag
 
 Role normalization happens in the system: `member` → `active_member`, `viewer` → `alumni`
 
@@ -198,7 +199,11 @@ Most tables use `deleted_at` timestamp instead of hard deletes. Always filter: `
 
 ### Role-Based Navigation
 Navigation is customizable per organization:
-- Each nav item in `src/lib/navigation/nav-items.tsx` declares allowed roles
+- Each nav item in `src/lib/navigation/nav-items.tsx` declares allowed roles and a `group` property
+- `group` is a `NavGroupId`: `people | community | schedule | activity | finance | admin`
+- `src/lib/navigation/sidebar-groups.ts` handles grouping logic (`bucketItemsByGroup()`, `buildSectionOrder()`)
+- `OrgSidebar` renders collapsible `NavGroupSection` components, one per group
+- The nav `group` field controls sidebar collapsible grouping; it is separate from role visibility
 - Organizations can customize labels/visibility via `nav_config` JSONB column
 - Sidebar dynamically filters based on user role
 
@@ -226,6 +231,16 @@ Members progress through states:
 - **active**: Full access granted
 - **revoked**: Access removed, user redirected to `/app`
 
+### Chat Groups (Polls & Inline Forms)
+Group-based chat with moderation workflow and interactive message types:
+- Groups: `chat_groups` table; membership in `chat_group_members` (soft-delete via `removed_at`)
+- Messages: `chat_messages` with `message_type: "text" | "poll" | "form"` and JSONB `metadata`
+- Polls: votes in `chat_poll_votes` (upsert); `allow_change` metadata flag controls re-voting
+- Forms: responses in `chat_form_responses` (one per user, immutable)
+- Auth helper: `getChatGroupContext()` in `src/lib/auth/chat-helpers.ts` — validates group existence, org membership, group membership, moderator status
+- Realtime: `useChatRealtime` hook in `src/hooks/useChatRealtime.ts` subscribes to Supabase realtime channels
+- Components: `PollComposer`, `PollMessage`, `FormComposer`, `InlineFormMessage` in `src/components/chat/`
+
 ### Feedback Capture System
 User feedback is collected through a friction feedback system:
 - Users submit feedback via `FeedbackButton` component in `src/components/feedback/`
@@ -246,6 +261,7 @@ Centralized Zod schemas in `src/lib/schemas/` for input validation:
 **Available Domains:**
 - `auth` - Login, signup, password reset forms
 - `chat` - Chat message validation
+- `chat-polls` - Chat polls, forms, votes/responses validation
 - `common` - Shared utilities (`safeString`, `safeNumber`, etc.)
 - `competition` - Competition and scoring schemas
 - `content` - Events, announcements, workouts, records, expenses
@@ -384,7 +400,6 @@ Use `SKIP_STRIPE_VALIDATION=true` in dev to skip Stripe price ID validation.
 
 ## Coding Conventions
 
-From `AGENTS.md`:
 - TypeScript with strict mode
 - 2-space indentation, semicolons, double quotes
 - PascalCase for components, camelCase for functions/variables
@@ -432,11 +447,13 @@ tests/
 - `src/app/[orgSlug]/layout.tsx` - Organization context provider
 - `src/lib/auth/roles.ts` - Role checking utilities (`getOrgContext()`, `isOrgAdmin()`)
 - `src/lib/auth/enterprise-api-context.ts` - Enterprise API auth helper (`getEnterpriseApiContext()`, role presets)
+- `src/lib/auth/chat-helpers.ts` - Chat group access validation (`getChatGroupContext()`, discriminated union `ChatGroupContext`)
 - `src/lib/enterprise/quota.ts` - Enterprise seat/alumni quota enforcement (fail-closed pattern)
 - `src/lib/enterprise/adoption.ts` - Adoption request lifecycle with structured error status
 - `src/lib/security/validation.ts` - Zod schemas, `sanitizeIlikeInput()` for safe ilike queries
 - `src/lib/payments/idempotency.ts` - Payment deduplication logic
 - `src/lib/navigation/nav-items.tsx` - Navigation structure and role filtering
+- `src/lib/navigation/sidebar-groups.ts` - Grouped sidebar layout helpers (`bucketItemsByGroup()`, `buildSectionOrder()`)
 - `src/lib/schedule-security/verifyAndEnroll.ts` - Domain verification and allowlist enrollment
 - `src/lib/schedule-security/safe-fetch.ts` - SSRF-protected HTTP fetching
 - `src/lib/schedule-connectors/sanitize.ts` - Event title sanitization and hash stability helpers
