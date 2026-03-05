@@ -8,6 +8,7 @@ import { Button, Card, Input, Badge } from "@/components/ui";
 import { AdminGuard } from "@/components/auth";
 import { ORG_NAV_ITEMS, ORG_NAV_GROUPS, type NavConfig, type NavConfigEntry, type NavGroupId, getConfigKey } from "@/lib/navigation/nav-items";
 import { bucketItemsByGroup, type VisibleNavItem } from "@/lib/navigation/sidebar-groups";
+import { getSettingsGroupKey, reorderItemWithinGroup } from "@/lib/navigation/navigation-settings-order";
 import type { OrgRole } from "@/lib/auth/role-utils";
 import { setConsentState as setAnalyticsConsentState } from "@/lib/analytics/events";
 
@@ -151,7 +152,7 @@ function NavigationSettingsContent() {
       const next: NavConfigEntry = { ...current };
       if (trimmed) next.label = trimmed;
       else delete next.label;
-      if (!next.hidden && !next.hiddenForRoles?.length && !next.order) {
+      if (!next.hidden && !next.hiddenForRoles?.length && next.order === undefined) {
         return Object.keys(next).length ? next : undefined;
       }
       return next;
@@ -166,7 +167,7 @@ function NavigationSettingsContent() {
       const next: NavConfigEntry = { ...current };
       if (nextRoles.length) next.hiddenForRoles = nextRoles;
       else delete next.hiddenForRoles;
-      if (!next.label && !next.hidden && !next.hiddenForRoles?.length && !next.order) return undefined;
+      if (!next.label && !next.hidden && !next.hiddenForRoles?.length && next.order === undefined) return undefined;
       return next;
     });
   };
@@ -176,7 +177,7 @@ function NavigationSettingsContent() {
       const next: NavConfigEntry = { ...current };
       next.hidden = !current.hidden;
       if (!next.hidden) delete next.hidden;
-      if (!next.label && !next.hiddenForRoles?.length && !next.hidden && !next.order) return undefined;
+      if (!next.label && !next.hiddenForRoles?.length && !next.hidden && next.order === undefined) return undefined;
       return next;
     });
   };
@@ -191,7 +192,7 @@ function NavigationSettingsContent() {
       if (editCount === 0 || (editCount === 1 && next.editRoles?.[0] === "admin")) delete next.editRoles;
       const hasHiddenRoles = !!next.hiddenForRoles?.length;
       const hasEditRoles = !!next.editRoles?.length;
-      if (!next.label && !next.hidden && !hasHiddenRoles && !hasEditRoles && !next.order) return undefined;
+      if (!next.label && !next.hidden && !hasHiddenRoles && !hasEditRoles && next.order === undefined) return undefined;
       return next;
     });
   };
@@ -199,28 +200,15 @@ function NavigationSettingsContent() {
   const moveItem = (href: string, direction: "up" | "down") => {
     const item = orderedItems.find(i => i.href === href);
     if (!item) return;
-    const itemGroup = item.href === "" ? undefined : item.group;
-    const groupItems = orderedItems.filter(i => {
-      const g = i.href === "" ? undefined : i.group;
-      return g === itemGroup;
-    });
-    const groupIndex = groupItems.findIndex(i => i.href === href);
-    if (groupIndex === -1) return;
-    const newGroupIndex = direction === "up" ? groupIndex - 1 : groupIndex + 1;
-    if (newGroupIndex < 0 || newGroupIndex >= groupItems.length) return;
-    const swapItem = groupItems[newGroupIndex];
-    const globalCurrentIndex = orderedItems.findIndex(i => i.href === href);
-    const globalSwapIndex = orderedItems.findIndex(i => i.href === swapItem.href);
-    const newItems = [...orderedItems];
-    [newItems[globalCurrentIndex], newItems[globalSwapIndex]] = [newItems[globalSwapIndex], newItems[globalCurrentIndex]];
+    const itemGroup = getSettingsGroupKey(item);
+    const newItems = reorderItemWithinGroup(orderedItems, href, direction);
+    if (newItems === orderedItems) return;
+
     setOrderedItems(newItems);
     setNavConfig(prev => {
       const updated = { ...prev };
       // Re-index only items in the affected group
-      const updatedGroupItems = newItems.filter(i => {
-        const g = i.href === "" ? undefined : i.group;
-        return g === itemGroup;
-      });
+      const updatedGroupItems = newItems.filter((candidate) => getSettingsGroupKey(candidate) === itemGroup);
       updatedGroupItems.forEach((gi, index) => {
         const key = getConfigKey(gi.href);
         if (!updated[key]) updated[key] = {};
