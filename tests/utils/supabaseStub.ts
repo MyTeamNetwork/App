@@ -53,7 +53,9 @@ type CountResponse = {
   error: { code?: string; message: string } | null;
 };
 
-const uniqueKeys: Record<TableName, string[]> = {
+type UniqueConstraint = string | string[];
+
+const uniqueKeys: Record<TableName, UniqueConstraint[]> = {
   payment_attempts: ["idempotency_key", "stripe_payment_intent_id", "stripe_checkout_session_id"],
   stripe_events: ["event_id"],
   organizations: ["slug"],
@@ -91,8 +93,8 @@ const uniqueKeys: Record<TableName, string[]> = {
   media_uploads: [],
   parents: [],
   parent_invites: ["code"],
-  chat_poll_votes: ["message_id,user_id"],
-  chat_form_responses: ["message_id,user_id"],
+  chat_poll_votes: [["message_id", "user_id"]],
+  chat_form_responses: [["message_id", "user_id"]],
 };
 
 function nowIso() {
@@ -169,12 +171,19 @@ export function createSupabaseStub() {
 
         const uniques = uniqueKeys[table] || [];
         const conflict = storage[table].find((existing) =>
-          uniques.some(
-            (field) =>
-              row[field] !== undefined &&
-              row[field] !== null &&
-              existing[field] === row[field],
-          ),
+          uniques.some((constraint) => {
+            if (Array.isArray(constraint)) {
+              const allPresent = constraint.every(
+                (field) => row[field] !== undefined && row[field] !== null,
+              );
+              return allPresent && constraint.every((field) => existing[field] === row[field]);
+            }
+            return (
+              row[constraint] !== undefined &&
+              row[constraint] !== null &&
+              existing[constraint] === row[constraint]
+            );
+          }),
         );
         if (conflict) {
           error = { code: "23505", message: "duplicate key value" };

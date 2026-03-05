@@ -261,6 +261,7 @@ const GROUP_ID = "00000000-0000-4000-8000-000000000010";
 const ADMIN_USER_ID = "00000000-0000-4000-8000-000000000100";
 const MOD_USER_ID = "00000000-0000-4000-8000-000000000200";
 const MEMBER_USER_ID = "00000000-0000-4000-8000-000000000300";
+const PARENT_USER_ID = "00000000-0000-4000-8000-000000000301";
 const OUTSIDER_USER_ID = "00000000-0000-4000-8000-000000000400";
 const NEW_USER_1_ID = "00000000-0000-4000-8000-000000000500";
 const NEW_USER_2_ID = "00000000-0000-4000-8000-000000000600";
@@ -299,11 +300,20 @@ function createTestContext(
         role: "member",
         removed_at: null,
       },
+      {
+        id: "cgm-parent",
+        chat_group_id: GROUP_ID,
+        user_id: PARENT_USER_ID,
+        organization_id: ORG_ID,
+        role: "member",
+        removed_at: null,
+      },
     ],
     activeOrgMemberUserIds: [
       ADMIN_USER_ID,
       MOD_USER_ID,
       MEMBER_USER_ID,
+      PARENT_USER_ID,
       OUTSIDER_USER_ID,
       NEW_USER_1_ID,
       NEW_USER_2_ID,
@@ -328,6 +338,11 @@ const groupAdminAuth = createAuthContext({
 const groupMemberAuth = createAuthContext({
   user: { id: MEMBER_USER_ID, email: "member@example.com" },
   memberships: [{ organization_id: ORG_ID, role: "active_member", status: "active" }],
+});
+
+const parentGroupMemberAuth = createAuthContext({
+  user: { id: PARENT_USER_ID, email: "parent@example.com" },
+  memberships: [{ organization_id: ORG_ID, role: "parent", status: "active" }],
 });
 
 // Not a group member, but an org member
@@ -378,7 +393,17 @@ test("GET: group member can list members", () => {
     ctx
   );
   assert.strictEqual(result.status, 200);
-  assert.strictEqual(result.members!.length, 3);
+  assert.strictEqual(result.members!.length, 4);
+});
+
+test("GET: parent group member can list members", () => {
+  const ctx = createTestContext();
+  const result = simulateListMembers(
+    { auth: parentGroupMemberAuth, groupId: GROUP_ID },
+    ctx
+  );
+  assert.strictEqual(result.status, 200);
+  assert.strictEqual(result.members!.length, 4);
 });
 
 test("GET: org admin can list members even without group membership", () => {
@@ -388,7 +413,7 @@ test("GET: org admin can list members even without group membership", () => {
     ctx
   );
   assert.strictEqual(result.status, 200);
-  assert.strictEqual(result.members!.length, 3);
+  assert.strictEqual(result.members!.length, 4);
 });
 
 test("GET: does not return soft-deleted members", () => {
@@ -406,7 +431,7 @@ test("GET: does not return soft-deleted members", () => {
     ctx
   );
   assert.strictEqual(result2.status, 200);
-  assert.strictEqual(result2.members!.length, 2);
+  assert.strictEqual(result2.members!.length, 3);
 });
 
 // ─── POST Tests ──────────────────────────────────────────────────────────────
@@ -660,7 +685,7 @@ test("DELETE: removed user no longer visible in member list", () => {
     ctx
   );
   assert.strictEqual(result.status, 200);
-  assert.strictEqual(result.members!.length, 2);
+  assert.strictEqual(result.members!.length, 3);
   assert.ok(!result.members!.some((m) => m.user_id === MEMBER_USER_ID));
 });
 
@@ -677,12 +702,12 @@ test("full lifecycle: add, list, remove, list", () => {
   assert.strictEqual(addResult.status, 200);
   assert.strictEqual(addResult.added, 1);
 
-  // List should show 4 members
+  // List should show 5 members
   const listResult1 = simulateListMembers(
     { auth: orgAdminAuth, groupId: GROUP_ID },
     ctx
   );
-  assert.strictEqual(listResult1.members!.length, 4);
+  assert.strictEqual(listResult1.members!.length, 5);
 
   // Remove the new member
   const removeResult = simulateRemoveMember(
@@ -691,10 +716,10 @@ test("full lifecycle: add, list, remove, list", () => {
   );
   assert.strictEqual(removeResult.status, 200);
 
-  // List should show 3 members again
+  // List should show 4 members again
   const listResult2 = simulateListMembers(
     { auth: orgAdminAuth, groupId: GROUP_ID },
     ctx
   );
-  assert.strictEqual(listResult2.members!.length, 3);
+  assert.strictEqual(listResult2.members!.length, 4);
 });

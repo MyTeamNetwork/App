@@ -24,14 +24,13 @@ import {
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
-const ORG_ID = "org-001";
-const GROUP_ID = "group-001";
-const POLL_MESSAGE_ID = "msg-poll-001";
-const FORM_MESSAGE_ID = "msg-form-001";
-const ADMIN_USER_ID = "admin-001";
-const MEMBER_USER_ID = "member-001";
-const AUTHOR_USER_ID = "author-001";
-const NON_MEMBER_USER_ID = "non-member-001";
+const ORG_ID = "00000000-0000-4000-8000-000000000001";
+const GROUP_ID = "00000000-0000-4000-8000-000000000010";
+const POLL_MESSAGE_ID = "00000000-0000-4000-8000-000000000100";
+const FORM_MESSAGE_ID = "00000000-0000-4000-8000-000000000101";
+const ADMIN_USER_ID = "00000000-0000-4000-8000-000000000201";
+const MEMBER_USER_ID = "00000000-0000-4000-8000-000000000202";
+const AUTHOR_USER_ID = "00000000-0000-4000-8000-000000000203";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
