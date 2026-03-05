@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { baseSchemas } from "@/lib/security/validation";
+import { baseSchemas, validateJson, ValidationError } from "@/lib/security/validation";
 import { createFormSchema } from "@/lib/schemas/chat-polls";
+import { getChatGroupContext } from "@/lib/auth/chat-helpers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,41 +13,9 @@ interface RouteParams {
 }
 
 /**
- * Loads the chat group and validates it exists and is not soft-deleted.
- * Returns the group or null.
- */
-async function loadGroup(supabase: Awaited<ReturnType<typeof createClient>>, groupId: string) {
-  const { data } = await supabase
-    .from("chat_groups")
-    .select("id, organization_id, require_approval, deleted_at")
-    .eq("id", groupId)
-    .is("deleted_at", null)
-    .single();
-  return data;
-}
-
-/**
- * Checks if a user is a member of the chat group and returns their membership row.
- */
-async function getGroupMembership(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  groupId: string,
-  userId: string
-) {
-  const { data } = await supabase
-    .from("chat_group_members")
-    .select("id, role, joined_at")
-    .eq("chat_group_id", groupId)
-    .eq("user_id", userId)
-    .is("removed_at", null)
-    .maybeSingle();
-  return data;
-}
-
-/**
  * POST /api/chat/[groupId]/forms
  * Create a form message in the chat group.
- * Auth: must be group member.
+ * Auth: must be active org member + group member.
  * Body: { title: string, fields: ChatFormField[] }
  */
 export async function POST(req: Request, { params }: RouteParams) {
@@ -73,59 +42,36 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   if (!user) return respond({ error: "Unauthorized" }, 401);
 
-  // Parse body
-  let body: unknown;
+  let parsed;
   try {
-    body = await req.json();
-  } catch {
-    return respond({ error: "Invalid JSON body" }, 400);
+    parsed = await validateJson(req, createFormSchema);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return respond({ error: err.message, details: err.details }, 400);
+    }
+    return respond({ error: "Invalid request" }, 400);
   }
 
-  const parsed = createFormSchema.safeParse(body);
-  if (!parsed.success) {
-    return respond({ error: "Validation failed", details: parsed.error.flatten() }, 400);
-  }
-
-  const group = await loadGroup(supabase, groupId);
-  if (!group) return respond({ error: "Group not found" }, 404);
-
-  // Check org membership
-  const { data: orgRole } = await supabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", group.organization_id)
-    .maybeSingle();
-
-  if (!orgRole) return respond({ error: "Forbidden" }, 403);
-
-  const isAdmin = orgRole.role === "admin";
-  const membership = await getGroupMembership(supabase, groupId, user.id);
-
-  if (!membership && !isAdmin) {
-    return respond({ error: "Forbidden" }, 403);
-  }
-
-  const isGroupMod = membership?.role === "admin" || membership?.role === "moderator";
-  const canModerate = isAdmin || isGroupMod;
+  const ctx = await getChatGroupContext(supabase, user.id, groupId);
+  if (!ctx.ok) return respond({ error: ctx.error }, ctx.status);
 
   // Determine message status based on group approval requirement
-  const status = group.require_approval && !canModerate ? "pending" : "approved";
+  const status = ctx.group.require_approval && !ctx.canModerate ? "pending" : "approved";
 
   // Build metadata from parsed fields
   const metadata = {
-    title: parsed.data.title,
-    fields: parsed.data.fields,
+    title: parsed.title,
+    fields: parsed.fields,
   };
 
   const { data: message, error: insertError } = await supabase
     .from("chat_messages")
     .insert({
       chat_group_id: groupId,
-      organization_id: group.organization_id,
+      organization_id: ctx.group.organization_id,
       author_id: user.id,
       message_type: "form",
-      body: parsed.data.title,
+      body: parsed.title,
       metadata,
       status,
     })
