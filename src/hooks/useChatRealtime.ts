@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import type { SupabaseClient, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import type { ChatMessage, ChatPollVote, ChatFormResponse, User } from "@/types/database";
 
@@ -10,7 +10,7 @@ interface UseChatRealtimeOptions {
   currentUserId: string;
   canModerate: boolean;
   userMap: Map<string, User>;
-  fetchUnknownUsers: (ids: string[]) => Promise<void>;
+  fetchUnknownUsers: (ids: string[]) => Promise<Map<string, User>>;
   setMessages: React.Dispatch<React.SetStateAction<(ChatMessage & { author?: User })[]>>;
   setPollVotesMap: React.Dispatch<React.SetStateAction<Map<string, ChatPollVote[]>>>;
   setFormResponsesMap: React.Dispatch<React.SetStateAction<Map<string, ChatFormResponse[]>>>;
@@ -31,14 +31,19 @@ export function useChatRealtime({
   scrollToBottom,
   onMemberChange,
 }: UseChatRealtimeOptions) {
+  // Keep a ref to the latest userMap so handleMessageChange never captures a stale closure
+  const userMapRef = useRef(userMap);
+  useEffect(() => {
+    userMapRef.current = userMap;
+  }, [userMap]);
+
   // Handle incoming realtime message changes
   const handleMessageChange = useCallback(
     async (payload: RealtimePostgresChangesPayload<ChatMessage>) => {
       if (payload.eventType === "INSERT") {
         const newMsg = payload.new as ChatMessage;
-        if (!userMap.has(newMsg.author_id)) {
-          await fetchUnknownUsers([newMsg.author_id]);
-        }
+        // fetchUnknownUsers returns the merged map so we can use it immediately
+        const resolvedMap = await fetchUnknownUsers([newMsg.author_id]);
         if (
           newMsg.status === "approved" ||
           newMsg.author_id === currentUserId ||
@@ -57,13 +62,13 @@ export function useChatRealtime({
                 m.id.startsWith("temp-") &&
                 m.author_id === newMsg.author_id &&
                 m.body === newMsg.body
-                  ? { ...newMsg, author: userMap.get(newMsg.author_id) }
+                  ? { ...newMsg, author: resolvedMap.get(newMsg.author_id) }
                   : m
               );
             }
             return [
               ...prev,
-              { ...newMsg, author: userMap.get(newMsg.author_id) },
+              { ...newMsg, author: resolvedMap.get(newMsg.author_id) },
             ];
           });
           setTimeout(scrollToBottom, 100);
@@ -73,7 +78,7 @@ export function useChatRealtime({
         setMessages((prev) =>
           prev.map((m) =>
             m.id === updated.id
-              ? { ...updated, author: userMap.get(updated.author_id) }
+              ? { ...updated, author: userMapRef.current.get(updated.author_id) }
               : m
           )
         );
@@ -82,7 +87,7 @@ export function useChatRealtime({
         setMessages((prev) => prev.filter((m) => m.id !== deleted.id));
       }
     },
-    [currentUserId, canModerate, scrollToBottom, userMap, fetchUnknownUsers, setMessages]
+    [currentUserId, canModerate, scrollToBottom, fetchUnknownUsers, setMessages]
   );
 
   // Subscribe to messages, poll votes, form responses, and member changes

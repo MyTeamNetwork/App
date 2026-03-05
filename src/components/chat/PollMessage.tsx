@@ -1,12 +1,7 @@
 "use client";
 
 import type { ChatMessage, ChatPollVote, User } from "@/types/database";
-
-interface PollMetadata {
-  question: string;
-  options: { label: string }[];
-  allow_change: boolean;
-}
+import { pollMetadataSchema, type PollMetadata } from "@/lib/schemas/chat-polls";
 
 interface PollMessageProps {
   message: ChatMessage;
@@ -17,25 +12,6 @@ interface PollMessageProps {
   onRetractVote?: (messageId: string) => void;
 }
 
-function parsePollMetadata(metadata: ChatMessage["metadata"]): PollMetadata | null {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return null;
-  }
-  const m = metadata as Record<string, unknown>;
-  if (
-    typeof m.question !== "string" ||
-    !Array.isArray(m.options) ||
-    typeof m.allow_change !== "boolean"
-  ) {
-    return null;
-  }
-  return {
-    question: m.question,
-    options: m.options as { label: string }[],
-    allow_change: m.allow_change,
-  };
-}
-
 export function PollMessage({
   message,
   currentUserId,
@@ -44,11 +20,11 @@ export function PollMessage({
   onVote,
   onRetractVote,
 }: PollMessageProps) {
-  const metadata = parsePollMetadata(message.metadata);
-
-  if (!metadata) {
+  const parsed = pollMetadataSchema.passthrough().safeParse(message.metadata);
+  if (!parsed.success) {
     return <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">[Invalid poll]</p>;
   }
+  const metadata: PollMetadata = parsed.data;
 
   const userVote = votes.find((v) => v.user_id === currentUserId);
   const totalVotes = votes.length;

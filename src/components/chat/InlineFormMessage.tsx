@@ -2,19 +2,7 @@
 
 import { useState } from "react";
 import type { ChatMessage, ChatFormResponse } from "@/types/database";
-
-interface FormField {
-  id: string;
-  label: string;
-  type: "text" | "select" | "radio";
-  required: boolean;
-  options?: string[];
-}
-
-interface FormMetadata {
-  title: string;
-  fields: FormField[];
-}
+import { formMetadataSchema, type FormMetadata, type ChatFormField } from "@/lib/schemas/chat-polls";
 
 interface InlineFormMessageProps {
   message: ChatMessage;
@@ -24,23 +12,9 @@ interface InlineFormMessageProps {
   onSubmit?: (messageId: string, responses: Record<string, string>) => void;
 }
 
-function parseFormMetadata(metadata: ChatMessage["metadata"]): FormMetadata | null {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return null;
-  }
-  const m = metadata as Record<string, unknown>;
-  if (typeof m.title !== "string" || !Array.isArray(m.fields)) {
-    return null;
-  }
-  return {
-    title: m.title,
-    fields: m.fields as FormField[],
-  };
-}
-
 function getSubmittedValues(
   ownResponse: ChatFormResponse,
-  fields: FormField[]
+  fields: ChatFormField[]
 ): Record<string, string> {
   if (!ownResponse.responses || typeof ownResponse.responses !== "object" || Array.isArray(ownResponse.responses)) {
     return {};
@@ -54,12 +28,12 @@ function getSubmittedValues(
 
 export function InlineFormMessage({
   message,
-  currentUserId: _currentUserId,
   ownResponse,
   responseCount,
   onSubmit,
 }: InlineFormMessageProps) {
-  const metadata = parseFormMetadata(message.metadata);
+  const parsed = formMetadataSchema.passthrough().safeParse(message.metadata);
+  const metadata: FormMetadata | null = parsed.success ? parsed.data : null;
 
   const initialValues =
     metadata?.fields.reduce<Record<string, string>>((acc, field) => {
