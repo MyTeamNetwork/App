@@ -6,7 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import type { Organization } from "@/types/database";
 import type { OrgRole } from "@/lib/auth/role-utils";
-import { ORG_NAV_ITEMS, ORG_NAV_GROUPS, type NavConfig, type NavGroupId, GridIcon, LogOutIcon } from "@/lib/navigation/nav-items";
+import { ORG_NAV_ITEMS, ORG_NAV_GROUPS, type NavConfig, type NavGroupId, GridIcon, LogOutIcon, getConfigKey } from "@/lib/navigation/nav-items";
 import { bucketItemsByGroup, buildSectionOrder, buildGlobalIndexMap, getActiveGroup, type VisibleNavItem } from "@/lib/navigation/sidebar-groups";
 import { NavGroupSection, NavItemLink } from "@/components/layout/NavGroupSection";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -29,13 +29,17 @@ export function OrgSidebar({ organization, role, isDevAdmin = false, hasAlumniAc
 
   const [openGroups, setOpenGroups] = useState<Set<NavGroupId>>(new Set());
 
-  // Parse nav_config
-  const navConfig = (organization.nav_config && typeof organization.nav_config === "object" && !Array.isArray(organization.nav_config)
-    ? (organization.nav_config as NavConfig)
-    : {}) || {};
-
-  // Helper to get config key - Dashboard has empty href, so use "dashboard" as key
-  const getConfigKey = (href: string) => href === "" ? "dashboard" : href;
+  // Parse nav_config with stable identity for hook dependencies
+  const navConfig = useMemo<NavConfig>(() => {
+    if (
+      organization.nav_config &&
+      typeof organization.nav_config === "object" &&
+      !Array.isArray(organization.nav_config)
+    ) {
+      return organization.nav_config as NavConfig;
+    }
+    return {};
+  }, [organization.nav_config]);
 
   const visibleNav: VisibleNavItem[] = useMemo(() => ORG_NAV_ITEMS
     .filter((item) => {
@@ -53,7 +57,7 @@ export function OrgSidebar({ organization, role, isDevAdmin = false, hasAlumniAc
       const config = navConfig[configKey];
       return {
         ...item,
-        label: config?.label?.trim() || item.label,
+        label: (config?.label?.trim() || item.label).slice(0, 80),
         order: config?.order,
       };
     })
@@ -94,9 +98,12 @@ export function OrgSidebar({ organization, role, isDevAdmin = false, hasAlumniAc
   }, []);
 
   // Sort-then-bucket: bucket already-sorted items
-  const buckets = bucketItemsByGroup(visibleNav);
-  const sections = buildSectionOrder(buckets, ORG_NAV_GROUPS);
-  const globalIndexMap = buildGlobalIndexMap(visibleNav);
+  const { sections, globalIndexMap } = useMemo(() => {
+    const b = bucketItemsByGroup(visibleNav);
+    const s = buildSectionOrder(b, ORG_NAV_GROUPS);
+    const g = buildGlobalIndexMap(visibleNav);
+    return { sections: s, globalIndexMap: g };
+  }, [visibleNav]);
 
   return (
     <aside className={`flex flex-col bg-card border-r border-border h-full ${className}`}>

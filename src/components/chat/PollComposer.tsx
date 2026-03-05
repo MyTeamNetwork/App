@@ -58,6 +58,7 @@ export function PollComposer({ onCreatePoll, onCancel, isSubmitting }: PollCompo
         value={question}
         onChange={(e) => setQuestion(e.target.value)}
         placeholder="Ask a question..."
+        maxLength={500}
         autoFocus
         className="w-full px-3 py-2 rounded-lg bg-muted border border-[var(--border)] text-sm
           focus:ring-2 focus:ring-[var(--color-org-primary)] focus:outline-none mb-3
@@ -72,11 +73,10 @@ export function PollComposer({ onCreatePoll, onCancel, isSubmitting }: PollCompo
               type="text"
               value={opt}
               onChange={(e) => {
-                const newOptions = [...options];
-                newOptions[i] = e.target.value;
-                setOptions(newOptions);
+                setOptions(prev => prev.map((o, j) => j === i ? e.target.value : o));
               }}
               placeholder={`Option ${i + 1}...`}
+              maxLength={200}
               className="flex-1 px-3 py-2 rounded-lg bg-muted border border-[var(--border)] text-sm
                 focus:ring-2 focus:ring-[var(--color-org-primary)] focus:outline-none
                 placeholder:text-muted-foreground"

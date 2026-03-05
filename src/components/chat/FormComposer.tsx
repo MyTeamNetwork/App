@@ -77,7 +77,8 @@ export function FormComposer({ onCreateForm, onCancel, isSubmitting }: FormCompo
                 options: f.optionsText
                   .split(",")
                   .map((s) => s.trim())
-                  .filter(Boolean),
+                  .filter(Boolean)
+                  .slice(0, 20),
               }
             : {}),
         })),
@@ -117,6 +118,7 @@ export function FormComposer({ onCreateForm, onCancel, isSubmitting }: FormCompo
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Form title..."
+        maxLength={300}
         autoFocus
         className="w-full px-3 py-2 rounded-lg bg-muted border border-[var(--border)] text-sm
           focus:ring-2 focus:ring-[var(--color-org-primary)] focus:outline-none mb-3
@@ -133,6 +135,7 @@ export function FormComposer({ onCreateForm, onCancel, isSubmitting }: FormCompo
                 value={field.label}
                 onChange={(e) => updateField(i, { label: e.target.value })}
                 placeholder={`Field ${i + 1} label...`}
+                maxLength={200}
                 className="flex-1 px-3 py-2 rounded-lg bg-muted border border-[var(--border)] text-sm
                   focus:ring-2 focus:ring-[var(--color-org-primary)] focus:outline-none
                   placeholder:text-muted-foreground"

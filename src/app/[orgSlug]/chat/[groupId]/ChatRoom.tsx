@@ -98,10 +98,18 @@ export function ChatRoom({
     return map;
   }, [members, currentUserId, currentUser, userCache]);
 
-  // Fetch user info for unknown authors
-  const fetchUnknownUsers = useCallback(async (authorIds: string[]) => {
-    const unknownIds = authorIds.filter(id => !userMap.has(id));
-    if (unknownIds.length === 0) return;
+  // Keep a stable ref to the latest userMap so fetchUnknownUsers never captures a stale closure
+  const userMapRef = useRef(userMap);
+  useEffect(() => {
+    userMapRef.current = userMap;
+  }, [userMap]);
+
+  // Fetch user info for unknown authors.
+  // Returns the merged map immediately so callers can use fresh data without waiting for a re-render.
+  const fetchUnknownUsers = useCallback(async (authorIds: string[]): Promise<Map<string, User>> => {
+    const currentMap = userMapRef.current;
+    const unknownIds = authorIds.filter(id => !currentMap.has(id));
+    if (unknownIds.length === 0) return currentMap;
 
     const { data } = await supabase
       .from("users")
@@ -114,8 +122,13 @@ export function ChatRoom({
         data.forEach(user => newCache.set(user.id, user as User));
         return newCache;
       });
+      // Return a merged map so the caller gets fresh data immediately (before the next render)
+      const merged = new Map(currentMap);
+      data.forEach(user => merged.set(user.id, user as User));
+      return merged;
     }
-  }, [supabase, userMap]);
+    return currentMap;
+  }, [supabase]);
 
   // Update message authors when userMap changes (e.g., after fetching unknown users)
   useEffect(() => {
@@ -149,13 +162,14 @@ export function ChatRoom({
         .limit(100);
 
       if (!error && data) {
-        // Fetch user info for any unknown authors
+        // Fetch user info for any unknown authors.
+        // fetchUnknownUsers returns the merged map immediately so we don't need to wait for a re-render.
         const authorIds = [...new Set(data.map(msg => msg.author_id))];
-        await fetchUnknownUsers(authorIds);
+        const resolvedMap = await fetchUnknownUsers(authorIds);
 
         const messagesWithAuthors = data.map((msg) => ({
           ...msg,
-          author: userMap.get(msg.author_id),
+          author: resolvedMap.get(msg.author_id),
         }));
         setMessages(messagesWithAuthors);
 
@@ -203,7 +217,7 @@ export function ChatRoom({
       setTimeout(scrollToBottom, 100);
     }
     loadMessages();
-  }, [group.id, supabase, scrollToBottom, userMap, fetchUnknownUsers, memberJoinedAt]);
+  }, [group.id, supabase, scrollToBottom, fetchUnknownUsers, memberJoinedAt]);
 
   const canManage = canModerate || isCreator;
 
@@ -424,7 +438,7 @@ export function ChatRoom({
       const res = await fetch(`/api/chat/${group.id}/forms/${messageId}/responses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ responses }),
+        body: JSON.stringify(responses),
       });
       if (!res.ok) {
         const err = await res.json();

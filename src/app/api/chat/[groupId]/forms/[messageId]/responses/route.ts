@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { baseSchemas } from "@/lib/security/validation";
 import { chatFormResponseSchema, type FormMetadata } from "@/lib/schemas/chat-polls";
+import { getChatGroupContext } from "@/lib/auth/chat-helpers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,41 +13,9 @@ interface RouteParams {
 }
 
 /**
- * Loads the chat group and validates it exists and is not soft-deleted.
- * Returns the group or null.
- */
-async function loadGroup(supabase: Awaited<ReturnType<typeof createClient>>, groupId: string) {
-  const { data } = await supabase
-    .from("chat_groups")
-    .select("id, organization_id, require_approval, deleted_at")
-    .eq("id", groupId)
-    .is("deleted_at", null)
-    .single();
-  return data;
-}
-
-/**
- * Checks if a user is a member of the chat group and returns their membership row.
- */
-async function getGroupMembership(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  groupId: string,
-  userId: string
-) {
-  const { data } = await supabase
-    .from("chat_group_members")
-    .select("id, role, joined_at")
-    .eq("chat_group_id", groupId)
-    .eq("user_id", userId)
-    .is("removed_at", null)
-    .maybeSingle();
-  return data;
-}
-
-/**
  * POST /api/chat/[groupId]/forms/[messageId]/responses
  * Submit a response to a form message.
- * Auth: must be group member.
+ * Auth: must be active org member + group member.
  * Body: Record<fieldId, value>
  */
 export async function POST(req: Request, { params }: RouteParams) {
@@ -78,39 +47,51 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   if (!user) return respond({ error: "Unauthorized" }, 401);
 
-  // Parse body
-  let body: unknown;
+  // Preserve body-size enforcement that validateJson provides
+  const contentLength = parseInt(req.headers.get("content-length") ?? "", 10);
+  if (contentLength > 25_000) {
+    return respond({ error: "Payload too large" }, 413);
+  }
+
+  let rawBody: unknown;
   try {
-    body = await req.json();
+    rawBody = await req.json();
   } catch {
-    return respond({ error: "Invalid JSON body" }, 400);
+    return respond({ error: "Invalid JSON payload" }, 400);
   }
 
-  const parsed = chatFormResponseSchema.safeParse(body);
-  if (!parsed.success) {
-    return respond({ error: "Validation failed", details: parsed.error.flatten() }, 400);
+  // Backward compat: unwrap { responses: {...} } from stale clients
+  if (
+    rawBody &&
+    typeof rawBody === "object" &&
+    !Array.isArray(rawBody) &&
+    "responses" in rawBody &&
+    typeof (rawBody as Record<string, unknown>).responses === "object"
+  ) {
+    rawBody = (rawBody as Record<string, unknown>).responses;
   }
 
-  const group = await loadGroup(supabase, groupId);
-  if (!group) return respond({ error: "Group not found" }, 404);
+  const parseResult = chatFormResponseSchema.safeParse(rawBody);
+  if (!parseResult.success) {
+    return respond(
+      { error: "Invalid form response", details: parseResult.error.issues.map((e) => e.message) },
+      400,
+    );
+  }
+  const parsed = parseResult.data;
 
-  // Check org membership
-  const { data: orgRole } = await supabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", group.organization_id)
-    .maybeSingle();
+  const ctx = await getChatGroupContext(supabase, user.id, groupId);
+  if (!ctx.ok) return respond({ error: ctx.error }, ctx.status);
 
-  if (!orgRole) return respond({ error: "Forbidden" }, 403);
+  // Form responses require group membership (org admins without membership cannot submit)
+  if (!ctx.membership) {
+    return respond({ error: "Forbidden" }, 403);
+  }
 
-  const membership = await getGroupMembership(supabase, groupId, user.id);
-  if (!membership) return respond({ error: "Forbidden" }, 403);
-
-  // Verify the message exists, is a form, is not deleted, and is approved
+  // Verify the message exists, is a form, and is not deleted
   const { data: message } = await supabase
     .from("chat_messages")
-    .select("id, message_type, status, metadata, deleted_at")
+    .select("id, author_id, message_type, status, metadata, deleted_at")
     .eq("id", messageId)
     .eq("chat_group_id", groupId)
     .is("deleted_at", null)
@@ -118,17 +99,29 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   if (!message) return respond({ error: "Form not found" }, 404);
   if (message.message_type !== "form") return respond({ error: "Message is not a form" }, 400);
-  if (message.status !== "approved") return respond({ error: "Form is not available" }, 400);
 
-  // Validate required fields from form metadata
+  // Align with polls: allow authors + moderators to submit to pending forms
+  const isAuthor = message.author_id === user.id;
+  if (message.status !== "approved" && !isAuthor && !ctx.canModerate) {
+    return respond({ error: "Form is not available" }, 403);
+  }
+
+  // Validate required fields and strip extra keys from form metadata
   const formMetadata = message.metadata as FormMetadata | null;
+  let filteredResponses = parsed;
+
   if (formMetadata?.fields) {
+    const allowedFieldIds = new Set(formMetadata.fields.map((f) => f.id));
+    filteredResponses = Object.fromEntries(
+      Object.entries(parsed).filter(([key]) => allowedFieldIds.has(key))
+    );
+
     const requiredFieldIds = formMetadata.fields
       .filter((field) => field.required)
       .map((field) => field.id);
 
     const missingFields = requiredFieldIds.filter((fieldId) => {
-      const value = parsed.data[fieldId];
+      const value = filteredResponses[fieldId];
       return value === undefined || value.trim() === "";
     });
 
@@ -153,9 +146,9 @@ export async function POST(req: Request, { params }: RouteParams) {
     .insert({
       message_id: messageId,
       chat_group_id: groupId,
-      organization_id: group.organization_id,
+      organization_id: ctx.group.organization_id,
       user_id: user.id,
-      responses: parsed.data,
+      responses: filteredResponses,
     })
     .select()
     .single();
