@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { baseSchemas } from "@/lib/security/validation";
+import { baseSchemas, validateJson, ValidationError } from "@/lib/security/validation";
 import { voteSchema } from "@/lib/schemas/chat-polls";
 import type { PollMetadata } from "@/lib/schemas/chat-polls";
+import { getChatGroupContext } from "@/lib/auth/chat-helpers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,42 +14,9 @@ interface RouteParams {
 }
 
 /**
- * Loads the chat group and validates it exists and is not soft-deleted.
- * Also selects require_approval to determine message status.
- * Returns the group or null.
- */
-async function loadGroup(supabase: Awaited<ReturnType<typeof createClient>>, groupId: string) {
-  const { data } = await supabase
-    .from("chat_groups")
-    .select("id, organization_id, require_approval, deleted_at")
-    .eq("id", groupId)
-    .is("deleted_at", null)
-    .single();
-  return data;
-}
-
-/**
- * Checks if a user is a member of the chat group and returns their membership row.
- */
-async function getGroupMembership(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  groupId: string,
-  userId: string
-) {
-  const { data } = await supabase
-    .from("chat_group_members")
-    .select("id, role, joined_at")
-    .eq("chat_group_id", groupId)
-    .eq("user_id", userId)
-    .is("removed_at", null)
-    .maybeSingle();
-  return data;
-}
-
-/**
  * POST /api/chat/[groupId]/polls/[messageId]/votes
  * Cast or change a vote on a poll.
- * Auth: must be group member.
+ * Auth: must be active org member + group member.
  * Body: { option_index }
  */
 export async function POST(req: Request, { params }: RouteParams) {
@@ -80,36 +48,20 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   if (!user) return respond({ error: "Unauthorized" }, 401);
 
-  // Parse body
-  let body: unknown;
+  let parsed;
   try {
-    body = await req.json();
-  } catch {
-    return respond({ error: "Invalid JSON body" }, 400);
+    parsed = await validateJson(req, voteSchema);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return respond({ error: err.message, details: err.details }, 400);
+    }
+    return respond({ error: "Invalid request" }, 400);
   }
 
-  const parsed = voteSchema.safeParse(body);
-  if (!parsed.success) {
-    return respond({ error: "Validation failed", details: parsed.error.flatten() }, 400);
-  }
+  const ctx = await getChatGroupContext(supabase, user.id, groupId);
+  if (!ctx.ok) return respond({ error: ctx.error }, ctx.status);
 
-  const group = await loadGroup(supabase, groupId);
-  if (!group) return respond({ error: "Group not found" }, 404);
-
-  // Check org membership and role
-  const { data: orgRole } = await supabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", group.organization_id)
-    .maybeSingle();
-
-  if (!orgRole) return respond({ error: "Forbidden" }, 403);
-
-  const isOrgAdmin = orgRole.role === "admin";
-  const membership = await getGroupMembership(supabase, groupId, user.id);
-
-  if (!membership && !isOrgAdmin) {
+  if (!ctx.membership) {
     return respond({ error: "Forbidden" }, 403);
   }
 
@@ -134,11 +86,9 @@ export async function POST(req: Request, { params }: RouteParams) {
   }
 
   // Determine if user can access non-approved polls
-  const isGroupMod = membership?.role === "admin" || membership?.role === "moderator";
-  const canModerate = isOrgAdmin || isGroupMod;
   const isAuthor = pollMessage.author_id === user.id;
 
-  if (pollMessage.status !== "approved" && !isAuthor && !canModerate) {
+  if (pollMessage.status !== "approved" && !isAuthor && !ctx.canModerate) {
     return respond({ error: "Poll is not yet approved" }, 403);
   }
 
@@ -148,23 +98,49 @@ export async function POST(req: Request, { params }: RouteParams) {
     return respond({ error: "Poll metadata is invalid" }, 500);
   }
 
-  if (parsed.data.option_index >= pollMetadata.options.length) {
+  if (parsed.option_index >= pollMetadata.options.length) {
     return respond(
       { error: `option_index out of bounds (poll has ${pollMetadata.options.length} options)` },
       400
     );
   }
 
-  // Upsert the vote - on conflict of (message_id, user_id), update option_index and updated_at
+  // When allow_change is false, use INSERT to enforce single-vote immutability.
+  // A unique violation (23505) means the user already voted.
+  if (pollMetadata.allow_change === false) {
+    const { data: vote, error: insertError } = await supabase
+      .from("chat_poll_votes")
+      .insert({
+        message_id: messageId,
+        chat_group_id: groupId,
+        organization_id: ctx.group.organization_id,
+        user_id: user.id,
+        option_index: parsed.option_index,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      if (insertError.code === "23505") {
+        return respond({ error: "Vote cannot be changed for this poll" }, 409);
+      }
+      return respond({ error: "Failed to cast vote" }, 500);
+    }
+
+    return respond({ vote });
+  }
+
+  // allow_change is true/null/missing — upsert as before
   const { data: vote, error: voteError } = await supabase
     .from("chat_poll_votes")
     .upsert(
       {
         message_id: messageId,
         chat_group_id: groupId,
-        organization_id: group.organization_id,
+        organization_id: ctx.group.organization_id,
         user_id: user.id,
-        option_index: parsed.data.option_index,
+        option_index: parsed.option_index,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "message_id,user_id" }
@@ -182,7 +158,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 /**
  * DELETE /api/chat/[groupId]/polls/[messageId]/votes
  * Retract the current user's vote on a poll.
- * Auth: must be group member.
+ * Auth: must be active org member + group member.
  */
 export async function DELETE(req: Request, { params }: RouteParams) {
   const { groupId, messageId } = await params;
@@ -213,31 +189,41 @@ export async function DELETE(req: Request, { params }: RouteParams) {
 
   if (!user) return respond({ error: "Unauthorized" }, 401);
 
-  const group = await loadGroup(supabase, groupId);
-  if (!group) return respond({ error: "Group not found" }, 404);
+  const ctx = await getChatGroupContext(supabase, user.id, groupId);
+  if (!ctx.ok) return respond({ error: ctx.error }, ctx.status);
 
-  // Check org membership and group membership
-  const { data: orgRole } = await supabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", group.organization_id)
-    .maybeSingle();
-
-  if (!orgRole) return respond({ error: "Forbidden" }, 403);
-
-  const isOrgAdmin = orgRole.role === "admin";
-  const membership = await getGroupMembership(supabase, groupId, user.id);
-
-  if (!membership && !isOrgAdmin) {
+  if (!ctx.membership) {
     return respond({ error: "Forbidden" }, 403);
   }
 
-  // Delete the vote for this user on this message
+  // Validate the poll message exists, belongs to this group, and is not deleted
+  const { data: pollMessage } = await supabase
+    .from("chat_messages")
+    .select("id, message_type, metadata, deleted_at")
+    .eq("id", messageId)
+    .eq("chat_group_id", groupId)
+    .single();
+
+  if (!pollMessage || pollMessage.deleted_at !== null) {
+    return respond({ error: "Poll not found" }, 404);
+  }
+
+  if (pollMessage.message_type !== "poll") {
+    return respond({ error: "Message is not a poll" }, 400);
+  }
+
+  // Block retraction when allow_change is explicitly false
+  const pollMetadata = pollMessage.metadata as PollMetadata | null;
+  if (pollMetadata?.allow_change === false) {
+    return respond({ error: "Vote cannot be retracted for this poll" }, 403);
+  }
+
+  // Delete the vote for this user on this message (scoped to group)
   const { error: deleteError } = await supabase
     .from("chat_poll_votes")
     .delete()
     .eq("message_id", messageId)
+    .eq("chat_group_id", groupId)
     .eq("user_id", user.id);
 
   if (deleteError) {
