@@ -38,6 +38,8 @@ export type NavConfigEntry = {
 
 export type NavConfig = Record<string, NavConfigEntry>;
 
+export const getConfigKey = (href: string): string => href === "" ? "dashboard" : href;
+
 export const ORG_NAV_ITEMS: OrgNavItem[] = [
   { href: "", label: "Dashboard", icon: HomeIcon, roles: ["admin", "active_member", "alumni", "parent"] },
   { href: "/members", label: "Members", icon: UsersIcon, roles: ["admin", "active_member", "alumni", "parent"], group: "people" },
