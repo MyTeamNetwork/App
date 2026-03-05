@@ -8,8 +8,9 @@ import {
   extractRequestContext,
 } from "@/lib/auth/dev-admin";
 import type { Database } from "@/types/database";
+import { getOrgMembership } from "@/lib/auth/api-helpers";
+import { extractSubscriptionPeriodEndIso } from "@/lib/stripe/subscription-period";
 import {
-  pickMostRecentRecoverableAttempt,
   resolveRecoverableAttemptLookup,
   type RecoverableAttempt,
 } from "@/lib/payments/reconcile-helpers";
@@ -45,6 +46,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   const { createServiceClient } = await import("@/lib/supabase/service");
   const { stripe } = await import("@/lib/stripe");
   const supabase = await createClient();
+  const serviceSupabase = createServiceClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   const rateLimit = checkRateLimit(req, {
@@ -65,15 +67,16 @@ export async function POST(req: Request, { params }: RouteParams) {
     return respond({ error: "Unauthorized" }, 401);
   }
 
-  const { data: role } = await supabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", organizationId)
-    .maybeSingle();
+  let membership: { role: string } | null = null;
+  try {
+    membership = await getOrgMembership(serviceSupabase as never, user.id, organizationId);
+  } catch (error) {
+    console.error("[reconcile-subscription] Failed to fetch role:", error);
+    return respond({ error: "Unable to verify permissions" }, 500);
+  }
 
   const isDevAdminAllowed = canDevAdminPerform(user, "reconcile_subscription");
-  if (role?.role !== "admin" && !isDevAdminAllowed) {
+  if (membership?.role !== "admin" && !isDevAdminAllowed) {
     return respond({ error: "Forbidden" }, 403);
   }
 
@@ -88,9 +91,6 @@ export async function POST(req: Request, { params }: RouteParams) {
       ...extractRequestContext(req),
     });
   }
-
-  const serviceSupabase = createServiceClient();
-
   const { data: subscriptionRow } = await serviceSupabase
     .from("organization_subscriptions")
     .select("status, stripe_subscription_id, stripe_customer_id, current_period_end")
@@ -128,16 +128,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       const customerId = typeof subscription.customer === "string"
         ? subscription.customer
         : (subscription.customer as { id?: string })?.id || subscriptionRow.stripe_customer_id;
-      // Handle Clover API: current_period_end moved from Subscription to SubscriptionItem
-      const subLevelPeriodEnd = subscription.current_period_end ? Number(subscription.current_period_end) : null;
-      const itemLevelPeriodEnd = subscription.items?.data
-        ?.map((item) => item.current_period_end)
-        .filter((v): v is number => typeof v === "number")
-        .sort((a, b) => a - b)?.[0] ?? null;
-      const periodEndEpoch = subLevelPeriodEnd ?? itemLevelPeriodEnd;
-      const currentPeriodEnd = periodEndEpoch
-        ? new Date(periodEndEpoch * 1000).toISOString()
-        : null;
+      const currentPeriodEnd = extractSubscriptionPeriodEndIso(subscription);
       const status = normalizeSubscriptionStatus({
         status: subscription.status,
         cancel_at_period_end: subscription.cancel_at_period_end,
@@ -249,16 +240,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const subscription = (await stripe.subscriptions.retrieve(subscriptionId, {
       expand: ["items.data"],
     })) as SubscriptionWithPeriod;
-    // Handle Clover API: current_period_end moved from Subscription to SubscriptionItem
-    const subLevel = subscription.current_period_end ? Number(subscription.current_period_end) : null;
-    const itemLevel = subscription.items?.data
-      ?.map((item) => item.current_period_end)
-      .filter((v): v is number => typeof v === "number")
-      .sort((a, b) => a - b)?.[0] ?? null;
-    const periodEnd = subLevel ?? itemLevel;
-    const currentPeriodEnd = periodEnd
-      ? new Date(periodEnd * 1000).toISOString()
-      : null;
+    const currentPeriodEnd = extractSubscriptionPeriodEndIso(subscription);
     const status = normalizeSubscriptionStatus({
       status: subscription.status,
       cancel_at_period_end: subscription.cancel_at_period_end,

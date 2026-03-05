@@ -17,6 +17,7 @@ import { normalizeRole } from "@/lib/auth/role-utils";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import type { UserRole } from "@/types/database";
 import { canDevAdminPerform, logDevAdminAction, extractRequestContext } from "@/lib/auth/dev-admin";
+import { extractSubscriptionPeriodEndIso } from "@/lib/stripe/subscription-period";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -92,11 +93,17 @@ async function ensureStripePlan(params: {
   currentBaseInterval: SubscriptionInterval;
   organizationId: string;
   serviceSupabase: ReturnType<typeof createServiceClient>;
-}): Promise<{ bucket: AlumniBucket; baseInterval: SubscriptionInterval; subscriptionInvalid: boolean }> {
+}): Promise<{
+  bucket: AlumniBucket;
+  baseInterval: SubscriptionInterval;
+  currentPeriodEnd: string | null;
+  subscriptionInvalid: boolean;
+}> {
   if (!params.stripeSubscriptionId) {
     return {
       bucket: params.currentBucket,
       baseInterval: params.currentBaseInterval,
+      currentPeriodEnd: null,
       subscriptionInvalid: false,
     };
   }
@@ -142,12 +149,7 @@ async function ensureStripePlan(params: {
     const bucket = detectedBucket ?? params.currentBucket;
     const baseInterval = detectedInterval ?? params.currentBaseInterval;
 
-    // Backfill current_period_end from item-level data (Clover API moved it from Subscription to SubscriptionItem)
-    const itemPeriodEnd = items
-      .map((item) => (item as unknown as { current_period_end?: number | null }).current_period_end)
-      .filter((v): v is number => typeof v === "number")
-      .sort((a, b) => a - b)[0] ?? null;
-    const currentPeriodEnd = itemPeriodEnd ? new Date(itemPeriodEnd * 1000).toISOString() : null;
+    const currentPeriodEnd = extractSubscriptionPeriodEndIso(subscription as { current_period_end?: number | null; items?: { data?: Array<{ current_period_end?: number | null }> } | null; });
 
     await params.serviceSupabase
       .from("organization_subscriptions")
@@ -160,7 +162,7 @@ async function ensureStripePlan(params: {
       })
       .eq("organization_id", params.organizationId);
 
-    return { bucket, baseInterval, subscriptionInvalid: false };
+    return { bucket, baseInterval, currentPeriodEnd, subscriptionInvalid: false };
   } catch (error) {
     console.error("[subscription] Unable to backfill plan details", error);
     if (isInvalidSubscriptionError(error)) {
@@ -168,12 +170,14 @@ async function ensureStripePlan(params: {
       return {
         bucket: params.currentBucket,
         baseInterval: params.currentBaseInterval,
+        currentPeriodEnd: null,
         subscriptionInvalid: true,
       };
     }
     return {
       bucket: params.currentBucket,
       baseInterval: params.currentBaseInterval,
+      currentPeriodEnd: null,
       subscriptionInvalid: false,
     };
   }
@@ -182,6 +186,7 @@ async function ensureStripePlan(params: {
 const postSchema = z
   .object({
     alumniBucket: z.enum(["none", "0-250", "251-500", "501-1000", "1001-2500", "2500-5000", "5000+"]),
+    interval: z.enum(["month", "year"]).optional(),
   })
   .strict();
 
@@ -367,6 +372,7 @@ export async function GET(req: Request, { params }: RouteParams) {
 
   const alumniLimit = getAlumniLimit(planDetails.bucket);
   const status = (sub?.status as string | undefined) ?? "none";
+  const resolvedCurrentPeriodEnd = planDetails.currentPeriodEnd ?? (sub?.current_period_end as string | null) ?? null;
   const customerResult = await ensureStripeCustomerId({
     stripeSubscriptionId: sub?.stripe_subscription_id as string | null,
     stripeCustomerId: sub?.stripe_customer_id as string | null,
@@ -395,7 +401,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     status,
     stripeSubscriptionId: (sub?.stripe_subscription_id as string | null) ?? null,
     stripeCustomerId: customerResult.customerId,
-    currentPeriodEnd: (sub?.current_period_end as string | null) ?? null,
+    currentPeriodEnd: resolvedCurrentPeriodEnd,
     includeStripeDetails: isAdmin,
   }, respond);
 }
@@ -500,7 +506,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         status: (sub?.status as string | undefined) ?? "active",
         stripeSubscriptionId: sub.stripe_subscription_id as string,
         stripeCustomerId: customerResult.customerId,
-        currentPeriodEnd: (sub?.current_period_end as string | null) ?? null,
+        currentPeriodEnd: planDetails.currentPeriodEnd ?? (sub?.current_period_end as string | null) ?? null,
         includeStripeDetails: true,
       }, respond);
     }
@@ -555,7 +561,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         updateItems.push({ id: addOnItem.id, deleted: true });
       }
 
-      await stripe.subscriptions.update(sub.stripe_subscription_id, {
+      const updatedSubscription = await stripe.subscriptions.update(sub.stripe_subscription_id, {
         items: updateItems,
         metadata: {
           ...(subscription.metadata || {}),
@@ -564,12 +570,15 @@ export async function POST(req: Request, { params }: RouteParams) {
         proration_behavior: "create_prorations",
       });
 
+      const currentPeriodEnd = extractSubscriptionPeriodEndIso(updatedSubscription as { current_period_end?: number | null; items?: { data?: Array<{ current_period_end?: number | null }> } | null; });
+
       const alumniPlanInterval = targetBucket === "none" ? null : interval;
       await serviceSupabase
         .from("organization_subscriptions")
         .update({
           alumni_bucket: targetBucket,
           alumni_plan_interval: alumniPlanInterval,
+          current_period_end: currentPeriodEnd,
           updated_at: new Date().toISOString(),
         })
         .eq("organization_id", organizationId);
@@ -581,7 +590,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         status: (sub?.status as string | undefined) ?? "active",
         stripeSubscriptionId: sub.stripe_subscription_id as string,
         stripeCustomerId: sub.stripe_customer_id as string,
-        currentPeriodEnd: (sub?.current_period_end as string | null) ?? null,
+        currentPeriodEnd,
         includeStripeDetails: true,
       }, respond);
     } catch (error) {
