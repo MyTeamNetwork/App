@@ -214,17 +214,8 @@ export function BulkLinkedInImporter({ organizationId, onClose }: BulkLinkedInIm
 
   // ─── File handling ──────────────────────────────────────────────────────
 
-  const handleFileClick = useCallback(() => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, []);
-
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
+  const processFile = useCallback(
+    (file: File) => {
       setResult(null);
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -236,6 +227,20 @@ export function BulkLinkedInImporter({ organizationId, onClose }: BulkLinkedInIm
       reader.readAsText(file);
     },
     [handlePreview, overwrite],
+  );
+
+  const handleFileClick = useCallback(() => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, []);
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) processFile(file);
+    },
+    [processFile],
   );
 
   // ─── Drag & drop ──────────────────────────────────────────────────────
@@ -267,19 +272,9 @@ export function BulkLinkedInImporter({ organizationId, onClose }: BulkLinkedInIm
       setIsDragging(false);
 
       const file = e.dataTransfer.files?.[0];
-      if (!file) return;
-
-      setResult(null);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        const parsed = parseSpreadsheetData(text);
-        setRows(parsed);
-        handlePreview(parsed, overwrite);
-      };
-      reader.readAsText(file);
+      if (file) processFile(file);
     },
-    [handlePreview, overwrite],
+    [processFile],
   );
 
   // ─── Paste handling ────────────────────────────────────────────────────
@@ -347,11 +342,8 @@ export function BulkLinkedInImporter({ organizationId, onClose }: BulkLinkedInIm
   // ─── Summary ────────────────────────────────────────────────────────────
 
   const summary = useMemo(() => summarize(rows), [rows]);
-  const willUpdateCount = summary.willUpdate;
-  const willCreateCount = summary.willCreate;
-  const actionableCount = willUpdateCount + willCreateCount;
+  const actionableCount = summary.willUpdate + summary.willCreate;
   const importDisabled = actionableCount === 0 || isImporting || isPreviewing;
-  const resultQuotaBlockedCount = result?.quotaBlocked ?? 0;
 
   return (
     <Card ref={panelRef} padding="none" className="mb-6 overflow-hidden animate-fade-in">
@@ -459,16 +451,16 @@ export function BulkLinkedInImporter({ organizationId, onClose }: BulkLinkedInIm
                 "Checking emails against alumni records\u2026"
               ) : (
                 <span className="flex items-center gap-3 flex-wrap">
-                  {willUpdateCount > 0 && (
+                  {summary.willUpdate > 0 && (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                      {willUpdateCount} will update
+                      {summary.willUpdate} will update
                     </span>
                   )}
-                  {willCreateCount > 0 && (
+                  {summary.willCreate > 0 && (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
-                      {willCreateCount} will create
+                      {summary.willCreate} will create
                     </span>
                   )}
                   {summary.willSkip > 0 && (
@@ -566,20 +558,22 @@ export function BulkLinkedInImporter({ organizationId, onClose }: BulkLinkedInIm
         )}
 
         {/* Result banner */}
-        {result && (
-          <div className={`rounded-lg border p-4 ${getResultClasses(result).border}`} aria-live="polite">
-            <p className={`font-medium text-sm ${getResultClasses(result).text}`}>
+        {result && (() => {
+          const resultClasses = getResultClasses(result);
+          return (
+          <div className={`rounded-lg border p-4 ${resultClasses.border}`} aria-live="polite">
+            <p className={`font-medium text-sm ${resultClasses.text}`}>
               {result.updated > 0 || result.created > 0
                 ? [
                     result.created > 0 ? `${result.created} created` : null,
                     result.updated > 0 ? `${result.updated} updated` : null,
                   ].filter(Boolean).join(", ")
-                : resultQuotaBlockedCount > 0
-                  ? `${resultQuotaBlockedCount} quota blocked`
+                : (result.quotaBlocked ?? 0) > 0
+                  ? `${result.quotaBlocked} quota blocked`
                 : "No records changed"}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {result.created} created, {result.updated} updated, {result.skipped} skipped, {resultQuotaBlockedCount} quota blocked
+              {result.created} created, {result.updated} updated, {result.skipped} skipped, {result.quotaBlocked ?? 0} quota blocked
             </p>
             {result.errors.length > 0 && (
               <div className="text-xs text-red-400 mt-1">
@@ -599,7 +593,8 @@ export function BulkLinkedInImporter({ organizationId, onClose }: BulkLinkedInIm
               )}
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </Card>
   );
