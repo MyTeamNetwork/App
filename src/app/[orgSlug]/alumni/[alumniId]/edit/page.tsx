@@ -122,30 +122,16 @@ export default function EditAlumniPage() {
       return;
     }
 
+    if (!orgId) {
+      setError("Organization not found");
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
-    const supabase = createClient();
-
-    let organizationId = orgId;
-    if (!organizationId) {
-      const { data: org } = await supabase
-        .from("organizations")
-        .select("id")
-        .eq("slug", orgSlug)
-        .single();
-
-      if (!org) {
-        setError("Organization not found");
-        setIsLoading(false);
-        return;
-      }
-
-      organizationId = org.id;
-      setOrgId(org.id);
-    }
-
     try {
+      const organizationId = orgId;
       const response = await fetch(`/api/organizations/${organizationId}/alumni/${alumniId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
