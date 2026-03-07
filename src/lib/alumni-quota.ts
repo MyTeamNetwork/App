@@ -92,13 +92,13 @@ export async function getAlumniLimitForOrg(orgId: string): Promise<number | null
   // Otherwise, use org's individual subscription
   const { data: orgSub } = await supabase
     .from("organization_subscriptions")
-    .select("alumni_quota_tier")
+    .select("alumni_bucket")
     .eq("organization_id", orgId)
-    .maybeSingle() as { data: { alumni_quota_tier: string | null } | null };
+    .maybeSingle() as { data: { alumni_bucket: string | null } | null };
 
   if (!orgSub) {
     return 0;
   }
 
-  return getAlumniLimit(normalizeBucket(orgSub.alumni_quota_tier));
+  return getAlumniLimit(normalizeBucket(orgSub.alumni_bucket));
 }
