@@ -51,8 +51,8 @@ export default async function AlumniPage({ params, searchParams }: AlumniPagePro
   if (isDevAdmin) {
     try {
       dataClient = createServiceClient();
-    } catch (error) {
-      console.warn("DevAdmin: Failed to create service client (missing key?)", error);
+    } catch {
+      // Falls back to regular supabase client if service key is missing
     }
   }
 
@@ -148,7 +148,6 @@ export default async function AlumniPage({ params, searchParams }: AlumniPagePro
           canEdit && (
             <AlumniActionsMenu
               orgSlug={orgSlug}
-              organizationId={org.id}
               actionLabel={actionLabel}
             />
           )

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 interface AddAlumniMenuProps {
   orgSlug: string;
-  organizationId: string;
   actionLabel: string;
   onImportClick: () => void;
 }

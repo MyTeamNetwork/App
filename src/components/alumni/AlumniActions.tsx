@@ -34,17 +34,15 @@ export function AlumniActionsProvider({ children }: { children: ReactNode }) {
 // The split-button menu, rendered inside PageHeader actions
 interface AlumniActionsMenuProps {
   orgSlug: string;
-  organizationId: string;
   actionLabel: string;
 }
 
-export function AlumniActionsMenu({ orgSlug, organizationId, actionLabel }: AlumniActionsMenuProps) {
+export function AlumniActionsMenu({ orgSlug, actionLabel }: AlumniActionsMenuProps) {
   const { openImporter } = useContext(ImporterContext);
 
   return (
     <AddAlumniMenu
       orgSlug={orgSlug}
-      organizationId={organizationId}
       actionLabel={actionLabel}
       onImportClick={openImporter}
     />
