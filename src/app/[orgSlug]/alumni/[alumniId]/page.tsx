@@ -25,8 +25,8 @@ export default async function AlumniDetailPage({ params }: AlumniDetailPageProps
   if (isDevAdmin) {
     try {
       dataClient = createServiceClient();
-    } catch (error) {
-      console.warn("DevAdmin: Failed to create service client (missing key?)", error);
+    } catch {
+      // Falls back to regular supabase client if service key is missing
     }
   }
 
@@ -59,13 +59,15 @@ export default async function AlumniDetailPage({ params }: AlumniDetailPageProps
 
   const alum = alumData as Alumni;
 
-  const { role, userId: currentUserId } = await getOrgRole({ orgId: orgId });
+  const [{ role, userId: currentUserId }, { isReadOnly }] = await Promise.all([
+    getOrgRole({ orgId: orgId }),
+    checkOrgReadOnly(orgId),
+  ]);
   const navConfig = org.nav_config as NavConfig | null;
   const canEditPage = canEditNavItem(navConfig, "/alumni", role, ["admin"]);
   const alumUserId = (alum as Alumni & { user_id?: string | null }).user_id || null;
   const isSelf = Boolean(currentUserId && alumUserId === currentUserId);
   const canEdit = canEditPage || isSelf;
-  const { isReadOnly } = await checkOrgReadOnly(orgId);
   const canModifyExisting = canEdit && !isReadOnly;
   const canDelete = canEditPage && !isReadOnly;
 
