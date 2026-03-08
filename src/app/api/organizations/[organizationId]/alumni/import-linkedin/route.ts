@@ -1,10 +1,6 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
-import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { validateJson, ValidationError, baseSchemas } from "@/lib/security/validation";
-import { getAlumniCapacitySnapshot } from "@/lib/alumni/capacity";
+import { validateJson, ValidationError } from "@/lib/security/validation";
+import { validateAlumniImportRequest } from "@/lib/alumni/validate-import-request";
 import {
   planLinkedInImport,
   type LinkedInImportPreviewStatus,
@@ -109,54 +105,15 @@ interface RouteParams {
 }
 
 export async function POST(req: Request, { params }: RouteParams) {
-  const { organizationId } = await params;
+  const { organizationId: rawOrgId } = await params;
 
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
-    return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
-  }
-
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  // Split rate-limit bucket based on preview vs import
-  const isPreview = new URL(req.url).searchParams.get("preview") === "1";
-  const rateLimit = checkRateLimit(req, {
-    userId: user?.id ?? null,
-    feature: isPreview ? "alumni-linkedin-preview" : "alumni-linkedin-import",
-    limitPerIp: 15,
-    limitPerUser: 10,
+  const gate = await validateAlumniImportRequest(req, rawOrgId, {
+    featurePreview: "alumni-linkedin-preview",
+    featureImport: "alumni-linkedin-import",
   });
+  if (!gate.ok) return gate.response;
 
-  if (!rateLimit.ok) {
-    return buildRateLimitResponse(rateLimit);
-  }
-
-  const respond = (payload: unknown, status = 200) =>
-    NextResponse.json(payload, { status, headers: rateLimit.headers });
-
-  if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
-  }
-
-  // Layer 2: API role check (authoritative security boundary)
-  const serviceSupabase = createServiceClient();
-  const { data: roleData, error: roleError } = await serviceSupabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", organizationId)
-    .eq("status", "active")
-    .maybeSingle();
-
-  if (roleError) {
-    console.error("[alumni/import-linkedin POST] Failed to fetch role:", roleError);
-    return respond({ error: "Unable to verify permissions" }, 500);
-  }
-
-  if (roleData?.role !== "admin") {
-    return respond({ error: "Forbidden" }, 403);
-  }
+  const { organizationId, serviceSupabase, capacitySnapshot, respond } = gate;
 
   let body: z.infer<typeof importBodySchema>;
   try {
@@ -231,14 +188,6 @@ export async function POST(req: Request, { params }: RouteParams) {
     }
   }
 
-  // Alumni quota check for new record creation
-  let capacitySnapshot;
-  try {
-    capacitySnapshot = await getAlumniCapacitySnapshot(organizationId);
-  } catch (error) {
-    console.error("[alumni/import-linkedin POST] Failed to count alumni:", error);
-    return respond({ error: "Failed to verify alumni capacity" }, 500);
-  }
   const importPlan = planLinkedInImport({
     rows,
     overwrite,
@@ -247,6 +196,19 @@ export async function POST(req: Request, { params }: RouteParams) {
     remainingCapacity: capacitySnapshot.remainingCapacity,
   });
 
+  // If dry run, return preview immediately (mirrors CSV route pattern)
+  if (dryRun) {
+    const result: ImportResult = {
+      created: importPlan.toCreate.length,
+      updated: importPlan.toUpdate.length,
+      skipped: importPlan.skipped,
+      quotaBlocked: importPlan.quotaBlocked,
+      errors: [],
+      preview: importPlan.preview,
+    };
+    return respond(result);
+  }
+
   const errors: string[] = [];
   let updateErrors = 0;
   let created = 0;
@@ -254,60 +216,57 @@ export async function POST(req: Request, { params }: RouteParams) {
   let quotaBlocked = importPlan.quotaBlocked;
   let skipped = importPlan.skipped;
 
-  // Skip batch writes in dry run mode
-  if (!dryRun) {
-    const BATCH_SIZE = 20;
+  const BATCH_SIZE = 20;
 
-    // Batch updates
-    for (let i = 0; i < importPlan.toUpdate.length; i += BATCH_SIZE) {
-      const batch = importPlan.toUpdate.slice(i, i + BATCH_SIZE);
-      const updates = batch.map((item) =>
-        serviceSupabase
-          .from("alumni")
-          .update({ linkedin_url: item.linkedinUrl })
-          .eq("id", item.alumniId)
-          .eq("organization_id", organizationId),
-      );
+  // Batch updates
+  for (let i = 0; i < importPlan.toUpdate.length; i += BATCH_SIZE) {
+    const batch = importPlan.toUpdate.slice(i, i + BATCH_SIZE);
+    const updates = batch.map((item) =>
+      serviceSupabase
+        .from("alumni")
+        .update({ linkedin_url: item.linkedinUrl })
+        .eq("id", item.alumniId)
+        .eq("organization_id", organizationId),
+    );
 
-      const results = await Promise.all(updates);
-      for (const { error } of results) {
-        if (error) {
-          updateErrors++;
-          errors.push(error.message);
-        }
+    const results = await Promise.all(updates);
+    for (const { error } of results) {
+      if (error) {
+        updateErrors++;
+        errors.push(error.message);
       }
     }
+  }
 
-    if (importPlan.toCreate.length > 0) {
-      const rpcSupabase = serviceSupabase as unknown as BulkImportLinkedInRpc;
-      const { data: createResults, error: createError } = await rpcSupabase.rpc(
-        "bulk_import_linkedin_alumni",
-        {
-          p_organization_id: organizationId,
-          p_rows: importPlan.toCreate.map((item) => ({
-            email: item.email,
-            first_name: item.first_name,
-            last_name: item.last_name,
-            linkedin_url: item.linkedinUrl,
-          })),
-          p_overwrite: overwrite,
-        },
-      );
+  if (importPlan.toCreate.length > 0) {
+    const rpcSupabase = serviceSupabase as unknown as BulkImportLinkedInRpc;
+    const { data: createResults, error: createError } = await rpcSupabase.rpc(
+      "bulk_import_linkedin_alumni",
+      {
+        p_organization_id: organizationId,
+        p_rows: importPlan.toCreate.map((item) => ({
+          email: item.email,
+          first_name: item.first_name,
+          last_name: item.last_name,
+          linkedin_url: item.linkedinUrl,
+        })),
+        p_overwrite: overwrite,
+      },
+    );
 
-      if (createError) {
-        console.error("[alumni/import-linkedin POST] RPC bulk_import_linkedin_alumni failed:", createError);
-        errors.push(createError.message);
-      } else {
-        for (const row of createResults ?? []) {
-          if (row.out_status === "created") {
-            created++;
-          } else if (row.out_status === "updated_existing") {
-            concurrentUpdates++;
-          } else if (row.out_status === "skipped_existing") {
-            skipped++;
-          } else if (row.out_status === "quota_exceeded") {
-            quotaBlocked++;
-          }
+    if (createError) {
+      console.error("[alumni/import-linkedin POST] RPC bulk_import_linkedin_alumni failed:", createError);
+      errors.push(createError.message);
+    } else {
+      for (const row of createResults ?? []) {
+        if (row.out_status === "created") {
+          created++;
+        } else if (row.out_status === "updated_existing") {
+          concurrentUpdates++;
+        } else if (row.out_status === "skipped_existing") {
+          skipped++;
+        } else if (row.out_status === "quota_exceeded") {
+          quotaBlocked++;
         }
       }
     }
@@ -320,12 +279,6 @@ export async function POST(req: Request, { params }: RouteParams) {
     quotaBlocked,
     errors,
   };
-
-  if (dryRun) {
-    result.created = importPlan.toCreate.length;
-    result.updated = importPlan.toUpdate.length;
-    result.preview = importPlan.preview;
-  }
 
   return respond(result);
 }

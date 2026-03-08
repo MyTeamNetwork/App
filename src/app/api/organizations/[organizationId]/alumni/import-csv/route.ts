@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
-import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { validateJson, ValidationError, baseSchemas } from "@/lib/security/validation";
-import { getAlumniCapacitySnapshot } from "@/lib/alumni/capacity";
+import { validateJson, ValidationError } from "@/lib/security/validation";
 import { sendEmail } from "@/lib/notifications";
+import { validateAlumniImportRequest } from "@/lib/alumni/validate-import-request";
+import { getAppUrl } from "@/lib/url";
 import {
   planCsvImport,
   type CsvImportPreviewStatus,
@@ -107,54 +105,17 @@ interface RouteParams {
 }
 
 export async function POST(req: Request, { params }: RouteParams) {
-  const { organizationId } = await params;
+  const { organizationId: rawOrgId } = await params;
 
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
-    return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
-  }
-
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  // Split rate-limit bucket based on preview vs import
-  const isPreview = new URL(req.url).searchParams.get("preview") === "1";
-  const rateLimit = checkRateLimit(req, {
-    userId: user?.id ?? null,
-    feature: isPreview ? "alumni-csv-preview" : "alumni-csv-import",
-    limitPerIp: isPreview ? 15 : 10,
-    limitPerUser: isPreview ? 10 : 5,
+  const gate = await validateAlumniImportRequest(req, rawOrgId, {
+    featurePreview: "alumni-csv-preview",
+    featureImport: "alumni-csv-import",
+    importLimitPerIp: 10,
+    importLimitPerUser: 5,
   });
+  if (!gate.ok) return gate.response;
 
-  if (!rateLimit.ok) {
-    return buildRateLimitResponse(rateLimit);
-  }
-
-  const respond = (payload: unknown, status = 200) =>
-    NextResponse.json(payload, { status, headers: rateLimit.headers });
-
-  if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
-  }
-
-  // Layer 2: API role check (authoritative security boundary)
-  const serviceSupabase = createServiceClient();
-  const { data: roleData, error: roleError } = await serviceSupabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", organizationId)
-    .eq("status", "active")
-    .maybeSingle();
-
-  if (roleError) {
-    console.error("[alumni/import-csv POST] Failed to fetch role:", roleError);
-    return respond({ error: "Unable to verify permissions" }, 500);
-  }
-
-  if (roleData?.role !== "admin") {
-    return respond({ error: "Forbidden" }, 403);
-  }
+  const { organizationId, userSupabase, serviceSupabase, capacitySnapshot, respond } = gate;
 
   let body: z.infer<typeof importBodySchema>;
   try {
@@ -243,15 +204,6 @@ export async function POST(req: Request, { params }: RouteParams) {
         }
       }
     }
-  }
-
-  // Alumni quota check for new record creation
-  let capacitySnapshot;
-  try {
-    capacitySnapshot = await getAlumniCapacitySnapshot(organizationId);
-  } catch (error) {
-    console.error("[alumni/import-csv POST] Failed to count alumni:", error);
-    return respond({ error: "Failed to verify alumni capacity" }, 500);
   }
 
   const importPlan = planCsvImport({
@@ -354,7 +306,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     if (createdWithEmail.length > 0) {
       // Create org invite with limited uses
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: invite, error: inviteError } = await (supabase as any).rpc("create_org_invite", {
+      const { data: invite, error: inviteError } = await (userSupabase as any).rpc("create_org_invite", {
         p_organization_id: organizationId,
         p_role: "alumni",
         p_uses: createdWithEmail.length,
@@ -373,7 +325,8 @@ export async function POST(req: Request, { params }: RouteParams) {
           .maybeSingle();
 
         const orgName = orgData?.name ?? "your alumni network";
-        const joinLink = `${process.env.NEXT_PUBLIC_SUPABASE_URL ? `https://www.myteamnetwork.com` : "http://localhost:3000"}/app/join?code=${invite.token}`;
+        const appUrl = getAppUrl();
+        const joinLink = `${appUrl}/app/join?code=${invite.token}`;
 
         const emailTasks = createdWithEmail.map(
           (record) => () =>
@@ -397,26 +350,18 @@ export async function POST(req: Request, { params }: RouteParams) {
         );
 
         const CONCURRENCY = 10;
-        const emailResults = await Promise.allSettled(
-          emailTasks.slice(0, CONCURRENCY).map((task) => task()),
-        );
-
-        // Process remaining in batches of 10
         let sent = 0;
         let emailErrorCount = 0;
-        const allResults = [...emailResults];
 
-        for (let i = CONCURRENCY; i < emailTasks.length; i += CONCURRENCY) {
+        for (let i = 0; i < emailTasks.length; i += CONCURRENCY) {
           const batch = emailTasks.slice(i, i + CONCURRENCY).map((task) => task());
           const batchResults = await Promise.allSettled(batch);
-          allResults.push(...batchResults);
-        }
-
-        for (const res of allResults) {
-          if (res.status === "fulfilled" && res.value.success) {
-            sent++;
-          } else {
-            emailErrorCount++;
+          for (const res of batchResults) {
+            if (res.status === "fulfilled" && res.value.success) {
+              sent++;
+            } else {
+              emailErrorCount++;
+            }
           }
         }
 
