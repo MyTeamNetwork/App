@@ -35,14 +35,18 @@ export default async function AlumniDetailPage({ params }: AlumniDetailPageProps
   const org = orgData[0] as Organization;
   const orgId = org.id;
 
-  // Fetch alumni
-  const { data: alumData } = await dataClient
-    .from("alumni")
-    .select("*")
-    .eq("id", alumniId)
-    .eq("organization_id", orgId)
-    .is("deleted_at", null)
-    .single();
+  // Fetch alumni + auth checks in parallel (independent after org fetch)
+  const [{ data: alumData }, { role, userId: currentUserId }, { isReadOnly }] = await Promise.all([
+    dataClient
+      .from("alumni")
+      .select("*")
+      .eq("id", alumniId)
+      .eq("organization_id", orgId)
+      .is("deleted_at", null)
+      .single(),
+    getOrgRole({ orgId, userId: user?.id }),
+    checkOrgReadOnly(orgId),
+  ]);
 
   if (!alumData) {
     return notFound();
@@ -50,13 +54,9 @@ export default async function AlumniDetailPage({ params }: AlumniDetailPageProps
 
   const alum = alumData as Alumni;
 
-  const [{ role, userId: currentUserId }, { isReadOnly }] = await Promise.all([
-    getOrgRole({ orgId: orgId }),
-    checkOrgReadOnly(orgId),
-  ]);
   const navConfig = org.nav_config as NavConfig | null;
   const canEditPage = canEditNavItem(navConfig, "/alumni", role, ["admin"]);
-  const alumUserId = (alum as Alumni & { user_id?: string | null }).user_id || null;
+  const alumUserId = alum.user_id;
   const isSelf = Boolean(currentUserId && alumUserId === currentUserId);
   const canEdit = canEditPage || isSelf;
   const canModifyExisting = canEdit && !isReadOnly;

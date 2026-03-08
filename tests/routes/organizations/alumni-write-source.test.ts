@@ -26,22 +26,27 @@ test("single-add alumni page posts through the organization alumni API", () => {
   );
 });
 
-test("edit alumni page uses the subscription RPC and PATCH API path", () => {
-  const source = readSource("src/app/[orgSlug]/alumni/[alumniId]/edit/page.tsx");
-  const normalized = squishWhitespace(source);
+test("edit alumni page has server-side auth gate and client form uses PATCH API", () => {
+  const pageSource = readSource("src/app/[orgSlug]/alumni/[alumniId]/edit/page.tsx");
+  const formSource = readSource("src/components/alumni/EditAlumniForm.tsx");
+  const formNormalized = squishWhitespace(formSource);
 
   assert.ok(
-    normalized.includes('.rpc("get_subscription_status", { p_org_id: org.id })'),
-    "edit alumni page must read grace-period state through the subscription RPC"
+    pageSource.includes("checkOrgReadOnly"),
+    "edit page server component must check read-only state"
   );
   assert.ok(
-    normalized.includes('fetch(`/api/organizations/${organizationId}/alumni/${alumniId}`, {'),
-    "edit alumni page must submit through the server alumni update route"
+    pageSource.includes("notFound()"),
+    "edit page server component must block unauthorized users with notFound()"
+  );
+  assert.ok(
+    formNormalized.includes('fetch( `/api/organizations/${alumni.organization_id}/alumni/${alumniId}`,'),
+    "edit alumni form must submit through the server alumni update route"
   );
   assert.strictEqual(
-    source.includes('.from("alumni").update('),
+    formSource.includes('.from("alumni").update('),
     false,
-    "edit alumni page must not update alumni rows directly from the browser"
+    "edit alumni form must not update alumni rows directly from the browser"
   );
 });
 
