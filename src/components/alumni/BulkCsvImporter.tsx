@@ -4,6 +4,12 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Badge, Card } from "@/components/ui";
 import { parseCsvData, generateCsvTemplate, type CsvImportRow, type CsvImportPreviewStatus } from "@/lib/alumni/csv-import";
+import { useFileDrop } from "@/hooks/useFileDrop";
+import { summarizeRows, type ImportResultBase } from "@/lib/alumni/import-utils";
+import { ImportDropZone } from "./ImportDropZone";
+import { ImportPasteArea } from "./ImportPasteArea";
+import { ImportPreviewSummary } from "./ImportPreviewSummary";
+import { ImportResultBanner } from "./ImportResultBanner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -21,12 +27,7 @@ interface DisplayRow extends CsvImportRow {
   rowIndex: number;
 }
 
-interface ImportResult {
-  updated: number;
-  created: number;
-  skipped: number;
-  quotaBlocked: number;
-  errors: string[];
+interface ImportResult extends ImportResultBase {
   preview?: Record<string, CsvImportPreviewStatus>;
   emailsSent?: number;
   emailErrors?: number;
@@ -49,6 +50,8 @@ const STATUS_BADGE: Record<RowStatus, { label: string; variant: "success" | "war
   checking: { label: "Checking\u2026", variant: "muted" },
 };
 
+const INVALID_STATUSES = ["invalid", "duplicate"];
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function parsedRowsToDisplay(rows: CsvImportRow[]): DisplayRow[] {
@@ -59,36 +62,6 @@ function parsedRowsToDisplay(rows: CsvImportRow[]): DisplayRow[] {
   }));
 }
 
-function summarize(rows: DisplayRow[]): {
-  willCreate: number;
-  willUpdate: number;
-  willSkip: number;
-  quotaBlocked: number;
-  invalid: number;
-} {
-  let willCreate = 0;
-  let willUpdate = 0;
-  let willSkip = 0;
-  let quotaBlocked = 0;
-  let invalid = 0;
-
-  for (const row of rows) {
-    if (row.status === "will_create") willCreate++;
-    else if (row.status === "will_update") willUpdate++;
-    else if (row.status === "will_skip") willSkip++;
-    else if (row.status === "quota_blocked") quotaBlocked++;
-    else if (row.status === "invalid" || row.status === "duplicate") invalid++;
-  }
-
-  return { willCreate, willUpdate, willSkip, quotaBlocked, invalid };
-}
-
-function getResultClasses(r: ImportResult): { border: string; text: string } {
-  if (r.updated > 0 || r.created > 0) return { border: "border-emerald-500/30 bg-emerald-500/10", text: "text-emerald-400" };
-  if (r.quotaBlocked > 0) return { border: "border-amber-500/30 bg-amber-500/10", text: "text-amber-400" };
-  return { border: "border-border bg-muted/50", text: "text-muted-foreground" };
-}
-
 function downloadCsvTemplate() {
   const csv = generateCsvTemplate();
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -97,7 +70,8 @@ function downloadCsvTemplate() {
   link.href = url;
   link.download = "alumni-import-template.csv";
   link.click();
-  URL.revokeObjectURL(url);
+  // Delay revocation so the browser can fetch the blob before it's freed
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -110,12 +84,7 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [pasteText, setPasteText] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
-  const [showPaste, setShowPaste] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const dragCountRef = useRef(0);
 
   const validRows = useMemo(
     () => rows.filter((r) => r.status !== "invalid" && r.status !== "duplicate"),
@@ -222,63 +191,12 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
     [processText],
   );
 
-  const handleFileClick = useCallback(() => {
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, []);
+  const fileDrop = useFileDrop({ onFile: processFile });
 
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) processFile(file);
-    },
-    [processFile],
-  );
-
-  // ─── Drag & drop ──────────────────────────────────────────────────────
-
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCountRef.current += 1;
-    if (dragCountRef.current === 1) setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCountRef.current -= 1;
-    if (dragCountRef.current === 0) setIsDragging(false);
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dragCountRef.current = 0;
-      setIsDragging(false);
-
-      const file = e.dataTransfer.files?.[0];
-      if (file) processFile(file);
-    },
-    [processFile],
-  );
-
-  // ─── Paste handling ────────────────────────────────────────────────────
-
-  const handlePasteSubmit = useCallback(
-    (text: string) => {
-      if (!text.trim()) return;
-      processText(text);
-    },
-    [processText],
-  );
+  const handlePasteSubmit = useCallback(() => {
+    if (!fileDrop.pasteText.trim()) return;
+    processText(fileDrop.pasteText);
+  }, [processText, fileDrop.pasteText]);
 
   // ─── Import ─────────────────────────────────────────────────────────────
 
@@ -326,15 +244,12 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
     setResult(null);
     setOverwrite(false);
     setSendInvites(false);
-    setPasteText("");
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }, []);
+    fileDrop.resetFileInput();
+  }, [fileDrop]);
 
   // ─── Summary ────────────────────────────────────────────────────────────
 
-  const summary = useMemo(() => summarize(rows), [rows]);
+  const summary = useMemo(() => summarizeRows(rows, INVALID_STATUSES), [rows]);
   const actionableCount = summary.willUpdate + summary.willCreate;
   const importDisabled = actionableCount === 0 || isImporting || isPreviewing;
 
@@ -381,115 +296,21 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
           </button>
         </div>
 
-        {/* Drop zone */}
-        <div
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 cursor-pointer transition-colors duration-150 ${
-            isDragging
-              ? "border-org-secondary bg-org-secondary/5"
-              : "border-border/60 hover:border-muted-foreground/40 hover:bg-muted/30"
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.tsv,.txt"
-            onClick={(e) => { e.stopPropagation(); handleFileClick(); }}
-            onChange={handleFileChange}
-            className="sr-only"
-            tabIndex={-1}
-          />
-          <svg className={`h-8 w-8 transition-colors duration-150 ${isDragging ? "text-org-secondary" : "text-muted-foreground/40"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m6.75 12-3-3m0 0-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-          </svg>
-          <div className="text-center">
-            <p className="text-sm text-foreground">
-              <span className="font-medium text-org-secondary">Choose a file</span>
-              {" "}or drag & drop
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">CSV or TSV — first row must be column headers</p>
-          </div>
-        </div>
+        <ImportDropZone fileDrop={fileDrop} hint="CSV or TSV — first row must be column headers" />
 
-        {/* Paste toggle */}
-        <button
-          type="button"
-          onClick={() => setShowPaste((v) => !v)}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150 mx-auto"
-        >
-          <svg className={`h-3 w-3 transition-transform duration-150 ${showPaste ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
-          </svg>
-          Or paste from spreadsheet
-        </button>
-
-        {/* Paste area (collapsible) */}
-        {showPaste && (
-          <div className="space-y-3">
-            <textarea
-              value={pasteText}
-              onChange={(e) => setPasteText(e.target.value)}
-              placeholder={"first_name\tlast_name\temail\nJane\tSmith\tjane@example.com"}
-              rows={4}
-              spellCheck={false}
-              className="w-full rounded-lg border border-border bg-transparent px-3 py-2.5 text-xs font-mono text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-org-secondary/50 focus:border-org-secondary/50 resize-y transition-colors duration-150"
-            />
-            <Button
-              size="sm"
-              onClick={() => handlePasteSubmit(pasteText)}
-              disabled={!pasteText.trim()}
-            >
-              Preview
-            </Button>
-          </div>
-        )}
+        <ImportPasteArea
+          showPaste={fileDrop.showPaste}
+          pasteText={fileDrop.pasteText}
+          placeholder={"first_name\tlast_name\temail\nJane\tSmith\tjane@example.com"}
+          onToggle={() => fileDrop.setShowPaste((v) => !v)}
+          onChange={fileDrop.setPasteText}
+          onSubmit={handlePasteSubmit}
+        />
 
         {/* Preview table */}
         {rows.length > 0 && !result && (
           <>
-            {/* Summary line */}
-            <div className="text-xs text-muted-foreground" aria-live="polite">
-              {isPreviewing ? (
-                "Checking rows against alumni records\u2026"
-              ) : (
-                <span className="flex items-center gap-3 flex-wrap">
-                  {summary.willCreate > 0 && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
-                      {summary.willCreate} will create
-                    </span>
-                  )}
-                  {summary.willUpdate > 0 && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                      {summary.willUpdate} will update
-                    </span>
-                  )}
-                  {summary.willSkip > 0 && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
-                      {summary.willSkip} will skip
-                    </span>
-                  )}
-                  {summary.quotaBlocked > 0 && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-amber-400" />
-                      {summary.quotaBlocked} quota blocked
-                    </span>
-                  )}
-                  {summary.invalid > 0 && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
-                      {summary.invalid} invalid
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
+            <ImportPreviewSummary summary={summary} isPreviewing={isPreviewing} />
 
             {/* Horizontally scrollable table */}
             <div className="max-h-64 overflow-y-auto overflow-x-auto rounded-lg border border-border">
@@ -596,50 +417,22 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
         )}
 
         {/* Result banner */}
-        {result && (() => {
-          const resultClasses = getResultClasses(result);
-          return (
-            <div className={`rounded-lg border p-4 ${resultClasses.border}`} aria-live="polite">
-              <p className={`font-medium text-sm ${resultClasses.text}`}>
-                {result.updated > 0 || result.created > 0
-                  ? [
-                      result.created > 0 ? `${result.created} created` : null,
-                      result.updated > 0 ? `${result.updated} updated` : null,
-                    ].filter(Boolean).join(", ")
-                  : (result.quotaBlocked ?? 0) > 0
-                    ? `${result.quotaBlocked} quota blocked`
-                    : "No records changed"}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {result.created} created, {result.updated} updated, {result.skipped} skipped, {result.quotaBlocked ?? 0} quota blocked
-              </p>
-              {result.emailsSent !== undefined && (
+        {result && (
+          <ImportResultBanner
+            result={result}
+            onReset={handleReset}
+            onClose={onClose}
+            extraDetail={
+              result.emailsSent !== undefined ? (
                 <p className="text-xs text-muted-foreground mt-1">
                   {result.emailErrors
                     ? `${result.emailsSent} invite email${result.emailsSent !== 1 ? "s" : ""} sent, ${result.emailErrors} failed`
                     : `${result.emailsSent} invite email${result.emailsSent !== 1 ? "s" : ""} sent`}
                 </p>
-              )}
-              {result.errors.length > 0 && (
-                <div className="text-xs text-red-400 mt-1">
-                  {result.errors.map((err, i) => (
-                    <p key={i}>{err}</p>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2 mt-3">
-                <Button size="sm" variant="ghost" onClick={handleReset}>
-                  Import Another
-                </Button>
-                {onClose && (
-                  <Button size="sm" variant="ghost" onClick={onClose}>
-                    Done
-                  </Button>
-                )}
-              </div>
-            </div>
-          );
-        })()}
+              ) : undefined
+            }
+          />
+        )}
       </div>
     </Card>
   );
