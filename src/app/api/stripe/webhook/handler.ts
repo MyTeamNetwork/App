@@ -14,13 +14,13 @@ import { calculateGracePeriodEnd } from "@/lib/subscription/grace-period";
 import { createTelemetryReporter, reportExternalServiceWarning } from "@/lib/telemetry/server";
 import { debugLog, maskPII } from "@/lib/debug";
 import { extractSubscriptionPeriodEndIso } from "@/lib/stripe/subscription-period";
-import { resolveAdminsForSubscription } from "@/lib/stripe/billing-admin-resolver";
 import {
   buildRenewalReminderEmail,
   buildPaymentActionRequiredEmail,
   buildFinalizationFailedEmail,
 } from "@/lib/stripe/invoice-email-templates";
 import { sendEmail } from "@/lib/notifications";
+import { sendInvoiceEmailToAdmins } from "@/lib/stripe/invoice-email-sender";
 import type { BillingInterval } from "@/types/enterprise";
 import { ALUMNI_BUCKET_PRICING } from "@/types/enterprise";
 const webhookSecret = requireEnv("STRIPE_WEBHOOK_SECRET");
@@ -968,30 +968,19 @@ export async function handleStripeWebhookPost(
           debugLog("stripe-webhook", "invoice.upcoming without subscription, skipping");
           break;
         }
-        const upcomingAdmins = await resolveAdminsForSubscription(supabase, upcomingSubId);
-        if (!upcomingAdmins) {
-          debugLog("stripe-webhook", "invoice.upcoming: no admins found for subscription:", maskPII(upcomingSubId));
-          break;
-        }
         const renewalDate = upcomingInvoice.period_end
           ? formatStripeDateUtc((upcomingInvoice as unknown as { period_end: number }).period_end)
           : "upcoming";
         const amountFormatted = typeof upcomingInvoice.amount_due === "number"
           ? `$${(upcomingInvoice.amount_due / 100).toFixed(2)}`
           : "your plan amount";
-        const renewalTemplate = buildRenewalReminderEmail(renewalDate, amountFormatted, { entityName: upcomingAdmins.entityName });
-        const renewalResults = await Promise.allSettled(
-          upcomingAdmins.adminEmails.map((email) =>
-            sendEmailFn({ to: email, subject: renewalTemplate.subject, body: renewalTemplate.body })
-          )
+        await sendInvoiceEmailToAdmins(
+          supabase,
+          upcomingSubId,
+          "renewal reminder",
+          (entityName) => buildRenewalReminderEmail(renewalDate, amountFormatted, { entityName }),
+          sendEmailFn
         );
-        for (const r of renewalResults) {
-          if (r.status === "rejected") {
-            console.error("[stripe-webhook] Failed to send renewal reminder:", r.reason);
-          } else if (!r.value.success) {
-            console.error("[stripe-webhook] Renewal reminder send error:", r.value.error);
-          }
-        }
         break;
       }
 
@@ -1002,25 +991,14 @@ export async function handleStripeWebhookPost(
           debugLog("stripe-webhook", "invoice.payment_action_required without subscription, skipping");
           break;
         }
-        const actionAdmins = await resolveAdminsForSubscription(supabase, actionSubId);
-        if (!actionAdmins) {
-          debugLog("stripe-webhook", "invoice.payment_action_required: no admins found for subscription:", maskPII(actionSubId));
-          break;
-        }
         const hostedUrl = (actionInvoice as unknown as { hosted_invoice_url?: string | null }).hosted_invoice_url || "";
-        const actionTemplate = buildPaymentActionRequiredEmail(hostedUrl, { entityName: actionAdmins.entityName });
-        const actionResults = await Promise.allSettled(
-          actionAdmins.adminEmails.map((email) =>
-            sendEmailFn({ to: email, subject: actionTemplate.subject, body: actionTemplate.body })
-          )
+        await sendInvoiceEmailToAdmins(
+          supabase,
+          actionSubId,
+          "payment action required",
+          (entityName) => buildPaymentActionRequiredEmail(hostedUrl, { entityName }),
+          sendEmailFn
         );
-        for (const r of actionResults) {
-          if (r.status === "rejected") {
-            console.error("[stripe-webhook] Failed to send payment action required:", r.reason);
-          } else if (!r.value.success) {
-            console.error("[stripe-webhook] Payment action required send error:", r.value.error);
-          }
-        }
         break;
       }
 
@@ -1031,26 +1009,15 @@ export async function handleStripeWebhookPost(
           debugLog("stripe-webhook", "invoice.finalization_failed without subscription, skipping");
           break;
         }
-        const failedAdmins = await resolveAdminsForSubscription(supabase, failedSubId);
-        if (!failedAdmins) {
-          debugLog("stripe-webhook", "invoice.finalization_failed: no admins found for subscription:", maskPII(failedSubId));
-          break;
-        }
         const finalizationError = (failedInvoice as unknown as { last_finalization_error?: { message?: string } | null }).last_finalization_error;
         const errorMsg = finalizationError?.message ?? null;
-        const failedTemplate = buildFinalizationFailedEmail(errorMsg, { entityName: failedAdmins.entityName });
-        const failedResults = await Promise.allSettled(
-          failedAdmins.adminEmails.map((email) =>
-            sendEmailFn({ to: email, subject: failedTemplate.subject, body: failedTemplate.body })
-          )
+        await sendInvoiceEmailToAdmins(
+          supabase,
+          failedSubId,
+          "finalization failed",
+          (entityName) => buildFinalizationFailedEmail(errorMsg, { entityName }),
+          sendEmailFn
         );
-        for (const r of failedResults) {
-          if (r.status === "rejected") {
-            console.error("[stripe-webhook] Failed to send finalization failed email:", r.reason);
-          } else if (!r.value.success) {
-            console.error("[stripe-webhook] Finalization failed send error:", r.value.error);
-          }
-        }
         break;
       }
 

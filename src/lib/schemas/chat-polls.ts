@@ -6,6 +6,10 @@ export const pollOptionSchema = z.object({
   label: safeString(200),
 });
 
+/**
+ * Schema for poll metadata as stored in the database.
+ * Options are stored as objects with `label` properties (e.g., `{ label: "Yes" }`).
+ */
 export const pollMetadataSchema = z.object({
   question: safeString(500),
   options: z
@@ -52,7 +56,11 @@ export const chatFormResponseSchema = z.record(
 );
 export type ChatFormResponseInput = z.infer<typeof chatFormResponseSchema>;
 
-// Create poll request
+/**
+ * Schema for creating a poll via the API.
+ * Options are accepted as plain strings (e.g., `["Yes", "No"]`), which are
+ * transformed to `{ label }` objects before storage.
+ */
 export const createPollSchema = z.object({
   question: safeString(500),
   options: z

@@ -325,7 +325,20 @@ export async function DELETE(_req: Request, { params }: RouteParams) {
 
   try {
     if (sub?.stripe_subscription_id) {
-      await stripe.subscriptions.cancel(sub.stripe_subscription_id);
+      try {
+        const stripeSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+        if (stripeSub.status !== "canceled") {
+          await stripe.subscriptions.cancel(sub.stripe_subscription_id);
+        }
+      } catch (stripeError) {
+        const isNotFound = stripeError instanceof Error &&
+          (stripeError.message.includes("No such subscription") ||
+           stripeError.message.includes("resource_missing"));
+        if (!isNotFound) {
+          throw stripeError;
+        }
+        // Subscription doesn't exist in Stripe - safe to continue with deletion
+      }
     }
 
     // Delete all related records across all tables with organization_id FK
