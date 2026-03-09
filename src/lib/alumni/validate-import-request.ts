@@ -95,7 +95,7 @@ export async function validateAlumniImportRequest(
 
   const [membershipResult, capacityResult] = await Promise.allSettled([
     getOrgMembership(serviceSupabase, user.id, organizationId),
-    getAlumniCapacitySnapshot(organizationId),
+    getAlumniCapacitySnapshot(organizationId, serviceSupabase),
   ]);
 
   if (membershipResult.status === "rejected") {

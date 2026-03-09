@@ -1,5 +1,10 @@
 // Shared utilities for bulk alumni import components
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 export interface ImportResultBase {
   updated: number;
   created: number;
@@ -14,6 +19,78 @@ export interface ImportSummary {
   willSkip: number;
   quotaBlocked: number;
   invalid: number;
+}
+
+/** Status values returned by bulk import RPC functions (out_status column). */
+export const IMPORT_STATUS = {
+  CREATED: "created",
+  UPDATED_EXISTING: "updated_existing",
+  SKIPPED_EXISTING: "skipped_existing",
+  QUOTA_EXCEEDED: "quota_exceeded",
+} as const;
+
+export type ImportStatus = (typeof IMPORT_STATUS)[keyof typeof IMPORT_STATUS];
+
+/** Type-safe cast for querying auth.users via the service client. */
+export interface AuthUsersQuery {
+  schema: (schema: "auth") => {
+    from: (table: "users") => {
+      select: (columns: "id, email") => {
+        in: (
+          column: "email",
+          values: string[],
+        ) => Promise<{ data: Array<{ id: string; email: string }> | null }>;
+      };
+    };
+  };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve unmatched emails by looking up auth.users → alumni.user_id.
+ * Mutates `alumniByEmail` map in place to add newly found matches.
+ */
+export async function resolveUnmatchedEmailsByUserId<T>(opts: {
+  unmatchedEmails: string[];
+  organizationId: string;
+  serviceSupabase: SupabaseClient<Database>;
+  alumniByEmail: Map<string, T>;
+  selectColumns: string;
+  buildValue: (alum: Record<string, unknown>) => T;
+}): Promise<void> {
+  const { unmatchedEmails, organizationId, serviceSupabase, alumniByEmail, selectColumns, buildValue } = opts;
+  if (unmatchedEmails.length === 0) return;
+
+  const authSupabase = serviceSupabase as unknown as AuthUsersQuery;
+  const { data: authUsers } = await authSupabase
+    .schema("auth")
+    .from("users")
+    .select("id, email")
+    .in("email", unmatchedEmails);
+
+  if (!authUsers || authUsers.length === 0) return;
+
+  const userIds = authUsers.map((u) => u.id);
+  const userIdToEmail = new Map(
+    authUsers.map((u) => [u.id, u.email.toLowerCase()]),
+  );
+
+  const { data: linkedAlumni } = await serviceSupabase
+    .from("alumni")
+    .select(selectColumns)
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null)
+    .in("user_id", userIds);
+
+  for (const alum of linkedAlumni ?? []) {
+    const alumRecord = alum as unknown as Record<string, unknown>;
+    if (!alumRecord.user_id) continue;
+    const email = userIdToEmail.get(alumRecord.user_id as string);
+    if (email && !alumniByEmail.has(email)) {
+      alumniByEmail.set(email, buildValue(alumRecord));
+    }
+  }
 }
 
 export function getResultClasses(r: ImportResultBase): { border: string; text: string } {

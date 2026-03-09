@@ -15,8 +15,11 @@ interface EnterpriseAlumniCountsQuery {
   };
 }
 
-export async function getAlumniCapacitySnapshot(organizationId: string) {
-  const serviceSupabase = createServiceClient();
+export async function getAlumniCapacitySnapshot(
+  organizationId: string,
+  existingServiceClient?: ReturnType<typeof createServiceClient>,
+) {
+  const serviceSupabase = existingServiceClient ?? createServiceClient();
 
   return getLinkedInImportCapacitySnapshot(organizationId, {
     getAlumniLimitForOrg,
