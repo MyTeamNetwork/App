@@ -17,6 +17,7 @@ interface MobileNavProps {
 
 export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAccess = false, hasParentsAccess = false }: MobileNavProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [hasEverOpened, setHasEverOpened] = useState(false);
   const basePath = `/${organization.slug}`;
 
   // Prevent caching issues by forcing re-render of menu when open state changes
@@ -30,6 +31,10 @@ export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAcc
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) setHasEverOpened(true);
   }, [isOpen]);
 
   return (
@@ -95,15 +100,17 @@ export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAcc
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <OrgSidebar
-          organization={organization}
-          role={role}
-          isDevAdmin={isDevAdmin}
-          hasAlumniAccess={hasAlumniAccess}
-          hasParentsAccess={hasParentsAccess}
-          className="h-full border-r border-border"
-          onClose={closeMenu}
-        />
+        {hasEverOpened && (
+          <OrgSidebar
+            organization={organization}
+            role={role}
+            isDevAdmin={isDevAdmin}
+            hasAlumniAccess={hasAlumniAccess}
+            hasParentsAccess={hasParentsAccess}
+            className="h-full border-r border-border"
+            onClose={closeMenu}
+          />
+        )}
       </div>
     </>
   );
