@@ -73,17 +73,23 @@ test("latest alumni quota SQL recognizes current alumni bucket values", () => {
 });
 
 test("settings invites page does not create org invites through direct client RPC", () => {
-  const source = readSource("src/app/[orgSlug]/settings/invites/page.tsx");
-  const normalized = squishWhitespace(source);
+  const pageSource = readSource("src/app/[orgSlug]/settings/invites/page.tsx");
+  const pageNormalized = squishWhitespace(pageSource);
+  const panelSource = readSource("src/components/settings/OrgInvitePanel.tsx");
+  const panelNormalized = squishWhitespace(panelSource);
 
   assert.strictEqual(
-    source.includes('supabase.rpc("create_org_invite"'),
+    pageSource.includes('supabase.rpc("create_org_invite"'),
     false,
     "settings page must not call create_org_invite directly from the browser",
   );
   assert.ok(
-    normalized.includes('fetch(`/api/organizations/${orgId}/invites`, {'),
-    "settings page must create org invites through the server route",
+    pageNormalized.includes("<OrgInvitePanel"),
+    "settings page must delegate invite creation UI to OrgInvitePanel",
+  );
+  assert.ok(
+    panelNormalized.includes('fetch(`/api/organizations/${orgId}/invites`, {'),
+    "org invite UI must create org invites through the server route",
   );
 });
 
