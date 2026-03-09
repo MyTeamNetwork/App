@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { validateJson, ValidationError } from "@/lib/security/validation";
 import { validateAlumniImportRequest } from "@/lib/alumni/validate-import-request";
+import { IMPORT_STATUS, resolveUnmatchedEmailsByUserId, type ImportResultBase } from "@/lib/alumni/import-utils";
 import {
   planLinkedInImport,
   type LinkedInImportPreviewStatus,
@@ -54,26 +55,8 @@ const importBodySchema = z.object({
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface ImportResult {
-  updated: number;
-  created: number;
-  skipped: number;
-  quotaBlocked: number;
-  errors: string[];
+interface ImportResult extends ImportResultBase {
   preview?: Record<string, LinkedInImportPreviewStatus>;
-}
-
-interface AuthUsersQuery {
-  schema: (schema: "auth") => {
-    from: (table: "users") => {
-      select: (columns: "id, email") => {
-        in: (
-          column: "email",
-          values: string[],
-        ) => Promise<{ data: Array<{ id: string; email: string }> | null }>;
-      };
-    };
-  };
 }
 
 interface BulkImportLinkedInRpc {
@@ -157,36 +140,17 @@ export async function POST(req: Request, { params }: RouteParams) {
   // Fallback: look up unmatched emails via auth.users → alumni.user_id
   const unmatchedEmails = emails.filter((e) => !alumniByEmail.has(e));
 
-  if (unmatchedEmails.length > 0) {
-    const authSupabase = serviceSupabase as unknown as AuthUsersQuery;
-    const { data: authUsers } = await authSupabase
-      .schema("auth")
-      .from("users")
-      .select("id, email")
-      .in("email", unmatchedEmails);
-
-    if (authUsers && authUsers.length > 0) {
-      const userIds = authUsers.map((u: { id: string }) => u.id);
-      const userIdToEmail = new Map(
-        authUsers.map((u: { id: string; email: string }) => [u.id, u.email.toLowerCase()]),
-      );
-
-      const { data: linkedAlumni } = await serviceSupabase
-        .from("alumni")
-        .select("id, user_id, linkedin_url")
-        .eq("organization_id", organizationId)
-        .is("deleted_at", null)
-        .in("user_id", userIds);
-
-      for (const alum of linkedAlumni ?? []) {
-        if (!alum.user_id) continue;
-        const email = userIdToEmail.get(alum.user_id);
-        if (email && !alumniByEmail.has(email)) {
-          alumniByEmail.set(email, { id: alum.id, linkedin_url: alum.linkedin_url });
-        }
-      }
-    }
-  }
+  await resolveUnmatchedEmailsByUserId({
+    unmatchedEmails,
+    organizationId,
+    serviceSupabase,
+    alumniByEmail,
+    selectColumns: "id, user_id, linkedin_url",
+    buildValue: (alum) => ({
+      id: alum.id as string,
+      linkedin_url: (alum.linkedin_url as string | null) ?? null,
+    }),
+  });
 
   const importPlan = planLinkedInImport({
     rows,
@@ -259,13 +223,13 @@ export async function POST(req: Request, { params }: RouteParams) {
       errors.push(createError.message);
     } else {
       for (const row of createResults ?? []) {
-        if (row.out_status === "created") {
+        if (row.out_status === IMPORT_STATUS.CREATED) {
           created++;
-        } else if (row.out_status === "updated_existing") {
+        } else if (row.out_status === IMPORT_STATUS.UPDATED_EXISTING) {
           concurrentUpdates++;
-        } else if (row.out_status === "skipped_existing") {
+        } else if (row.out_status === IMPORT_STATUS.SKIPPED_EXISTING) {
           skipped++;
-        } else if (row.out_status === "quota_exceeded") {
+        } else if (row.out_status === IMPORT_STATUS.QUOTA_EXCEEDED) {
           quotaBlocked++;
         }
       }
