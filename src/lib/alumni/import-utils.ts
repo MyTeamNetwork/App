@@ -49,18 +49,19 @@ export interface AuthUsersQuery {
 
 /**
  * Resolve unmatched emails by looking up auth.users → alumni.user_id.
- * Mutates `alumniByEmail` map in place to add newly found matches.
+ * Returns a new Map with discovered matches (does not mutate inputs).
  */
 export async function resolveUnmatchedEmailsByUserId<T>(opts: {
   unmatchedEmails: string[];
   organizationId: string;
   serviceSupabase: SupabaseClient<Database>;
-  alumniByEmail: Map<string, T>;
+  existingKeys: ReadonlySet<string>;
   selectColumns: string;
   buildValue: (alum: Record<string, unknown>) => T;
-}): Promise<void> {
-  const { unmatchedEmails, organizationId, serviceSupabase, alumniByEmail, selectColumns, buildValue } = opts;
-  if (unmatchedEmails.length === 0) return;
+}): Promise<Map<string, T>> {
+  const { unmatchedEmails, organizationId, serviceSupabase, existingKeys, selectColumns, buildValue } = opts;
+  const found = new Map<string, T>();
+  if (unmatchedEmails.length === 0) return found;
 
   const authSupabase = serviceSupabase as unknown as AuthUsersQuery;
   const { data: authUsers } = await authSupabase
@@ -69,7 +70,7 @@ export async function resolveUnmatchedEmailsByUserId<T>(opts: {
     .select("id, email")
     .in("email", unmatchedEmails);
 
-  if (!authUsers || authUsers.length === 0) return;
+  if (!authUsers || authUsers.length === 0) return found;
 
   const userIds = authUsers.map((u) => u.id);
   const userIdToEmail = new Map(
@@ -87,10 +88,12 @@ export async function resolveUnmatchedEmailsByUserId<T>(opts: {
     const alumRecord = alum as unknown as Record<string, unknown>;
     if (!alumRecord.user_id) continue;
     const email = userIdToEmail.get(alumRecord.user_id as string);
-    if (email && !alumniByEmail.has(email)) {
-      alumniByEmail.set(email, buildValue(alumRecord));
+    if (email && !existingKeys.has(email) && !found.has(email)) {
+      found.set(email, buildValue(alumRecord));
     }
   }
+
+  return found;
 }
 
 export function getResultClasses(r: ImportResultBase): { border: string; text: string } {

@@ -140,17 +140,20 @@ export async function POST(req: Request, { params }: RouteParams) {
   // Fallback: look up unmatched emails via auth.users → alumni.user_id
   const unmatchedEmails = emails.filter((e) => !alumniByEmail.has(e));
 
-  await resolveUnmatchedEmailsByUserId({
+  const resolvedByUserId = await resolveUnmatchedEmailsByUserId({
     unmatchedEmails,
     organizationId,
     serviceSupabase,
-    alumniByEmail,
+    existingKeys: new Set(alumniByEmail.keys()),
     selectColumns: "id, user_id, linkedin_url",
     buildValue: (alum) => ({
       id: alum.id as string,
       linkedin_url: (alum.linkedin_url as string | null) ?? null,
     }),
   });
+  for (const [email, value] of resolvedByUserId) {
+    alumniByEmail.set(email, value);
+  }
 
   const importPlan = planLinkedInImport({
     rows,

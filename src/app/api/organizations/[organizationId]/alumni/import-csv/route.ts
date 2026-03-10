@@ -151,11 +151,11 @@ export async function POST(req: Request, { params }: RouteParams) {
     // Fallback: look up unmatched emails via auth.users → alumni.user_id
     const unmatchedEmails = emailsInRequest.filter((e) => !alumniByEmail.has(e));
 
-    await resolveUnmatchedEmailsByUserId({
+    const resolvedByUserId = await resolveUnmatchedEmailsByUserId({
       unmatchedEmails,
       organizationId,
       serviceSupabase,
-      alumniByEmail,
+      existingKeys: new Set(alumniByEmail.keys()),
       selectColumns: "id, user_id, first_name, last_name, graduation_year, major, job_title, notes, linkedin_url, phone_number, industry, current_company, current_city, position_title",
       buildValue: (alum) => ({
         id: alum.id as string,
@@ -167,6 +167,9 @@ export async function POST(req: Request, { params }: RouteParams) {
         ),
       }),
     });
+    for (const [email, value] of resolvedByUserId) {
+      alumniByEmail.set(email, value);
+    }
   }
 
   const importPlan = planCsvImport({
