@@ -2,11 +2,9 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { requireEnv, validateAuthTestMode, shouldLogAuth, shouldLogAuthFailures, hashForLogging } from "./lib/env";
 import { createMiddlewareAuditEntry, fireAndForgetDevAdminAudit, isDevAdminEmail, redactEmail } from "./lib/auth/dev-admin";
-import { validateSiteUrl } from "./lib/supabase/config";
 
-// Validate at module load
+// Validate AUTH_TEST_MODE at module load
 validateAuthTestMode();
-validateSiteUrl();
 
 const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
 const supabaseAnonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");

@@ -1,16 +1,7 @@
 import Link from "next/link";
 import { Card, Button } from "@/components/ui";
-import { buildAuthRetryHref } from "@/lib/auth/signup-flow";
 
-export default async function AuthErrorPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ message?: string; redirect?: string; mode?: string }>;
-}) {
-  const params = await searchParams;
-  const message = params?.message || "Something went wrong during authentication. Please try again.";
-  const retryHref = buildAuthRetryHref(params?.mode, params?.redirect);
-
+export default function AuthErrorPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md text-center">
@@ -22,13 +13,13 @@ export default async function AuthErrorPage({
           </div>
           <h1 className="text-2xl font-bold text-foreground">Authentication Error</h1>
           <p className="text-muted-foreground mt-2">
-            {message}
+            Something went wrong during authentication. Please try again.
           </p>
         </div>
 
         <Card className="p-6">
           <div className="space-y-4">
-            <Link href={retryHref}>
+            <Link href="/auth/login">
               <Button className="w-full">Try Again</Button>
             </Link>
             <Link href="/">
@@ -40,3 +31,4 @@ export default async function AuthErrorPage({
     </div>
   );
 }
+

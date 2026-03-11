@@ -8,13 +8,12 @@ export const dynamic = "force-dynamic";
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ redirect?: string; error?: string }>;
+  searchParams: Promise<{ redirect?: string }>;
 }) {
   // Read env var on server side and pass to client
   const hcaptchaSiteKey = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY || "";
   const params = await searchParams;
   const redirectTo = sanitizeRedirectPath(params?.redirect ?? null);
-  const initialError = params?.error ?? null;
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -28,7 +27,7 @@ export default async function SignupPage({
           <p className="text-muted-foreground mt-2">Create your account</p>
         </div>
 
-        <SignupClient hcaptchaSiteKey={hcaptchaSiteKey} redirectTo={redirectTo} initialError={initialError} />
+        <SignupClient hcaptchaSiteKey={hcaptchaSiteKey} redirectTo={redirectTo} />
       </div>
     </div>
   );
