@@ -6,7 +6,6 @@ import { validateSiteUrl } from "./lib/supabase/config";
 
 // Validate at module load
 validateAuthTestMode();
-validateSiteUrl();
 
 const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
 const supabaseAnonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
@@ -74,6 +73,16 @@ export async function middleware(request: NextRequest) {
     url.protocol = "https:";
     url.host = "www.myteamnetwork.com";
     return NextResponse.redirect(url, { status: 308 });
+  }
+
+  try {
+    validateSiteUrl();
+  } catch (e) {
+    console.error("[MW] Site URL validation failed:", (e as Error).message);
+    return NextResponse.json(
+      { error: "Server configuration error" },
+      { status: 500 }
+    );
   }
 
   const response = NextResponse.next({
