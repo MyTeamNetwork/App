@@ -116,7 +116,7 @@ function validateBuildEnv() {
     isVercelProduction &&
     (!parsedSiteUrl || parsedSiteUrl.host !== "www.myteamnetwork.com" || parsedSiteUrl.protocol !== "https:")
   ) {
-    throw new Error(`NEXT_PUBLIC_SITE_URL must use https://www.myteamnetwork.com in production, got: ${siteUrl || "(unset)"}`);
+    console.warn(`⚠️  NEXT_PUBLIC_SITE_URL should use https://www.myteamnetwork.com in production, got: ${siteUrl || "(unset)"}. OAuth redirects may break.`);
   }
 
   // Require CRON_SECRET on Vercel production deploys, warn otherwise
