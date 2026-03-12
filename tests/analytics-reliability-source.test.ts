@@ -11,10 +11,26 @@ function squishWhitespace(value: string): string {
   return value.replace(/\s+/g, " ");
 }
 
-test("latest analytics migration keeps allowlisted message/file props but enforces string-only coarse enums", () => {
-  const source = readSource("supabase/migrations/20260701000006_reject_non_string_analytics_enum_props.sql");
+test("latest analytics migration enforces tracking-level policy and coarse enum payloads", () => {
+  const source = readSource("supabase/migrations/20260701000007_enforce_behavioral_tracking_policy.sql");
   const normalized = squishWhitespace(source);
 
+  assert.ok(
+    normalized.includes("FROM auth.users au WHERE au.id = auth.uid()"),
+    "latest analytics migration should derive age_bracket from auth.users"
+  );
+  assert.ok(
+    normalized.includes("FROM public.organizations o WHERE o.id = p_org_id"),
+    "latest analytics migration should derive org_type from the organization"
+  );
+  assert.ok(
+    normalized.includes("IF COALESCE(v_age_bracket, '') = 'under_13' THEN RETURN FALSE; END IF;"),
+    "under_13 users must stay fail-closed at the RPC boundary"
+  );
+  assert.ok(
+    normalized.includes("IF (v_age_bracket = '13_17' OR v_org_type = 'educational') AND p_event_name NOT IN ('app_open', 'route_view') THEN RETURN FALSE; END IF;"),
+    "page_view_only users and FERPA-scoped orgs must be limited to app_open/route_view"
+  );
   assert.ok(
     normalized.includes("WHEN 'file_upload_attempt' THEN ARRAY['file_type','file_size_bucket','result','error_code']"),
     "file upload analytics should keep the coarse file allowlist"
@@ -97,5 +113,29 @@ test("analytics provider retries the initial org-route sync after auth hydration
   assert.ok(
     normalized.includes("if (trackedRouteKeyRef.current === routeKey) { return; }"),
     "AnalyticsProvider should avoid duplicate route_view/app_open events when the retry path reruns"
+  );
+  assert.ok(
+    normalized.includes("const maxOptInLevel = resolveTrackingLevel(true, authAgeBracket, orgType);"),
+    "AnalyticsProvider should resolve the live tracking level from age bracket and org type"
+  );
+  assert.ok(
+    normalized.includes("if (!canTrackBehavioralEvent(trackingLevel, \"route_view\")) { return; }"),
+    "AnalyticsProvider should fail closed when the resolved tracking level does not permit route_view"
+  );
+});
+
+test("jobs filters and nav clicks stay within the canonical analytics contract", () => {
+  const jobsFiltersSource = readSource("src/components/jobs/JobsFilters.tsx");
+  const navSource = readSource("src/components/layout/NavGroupSection.tsx");
+
+  assert.strictEqual(
+    jobsFiltersSource.includes("trackBehavioralEvent(\"directory_filter_apply\""),
+    false,
+    "jobs filters should not emit directory_filter_apply under the directory analytics taxonomy"
+  );
+  assert.strictEqual(
+    navSource.includes("group_id:"),
+    false,
+    "nav_click should not emit undeclared group_id payload fields"
   );
 });

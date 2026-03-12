@@ -4,7 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useOrgAnalytics } from "@/components/analytics/OrgAnalyticsContext";
-import { setConsentState, type ConsentState } from "@/lib/analytics/events";
+import {
+  getAgeBracketFromUserMetadata,
+  normalizeOrgType,
+  resolveTrackingLevel,
+  type AgeBracket,
+} from "@/lib/analytics/policy";
+import {
+  setAnalyticsPolicy,
+  type ConsentState,
+} from "@/lib/analytics/events";
 import { Button, Card } from "@/components/ui";
 
 interface ConsentModalState {
@@ -18,6 +27,7 @@ interface ConsentModalState {
 export function ConsentModal() {
   const orgAnalytics = useOrgAnalytics();
   const supabase = useMemo(() => createClient(), []);
+  const [ageBracket, setAgeBracket] = useState<AgeBracket | null>(null);
   const [state, setState] = useState<ConsentModalState>({
     isOpen: false,
     consentState: "unknown",
@@ -36,8 +46,28 @@ export function ConsentModal() {
       }
 
       const { data: { user } } = await supabase.auth.getUser();
+      const nextAgeBracket = getAgeBracketFromUserMetadata(user?.user_metadata);
+      setAgeBracket(nextAgeBracket);
+
       if (!mounted || !user) {
+        if (orgAnalytics?.orgId) {
+          setAnalyticsPolicy(orgAnalytics.orgId, "unknown", "none");
+        }
         setState((prev) => ({ ...prev, loading: false }));
+        return;
+      }
+
+      const orgType = normalizeOrgType(orgAnalytics.orgType);
+      const maxTrackingLevel = resolveTrackingLevel(true, nextAgeBracket, orgType);
+
+      if (maxTrackingLevel === "none") {
+        setAnalyticsPolicy(orgAnalytics.orgId, "unknown", "none");
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          consentState: "unknown",
+          isOpen: false,
+        }));
         return;
       }
 
@@ -48,7 +78,12 @@ export function ConsentModal() {
         .maybeSingle();
 
       const consentState = (data?.consent_state as ConsentState) ?? "unknown";
-      setConsentState(orgAnalytics.orgId, consentState);
+      const trackingLevel = resolveTrackingLevel(
+        consentState === "opted_in",
+        nextAgeBracket,
+        orgType,
+      );
+      setAnalyticsPolicy(orgAnalytics.orgId, consentState, trackingLevel);
 
       setState((prev) => ({
         ...prev,
@@ -63,7 +98,7 @@ export function ConsentModal() {
     return () => {
       mounted = false;
     };
-  }, [orgAnalytics?.orgId, supabase]);
+  }, [orgAnalytics?.orgId, orgAnalytics?.orgType, supabase]);
 
   const handleDecision = useCallback(
     async (nextState: ConsentState) => {
@@ -77,6 +112,9 @@ export function ConsentModal() {
           setState((prev) => ({ ...prev, saving: false, message: "You must be signed in." }));
           return;
         }
+
+        const nextAgeBracket = getAgeBracketFromUserMetadata(user.user_metadata);
+        const orgType = normalizeOrgType(orgAnalytics.orgType);
 
         const { error } = await supabase
           .from("analytics_consent")
@@ -98,7 +136,13 @@ export function ConsentModal() {
           return;
         }
 
-        setConsentState(orgAnalytics.orgId, nextState);
+        const trackingLevel = resolveTrackingLevel(
+          nextState === "opted_in",
+          nextAgeBracket,
+          orgType,
+        );
+        setAgeBracket(nextAgeBracket);
+        setAnalyticsPolicy(orgAnalytics.orgId, nextState, trackingLevel);
 
         setState((prev) => ({
           ...prev,
@@ -114,8 +158,15 @@ export function ConsentModal() {
         }));
       }
     },
-    [state.saving, orgAnalytics?.orgId, supabase],
+    [state.saving, orgAnalytics?.orgId, orgAnalytics?.orgType, supabase],
   );
+
+  const maxTrackingLevel = resolveTrackingLevel(
+    true,
+    ageBracket,
+    normalizeOrgType(orgAnalytics?.orgType),
+  );
+  const isLimitedAnalytics = maxTrackingLevel === "page_view_only";
 
   if (state.loading || !state.isOpen) {
     return null;
@@ -127,14 +178,16 @@ export function ConsentModal() {
         <div>
           <h2 className="text-xl font-semibold text-foreground">Help us improve TeamNetwork</h2>
           <p className="text-sm text-muted-foreground mt-2">
-            With your explicit permission, we collect privacy-first usage analytics to personalize your
-            experience. This is optional and disabled by default to stay COPPA and FERPA compliant.
+            {isLimitedAnalytics
+              ? "With your explicit permission, we collect privacy-first page-level analytics for this organization. This is optional and disabled by default."
+              : "With your explicit permission, we collect privacy-first usage analytics to personalize your experience. This is optional and disabled by default to stay COPPA and FERPA compliant."}
           </p>
         </div>
 
         <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
-          We never log message content, form answers, or donation details tied to a person. We only store
-          anonymized usage patterns like page views and feature interactions.
+          {isLimitedAnalytics
+            ? "Your account or organization is limited to page-level analytics only. We never log message content, form answers, donation details, or detailed interaction history tied to a person."
+            : "We never log message content, form answers, or donation details tied to a person. We only store anonymized usage patterns like page views and feature interactions."}
         </div>
 
         {state.message && (
@@ -159,7 +212,7 @@ export function ConsentModal() {
               disabled={state.saving}
               onClick={() => handleDecision("opted_in")}
             >
-              Accept
+              {isLimitedAnalytics ? "Accept Limited Analytics" : "Accept"}
             </Button>
           </div>
         </div>

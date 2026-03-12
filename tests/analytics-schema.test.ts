@@ -14,11 +14,11 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 const VALID_FEATURES = [
-  "dashboard", "members", "chat", "alumni", "mentorship",
-  "workouts", "competition", "events", "announcements",
-  "philanthropy", "donations", "expenses", "records",
-  "schedules", "forms", "customization", "settings",
-  "navigation", "other",
+  "dashboard", "members", "chat", "feed", "alumni", "parents",
+  "mentorship", "workouts", "competition", "events", "announcements",
+  "philanthropy", "donations", "expenses", "records", "calendar",
+  "discussions", "jobs", "forms", "media", "customization",
+  "settings", "navigation", "other",
 ] as const;
 
 const usageEventSchema = z.object({
@@ -38,6 +38,8 @@ const usageIngestRequestSchema = z.object({
 const consentUpdateSchema = z.object({
   consented: z.boolean(),
 });
+
+const directoryTypeSchema = z.enum(["active_members", "alumni", "parents"]);
 
 const dashboardHintsSchema = z.object({
   show_recent_features: z.boolean(),
@@ -63,6 +65,10 @@ const chatMessagePayloadSchema = z.object({
   message_type: z.enum(["text", "poll", "form"]),
   result: z.enum(["success", "fail_validation", "fail_server"]),
   error_code: z.string().max(100).optional(),
+});
+
+const directoryViewPayloadSchema = z.object({
+  directory_type: directoryTypeSchema,
 });
 
 // ===========================================================================
@@ -390,6 +396,22 @@ describe("Analytics Schemas - coarse enum analytics props", () => {
       });
       assert.strictEqual(result.success, false);
     }
+  });
+});
+
+describe("Analytics Schemas - directory payloads", () => {
+  it("accepts parents as a supported directory type", () => {
+    const result = directoryViewPayloadSchema.safeParse({
+      directory_type: "parents",
+    });
+    assert.strictEqual(result.success, true);
+  });
+
+  it("rejects unsupported directory types", () => {
+    const result = directoryViewPayloadSchema.safeParse({
+      directory_type: "jobs",
+    });
+    assert.strictEqual(result.success, false);
   });
 });
 

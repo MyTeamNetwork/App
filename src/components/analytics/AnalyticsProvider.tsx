@@ -5,10 +5,19 @@ import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { extractFeature } from "@/lib/analytics/client";
 import {
+  canTrackBehavioralEvent,
+  getAgeBracketFromUserMetadata,
+  normalizeOrgType,
+  resolveTrackingLevel,
+  type AgeBracket,
+  type TrackingLevel,
+} from "@/lib/analytics/policy";
+import {
+  setAnalyticsPolicy,
   trackBehavioralEvent,
   getAnalyticsSessionMetadata,
   getConsentState,
-  setConsentState,
+  type AnalyticsPolicyChangeDetail,
 } from "@/lib/analytics/events";
 import { useOrgAnalytics } from "./OrgAnalyticsContext";
 
@@ -23,13 +32,16 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
   const pathname = usePathname();
   const orgAnalytics = useOrgAnalytics();
   const [authReady, setAuthReady] = useState(false);
+  const [authAgeBracket, setAuthAgeBracket] = useState<AgeBracket | null>(null);
   const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [policyVersion, setPolicyVersion] = useState(0);
 
   const currentRouteKeyRef = useRef<string | null>(null);
   const trackedRouteKeyRef = useRef<string | null>(null);
   const trackedRouteRef = useRef<string | null>(null);
   const trackedRouteStartRef = useRef<number | null>(null);
   const trackedRouteOrgIdRef = useRef<string | null>(null);
+  const trackedRouteLevelRef = useRef<TrackingLevel>("none");
   const lastAppOpenSessionRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -39,6 +51,7 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
     void supabase.auth.getUser().then(({ data: { user } }) => {
       if (!active) return;
       setAuthUserId(user?.id ?? null);
+      setAuthAgeBracket(getAgeBracketFromUserMetadata(user?.user_metadata));
       setAuthReady(true);
     });
 
@@ -47,12 +60,37 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
       setAuthUserId(session?.user?.id ?? null);
+      setAuthAgeBracket(getAgeBracketFromUserMetadata(session?.user?.user_metadata));
       setAuthReady(true);
     });
 
     return () => {
       active = false;
       subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handlePolicyChange = (event: Event) => {
+      const detail = (event as CustomEvent<AnalyticsPolicyChangeDetail>).detail;
+      if (!detail) return;
+
+      if (
+        detail.orgId === trackedRouteOrgIdRef.current &&
+        !canTrackBehavioralEvent(detail.trackingLevel, "page_dwell_bucket")
+      ) {
+        trackedRouteStartRef.current = null;
+        trackedRouteLevelRef.current = detail.trackingLevel;
+      }
+
+      setPolicyVersion((current) => current + 1);
+    };
+
+    window.addEventListener("analytics:policy-change", handlePolicyChange);
+    return () => {
+      window.removeEventListener("analytics:policy-change", handlePolicyChange);
     };
   }, []);
 
@@ -64,6 +102,7 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
       const maybeSlug = segments[0];
       const isOrgRoute = !!maybeSlug && !NON_ORG_PREFIXES.includes(maybeSlug);
       const orgId = isOrgRoute ? orgAnalytics?.orgId ?? null : null;
+      const orgType = normalizeOrgType(orgAnalytics?.orgType);
       const routeKey = `${orgId ?? "non-org"}:${pathname}`;
       const routeChanged = currentRouteKeyRef.current !== routeKey;
 
@@ -71,7 +110,8 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
         routeChanged &&
         trackedRouteRef.current &&
         trackedRouteStartRef.current &&
-        trackedRouteOrgIdRef.current
+        trackedRouteOrgIdRef.current &&
+        canTrackBehavioralEvent(trackedRouteLevelRef.current, "page_dwell_bucket")
       ) {
         const durationMs = Date.now() - trackedRouteStartRef.current;
         const previousRoute = trackedRouteRef.current;
@@ -94,6 +134,7 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
         trackedRouteRef.current = null;
         trackedRouteStartRef.current = null;
         trackedRouteOrgIdRef.current = null;
+        trackedRouteLevelRef.current = "none";
       }
 
       currentRouteKeyRef.current = routeKey;
@@ -103,6 +144,12 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
       }
 
       let consentState = getConsentState(orgId);
+      const maxOptInLevel = resolveTrackingLevel(true, authAgeBracket, orgType);
+
+      if (consentState === "unknown" && maxOptInLevel === "none") {
+        setAnalyticsPolicy(orgId, "unknown", "none");
+        return;
+      }
 
       if (consentState === "unknown") {
         if (!authReady || !authUserId) {
@@ -118,12 +165,18 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
           .maybeSingle();
 
         consentState = data?.consent_state ?? "unknown";
-        setConsentState(orgId, consentState);
       }
+
+      const trackingLevel = resolveTrackingLevel(
+        consentState === "opted_in",
+        authAgeBracket,
+        orgType,
+      );
+      setAnalyticsPolicy(orgId, consentState, trackingLevel);
 
       if (cancelled) return;
 
-      if (consentState !== "opted_in") {
+      if (!canTrackBehavioralEvent(trackingLevel, "route_view")) {
         return;
       }
 
@@ -132,7 +185,11 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
       }
 
       const { session_id } = getAnalyticsSessionMetadata();
-      if (session_id && lastAppOpenSessionRef.current !== session_id) {
+      if (
+        session_id &&
+        lastAppOpenSessionRef.current !== session_id &&
+        canTrackBehavioralEvent(trackingLevel, "app_open")
+      ) {
         lastAppOpenSessionRef.current = session_id;
         trackBehavioralEvent("app_open", {}, orgId);
       }
@@ -145,8 +202,11 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
 
       trackedRouteKeyRef.current = routeKey;
       trackedRouteRef.current = pathname;
-      trackedRouteStartRef.current = Date.now();
+      trackedRouteStartRef.current = canTrackBehavioralEvent(trackingLevel, "page_dwell_bucket")
+        ? Date.now()
+        : null;
       trackedRouteOrgIdRef.current = orgId;
+      trackedRouteLevelRef.current = trackingLevel;
     }
 
     syncRoute();
@@ -154,7 +214,7 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
     return () => {
       cancelled = true;
     };
-  }, [authReady, authUserId, orgAnalytics, pathname]);
+  }, [authAgeBracket, authReady, authUserId, orgAnalytics, pathname, policyVersion]);
 
   return <>{children}</>;
 }

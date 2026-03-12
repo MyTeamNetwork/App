@@ -1,10 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Select, Input, Badge } from "@/components/ui";
 import { uniqueStringsCaseInsensitive } from "@/lib/string-utils";
-import { trackBehavioralEvent } from "@/lib/analytics/events";
 
 interface FilterOption {
   value: string;
@@ -35,15 +34,15 @@ const EXPERIENCE_OPTIONS: FilterOption[] = [
 ];
 
 export function JobsFilters({
-  orgId,
+  orgId: _orgId,
   locations,
   companies,
   industries,
 }: JobsFiltersProps) {
+  void _orgId;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const didMountRef = useRef(false);
 
   const [filters, setFilters] = useState({
     q: searchParams.get("q") || "",
@@ -73,21 +72,9 @@ export function JobsFilters({
   useEffect(() => {
     const debounce = setTimeout(() => {
       updateURL();
-      if (!didMountRef.current) {
-        didMountRef.current = true;
-        return;
-      }
-      const filterKeys = Object.entries(filters)
-        .filter(([, value]) => value)
-        .map(([key]) => key);
-      trackBehavioralEvent("directory_filter_apply", {
-        directory_type: "jobs",
-        filter_keys: filterKeys,
-        filters_count: filterKeys.length,
-      }, orgId);
     }, 300);
     return () => clearTimeout(debounce);
-  }, [filters, orgId, updateURL]);
+  }, [filters, updateURL]);
 
   const clearFilters = () => {
     setFilters({
