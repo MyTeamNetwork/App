@@ -135,7 +135,7 @@ Always-on warnings appear regardless of debug mode as `console.warn(...)`.
 **Steps to reproduce:**
 1. Set up a schedule source (ICS or vendor URL)
 2. Trigger sync: `curl -H "Authorization: Bearer $CRON_SECRET" localhost:3000/api/cron/schedules-sync`
-3. View schedule events at `/{orgSlug}/schedules`
+3. View schedule events at `/{orgSlug}/calendar`
 4. Compare events shown vs events in the source feed
 
 **Expected:** All non-cancelled events from the source feed appear in the calendar.
