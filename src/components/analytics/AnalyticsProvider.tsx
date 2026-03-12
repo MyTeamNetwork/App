@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { extractFeature } from "@/lib/analytics/client";
@@ -22,11 +22,39 @@ const NON_ORG_PREFIXES = ["app", "auth", "settings", "privacy", "terms", "api"];
 export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
   const pathname = usePathname();
   const orgAnalytics = useOrgAnalytics();
+  const [authReady, setAuthReady] = useState(false);
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
 
-  const lastRouteRef = useRef<string | null>(null);
-  const lastRouteStartRef = useRef<number | null>(null);
-  const lastRouteOrgIdRef = useRef<string | null>(null);
+  const currentRouteKeyRef = useRef<string | null>(null);
+  const trackedRouteKeyRef = useRef<string | null>(null);
+  const trackedRouteRef = useRef<string | null>(null);
+  const trackedRouteStartRef = useRef<number | null>(null);
+  const trackedRouteOrgIdRef = useRef<string | null>(null);
   const lastAppOpenSessionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    let active = true;
+
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!active) return;
+      setAuthUserId(user?.id ?? null);
+      setAuthReady(true);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      setAuthUserId(session?.user?.id ?? null);
+      setAuthReady(true);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,10 +64,17 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
       const maybeSlug = segments[0];
       const isOrgRoute = !!maybeSlug && !NON_ORG_PREFIXES.includes(maybeSlug);
       const orgId = isOrgRoute ? orgAnalytics?.orgId ?? null : null;
+      const routeKey = `${orgId ?? "non-org"}:${pathname}`;
+      const routeChanged = currentRouteKeyRef.current !== routeKey;
 
-      if (lastRouteRef.current && lastRouteStartRef.current && lastRouteOrgIdRef.current) {
-        const durationMs = Date.now() - lastRouteStartRef.current;
-        const previousRoute = lastRouteRef.current;
+      if (
+        routeChanged &&
+        trackedRouteRef.current &&
+        trackedRouteStartRef.current &&
+        trackedRouteOrgIdRef.current
+      ) {
+        const durationMs = Date.now() - trackedRouteStartRef.current;
+        const previousRoute = trackedRouteRef.current;
         const previousFeature = extractFeature(previousRoute);
         const dwellBucket =
           durationMs <= 5000 ? "0-5s" :
@@ -53,27 +88,28 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
           screen: previousFeature,
           feature: previousFeature,
           dwell_bucket: dwellBucket,
-        }, lastRouteOrgIdRef.current);
+        }, trackedRouteOrgIdRef.current);
+
+        trackedRouteKeyRef.current = null;
+        trackedRouteRef.current = null;
+        trackedRouteStartRef.current = null;
+        trackedRouteOrgIdRef.current = null;
       }
 
+      currentRouteKeyRef.current = routeKey;
+
       if (!isOrgRoute || !orgId) {
-        lastRouteRef.current = pathname;
-        lastRouteStartRef.current = Date.now();
-        lastRouteOrgIdRef.current = null;
         return;
       }
 
       let consentState = getConsentState(orgId);
 
       if (consentState === "unknown") {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (cancelled || !user) {
-          lastRouteRef.current = pathname;
-          lastRouteStartRef.current = Date.now();
-          lastRouteOrgIdRef.current = orgId;
+        if (!authReady || !authUserId) {
           return;
         }
+
+        const supabase = createClient();
 
         const { data } = await supabase
           .from("analytics_consent")
@@ -87,11 +123,11 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
 
       if (cancelled) return;
 
-      lastRouteRef.current = pathname;
-      lastRouteStartRef.current = Date.now();
-      lastRouteOrgIdRef.current = orgId;
-
       if (consentState !== "opted_in") {
+        return;
+      }
+
+      if (trackedRouteKeyRef.current === routeKey) {
         return;
       }
 
@@ -106,6 +142,11 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
         screen: feature,
         feature,
       }, orgId);
+
+      trackedRouteKeyRef.current = routeKey;
+      trackedRouteRef.current = pathname;
+      trackedRouteStartRef.current = Date.now();
+      trackedRouteOrgIdRef.current = orgId;
     }
 
     syncRoute();
@@ -113,7 +154,7 @@ export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
     return () => {
       cancelled = true;
     };
-  }, [pathname, orgAnalytics]);
+  }, [authReady, authUserId, orgAnalytics, pathname]);
 
   return <>{children}</>;
 }

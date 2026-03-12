@@ -9,11 +9,12 @@ interface EventsViewTrackerProps {
 }
 
 export function EventsViewTracker({ organizationId, viewMode }: EventsViewTrackerProps) {
-  const didTrackRef = useRef(false);
+  const lastTrackedViewRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (didTrackRef.current) return;
-    didTrackRef.current = true;
+    const trackKey = `${organizationId}:${viewMode}`;
+    if (lastTrackedViewRef.current === trackKey) return;
+    lastTrackedViewRef.current = trackKey;
     trackBehavioralEvent("events_view", { view_mode: viewMode }, organizationId);
   }, [organizationId, viewMode]);
 
