@@ -333,6 +333,17 @@ describe("Analytics Schemas - coarse enum analytics props", () => {
     }
   });
 
+  it("rejects non-string chat message types", () => {
+    for (const messageType of [null, true, 1]) {
+      const result = chatMessagePayloadSchema.safeParse({
+        thread_id: "thread-123",
+        message_type: messageType,
+        result: "success",
+      });
+      assert.strictEqual(result.success, false);
+    }
+  });
+
   it("accepts only coarse file upload enums", () => {
     const result = fileUploadPayloadSchema.safeParse({
       file_type: "pdf",
@@ -356,6 +367,29 @@ describe("Analytics Schemas - coarse enum analytics props", () => {
 
     assert.strictEqual(badFileType.success, false);
     assert.strictEqual(badSizeBucket.success, false);
+  });
+
+  it("rejects non-string file metadata values", () => {
+    const badFileTypeValues = [null, true, 1];
+    const badSizeBucketValues = [null, true, 1];
+
+    for (const fileType of badFileTypeValues) {
+      const result = fileUploadPayloadSchema.safeParse({
+        file_type: fileType,
+        file_size_bucket: "1-5MB",
+        result: "success",
+      });
+      assert.strictEqual(result.success, false);
+    }
+
+    for (const fileSizeBucket of badSizeBucketValues) {
+      const result = fileUploadPayloadSchema.safeParse({
+        file_type: "pdf",
+        file_size_bucket: fileSizeBucket,
+        result: "success",
+      });
+      assert.strictEqual(result.success, false);
+    }
   });
 });
 

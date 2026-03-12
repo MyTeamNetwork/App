@@ -11,8 +11,8 @@ function squishWhitespace(value: string): string {
   return value.replace(/\s+/g, " ");
 }
 
-test("latest analytics migration keeps allowlisted message/file props but enforces coarse enum values", () => {
-  const source = readSource("supabase/migrations/20260701000005_harden_analytics_enum_props.sql");
+test("latest analytics migration keeps allowlisted message/file props but enforces string-only coarse enums", () => {
+  const source = readSource("supabase/migrations/20260701000006_reject_non_string_analytics_enum_props.sql");
   const normalized = squishWhitespace(source);
 
   assert.ok(
@@ -34,6 +34,10 @@ test("latest analytics migration keeps allowlisted message/file props but enforc
   assert.ok(
     normalized.includes("(v_key ILIKE '%file%' AND v_key NOT IN ('file_type', 'file_size_bucket'))"),
     "file_type and file_size_bucket must remain allowed while other file-like keys stay blocked"
+  );
+  assert.ok(
+    normalized.includes("IF v_key IN ('message_type', 'file_type', 'file_size_bucket') AND jsonb_typeof(v_val) <> 'string' THEN RETURN FALSE; END IF;"),
+    "hardened enum props must reject non-string JSON values before primitive fallthrough"
   );
   assert.ok(
     normalized.includes("IF v_key = 'message_type' AND v_str NOT IN ('text', 'poll', 'form') THEN RETURN FALSE; END IF;"),
