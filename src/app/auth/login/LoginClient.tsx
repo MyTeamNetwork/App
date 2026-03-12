@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Card, HCaptcha, HCaptchaRef } from "@/components/ui";
 import { FeedbackButton } from "@/components/feedback";
 import { useCaptcha } from "@/hooks/useCaptcha";
-import { sanitizeRedirectPath, buildAuthLink } from "@/lib/auth/redirect";
+import { sanitizeRedirectPath, buildAuthCallbackUrl, buildAuthLink } from "@/lib/auth/redirect";
 import { loginSchema, type LoginForm } from "@/lib/schemas/auth";
 
 interface LoginFormProps {
@@ -51,7 +51,7 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${siteUrl}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
+        redirectTo: buildAuthCallbackUrl(siteUrl, redirectTo, "login"),
       },
     });
 
@@ -105,7 +105,7 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${siteUrl}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
+        emailRedirectTo: buildAuthCallbackUrl(siteUrl, redirectTo, "login"),
         captchaToken,
       },
     });

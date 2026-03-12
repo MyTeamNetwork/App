@@ -102,4 +102,49 @@ describe("OAuth auth regression coverage", () => {
       );
     });
   });
+
+  describe("first-time OAuth login routing", () => {
+    it("allows a brand-new OAuth login callback when the flow is login, not signup", async () => {
+      const requestUrl = new URL(
+        `${siteUrl}/auth/callback?code=test-code&mode=login&redirect=%2Fapp%2Fjoin`
+      );
+
+      const result = await runAgeValidationGate({
+        requestUrl,
+        siteUrl,
+        requestedRedirect: "/app/join",
+        user: {
+          id: "oauth-user-login-1",
+          created_at: new Date().toISOString(),
+          user_metadata: {},
+        },
+      });
+
+      assert.deepStrictEqual(result, { kind: "allow" });
+    });
+
+    it("still blocks a brand-new OAuth signup callback without age metadata", async () => {
+      const requestUrl = new URL(
+        `${siteUrl}/auth/callback?code=test-code&mode=signup&redirect=%2Fapp%2Fjoin`
+      );
+
+      const result = await runAgeValidationGate({
+        requestUrl,
+        siteUrl,
+        requestedRedirect: "/app/join",
+        user: {
+          id: "oauth-user-signup-1",
+          created_at: new Date().toISOString(),
+          user_metadata: {},
+        },
+      });
+
+      assert.strictEqual(result.kind, "redirect");
+      if (result.kind === "redirect") {
+        const parsed = new URL(result.location);
+        assert.strictEqual(parsed.pathname, "/auth/signup");
+        assert.strictEqual(parsed.searchParams.get("redirect"), "/app/join");
+      }
+    });
+  });
 });

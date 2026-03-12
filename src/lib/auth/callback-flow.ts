@@ -69,6 +69,14 @@ function isNewUserWithoutAgeData(user: CallbackUser): boolean {
   return (Date.now() - new Date(user.created_at).getTime()) < 60000;
 }
 
+function shouldEnforceSignupAgeGate(mode: string | null, hasAgeQueryParams: boolean): boolean {
+  if (hasAgeQueryParams) {
+    return true;
+  }
+
+  return mode === "signup";
+}
+
 function getValidatedOAuthAgeMetadata(
   oauthAgeBracket: string,
   tokenResult: AgeValidationResult,
@@ -156,7 +164,7 @@ export async function runAgeValidationGate(args: RunAgeValidationGateArgs): Prom
     return { kind: "allow" };
   }
 
-  if (isNewUserWithoutAgeData(args.user)) {
+  if (isNewUserWithoutAgeData(args.user) && shouldEnforceSignupAgeGate(mode, hasAgeQueryParams)) {
     return {
       kind: "redirect",
       location: buildSignupRedirect(args.siteUrl, MSG_AGE_REQUIRED, requestedRedirect),

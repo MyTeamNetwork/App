@@ -267,12 +267,12 @@ function handleAuthCallbackFixed(
 
   } else {
     // No age data present - could be login or bypassed signup
-    // Check if this is a brand new user (created within last 60 seconds)
-    // to prevent age gate bypass via direct OAuth
+    // Only enforce the age gate for explicit signup attempts.
     const createdAt = session.user.created_at;
     const isNewUser = createdAt && (Date.now() - new Date(createdAt).getTime()) < 60000;
+    const mode = requestUrl.searchParams.get("mode");
 
-    if (isNewUser) {
+    if (isNewUser && mode === "signup") {
       return {
         redirect: buildSignupErrorRedirect(
           siteUrl,
@@ -666,7 +666,7 @@ describe("Auth Callback - Login vs Signup Age Validation", () => {
         },
       };
 
-      const requestUrl = new URL("http://localhost:3000/auth/callback?code=oauth_code");
+      const requestUrl = new URL("http://localhost:3000/auth/callback?code=oauth_code&mode=signup");
 
       const fixedResult = handleAuthCallbackFixed(requestUrl, session, siteUrl);
 
@@ -691,7 +691,7 @@ describe("Auth Callback - Login vs Signup Age Validation", () => {
 
       const redirect = "/app/join?token=invite789";
       const requestUrl = new URL(
-        `http://localhost:3000/auth/callback?code=oauth_code&redirect=${encodeURIComponent(redirect)}`
+        `http://localhost:3000/auth/callback?code=oauth_code&mode=signup&redirect=${encodeURIComponent(redirect)}`
       );
 
       const fixedResult = handleAuthCallbackFixed(requestUrl, session, siteUrl);
@@ -721,6 +721,25 @@ describe("Auth Callback - Login vs Signup Age Validation", () => {
       const fixedResult = handleAuthCallbackFixed(requestUrl, session, siteUrl);
 
       // Should allow through as not a "new" user
+      assert.strictEqual(fixedResult.success, true);
+      assert.strictEqual(fixedResult.redirect, `${siteUrl}/app`);
+    });
+
+    it("brand new user without age params on login flow is allowed through", () => {
+      const session: MockSession = {
+        user: {
+          id: "first-login-444",
+          user_metadata: {
+            email: "user@example.com",
+          },
+          created_at: new Date(Date.now() - 5000).toISOString(),
+        },
+      };
+
+      const requestUrl = new URL("http://localhost:3000/auth/callback?code=oauth_code&mode=login");
+
+      const fixedResult = handleAuthCallbackFixed(requestUrl, session, siteUrl);
+
       assert.strictEqual(fixedResult.success, true);
       assert.strictEqual(fixedResult.redirect, `${siteUrl}/app`);
     });

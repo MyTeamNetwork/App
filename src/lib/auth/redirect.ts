@@ -33,6 +33,19 @@ export function buildAuthLink(path: string, redirectTo: string): string {
   return redirectTo !== "/app" ? `${path}?redirect=${encodeURIComponent(redirectTo)}` : path;
 }
 
+export function buildAuthCallbackUrl(
+  siteUrl: string,
+  redirectTo: string,
+  mode?: "login" | "signup"
+): string {
+  const url = new URL("/auth/callback", normalizeOrigin(siteUrl));
+  url.searchParams.set("redirect", sanitizeRedirectPath(redirectTo));
+  if (mode) {
+    url.searchParams.set("mode", mode);
+  }
+  return url.toString();
+}
+
 /**
  * Builds the OAuth callback URL with age validation params embedded in the URL
  * (not in queryParams, which Google strips during OAuth round-trip).
@@ -46,12 +59,10 @@ export function buildOAuthSignupCallbackUrl(
   isMinor: boolean,
   ageToken: string
 ): string {
-  const url = new URL("/auth/callback", normalizeOrigin(siteUrl));
-  url.searchParams.set("redirect", sanitizeRedirectPath(redirectTo));
+  const url = new URL(buildAuthCallbackUrl(siteUrl, redirectTo, "signup"));
   url.searchParams.set("age_bracket", ageBracket);
   url.searchParams.set("is_minor", String(isMinor));
   url.searchParams.set("age_token", ageToken);
-  url.searchParams.set("mode", "signup");
   return url.toString();
 }
 
@@ -60,10 +71,7 @@ export function buildOAuthSignupCallbackUrl(
  * Marks with mode=signup so error recovery routes back to signup, not login.
  */
 export function buildEmailSignupCallbackUrl(siteUrl: string, redirectTo: string): string {
-  const url = new URL("/auth/callback", normalizeOrigin(siteUrl));
-  url.searchParams.set("redirect", sanitizeRedirectPath(redirectTo));
-  url.searchParams.set("mode", "signup");
-  return url.toString();
+  return buildAuthCallbackUrl(siteUrl, redirectTo, "signup");
 }
 
 /**
