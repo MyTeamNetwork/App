@@ -95,6 +95,11 @@ test("settings invites page does not create org invites through direct client RP
     panelNormalized.includes('fetch(`/api/organizations/${orgId}/parents/invite/${inviteId}`, { method: "DELETE" })'),
     "parent invite UI must delete invite links through the server route",
   );
+  assert.strictEqual(
+    panelSource.includes('invite.kind === "parent" && !accepted'),
+    false,
+    "accepted parent invites must still render the delete affordance",
+  );
   assert.ok(
     panelNormalized.includes('onClick={() => handleDeleteParentInvite(invite.id)}') &&
       panelNormalized.includes('isLoading={isDeletingParentInvite}') &&
@@ -156,7 +161,7 @@ test("org invites API route creates invites through authenticated server RPC", (
   );
 });
 
-test("parent invite item route supports deleting invite links without touching accepted history", () => {
+test("parent invite item route supports deleting invite links without touching joined users", () => {
   const source = readSource("src/app/api/organizations/[organizationId]/parents/invite/[inviteId]/route.ts");
   const normalized = squishWhitespace(source);
 
@@ -164,9 +169,10 @@ test("parent invite item route supports deleting invite links without touching a
     normalized.includes("export async function DELETE(req: Request, { params }: RouteParams)"),
     "parent invite item route must expose a DELETE handler",
   );
-  assert.ok(
+  assert.strictEqual(
     normalized.includes('return respond({ error: "Invite already accepted — cannot delete" }, 409);'),
-    "accepted parent invites must remain non-deletable history",
+    false,
+    "accepted parent invites must be deletable",
   );
   assert.ok(
     normalized.includes('.delete() .eq("id", inviteId) .eq("organization_id", organizationId)'),

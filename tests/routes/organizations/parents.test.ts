@@ -400,10 +400,6 @@ function simulateDeleteInvite(req: DeleteInviteRequest): DeleteInviteResult {
   }
   if (!req.invite) return { status: 404, error: "Invite not found" };
 
-  if (req.invite.status === "accepted") {
-    return { status: 409, error: "Invite already accepted — cannot delete" };
-  }
-
   if (req.deleteError) return { status: 500, error: "Failed to delete invite" };
 
   return { status: 200, success: true };
@@ -1216,7 +1212,7 @@ describe("DELETE /api/organizations/[organizationId]/parents/invite/[inviteId]",
     assert.strictEqual(result.status, 404);
   });
 
-  it("returns 409 if invite already accepted", () => {
+  it("returns 200 and deletes an accepted invite without affecting joined users", () => {
     const result = simulateDeleteInvite({
       organizationId: validOrgId,
       inviteId: validInviteId,
@@ -1224,11 +1220,8 @@ describe("DELETE /api/organizations/[organizationId]/parents/invite/[inviteId]",
       role: "admin",
       invite: makeInvite({ status: "accepted" }),
     });
-    assert.strictEqual(result.status, 409);
-    assert.ok(
-      result.error?.includes("cannot delete"),
-      `expected 'cannot delete' in error, got: ${result.error}`
-    );
+    assert.strictEqual(result.status, 200);
+    assert.strictEqual(result.success, true);
   });
 
   it("returns 200 and deletes a pending invite", () => {

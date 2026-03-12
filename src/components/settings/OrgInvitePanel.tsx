@@ -436,7 +436,7 @@ export function OrgInvitePanel({
                           Revoke
                         </Button>
                       )}
-                      {invite.kind === "parent" && !accepted && (
+                      {invite.kind === "parent" && (
                         <Button
                           variant="ghost"
                           size="sm"

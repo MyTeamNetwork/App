@@ -157,10 +157,6 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     return respond({ error: "Invite not found" }, 404);
   }
 
-  if (invite.status === "accepted") {
-    return respond({ error: "Invite already accepted — cannot delete" }, 409);
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error: deleteError } = await (serviceSupabase as any)
     .from("parent_invites")
