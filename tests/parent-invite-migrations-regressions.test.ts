@@ -31,10 +31,12 @@ function countMatches(input: string, pattern: RegExp): number {
 test("redeem_parent_invite follow-up migrations sort after the current schema head", () => {
   const files = getMigrationFiles();
   const followUps = files.filter((file) =>
-    /fix_redeem_parent_invite_revoked_branch|fix_redeem_parent_invite_claim_guard|grant_redeem_parent_invite/.test(file)
+    /fix_redeem_parent_invite_revoked_branch|fix_redeem_parent_invite_claim_guard|fix_redeem_parent_invite_ambiguous_parent_matches|grant_redeem_parent_invite/.test(
+      file
+    )
   );
 
-  assert.equal(followUps.length, 3);
+  assert.equal(followUps.length, 4);
   for (const file of followUps) {
     assert.ok(
       file > "20260631000000_org_member_sync_skip_revoked.sql",
@@ -43,18 +45,33 @@ test("redeem_parent_invite follow-up migrations sort after the current schema he
   }
 });
 
-test("latest redeem_parent_invite uses LIMIT 1 for duplicate-prone parent lookups", () => {
+test("latest redeem_parent_invite rejects ambiguous parent matches instead of using LIMIT 1", () => {
   const sql = getLatestRedeemParentInviteSql();
 
   const byUserMatches = countMatches(
     sql,
-    /from public\.parents[\s\S]*?organization_id = v_invite\.organization_id[\s\S]*?user_id = v_user_id[\s\S]*?deleted_at is null[\s\S]*?limit 1;/gi
+    /select id[\s\S]*?from public\.parents[\s\S]*?organization_id = v_invite\.organization_id[\s\S]*?user_id = v_user_id[\s\S]*?deleted_at is null[\s\S]*?limit 2/gi
   );
   const byEmailMatches = countMatches(
     sql,
-    /from public\.parents[\s\S]*?organization_id = v_invite\.organization_id[\s\S]*?lower\(email\) = lower\(v_user_email\)[\s\S]*?deleted_at is null[\s\S]*?limit 1;/gi
+    /select id[\s\S]*?from public\.parents[\s\S]*?organization_id = v_invite\.organization_id[\s\S]*?lower\(email\) = lower\(v_user_email\)[\s\S]*?deleted_at is null[\s\S]*?limit 2/gi
+  );
+  const limit1ParentLookups = countMatches(
+    sql,
+    /from public\.parents[\s\S]*?organization_id = v_invite\.organization_id[\s\S]*?deleted_at is null[\s\S]*?limit 1;/gi
+  );
+  const ambiguousGuardReturns = countMatches(
+    sql,
+    /return jsonb_build_object\('success', false, 'error', v_ambiguous_parent_error\);/gi
   );
 
-  assert.equal(byUserMatches, 2, "Expected LIMIT 1 on both org+user parent lookups");
-  assert.equal(byEmailMatches, 2, "Expected LIMIT 1 on both org+email parent lookups");
+  assert.equal(byUserMatches, 2, "Expected duplicate detection on both org+user parent lookups");
+  assert.equal(byEmailMatches, 2, "Expected duplicate detection on both org+email parent lookups");
+  assert.equal(limit1ParentLookups, 0, "Expected duplicate-prone parent lookups to stop using LIMIT 1");
+  assert.equal(ambiguousGuardReturns, 4, "Expected ambiguity guards on both lookup types in both branches");
+  assert.match(
+    sql,
+    /Multiple parent records match this account\. Please contact your organization admin\./,
+    "Expected an explicit handled error for ambiguous parent matches"
+  );
 });
