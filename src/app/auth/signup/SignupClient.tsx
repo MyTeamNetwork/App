@@ -14,6 +14,8 @@ import { buildOAuthSignupCallbackUrl, buildEmailSignupCallbackUrl, buildAuthLink
 import { shouldResumeSignupRegistration } from "@/lib/auth/signup-flow";
 import { AgeGate } from "@/components/auth/AgeGate";
 import { FeedbackButton } from "@/components/feedback";
+import { LinkedInIcon } from "@/components/shared/LinkedInIcon";
+import { LINKEDIN_OIDC_PROVIDER } from "@/lib/linkedin/config";
 
 type SignupStep = "age_gate" | "registration";
 
@@ -37,9 +39,15 @@ interface SignupClientProps {
   hcaptchaSiteKey: string;
   redirectTo?: string;
   initialError?: string | null;
+  linkedinOauthAvailable: boolean;
 }
 
-export function SignupClient({ hcaptchaSiteKey, redirectTo = "/app", initialError = null }: SignupClientProps) {
+export function SignupClient({
+  hcaptchaSiteKey,
+  redirectTo = "/app",
+  initialError = null,
+  linkedinOauthAvailable,
+}: SignupClientProps) {
   const router = useRouter();
   const [step, setStep] = useState<SignupStep>("age_gate");
   const [ageBracket, setAgeBracket] = useState<AgeBracket | null>(null);
@@ -47,10 +55,12 @@ export function SignupClient({ hcaptchaSiteKey, redirectTo = "/app", initialErro
   const [ageToken, setAgeToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isLinkedInLoading, setIsLinkedInLoading] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [message, setMessage] = useState<string | null>(null);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "");
+  const isSocialLoading = isGoogleLoading || isLinkedInLoading;
 
   // Restore age gate data from sessionStorage on mount
   useEffect(() => {
@@ -144,27 +154,27 @@ export function SignupClient({ hcaptchaSiteKey, redirectTo = "/app", initialErro
     }
   };
 
-  const handleGoogleSignup = async () => {
+  const handleSocialSignup = async (provider: "google" | typeof LINKEDIN_OIDC_PROVIDER) => {
     if (!ageBracket || isMinor === null || !ageToken) {
       setError("Please complete the date of birth step first");
       return;
     }
 
-    setIsGoogleLoading(true);
+    const setLoading = provider === "google" ? setIsGoogleLoading : setIsLinkedInLoading;
+    setLoading(true);
     setError(null);
 
     const supabase = createClient()!;
-    // Embed age data in redirectTo URL (queryParams don't survive Google OAuth round-trip)
     const callbackUrl = buildOAuthSignupCallbackUrl(siteUrl, redirectTo, ageBracket, isMinor, ageToken);
 
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
+      provider,
       options: { redirectTo: callbackUrl },
     });
 
     if (error) {
       setError(error.message);
-      setIsGoogleLoading(false);
+      setLoading(false);
     }
     // Don't clear age gate data here — user may be bounced back if OAuth fails.
     // The useEffect at mount restores age gate state from sessionStorage.
@@ -231,8 +241,9 @@ export function SignupClient({ hcaptchaSiteKey, redirectTo = "/app", initialErro
         type="button"
         variant="secondary"
         className="w-full mb-6"
-        onClick={handleGoogleSignup}
+        onClick={() => handleSocialSignup("google")}
         isLoading={isGoogleLoading}
+        disabled={isSocialLoading}
         data-testid="signup-google"
       >
         <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
@@ -255,6 +266,21 @@ export function SignupClient({ hcaptchaSiteKey, redirectTo = "/app", initialErro
         </svg>
         Continue with Google
       </Button>
+
+      {linkedinOauthAvailable && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full mb-6"
+          onClick={() => handleSocialSignup(LINKEDIN_OIDC_PROVIDER)}
+          isLoading={isLinkedInLoading}
+          disabled={isSocialLoading}
+          data-testid="signup-linkedin"
+        >
+          <LinkedInIcon className="h-5 w-5 mr-2" />
+          Continue with LinkedIn
+        </Button>
+      )}
 
       <div className="relative mb-6">
         <div className="absolute inset-0 flex items-center">
