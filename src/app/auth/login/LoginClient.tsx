@@ -16,10 +16,9 @@ import { LINKEDIN_OIDC_PROVIDER } from "@/lib/linkedin/config";
 
 interface LoginFormProps {
   hcaptchaSiteKey: string;
-  linkedinOauthAvailable: boolean;
 }
 
-function LoginFormComponent({ hcaptchaSiteKey, linkedinOauthAvailable }: LoginFormProps) {
+function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isLinkedInLoading, setIsLinkedInLoading] = useState(false);
@@ -160,20 +159,18 @@ function LoginFormComponent({ hcaptchaSiteKey, linkedinOauthAvailable }: LoginFo
         Continue with Google
       </Button>
 
-      {linkedinOauthAvailable && (
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full mb-6"
-          onClick={() => handleSocialLogin(LINKEDIN_OIDC_PROVIDER)}
-          isLoading={isLinkedInLoading}
-          disabled={isSocialLoading}
-          data-testid="login-linkedin"
-        >
-          <LinkedInIcon className="h-5 w-5 mr-2" />
-          Continue with LinkedIn
-        </Button>
-      )}
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full mb-6"
+        onClick={() => handleSocialLogin(LINKEDIN_OIDC_PROVIDER)}
+        isLoading={isLinkedInLoading}
+        disabled={isSocialLoading}
+        data-testid="login-linkedin"
+      >
+        <LinkedInIcon className="h-5 w-5 mr-2" />
+        Continue with LinkedIn
+      </Button>
 
       <div className="relative mb-6">
         <div className="absolute inset-0 flex items-center">
@@ -291,7 +288,7 @@ function LoginFormComponent({ hcaptchaSiteKey, linkedinOauthAvailable }: LoginFo
   );
 }
 
-export function LoginClient({ hcaptchaSiteKey, linkedinOauthAvailable }: LoginFormProps) {
+export function LoginClient({ hcaptchaSiteKey }: LoginFormProps) {
   return (
     <Suspense fallback={
       <Card className="p-6">
@@ -304,7 +301,6 @@ export function LoginClient({ hcaptchaSiteKey, linkedinOauthAvailable }: LoginFo
     }>
       <LoginFormComponent
         hcaptchaSiteKey={hcaptchaSiteKey}
-        linkedinOauthAvailable={linkedinOauthAvailable}
       />
     </Suspense>
   );

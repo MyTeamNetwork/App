@@ -3,11 +3,10 @@ import type { LinkedInIntegrationStatus } from "@/lib/linkedin/config";
 
 /**
  * Whether LinkedIn login (Supabase Auth OIDC) is enabled.
- * Independent from connected accounts — login uses the Supabase Dashboard provider,
- * not the app-level LINKEDIN_CLIENT_ID / LINKEDIN_CLIENT_SECRET env vars.
+ * Always true — the provider is configured in the Supabase Dashboard.
  */
 export function isLinkedInLoginEnabled(): boolean {
-  return process.env.LINKEDIN_LOGIN_ENABLED === "true";
+  return true;
 }
 
 const REQUIRED_LINKEDIN_ENV_VARS = [

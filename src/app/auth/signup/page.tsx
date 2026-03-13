@@ -1,7 +1,6 @@
 import { AuthHeader } from "@/components/auth/AuthHeader";
 import { SignupClient } from "./SignupClient";
 import { sanitizeRedirectPath } from "@/lib/auth/redirect";
-import { isLinkedInLoginEnabled } from "@/lib/linkedin/config.server";
 
 // Force dynamic rendering so env vars are read at request time
 export const dynamic = "force-dynamic";
@@ -11,9 +10,7 @@ export default async function SignupPage({
 }: {
   searchParams: Promise<{ redirect?: string; error?: string }>;
 }) {
-  // Read env var on server side and pass to client
   const hcaptchaSiteKey = process.env.NEXT_PUBLIC_HCAPTCHA_SITE_KEY || "";
-  const linkedinOauthAvailable = isLinkedInLoginEnabled();
   const params = await searchParams;
   const redirectTo = sanitizeRedirectPath(params?.redirect ?? null);
   const initialError = params?.error ?? null;
@@ -27,7 +24,6 @@ export default async function SignupPage({
           hcaptchaSiteKey={hcaptchaSiteKey}
           redirectTo={redirectTo}
           initialError={initialError}
-          linkedinOauthAvailable={linkedinOauthAvailable}
         />
       </div>
     </div>

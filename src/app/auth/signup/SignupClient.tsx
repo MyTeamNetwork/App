@@ -39,14 +39,12 @@ interface SignupClientProps {
   hcaptchaSiteKey: string;
   redirectTo?: string;
   initialError?: string | null;
-  linkedinOauthAvailable: boolean;
 }
 
 export function SignupClient({
   hcaptchaSiteKey,
   redirectTo = "/app",
   initialError = null,
-  linkedinOauthAvailable,
 }: SignupClientProps) {
   const router = useRouter();
   const [step, setStep] = useState<SignupStep>("age_gate");
@@ -267,20 +265,18 @@ export function SignupClient({
         Continue with Google
       </Button>
 
-      {linkedinOauthAvailable && (
-        <Button
-          type="button"
-          variant="secondary"
-          className="w-full mb-6"
-          onClick={() => handleSocialSignup(LINKEDIN_OIDC_PROVIDER)}
-          isLoading={isLinkedInLoading}
-          disabled={isSocialLoading}
-          data-testid="signup-linkedin"
-        >
-          <LinkedInIcon className="h-5 w-5 mr-2" />
-          Continue with LinkedIn
-        </Button>
-      )}
+      <Button
+        type="button"
+        variant="secondary"
+        className="w-full mb-6"
+        onClick={() => handleSocialSignup(LINKEDIN_OIDC_PROVIDER)}
+        isLoading={isLinkedInLoading}
+        disabled={isSocialLoading}
+        data-testid="signup-linkedin"
+      >
+        <LinkedInIcon className="h-5 w-5 mr-2" />
+        Continue with LinkedIn
+      </Button>
 
       <div className="relative mb-6">
         <div className="absolute inset-0 flex items-center">
