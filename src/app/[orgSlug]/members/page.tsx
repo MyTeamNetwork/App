@@ -66,12 +66,13 @@ export default async function MembersPage({ params, searchParams }: MembersPageP
   );
 
   // Step 2a: Query members WITH user accounts that have correct roles
+  // Note: no dev-admin email exclusion here — the user_organization_roles
+  // check (memberUserIds) already ensures only real org members appear.
   let linkedMembersQuery = dataClient
     .from("members")
     .select("id, first_name, last_name, email, photo_url, role, status, graduation_year, user_id")
     .eq("organization_id", org.id)
     .is("deleted_at", null)
-    .not("email", "in", devAdminEmailFilter)
     .not("user_id", "is", null);
 
   // Only filter by role-matched user_ids if there are any
@@ -118,8 +119,7 @@ export default async function MembersPage({ params, searchParams }: MembersPageP
       .from("members")
       .select("role")
       .eq("organization_id", org.id)
-      .is("deleted_at", null)
-      .not("email", "in", devAdminEmailFilter),
+      .is("deleted_at", null),
   ]);
 
   // Combine and add isAdmin flag

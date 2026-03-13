@@ -59,35 +59,6 @@ My engineering preferences (use these to guide your recommendations):
 - I err on the side of handling more edge cases, not fewer; thoughtfulness > speed.
 - Bias toward explicit over clever.
 
-## 1. Architecture review
-Evaluate:
-- Overall system design and component boundaries.
-- Dependency graph and coupling concerns.
-- Data flow patterns and potential bottlenecks.
-- Scaling characteristics and single points of failure.
-- Security architecture (auth, data access, API boundaries).
-
-## 2. Code quality review
-Evaluate:
-- Code organization and module structure.
-- DRY violations—be aggressive here.
-- Error handling patterns and missing edge cases (call these out explicitly).
-- Technical debt hotspots.
-- Areas that are over-engineered or under-engineered relative to my preferences.
-
-## 3. Test review
-Evaluate:
-- Test coverage gaps (unit, integration, e2e).
-- Test quality and assertion strength.
-- Missing edge case coverage—be thorough.
-- Untested failure modes and error paths.
-
-## 4. Performance review
-Evaluate:
-- N+1 queries and database access patterns.
-- Memory-usage concerns.
-- Caching opportunities.
-- Slow or high-complexity code paths.
 
 **For each issue you find**
 
@@ -101,6 +72,17 @@ For every specific issue (bug, smell, design concern, or risk):
 **Workflow and interaction**
 - Do not assume my priorities on timeline or scale.
 - After each section, pause and ask for my feedback before moving on.
+
+**Exploration budget**
+- You have a maximum of 15 tool calls for discovery/reading.
+- After 15 read-only calls, you MUST stop exploring and produce one of:
+  (a) a concrete implementation plan with file-level changes,
+  (b) begin code edits, or
+  (c) explicitly tell me what's blocking you.
+- Do NOT re-read files you've already read.
+- Do NOT spawn exploration sub-agents.
+- If you need more context after the budget, ask me which specific area to investigate.
+- When I invoke plan mode with a prompt like `Now, here's my task: [describe task]`, apply this exploration budget automatically.
 
 ---
 
@@ -203,24 +185,7 @@ File: `src/lib/alumni-quota.ts`
 ### Soft Delete Pattern
 Most tables use `deleted_at` timestamp instead of hard deletes. Always filter: `.is("deleted_at", null)` when querying.
 
-### Role-Based Navigation
-Navigation is customizable per organization:
-- Each nav item in `src/lib/navigation/nav-items.tsx` declares allowed roles and a `group` property
-- `group` is a `NavGroupId`: `people | community | schedule | activity | finance | admin`
-- `src/lib/navigation/sidebar-groups.ts` handles grouping logic (`bucketItemsByGroup()`, `buildSectionOrder()`)
-- `OrgSidebar` renders collapsible `NavGroupSection` components, one per group
-- The nav `group` field controls sidebar collapsible grouping; it is separate from role visibility
-- Organizations can customize labels/visibility via `nav_config` JSONB column
-- Sidebar dynamically filters based on user role
-- Current nav coverage is broader than the original core set and includes Feed, Parents, Calendar, Discussions, Jobs, Forms, Media Archive, Customization, Settings, and Navigation alongside the legacy feature areas
 
-### Announcement Audience Targeting
-Announcements support flexible audience specification:
-- `all` - Everyone in the organization
-- `members` - Active members only
-- `active_members` - Alias for members
-- `alumni` - Alumni only
-- `individuals` - Specific user IDs (array)
 
 Server-side filtering in `src/lib/announcements.ts` enforces access control.
 
@@ -238,15 +203,6 @@ Members progress through states:
 - **active**: Full access granted
 - **revoked**: Access removed, user redirected to `/app`
 
-### Chat Groups (Polls & Inline Forms)
-Group-based chat with moderation workflow and interactive message types:
-- Groups: `chat_groups` table; membership in `chat_group_members` (soft-delete via `removed_at`)
-- Messages: `chat_messages` with `message_type: "text" | "poll" | "form"` and JSONB `metadata`
-- Polls: votes in `chat_poll_votes` (upsert); `allow_change` metadata flag controls re-voting
-- Forms: responses in `chat_form_responses` (one per user, immutable)
-- Auth helper: `getChatGroupContext()` in `src/lib/auth/chat-helpers.ts` — validates group existence, org membership, group membership, moderator status
-- Realtime: `useChatRealtime` hook in `src/hooks/useChatRealtime.ts` subscribes to Supabase realtime channels
-- Components: `PollComposer`, `PollMessage`, `FormComposer`, `InlineFormMessage` in `src/components/chat/`
 
 ### Feedback Capture System
 User feedback is collected through a friction feedback system:
@@ -324,18 +280,6 @@ External schedule URLs are validated before import to prevent SSRF and abuse:
 - `active` → Verified and allowed (confidence ≥95% or admin-approved)
 - `blocked` → Explicitly blocked, cannot be imported
 
-**Verification System:**
-- Vendor fingerprinting via host patterns and HTML markers (Sidearm, Presto, Vantage, etc.)
-- ICS/iCal content detection (auto-approved at 99% confidence)
-- Race condition protection: prevents `active → pending` downgrades during concurrent requests
-- Unique constraint handling for concurrent domain enrollment
-
-**SSRF Protection (`safe-fetch.ts`):**
-- Blocks localhost, private IPs (10.x, 172.16-31.x, 192.168.x, etc.)
-- IPv6 private ranges blocked (fc00::/7, fe80::/10, ::1)
-- Only HTTP/HTTPS on ports 80/443
-- Max 2 redirects, response size limits (200KB)
-- DNS resolution check to catch DNS rebinding
 
 **Rate Limiting:**
 - `/api/schedules/preview`: 15 req/min (IP), 8 req/min (user)
@@ -347,19 +291,7 @@ Files: `src/lib/schedule-security/allowlist.ts`, `src/lib/schedule-security/veri
 ### Schedule Connectors
 Modular system for importing events from external schedule sources:
 
-**Connector Types:**
-- `ics` - ICS/iCal feed parser (highest confidence)
-- `vendorA` - Vantage/SectionXI athletics sites
-- `vendorB` - Sidearm/CHSAA athletics sites
-- `googleCalendar` - Connector for `google://` Google Calendar sources
-- `generic_html` - Fallback table-based HTML parser
 
-**Event Processing Pipeline:**
-1. Connector fetches HTML/ICS from allowlisted URL
-2. Events extracted via JSON-LD, embedded JS data, or HTML tables
-3. Titles sanitized (HTML stripped, entities decoded, XSS prevented)
-4. Deterministic `external_uid` hash generated for deduplication
-5. Events synced to database with upsert logic
 
 **Hash Stability (`sanitize.ts`):**
 - `rawTitle` (original text before sanitization) used for hashing to ensure stability
@@ -374,23 +306,6 @@ Modular system for importing events from external schedule sources:
 
 Files: `src/lib/schedule-connectors/sanitize.ts`, `src/lib/schedule-connectors/html-utils.ts`, `src/lib/schedule-connectors/genericHtml.ts`, `src/lib/schedule-connectors/vendorA.ts`, `src/lib/schedule-connectors/vendorB.ts`, `src/lib/schedule-connectors/ics.ts`
 
-### Cron Jobs
-Automated background jobs scheduled via Vercel Cron (configured in `vercel.json`). All cron endpoints require authentication using the `CRON_SECRET` environment variable passed as `Authorization: Bearer <secret>` header.
-
-**Authentication:**
-- Cron routes use `validateCronAuth()` from `src/lib/security/cron-auth.ts`
-- Returns 401 Unauthorized if secret doesn't match
-- Returns 500 if CRON_SECRET not configured
-
-**Active Cron Jobs:**
-- `/api/cron/error-baselines` - Hourly (0 * * * *): Updates error group rolling baselines and resets hourly counts for spike detection
-- `/api/cron/graduation-check` - Daily at 8 AM UTC (0 8 * * *): Processes member graduations, sends 30-day warnings, transitions members to alumni or revokes access based on capacity, auto-reinstates members with updated graduation dates
-- `/api/cron/analytics-aggregate` - Weekly on Sunday at 2 AM UTC (0 2 * * 0): Legacy analytics aggregate job, still scheduled in `vercel.json`
-- `/api/cron/analytics-purge` - Daily at 3 AM UTC (0 3 * * *): Purges expired analytics and ops events using `purge_analytics_events()` and `purge_ops_events()` RPC functions
-- `/api/cron/analytics-rate-limit-cleanup` - Daily at 3 AM UTC (0 3 * * *): Deletes expired rate limit records older than 24 hours from `rate_limit_analytics` table
-- `/api/cron/calendar-sync` - Hourly: Syncs active calendar feeds not updated in 60 minutes
-- `/api/cron/schedules-sync` - Daily: Syncs active schedule sources that haven't been updated in 24 hours
-- `/api/cron/media-cleanup` - Daily: Cleans up stale pending media uploads
 
 **Inactive / unscheduled cron endpoints:**
 - `/api/cron/error-alerts` - Sends email notifications for new error groups and error spikes to ALERT_EMAIL_TO (or ADMIN_EMAIL)
@@ -435,14 +350,6 @@ Stored in `.env.local` (never commit this file).
 
 Use `SKIP_STRIPE_VALIDATION=true` in dev to skip Stripe price ID validation.
 
-## Coding Conventions
-
-- TypeScript with strict mode
-- 2-space indentation, semicolons, double quotes
-- PascalCase for components, camelCase for functions/variables
-- `useX` naming for custom hooks
-- Commit prefixes: `feat:`, `fix:`, `chore:`
-- Test files: `*.test.ts` using Node's built-in test runner
 
 ## Test Strategy
 
@@ -514,17 +421,6 @@ From `docs/db/schema-audit.md`:
 ### Enterprise Accounts System
 Enterprise accounts allow managing multiple organizations under a single billing entity.
 
-**Database Tables:**
-- `enterprises` - Core enterprise data (id, name, slug, logo, billing_contact_email)
-- `enterprise_subscriptions` - Billing & subscription (status, pricing_model, sub_org_quantity, alumni_tier)
-- `user_enterprise_roles` - User roles (owner, billing_admin, org_admin)
-- `enterprise_adoption_requests` - Pending requests for enterprises to adopt existing orgs
-- `enterprise_alumni_counts` (view) - Source of truth for org/alumni counts per enterprise
-
-**Pricing Models (Hybrid):**
-- `per_sub_org` - Current model: 3 free sub-orgs, paid at $150/yr each beyond free tier
-- Alumni capacity: 2,500 per bucket, self-serve up to 4 buckets (10,000), 5+ is sales-led
-- `alumni_tier` - Legacy tier-based pricing (tier_1: 5000, tier_2: 10000, tier_3/sentinel 999: unlimited)
 
 **RLS Helper Functions:**
 - `is_enterprise_member(ent_id)` - Check if current user has any role in enterprise
@@ -559,45 +455,8 @@ Enterprise accounts allow managing multiple organizations under a single billing
 - Pages: dashboard, alumni, billing, invites, navigation, organizations, settings
 - Layout: `layout.tsx` provides sidebar + responsive header with enterprise context
 
-**Enterprise Error Handling Patterns:**
 
-1. **Fail-closed quota checks:** `SeatQuotaInfo` has `error?: string`. When DB errors occur, `canEnterpriseAddSubOrg()` returns `{ currentCount: 0, maxAllowed: null, error: "internal_error" }`. Callers check only `seatQuota.error` (there is no hard cap — `allowed` was removed in the hybrid pricing model):
-```typescript
-if (seatQuota.error) return respond({ error: "Unable to verify seat limit..." }, 503);
-```
 
-2. **Structured error status on adoption:** `acceptAdoptionRequest()` returns `{ success: boolean; error?: string; status?: number }`. Routes use `result.status ?? 400` — no string matching.
-
-3. **Case-insensitive email lookup:** Admin invite uses `(serviceSupabase as any).schema("auth").from("users").ilike("email", sanitizeIlikeInput(email))`. Always use `sanitizeIlikeInput()` from `src/lib/security/validation.ts` to escape `%`, `_`, `\` before `.ilike()`.
-
-4. **Enterprise `as any` cast pattern:** Generated types now include enterprise tables, but some service-role and auth-schema queries still use casts for ergonomics or incomplete regeneration coverage.
-
-5. **getUserById logging:** GET handlers that fetch user details via `Promise.all(userIds.map(id => getUserById(id)))` log failures before filtering: `userFetches.forEach((r, i) => { if (r.error) console.error(...) })`.
-
-**Test Enterprise (Development):**
-A test enterprise exists for development without Stripe payment:
-- Slug: `test-enterprise`
-- ID: `aaaaaaaa-0000-0000-0000-000000000001`
-- Status: `active` with 10 sub-org seats
-- Created via: `supabase/migrations/20260202200000_seed_test_enterprise.sql`
-
-**Enterprise Tests:**
-```bash
-node --test --loader ./tests/ts-loader.js tests/enterprise/*.test.ts tests/routes/enterprise/*.test.ts
-```
-Coverage: quota logic, adoption flows, roles/permissions, billing adjustments, checkout, delete-account ownership, quantity pricing, admin invite lookup, create-with-upgrade quota.
-
-### Enterprise Independent Billing (Incomplete)
-The "Independent Billing" option for enterprise sub-organizations is partially implemented but **not functional**. Current state:
-- Sub-orgs created with `billingType: "independent"` get `subscription.status: "pending"`
-- **Missing**: No checkout flow exists for independent sub-orgs to complete billing setup
-- **Missing**: Stripe webhook doesn't handle independent sub-org payments
-- **Missing**: No mechanism to transition from `pending` → `active` status
-- **Missing**: No UI prompt to "Complete Billing Setup" after creation
-
-**Impact**: Users who select "Independent Billing" will get a non-functional organization.
-
-**Workaround**: Always select "Enterprise Billing (Recommended)" when creating sub-orgs. UI option is marked "Coming Soon" in `CreateSubOrgForm.tsx`.
 
 
 ## File Placement Rules
