@@ -4,7 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { LINKEDIN_INTEGRATION_DISABLED_CODE } from "@/lib/linkedin/config";
-import { getLinkedInIntegrationStatus } from "@/lib/linkedin/config.server";
+import {
+  getLinkedInIntegrationStatus,
+  isLinkedInLoginEnabled,
+} from "@/lib/linkedin/config.server";
 
 const VALID_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const configPath = path.resolve(import.meta.dirname, "..", "src", "lib", "linkedin", "config.ts");
@@ -111,6 +114,66 @@ test("linkedin integration is disabled when the encryption key is malformed", ()
       });
     },
   );
+});
+
+test("isLinkedInLoginEnabled returns true only when LINKEDIN_LOGIN_ENABLED=true", () => {
+  const prev = process.env.LINKEDIN_LOGIN_ENABLED;
+  try {
+    delete process.env.LINKEDIN_LOGIN_ENABLED;
+    assert.equal(isLinkedInLoginEnabled(), false, "absent env var → false");
+
+    process.env.LINKEDIN_LOGIN_ENABLED = "";
+    assert.equal(isLinkedInLoginEnabled(), false, "empty string → false");
+
+    process.env.LINKEDIN_LOGIN_ENABLED = "false";
+    assert.equal(isLinkedInLoginEnabled(), false, '"false" → false');
+
+    process.env.LINKEDIN_LOGIN_ENABLED = "TRUE";
+    assert.equal(isLinkedInLoginEnabled(), false, "case-sensitive → false");
+
+    process.env.LINKEDIN_LOGIN_ENABLED = "true";
+    assert.equal(isLinkedInLoginEnabled(), true, '"true" → true');
+  } finally {
+    if (prev === undefined) {
+      delete process.env.LINKEDIN_LOGIN_ENABLED;
+    } else {
+      process.env.LINKEDIN_LOGIN_ENABLED = prev;
+    }
+  }
+});
+
+test("isLinkedInLoginEnabled is independent of connected accounts env vars", () => {
+  const prev = process.env.LINKEDIN_LOGIN_ENABLED;
+  try {
+    // Connected accounts vars are set (via withLinkedInEnv context or .env)
+    // but LINKEDIN_LOGIN_ENABLED is absent — login should be disabled
+    delete process.env.LINKEDIN_LOGIN_ENABLED;
+    withLinkedInEnv(
+      {
+        clientId: "client-id",
+        clientSecret: "client-secret",
+        encryptionKey: VALID_KEY,
+      },
+      () => {
+        assert.equal(
+          getLinkedInIntegrationStatus().oauthAvailable,
+          true,
+          "connected accounts available",
+        );
+        assert.equal(
+          isLinkedInLoginEnabled(),
+          false,
+          "login disabled despite connected accounts being configured",
+        );
+      },
+    );
+  } finally {
+    if (prev === undefined) {
+      delete process.env.LINKEDIN_LOGIN_ENABLED;
+    } else {
+      process.env.LINKEDIN_LOGIN_ENABLED = prev;
+    }
+  }
 });
 
 test("browser-safe linkedin config does not import token encryption helpers", () => {
