@@ -11,6 +11,7 @@ import { canEditNavItem } from "@/lib/navigation/permissions";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import { DirectoryViewTracker } from "@/components/analytics/DirectoryViewTracker";
 import { DirectoryCardLink } from "@/components/analytics/DirectoryCardLink";
+import { LinkedInBadge } from "@/components/shared";
 import { sanitizeIlikeInput } from "@/lib/security/validation";
 
 const PAGE_SIZE = 50;
@@ -32,6 +33,7 @@ interface ParentRecord {
   relationship: string | null;
   student_name: string | null;
   email: string | null;
+  linkedin_url: string | null;
 }
 
 export default async function ParentsPage({ params, searchParams }: ParentsPageProps) {
@@ -70,7 +72,7 @@ export default async function ParentsPage({ params, searchParams }: ParentsPageP
   // Query parents table with exact count for pagination
   let query = dataClient
     .from("parents")
-    .select("id, first_name, last_name, photo_url, relationship, student_name, email", { count: "exact" })
+    .select("id, first_name, last_name, photo_url, relationship, student_name, email, linkedin_url", { count: "exact" })
     .eq("organization_id", org.id)
     .is("deleted_at", null);
 
@@ -134,14 +136,14 @@ export default async function ParentsPage({ params, searchParams }: ParentsPageP
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
             {parents.map((parent) => (
-              <DirectoryCardLink
-                key={parent.id}
-                href={`/${orgSlug}/parents/${parent.id}`}
-                organizationId={org.id}
-                directoryType="parents"
-              >
-                <Card interactive className="p-5">
-                  <div className="flex items-center gap-4">
+              <Card key={parent.id} interactive className="p-5">
+                <div className="flex items-center gap-4">
+                  <DirectoryCardLink
+                    href={`/${orgSlug}/parents/${parent.id}`}
+                    organizationId={org.id}
+                    directoryType="parents"
+                    className="flex min-w-0 flex-1 items-center gap-4"
+                  >
                     <Avatar
                       src={parent.photo_url}
                       name={`${parent.first_name} ${parent.last_name}`}
@@ -162,9 +164,10 @@ export default async function ParentsPage({ params, searchParams }: ParentsPageP
                         )}
                       </div>
                     </div>
-                  </div>
-                </Card>
-              </DirectoryCardLink>
+                  </DirectoryCardLink>
+                  <LinkedInBadge linkedinUrl={parent.linkedin_url} className="shrink-0" />
+                </div>
+              </Card>
             ))}
           </div>
           {totalPages > 1 && (
