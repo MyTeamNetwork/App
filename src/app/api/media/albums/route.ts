@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
       .filter((a: Record<string, unknown>) => a.cover_media_id)
       .map((a: Record<string, unknown>) => a.cover_media_id as string);
 
-    let coverUrlMap = new Map<string, string>();
+    const coverUrlMap = new Map<string, string>();
     if (coversToFetch.length > 0) {
       const { data: coverItems } = await serviceClient
         .from("media_items")

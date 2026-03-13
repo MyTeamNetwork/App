@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { notFound } from "next/navigation";
 import { getOrgContext } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";

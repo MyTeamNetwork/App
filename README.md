@@ -52,6 +52,9 @@ Useful optional variables:
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_TOKEN_ENCRYPTION_KEY`
+- `LINKEDIN_CLIENT_ID`
+- `LINKEDIN_CLIENT_SECRET`
+- `LINKEDIN_TOKEN_ENCRYPTION_KEY`
 - `SKIP_STRIPE_VALIDATION=true` for local development without real Stripe price IDs
 
 ## Development

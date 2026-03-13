@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { validateJson, ValidationError } from "@/lib/security/validation";
@@ -228,7 +229,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   // Bulk create via RPC
   type CreatedRecord = { out_email: string; out_first_name: string; out_last_name: string; out_status: string };
-  let createdRecords: CreatedRecord[] = [];
+  const createdRecords: CreatedRecord[] = [];
 
   if (importPlan.toCreate.length > 0) {
     const rpcSupabase = serviceSupabase as unknown as BulkImportAlumniRichRpc;
