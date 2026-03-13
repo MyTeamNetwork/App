@@ -6,6 +6,8 @@ import { sanitizeRedirectPath } from "@/lib/auth/redirect";
 import { buildErrorRedirect, runAgeValidationGate } from "@/lib/auth/callback-flow";
 import { debugLog, maskPII } from "@/lib/debug";
 import { createServiceClient } from "@/lib/supabase/service";
+import { runLinkedInOidcSyncSafe } from "@/lib/linkedin/oidc-sync";
+import { LINKEDIN_OIDC_PROVIDER } from "@/lib/linkedin/config";
 
 const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
 const supabaseAnonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
@@ -123,6 +125,14 @@ export async function GET(request: NextRequest) {
       if (ageGateResult.kind === "redirect") {
         debugLog("auth-callback", "Age validation redirect:", ageGateResult.location);
         return NextResponse.redirect(ageGateResult.location);
+      }
+
+      // Best-effort sync in the background so redirect latency stays off the login path.
+      // Errors are handled inside runLinkedInOidcSyncSafe.
+      if (data.session.user.app_metadata?.provider === LINKEDIN_OIDC_PROVIDER) {
+        queueMicrotask(() => {
+          void runLinkedInOidcSyncSafe(createServiceClient, data.session.user);
+        });
       }
 
       debugLog("auth-callback", "Cookies set:", response.cookies.getAll().map((c) => ({
