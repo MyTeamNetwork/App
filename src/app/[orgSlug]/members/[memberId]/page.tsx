@@ -7,6 +7,7 @@ import { ReinstateCard } from "@/components/members/ReinstateCard";
 import { isOrgAdmin } from "@/lib/auth";
 import { resolveDataClient } from "@/lib/auth/dev-admin";
 import type { Member } from "@/types/database";
+import { LinkedInProfileLink } from "@/components/shared";
 
 interface MemberDetailPageProps {
   params: Promise<{ orgSlug: string; memberId: string }>;
@@ -165,18 +166,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
             <div>
               <dt className="text-sm text-muted-foreground">LinkedIn</dt>
               <dd className="text-foreground font-medium">
-                {member.linkedin_url ? (
-                  <a
-                    href={member.linkedin_url}
-                    className="text-org-primary hover:underline break-all"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    View profile
-                  </a>
-                ) : (
-                  "—"
-                )}
+                <LinkedInProfileLink linkedinUrl={member.linkedin_url} />
               </dd>
             </div>
             <div>
