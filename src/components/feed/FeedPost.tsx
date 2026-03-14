@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { LikeButton } from "./LikeButton";
 import { PostMedia } from "./PostMedia";
+import { relativeTime } from "@/lib/utils/relative-time";
 import type { PostWithAuthor } from "./types";
 
 interface FeedPostProps {
@@ -14,23 +15,6 @@ interface FeedPostProps {
   orgSlug: string;
   currentUserId: string;
   isAdmin: boolean;
-}
-
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSecs = Math.floor(diffMs / 1000);
-  const diffMins = Math.floor(diffSecs / 60);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffSecs < 60) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-  return date.toLocaleDateString();
 }
 
 export function FeedPost({ post, orgSlug, currentUserId, isAdmin }: FeedPostProps) {
@@ -64,7 +48,7 @@ export function FeedPost({ post, orgSlug, currentUserId, isAdmin }: FeedPostProp
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-baseline gap-2 min-w-0">
               <span className="text-sm font-semibold text-foreground leading-none truncate">{authorName}</span>
-              <span className="text-xs text-muted-foreground/70 font-mono shrink-0">{formatRelativeTime(post.created_at)}</span>
+              <span className="text-xs text-muted-foreground/70 font-mono shrink-0">{relativeTime(post.created_at)}</span>
             </div>
             {canDelete && (
               <button
