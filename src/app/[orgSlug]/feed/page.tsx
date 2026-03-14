@@ -76,7 +76,7 @@ export default async function FeedPage({
   const canPost = orgCtx.role ? feedPostRoles.includes(orgCtx.role) : false;
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-2xl">
+    <>
       <PageHeader
         title="Feed"
         description="Stay up to date with your team"
@@ -93,6 +93,6 @@ export default async function FeedPage({
         isAdmin={orgCtx.isAdmin}
         pagination={{ page, limit, total, totalPages }}
       />
-    </div>
+    </>
   );
 }

@@ -71,7 +71,7 @@ export default async function FeedPostDetailPage({
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-2xl">
+    <>
       <PageHeader title="Post" backHref={`/${orgSlug}/feed`} />
       <PostDetail
         post={{ ...post, liked_by_user: likedByUser }}
@@ -82,6 +82,6 @@ export default async function FeedPostDetailPage({
       <div className="mt-8">
         <CommentSection postId={postId} comments={comments || []} />
       </div>
-    </div>
+    </>
   );
 }
