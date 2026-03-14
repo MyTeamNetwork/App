@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Card, HCaptcha, HCaptchaRef } from "@/components/ui";
+import { Button, Input, Card, HCaptcha, HCaptchaRef, InlineBanner } from "@/components/ui";
 import { useCaptcha } from "@/hooks/useCaptcha";
 import { sanitizeRedirectPath, buildRecoveryRedirectTo } from "@/lib/auth/redirect";
 import { forgotPasswordSchema, type ForgotPasswordForm } from "@/lib/schemas/auth";
@@ -66,15 +66,15 @@ function ForgotPasswordFormComponent({ hcaptchaSiteKey }: ForgotPasswordFormProp
   return (
     <Card className="p-6">
       {error && (
-        <div data-testid="forgot-password-error" className="mb-4 p-3 rounded-xl bg-red-900/20 text-red-400 text-sm">
+        <InlineBanner variant="error" data-testid="forgot-password-error" className="mb-4">
           {error}
-        </div>
+        </InlineBanner>
       )}
 
       {message && (
-        <div data-testid="forgot-password-success" className="mb-4 p-3 rounded-xl bg-emerald-900/20 text-emerald-400 text-sm">
+        <InlineBanner variant="success" data-testid="forgot-password-success" className="mb-4">
           {message}
-        </div>
+        </InlineBanner>
       )}
 
       <form data-testid="forgot-password-form" onSubmit={handleSubmit(onSubmit)}>

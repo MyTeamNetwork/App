@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Card, HCaptcha, HCaptchaRef } from "@/components/ui";
+import { Button, Input, Card, HCaptcha, HCaptchaRef, InlineBanner } from "@/components/ui";
 import { FeedbackButton } from "@/components/feedback";
 import { useCaptcha } from "@/hooks/useCaptcha";
 import { sanitizeRedirectPath, buildAuthCallbackUrl, buildAuthLink } from "@/lib/auth/redirect";
@@ -209,18 +209,18 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
       </div>
 
       {error && (
-        <div data-testid="login-error" className="mb-4 p-3 rounded-xl bg-red-900/20 text-red-400 text-sm">
+        <InlineBanner variant="error" data-testid="login-error" className="mb-4">
           {error}
           <div className="mt-2 flex justify-end">
             <FeedbackButton context="login" trigger="login_error" />
           </div>
-        </div>
+        </InlineBanner>
       )}
 
       {message && (
-        <div data-testid="login-success" className="mb-4 p-3 rounded-xl bg-emerald-900/20 text-emerald-400 text-sm">
+        <InlineBanner variant="success" data-testid="login-success" className="mb-4">
           {message}
-        </div>
+        </InlineBanner>
       )}
 
       <form data-testid="login-form" onSubmit={mode === "password" ? handleSubmit(onPasswordLogin) : handleMagicLink}>

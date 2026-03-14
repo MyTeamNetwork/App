@@ -5,7 +5,8 @@ import {
   getLinkedInIntegrationDisabledMessage,
   LINKEDIN_INTEGRATION_DISABLED_CODE,
 } from "@/lib/linkedin/config";
-import { Card } from "@/components/ui";
+import { showFeedback } from "@/lib/feedback/show-feedback";
+import { Card, InlineBanner } from "@/components/ui";
 import {
   LinkedInSettingsPanel,
   type LinkedInConnection,
@@ -48,9 +49,6 @@ function LinkedInSettingsContent() {
   const [connection, setConnection] = useState<LinkedInConnection | null>(null);
   const [connectionLoading, setConnectionLoading] = useState(true);
   const [oauthAvailable, setOauthAvailable] = useState(true);
-  const [oauthSuccess, setOauthSuccess] = useState<string | null>(null);
-  const [oauthWarning, setOauthWarning] = useState<string | null>(null);
-  const [oauthError, setOauthError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
   // Read OAuth callback query params on mount
@@ -62,9 +60,9 @@ function LinkedInSettingsContent() {
     const errorMessage = params.get("error_message");
 
     if (warningMessage) {
-      setOauthWarning(warningMessage);
+      showFeedback(warningMessage, "warning");
     } else if (linkedinParam === "connected") {
-      setOauthSuccess("Your LinkedIn account has been connected successfully.");
+      showFeedback("Your LinkedIn account has been connected successfully.", "success");
     } else if (errorParam) {
       const fallbackMessage = errorParam === LINKEDIN_INTEGRATION_DISABLED_CODE
         ? getLinkedInIntegrationDisabledMessage()
@@ -72,7 +70,7 @@ function LinkedInSettingsContent() {
       if (errorParam === LINKEDIN_INTEGRATION_DISABLED_CODE) {
         setOauthAvailable(false);
       }
-      setOauthError(errorMessage || fallbackMessage);
+      showFeedback(errorMessage || fallbackMessage, "error");
     }
 
     // Clean stale query params from URL
@@ -86,25 +84,6 @@ function LinkedInSettingsContent() {
       window.history.replaceState({}, "", url.pathname);
     }
   }, []);
-
-  // Auto-dismiss OAuth feedback after 8 seconds
-  useEffect(() => {
-    if (!oauthSuccess) return;
-    const timer = setTimeout(() => setOauthSuccess(null), 8000);
-    return () => clearTimeout(timer);
-  }, [oauthSuccess]);
-
-  useEffect(() => {
-    if (!oauthError) return;
-    const timer = setTimeout(() => setOauthError(null), 8000);
-    return () => clearTimeout(timer);
-  }, [oauthError]);
-
-  useEffect(() => {
-    if (!oauthWarning) return;
-    const timer = setTimeout(() => setOauthWarning(null), 8000);
-    return () => clearTimeout(timer);
-  }, [oauthWarning]);
 
   const refreshStatus = useCallback(async () => {
     setConnectionLoading(true);
@@ -163,11 +142,11 @@ function LinkedInSettingsContent() {
       });
 
       if (res.status === 404) {
-        setOauthError("LinkedIn integration is not yet available.");
+        showFeedback("LinkedIn integration is not yet available.", "error");
         return;
       }
       if (res.status === 401) {
-        setOauthError("You need to sign in again.");
+        showFeedback("You need to sign in again.", "error");
         return;
       }
       if (!res.ok) {
@@ -175,7 +154,7 @@ function LinkedInSettingsContent() {
         if (res.status === 503 || data.code === LINKEDIN_INTEGRATION_DISABLED_CODE) {
           setOauthAvailable(false);
         }
-        setOauthError(data.error ?? "Failed to start LinkedIn connection.");
+        showFeedback(data.error ?? "Failed to start LinkedIn connection.", "error");
         return;
       }
 
@@ -184,7 +163,7 @@ function LinkedInSettingsContent() {
         window.location.href = data.redirectUrl;
       }
     } catch {
-      setOauthError("Unable to reach the server. Please try again.");
+      showFeedback("Unable to reach the server. Please try again.", "error");
     }
   }, []);
 
@@ -240,26 +219,7 @@ function LinkedInSettingsContent() {
         </p>
       </div>
 
-      {oauthSuccess && (
-        <div className="rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-4 py-3 text-sm text-green-700 dark:text-green-300">
-          {oauthSuccess}
-        </div>
-      )}
-      {oauthError && (
-        <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-          {oauthError}
-        </div>
-      )}
-      {oauthWarning && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-          {oauthWarning}
-        </div>
-      )}
-      {statusError && (
-        <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-600 dark:text-red-400">
-          {statusError}
-        </div>
-      )}
+      {statusError && <InlineBanner variant="error" className="border border-red-200 dark:border-red-800">{statusError}</InlineBanner>}
 
       <LinkedInSettingsPanel
         linkedInUrl={linkedInUrl}

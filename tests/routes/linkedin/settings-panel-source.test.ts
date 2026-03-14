@@ -51,3 +51,15 @@ test("linkedin settings panel shows an explicit disabled-integration state", () 
     "disabled LinkedIn should be described explicitly instead of as coming soon",
   );
 });
+
+test("linkedin settings panel does not use useAutoDismiss", () => {
+  assert.doesNotMatch(panelSource, /useAutoDismiss/);
+});
+
+test("linkedin settings panel uses showFeedback for transient notifications", () => {
+  assert.match(panelSource, /showFeedback/);
+});
+
+test("linkedin settings panel uses InlineBanner for inline errors", () => {
+  assert.match(panelSource, /InlineBanner/);
+});

@@ -5,6 +5,7 @@ import { Card } from "@/components/ui";
 import { PageHeader } from "@/components/layout";
 import { EnterpriseNavEditor } from "@/components/enterprise/EnterpriseNavEditor";
 import type { NavConfig } from "@/lib/navigation/nav-items";
+import { showFeedback } from "@/lib/feedback/show-feedback";
 
 interface Organization {
   id: string;
@@ -28,8 +29,6 @@ export function NavigationClient({ enterpriseId }: NavigationClientProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState("Navigation settings saved successfully.");
 
   const fetchData = useCallback(async () => {
     try {
@@ -51,7 +50,6 @@ export function NavigationClient({ enterpriseId }: NavigationClientProps) {
 
   const handleSave = async (navConfig: NavConfig, lockedItems: string[]) => {
     setSaveError(null);
-    setSaveSuccess(false);
 
     try {
       const res = await fetch(`/api/enterprise/${enterpriseId}/navigation`, {
@@ -65,9 +63,7 @@ export function NavigationClient({ enterpriseId }: NavigationClientProps) {
         throw new Error(data.error || "Failed to save");
       }
 
-      setSuccessMessage("Navigation settings saved successfully.");
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      showFeedback("Navigation settings saved successfully.", "success");
 
       await fetchData();
     } catch (err) {
@@ -77,7 +73,6 @@ export function NavigationClient({ enterpriseId }: NavigationClientProps) {
 
   const handleSync = async () => {
     setSaveError(null);
-    setSaveSuccess(false);
     try {
       const res = await fetch(`/api/enterprise/${enterpriseId}/navigation/sync`, {
         method: "POST",
@@ -90,9 +85,7 @@ export function NavigationClient({ enterpriseId }: NavigationClientProps) {
 
       const result = await res.json();
       await fetchData();
-      setSuccessMessage(`Navigation synced to ${result.synced ?? "all"} organization${result.synced === 1 ? "" : "s"}.`);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      showFeedback(`Navigation synced to ${result.synced ?? "all"} organization${result.synced === 1 ? "" : "s"}.`, "success");
       return result;
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to sync");
@@ -133,12 +126,6 @@ export function NavigationClient({ enterpriseId }: NavigationClientProps) {
       {saveError && (
         <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
           {saveError}
-        </div>
-      )}
-
-      {saveSuccess && (
-        <div className="mb-6 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-sm">
-          {successMessage}
         </div>
       )}
 

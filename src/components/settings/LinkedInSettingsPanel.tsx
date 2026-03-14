@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Badge, Button, Card, Input, Avatar } from "@/components/ui";
+import { Badge, Button, Card, Input, Avatar, InlineBanner } from "@/components/ui";
 import { LinkedInIcon } from "@/components/shared/LinkedInIcon";
 import { optionalLinkedInProfileUrlSchema } from "@/lib/alumni/linkedin-url";
+import { showFeedback } from "@/lib/feedback/show-feedback";
 
 export interface LinkedInConnection {
   status: "connected" | "disconnected" | "error";
@@ -45,46 +46,17 @@ export function LinkedInSettingsPanel({
   const [urlValue, setUrlValue] = useState(linkedInUrl);
   const [urlSaving, setUrlSaving] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
-  const [urlSuccess, setUrlSuccess] = useState<string | null>(null);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   // Keep URL in sync with prop changes
   useEffect(() => {
     setUrlValue(linkedInUrl);
   }, [linkedInUrl]);
 
-  // Auto-dismiss feedback after 5 seconds
-  useEffect(() => {
-    if (!urlSuccess) return;
-    const timer = setTimeout(() => setUrlSuccess(null), 5000);
-    return () => clearTimeout(timer);
-  }, [urlSuccess]);
-
-  useEffect(() => {
-    if (!urlError) return;
-    const timer = setTimeout(() => setUrlError(null), 5000);
-    return () => clearTimeout(timer);
-  }, [urlError]);
-
-  useEffect(() => {
-    if (!actionNotice) return;
-    const timer = setTimeout(() => setActionNotice(null), 5000);
-    return () => clearTimeout(timer);
-  }, [actionNotice]);
-
-  useEffect(() => {
-    if (!actionError) return;
-    const timer = setTimeout(() => setActionError(null), 5000);
-    return () => clearTimeout(timer);
-  }, [actionError]);
-
   const handleUrlSave = async () => {
     setUrlError(null);
-    setUrlSuccess(null);
 
     // Validate client-side
     const result = optionalLinkedInProfileUrlSchema.safeParse(urlValue);
@@ -96,7 +68,7 @@ export function LinkedInSettingsPanel({
     setUrlSaving(true);
     try {
       await onLinkedInUrlSave(result.data ?? "");
-      setUrlSuccess("LinkedIn URL saved");
+      showFeedback("LinkedIn URL saved", "success");
     } catch (err) {
       setUrlError(err instanceof Error ? err.message : "Failed to save URL");
     } finally {
@@ -106,13 +78,11 @@ export function LinkedInSettingsPanel({
 
   const handleSync = async () => {
     setIsSyncing(true);
-    setActionError(null);
-    setActionNotice(null);
     try {
       const result = await onSync();
-      setActionNotice(result.message);
+      showFeedback(result.message, "success");
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to sync");
+      showFeedback(err instanceof Error ? err.message : "Failed to sync", "error");
     } finally {
       setIsSyncing(false);
     }
@@ -121,12 +91,10 @@ export function LinkedInSettingsPanel({
   const handleDisconnect = async () => {
     if (!confirm("Disconnect your LinkedIn account? Your manual profile URL will be kept.")) return;
     setIsDisconnecting(true);
-    setActionError(null);
-    setActionNotice(null);
     try {
       await onDisconnect();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to disconnect");
+      showFeedback(err instanceof Error ? err.message : "Failed to disconnect", "error");
     } finally {
       setIsDisconnecting(false);
     }
@@ -172,15 +140,11 @@ export function LinkedInSettingsPanel({
             value={urlValue}
             onChange={(e) => {
               setUrlValue(e.target.value);
-              setUrlSuccess(null);
               setUrlError(null);
             }}
           />
           {urlError && (
-            <p className="text-sm text-red-600 dark:text-red-400">{urlError}</p>
-          )}
-          {urlSuccess && (
-            <p className="text-sm text-green-600 dark:text-green-400">{urlSuccess}</p>
+            <InlineBanner variant="error">{urlError}</InlineBanner>
           )}
           <Button
             size="sm"
@@ -225,9 +189,7 @@ export function LinkedInSettingsPanel({
           </p>
 
           {connection.syncError && (
-            <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-              {connection.syncError}
-            </div>
+            <InlineBanner variant="warning">{connection.syncError}</InlineBanner>
           )}
         </div>
       )}
@@ -293,16 +255,6 @@ export function LinkedInSettingsPanel({
       {/* Section 4: Actions (connected) */}
       {isConnected && (
         <div className="p-5 space-y-3">
-          {actionNotice && (
-            <div className="rounded-md bg-green-50 dark:bg-green-900/20 px-3 py-2 text-sm text-green-700 dark:text-green-300">
-              {actionNotice}
-            </div>
-          )}
-          {actionError && (
-            <div className="rounded-md bg-red-50 dark:bg-red-900/20 px-3 py-2 text-sm text-red-600 dark:text-red-400">
-              {actionError}
-            </div>
-          )}
           {!oauthAvailable && (
             <div className="rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
               LinkedIn integration is not configured in this environment. You can disconnect this

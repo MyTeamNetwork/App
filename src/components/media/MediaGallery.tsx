@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { showFeedback } from "@/lib/feedback/show-feedback";
 import { Button, EmptyState } from "@/components/ui";
 import { MediaFilters } from "./MediaFilters";
 import { MediaCard, type MediaItem } from "./MediaCard";
@@ -52,7 +53,6 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showAlbumPicker, setShowAlbumPicker] = useState(false);
-  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   const fetchMedia = useCallback(
     async (cursor?: string) => {
@@ -261,8 +261,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
   const handleAlbumPickerSuccess = useCallback((albumId: string, albumName: string) => {
     setShowAlbumPicker(false);
     exitSelectMode();
-    setSuccessToast(`Added to "${albumName}"`);
-    setTimeout(() => setSuccessToast(null), 3000);
+    showFeedback(`Added to "${albumName}"`, "success");
     // Navigate to the album
     setView("albums");
     // We don't have the full album object, so we'll just go to album list
@@ -521,16 +520,6 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
           onClose={() => setShowAlbumPicker(false)}
           onSuccess={handleAlbumPickerSuccess}
         />
-      )}
-
-      {/* Success toast */}
-      {successToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 bg-emerald-600 text-white rounded-2xl px-4 py-2.5 shadow-xl text-sm font-medium animate-in slide-in-from-bottom-4 duration-200">
-          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-          {successToast}
-        </div>
       )}
 
       {/* Upload panel (available in both views) */}

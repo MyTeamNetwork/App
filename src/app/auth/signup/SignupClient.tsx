@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Card, HCaptcha, HCaptchaRef } from "@/components/ui";
+import { Button, Input, Card, HCaptcha, HCaptchaRef, InlineBanner } from "@/components/ui";
 import { useCaptcha } from "@/hooks/useCaptcha";
 import { signupSchema, type SignupForm, type AgeBracket } from "@/lib/schemas/auth";
 import { PASSWORD_REQUIREMENTS } from "@/lib/auth/password";
@@ -288,18 +288,18 @@ export function SignupClient({
       </div>
 
       {error && (
-        <div data-testid="signup-error" className="mb-4 p-3 rounded-xl bg-red-900/20 text-red-400 text-sm">
+        <InlineBanner variant="error" data-testid="signup-error" className="mb-4">
           {error}
           <div className="mt-2 flex justify-end">
             <FeedbackButton context="signup" trigger="signup_error" />
           </div>
-        </div>
+        </InlineBanner>
       )}
 
       {message && (
-        <div data-testid="signup-success" className="mb-4 p-3 rounded-xl bg-emerald-900/20 text-emerald-400 text-sm">
+        <InlineBanner variant="success" data-testid="signup-success" className="mb-4">
           {message}
-        </div>
+        </InlineBanner>
       )}
 
       <form data-testid="signup-form" onSubmit={handleSubmit(onSubmit)}>

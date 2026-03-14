@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Card } from "@/components/ui";
+import { Button, Input, Card, InlineBanner } from "@/components/ui";
 import { sanitizeRedirectPath } from "@/lib/auth/redirect";
 import { resetPasswordSchema, type ResetPasswordForm } from "@/lib/schemas/auth";
 
@@ -118,15 +118,15 @@ function ResetPasswordFormComponent() {
   return (
     <Card className="p-6">
       {error && (
-        <div className="mb-4 p-3 rounded-xl bg-red-900/20 text-red-400 text-sm">
+        <InlineBanner variant="error" className="mb-4">
           {error}
-        </div>
+        </InlineBanner>
       )}
 
       {message && (
-        <div className="mb-4 p-3 rounded-xl bg-emerald-900/20 text-emerald-400 text-sm">
+        <InlineBanner variant="success" className="mb-4">
           {message}
-        </div>
+        </InlineBanner>
       )}
 
       <form onSubmit={handleSubmit(onSubmit)}>
