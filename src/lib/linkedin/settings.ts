@@ -54,14 +54,26 @@ export async function getLinkedInStatusForUser(
   supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<LinkedInStatusResult> {
-  // user_linkedin_connections is not fully covered by generated types in this codepath.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: connectionRow, error: connectionError } = await (supabase as any)
-    .from("user_linkedin_connections")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
+  // Run all queries in parallel, but preserve the original precedence/error
+  // semantics: members -> alumni -> parents. A higher-priority table failure
+  // must still fail closed if we would have needed to consult that table in the
+  // original sequential flow.
+  const [connectionResult, membersResult, alumniResult, parentsResult] =
+    await Promise.allSettled([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("user_linkedin_connections")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      getLatestLinkedInUrl(supabase, "members", userId),
+      getLatestLinkedInUrl(supabase, "alumni", userId),
+      getLatestLinkedInUrl(supabase, "parents", userId),
+    ]);
 
+  // Connection row is required — rethrow if it failed
+  if (connectionResult.status === "rejected") throw connectionResult.reason;
+  const { data: connectionRow, error: connectionError } = connectionResult.value;
   if (connectionError) {
     throw new Error(`Failed to fetch LinkedIn connection: ${connectionError.message}`);
   }
@@ -77,18 +89,32 @@ export async function getLinkedInStatusForUser(
       }
     : null;
 
-  let linkedinUrl = await getLatestLinkedInUrl(supabase, "members", userId);
+  if (membersResult.status === "rejected") throw membersResult.reason;
+  const membersUrl = membersResult.value;
 
-  if (!linkedinUrl) {
-    linkedinUrl = await getLatestLinkedInUrl(supabase, "alumni", userId);
+  // Use truthiness (not ??) to match current falsy-check behavior: legacy
+  // empty-string rows should continue falling through to lower-priority tables.
+  if (membersUrl) {
+    return {
+      linkedin_url: membersUrl,
+      connection,
+    };
   }
 
-  if (!linkedinUrl) {
-    linkedinUrl = await getLatestLinkedInUrl(supabase, "parents", userId);
+  if (alumniResult.status === "rejected") throw alumniResult.reason;
+  const alumniUrl = alumniResult.value;
+  if (alumniUrl) {
+    return {
+      linkedin_url: alumniUrl,
+      connection,
+    };
   }
+
+  if (parentsResult.status === "rejected") throw parentsResult.reason;
+  const parentsUrl = parentsResult.value;
 
   return {
-    linkedin_url: linkedinUrl,
+    linkedin_url: parentsUrl || null,
     connection,
   };
 }

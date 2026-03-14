@@ -261,7 +261,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
   const handleAlbumPickerSuccess = useCallback((albumId: string, albumName: string) => {
     setShowAlbumPicker(false);
     exitSelectMode();
-    showFeedback(`Added to "${albumName}"`, "success");
+    showFeedback(`Added to "${albumName}"`, "success", { duration: 3000 });
     // Navigate to the album
     setView("albums");
     // We don't have the full album object, so we'll just go to album list

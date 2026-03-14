@@ -63,7 +63,7 @@ export function NavigationClient({ enterpriseId }: NavigationClientProps) {
         throw new Error(data.error || "Failed to save");
       }
 
-      showFeedback("Navigation settings saved successfully.", "success");
+      showFeedback("Navigation settings saved successfully.", "success", { duration: 3000 });
 
       await fetchData();
     } catch (err) {
@@ -85,7 +85,7 @@ export function NavigationClient({ enterpriseId }: NavigationClientProps) {
 
       const result = await res.json();
       await fetchData();
-      showFeedback(`Navigation synced to ${result.synced ?? "all"} organization${result.synced === 1 ? "" : "s"}.`, "success");
+      showFeedback(`Navigation synced to ${result.synced ?? "all"} organization${result.synced === 1 ? "" : "s"}.`, "success", { duration: 3000 });
       return result;
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Failed to sync");

@@ -66,6 +66,3 @@ export * from "./media";
 
 // Enterprise schemas
 export * from "./enterprise";
-
-// LinkedIn schemas
-export * from "./linkedin";

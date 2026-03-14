@@ -224,22 +224,31 @@ async function findExistingLinkedInUrl(
   supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<string | null> {
+  const tables = ["members", "alumni", "parents"] as const;
+
+  // Run all 3 queries in parallel — each returns { data, error } (never throws).
+  const results = await Promise.all(
+    tables.map((table) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from(table)
+        .select("linkedin_url, updated_at")
+        .eq("user_id", userId)
+        .is("deleted_at", null)
+        .not("linkedin_url", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(2),
+    ),
+  );
+
   let bestUrl: string | null = null;
   let bestUpdatedAt: string | null = null;
 
-  for (const table of ["members", "alumni", "parents"] as const) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
-      .from(table)
-      .select("linkedin_url, updated_at")
-      .eq("user_id", userId)
-      .is("deleted_at", null)
-      .not("linkedin_url", "is", null)
-      .order("updated_at", { ascending: false })
-      .limit(2);
+  for (let i = 0; i < tables.length; i++) {
+    const { data, error } = results[i];
 
     if (error) {
-      console.error(`[linkedin-oidc-sync] Failed to read ${table} for linkedin_url lookup:`, error);
+      console.error(`[linkedin-oidc-sync] Failed to read ${tables[i]} for linkedin_url lookup:`, error);
       return null;
     }
 

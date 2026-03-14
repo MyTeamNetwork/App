@@ -68,7 +68,7 @@ export function LinkedInSettingsPanel({
     setUrlSaving(true);
     try {
       await onLinkedInUrlSave(result.data ?? "");
-      showFeedback("LinkedIn URL saved", "success");
+      showFeedback("LinkedIn URL saved", "success", { duration: 5000 });
     } catch (err) {
       setUrlError(err instanceof Error ? err.message : "Failed to save URL");
     } finally {
@@ -80,9 +80,9 @@ export function LinkedInSettingsPanel({
     setIsSyncing(true);
     try {
       const result = await onSync();
-      showFeedback(result.message, "success");
+      showFeedback(result.message, "success", { duration: 5000 });
     } catch (err) {
-      showFeedback(err instanceof Error ? err.message : "Failed to sync", "error");
+      showFeedback(err instanceof Error ? err.message : "Failed to sync", "error", { duration: 5000 });
     } finally {
       setIsSyncing(false);
     }
@@ -94,7 +94,7 @@ export function LinkedInSettingsPanel({
     try {
       await onDisconnect();
     } catch (err) {
-      showFeedback(err instanceof Error ? err.message : "Failed to disconnect", "error");
+      showFeedback(err instanceof Error ? err.message : "Failed to disconnect", "error", { duration: 5000 });
     } finally {
       setIsDisconnecting(false);
     }

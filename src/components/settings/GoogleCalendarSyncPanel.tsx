@@ -166,7 +166,7 @@ export function GoogleCalendarSyncPanel({
     try {
       await onDisconnect();
     } catch (err) {
-      showFeedback(err instanceof Error ? err.message : "Failed to disconnect", "error");
+      showFeedback(err instanceof Error ? err.message : "Failed to disconnect", "error", { duration: 5000 });
     } finally {
       setIsDisconnecting(false);
     }
@@ -176,9 +176,9 @@ export function GoogleCalendarSyncPanel({
     setIsSyncing(true);
     try {
       const result = await onSync();
-      showFeedback(result.message, "success");
+      showFeedback(result.message, "success", { duration: 5000 });
     } catch (err) {
-      showFeedback(err instanceof Error ? err.message : "Failed to sync", "error");
+      showFeedback(err instanceof Error ? err.message : "Failed to sync", "error", { duration: 5000 });
     } finally {
       setIsSyncing(false);
     }
