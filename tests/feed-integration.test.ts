@@ -23,9 +23,9 @@ describe("Feed rework integration", () => {
     assert.equal(containerCount, 0, "feed page should have no container wrapper");
   });
 
-  it("feed layout handles the container wrapper", () => {
+  it("feed layout has grid structure (no redundant container)", () => {
     const layout = readFileSync("src/app/[orgSlug]/feed/layout.tsx", "utf-8");
-    assert.ok(layout.includes("container mx-auto"), "layout should have container wrapper");
+    assert.ok(!layout.includes("container mx-auto"), "layout should NOT have container wrapper — org layout handles padding");
     assert.ok(layout.includes("xl:grid-cols-"), "layout should have grid columns");
   });
 
