@@ -8,6 +8,7 @@ import { isOrgAdmin } from "@/lib/auth";
 import { resolveDataClient } from "@/lib/auth/dev-admin";
 import type { Member } from "@/types/database";
 import { LinkedInProfileLink } from "@/components/shared";
+import { ConnectedAccountsSection } from "@/components/members/ConnectedAccountsSection";
 
 interface MemberDetailPageProps {
   params: Promise<{ orgSlug: string; memberId: string }>;
@@ -60,6 +61,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
   const isAdmin = await isOrgAdmin(org.id);
   const currentUserId = user?.id ?? null;
   const canEdit = isAdmin || (currentUserId && memberUserId === currentUserId);
+  const isOwnProfile = currentUserId !== null && currentUserId === memberUserId;
 
   return (
     <div className="animate-fade-in" data-testid="member-detail">
@@ -193,6 +195,10 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
           />
         )}
       </div>
+
+      {isOwnProfile && (
+        <ConnectedAccountsSection orgSlug={orgSlug} orgId={org.id} orgName={org.name} />
+      )}
     </div>
   );
 }
