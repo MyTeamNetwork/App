@@ -73,7 +73,7 @@ export default async function FeedPostDetailPage({
   }
 
   const serviceClient = createServiceClient();
-  const mediaMap = await fetchMediaForEntities(serviceClient, "feed_post", [postId]);
+  const mediaMap = await fetchMediaForEntities(serviceClient, "feed_post", [postId], orgCtx.organization.id);
   const postMedia = mediaMap.get(postId) ?? [];
 
   return (

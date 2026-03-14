@@ -6,14 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { LikeButton } from "./LikeButton";
 import { PostMedia } from "./PostMedia";
-import type { Database } from "@/types/database";
-import type { MediaAttachment } from "@/lib/media/fetch";
-
-type PostWithAuthor = Database["public"]["Tables"]["feed_posts"]["Row"] & {
-  author: { name: string } | null;
-  liked_by_user: boolean;
-  media?: MediaAttachment[];
-};
+import type { PostWithAuthor } from "./types";
 
 interface PostDetailProps {
   post: PostWithAuthor;

@@ -1,6 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentUser } from "@/lib/auth/roles";
-import { resolveDataClient } from "@/lib/auth/dev-admin";
 import { filterAnnouncementsForUser } from "@/lib/announcements";
 import { UpcomingEventsWidget } from "./UpcomingEventsWidget";
 import { RecentAnnouncementsWidget } from "./RecentAnnouncementsWidget";
@@ -14,20 +12,17 @@ interface FeedSidebarProps {
   role: OrgRole | null;
   status: string | null;
   userId: string | null;
-  isDevAdmin: boolean;
 }
 
 export async function FeedSidebar({ orgSlug, orgId, role, status, userId }: FeedSidebarProps) {
   const supabase = await createClient();
-  const user = await getCurrentUser();
-  const queryClient = resolveDataClient(user, supabase, "view_org");
 
   const [
-    { data: upcomingEvents },
-    { data: recentAnnouncements },
-    { data: newMembers },
+    { data: upcomingEvents, error: eventsError },
+    { data: recentAnnouncements, error: announcementsError },
+    { data: newMembers, error: membersError },
   ] = await Promise.all([
-    queryClient
+    supabase
       .from("events")
       .select("id, title, start_date")
       .eq("organization_id", orgId)
@@ -35,14 +30,14 @@ export async function FeedSidebar({ orgSlug, orgId, role, status, userId }: Feed
       .gte("start_date", new Date().toISOString())
       .order("start_date")
       .limit(3),
-    queryClient
+    supabase
       .from("announcements")
       .select("id, title, body, published_at, audience, audience_user_ids")
       .eq("organization_id", orgId)
       .is("deleted_at", null)
       .order("published_at", { ascending: false })
       .limit(5),
-    queryClient
+    supabase
       .from("members")
       .select("id, first_name, last_name, photo_url, created_at")
       .eq("organization_id", orgId)
@@ -51,6 +46,10 @@ export async function FeedSidebar({ orgSlug, orgId, role, status, userId }: Feed
       .order("created_at", { ascending: false })
       .limit(5),
   ]);
+
+  if (eventsError) console.error("[FeedSidebar] events query failed:", eventsError.message);
+  if (announcementsError) console.error("[FeedSidebar] announcements query failed:", announcementsError.message);
+  if (membersError) console.error("[FeedSidebar] members query failed:", membersError.message);
 
   const visibleAnnouncements = filterAnnouncementsForUser(
     recentAnnouncements as Announcement[] | null,

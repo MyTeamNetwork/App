@@ -65,7 +65,7 @@ export default async function FeedPage({
   // Fetch media attachments for all posts
   const serviceClient = createServiceClient();
   const mediaMap = postIds.length > 0
-    ? await fetchMediaForEntities(serviceClient, "feed_post", postIds)
+    ? await fetchMediaForEntities(serviceClient, "feed_post", postIds, orgCtx.organization.id)
     : new Map();
 
   // Augment posts with liked_by_user and media

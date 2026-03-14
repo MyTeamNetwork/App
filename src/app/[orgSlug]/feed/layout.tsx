@@ -1,5 +1,4 @@
-import { getOrgContext, getCurrentUser } from "@/lib/auth/roles";
-import { canDevAdminPerform } from "@/lib/auth/dev-admin";
+import { getOrgContext } from "@/lib/auth/roles";
 import { FeedSidebar } from "@/components/feed/FeedSidebar";
 
 interface FeedLayoutProps {
@@ -11,10 +10,7 @@ export default async function FeedLayout({ children, params }: FeedLayoutProps) 
   const { orgSlug } = await params;
   const orgCtx = await getOrgContext(orgSlug);
 
-  if (!orgCtx.organization) return null;
-
-  const user = await getCurrentUser();
-  const isDevAdmin = canDevAdminPerform(user, "view_org");
+  if (!orgCtx.organization || !orgCtx.role) return null;
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_300px] gap-6">
@@ -29,7 +25,6 @@ export default async function FeedLayout({ children, params }: FeedLayoutProps) 
               role={orgCtx.role}
               status={orgCtx.status}
               userId={orgCtx.userId}
-              isDevAdmin={isDevAdmin}
             />
           </div>
         </aside>
