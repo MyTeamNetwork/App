@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { OrgSidebar } from "@/components/layout/OrgSidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { GracePeriodBanner } from "@/components/layout/GracePeriodBanner";
@@ -218,7 +218,7 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
       <MobileNav organization={organization} role={orgContext.role} isDevAdmin={isDevAdmin} hasAlumniAccess={orgContext.hasAlumniAccess} hasParentsAccess={orgContext.hasParentsAccess} />
       {!isDevAdmin && <ConsentModal />}
 
-      <main className={`lg:ml-64 p-4 lg:p-8 pt-20 lg:pt-8 ${orgContext.gracePeriod.isInGracePeriod || orgContext.gracePeriod.isCanceling ? "mt-12" : ""}`}>
+      <main className={`lg:ml-64 ${(await headers()).get("x-pathname")?.includes("/messages") ? "h-[calc(100dvh-4rem)] lg:h-dvh overflow-hidden pt-16 lg:pt-0" : "p-4 lg:p-8 pt-20 lg:pt-8"} ${orgContext.gracePeriod.isInGracePeriod || orgContext.gracePeriod.isCanceling ? "mt-12" : ""}`}>
         {children}
       </main>
 

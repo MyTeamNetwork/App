@@ -417,6 +417,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  response.headers.set("x-pathname", pathname);
   return response;
 }
 

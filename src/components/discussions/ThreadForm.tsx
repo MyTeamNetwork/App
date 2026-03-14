@@ -57,7 +57,7 @@ export function ThreadForm({ orgId, orgSlug }: ThreadFormProps) {
       }
 
       // Redirect to the discussions list with fresh data
-      router.replace(`/${orgSlug}/discussions`);
+      router.replace(`/${orgSlug}/messages`);
       router.refresh();
     } catch (err) {
       setError("An unexpected error occurred");
@@ -106,7 +106,7 @@ export function ThreadForm({ orgId, orgSlug }: ThreadFormProps) {
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Creating..." : "Create Thread"}
           </Button>
-          <Button type="button" variant="ghost" onClick={() => router.push(`/${orgSlug}/discussions`)} disabled={isSubmitting}>
+          <Button type="button" variant="ghost" onClick={() => router.push(`/${orgSlug}/messages`)} disabled={isSubmitting}>
             Cancel
           </Button>
         </div>

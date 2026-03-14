@@ -49,7 +49,7 @@ export function ThreadList({ threads, orgSlug, pagination }: ThreadListProps) {
     <div className="space-y-4">
       {threads.map((thread) => (
         <Card key={thread.id} className="p-4 hover:shadow-md transition-shadow">
-          <Link href={`/${orgSlug}/discussions/${thread.id}`} className="block">
+          <Link href={`/${orgSlug}/messages/threads/${thread.id}`} className="block">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
@@ -89,7 +89,7 @@ export function ThreadList({ threads, orgSlug, pagination }: ThreadListProps) {
       {pagination && pagination.totalPages > 1 && (
         <div className="flex justify-center gap-2 pt-4">
           {pagination.page > 1 && (
-            <Link href={`/${orgSlug}/discussions?page=${pagination.page - 1}`}>
+            <Link href={`/${orgSlug}/messages?page=${pagination.page - 1}`}>
               <Button variant="ghost" size="sm">
                 Previous
               </Button>
@@ -99,7 +99,7 @@ export function ThreadList({ threads, orgSlug, pagination }: ThreadListProps) {
             Page {pagination.page} of {pagination.totalPages}
           </span>
           {pagination.page < pagination.totalPages && (
-            <Link href={`/${orgSlug}/discussions?page=${pagination.page + 1}`}>
+            <Link href={`/${orgSlug}/messages?page=${pagination.page + 1}`}>
               <Button variant="ghost" size="sm">
                 Next
               </Button>

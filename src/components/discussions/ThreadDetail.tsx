@@ -87,7 +87,7 @@ export function ThreadDetail({ thread, replies, isAdmin, orgSlug }: ThreadDetail
       });
 
       if (response.ok) {
-        router.push(`/${orgSlug}/discussions`);
+        router.push(`/${orgSlug}/messages`);
       }
     } catch (error) {
       setIsUpdating(false);
