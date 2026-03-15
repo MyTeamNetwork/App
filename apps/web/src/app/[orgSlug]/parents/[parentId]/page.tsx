@@ -8,7 +8,6 @@ import { getOrgContext, getOrgRole } from "@/lib/auth/roles";
 import { canEditNavItem } from "@/lib/navigation/permissions";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import type { Organization } from "@/types/database";
-import { LinkedInProfileLink } from "@/components/shared";
 
 // Extends the generated Row with fields added by the 20260609000000 migration
 interface ParentRow {
@@ -220,7 +219,18 @@ export default async function ParentDetailPage({ params }: ParentDetailPageProps
             <div>
               <dt className="text-sm text-muted-foreground">LinkedIn</dt>
               <dd className="text-foreground font-medium">
-                <LinkedInProfileLink linkedinUrl={parent.linkedin_url} />
+                {parent.linkedin_url ? (
+                  <a
+                    href={parent.linkedin_url}
+                    className="text-org-primary hover:underline break-all"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View profile
+                  </a>
+                ) : (
+                  "—"
+                )}
               </dd>
             </div>
             <div>

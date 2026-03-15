@@ -236,9 +236,9 @@ export async function middleware(request: NextRequest) {
   // API routes: keep JSON 401 instead of HTML redirect
   if (pathname.startsWith("/api/")) {
     if (!user) {
-      const corsHeaders = process.env.NODE_ENV === "development"
+      const corsHeaders: HeadersInit | undefined = process.env.NODE_ENV === "development"
         ? { "Access-Control-Allow-Origin": "*" }
-        : {};
+        : undefined;
       return NextResponse.json(
         { error: "Unauthorized", message: "Authentication required" },
         { status: 401, headers: corsHeaders }
