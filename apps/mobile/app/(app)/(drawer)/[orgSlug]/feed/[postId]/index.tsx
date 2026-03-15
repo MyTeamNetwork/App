@@ -196,7 +196,7 @@ export default function PostDetailScreen() {
       label: "Open in Web",
       icon: <ExternalLink size={20} color={NEUTRAL.foreground} />,
       onPress: () => {
-        Linking.openURL(`https://www.myteamnetwork.com/${orgSlug}/feed`);
+        Linking.openURL(`https://www.myteamnetwork.com/${orgSlug}/feed/${postId}`);
       },
     });
 

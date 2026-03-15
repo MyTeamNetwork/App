@@ -45,6 +45,7 @@ export function useComments(postId: string | undefined, orgId: string | null): U
       if (isMountedRef.current) {
         const message = (e as Error).message || "Failed to load comments";
         setError(message);
+        showToast(message, "error");
         sentry.captureException(e as Error, { context: "useComments", postId });
       }
     } finally {

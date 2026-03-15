@@ -1,6 +1,6 @@
 import React from "react";
 import { Text, Pressable, StyleSheet } from "react-native";
-import { SEMANTIC, SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
+import { NEUTRAL, SEMANTIC, SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 
 interface NewPostsBannerProps {
@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
   },
   text: {
     ...TYPOGRAPHY.labelMedium,
-    color: "#ffffff",
+    color: NEUTRAL.surface,
     fontWeight: "600",
   },
 });

@@ -110,13 +110,6 @@ export default function FeedScreen() {
     [router, orgSlug]
   );
 
-  const handleLikeToggle = useCallback(
-    (postId: string) => {
-      toggleLike(postId);
-    },
-    [toggleLike]
-  );
-
   const handleAcceptPending = useCallback(() => {
     acceptPendingPosts();
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -131,10 +124,10 @@ export default function FeedScreen() {
       <PostCard
         post={item}
         onPress={handlePostPress}
-        onLikeToggle={handleLikeToggle}
+        onLikeToggle={toggleLike}
       />
     ),
-    [handlePostPress, handleLikeToggle]
+    [handlePostPress, toggleLike]
   );
 
   // Feature flag disabled

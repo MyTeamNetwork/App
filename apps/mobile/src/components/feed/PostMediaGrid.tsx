@@ -52,7 +52,7 @@ export function PostMediaGrid({ media }: PostMediaGridProps) {
     return () => {
       cancelled = true;
     };
-  }, [media]);
+  }, [media.map((m) => m.id).join(",")]);
 
   const items = media.slice(0, 4);
   const count = items.length;
