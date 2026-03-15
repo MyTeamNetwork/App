@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { X } from "lucide-react-native";
-import { supabase } from "@/lib/supabase";
+import * as ImagePicker from "expo-image-picker";
+import { useMediaUpload } from "@/hooks/useMediaUpload";
+import { MediaPickerBar } from "@/components/feed/MediaPickerBar";
+import { fetchWithAuth } from "@/lib/web-api";
 import { useOrg } from "@/contexts/OrgContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrgRole } from "@/hooks/useOrgRole";
@@ -24,6 +27,7 @@ import { NEUTRAL, SEMANTIC, SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 
 const MAX_BODY_LENGTH = 5000;
+const MAX_IMAGES = 4;
 
 export default function NewPostScreen() {
   const router = useRouter();
@@ -36,20 +40,74 @@ export default function NewPostScreen() {
   const [submitting, setSubmitting] = useState(false);
   const styles = useMemo(() => createStyles(), []);
 
-  const canSubmit = body.trim().length > 0 && !submitting && canCreatePost;
+  const { images, isUploading, addImages, removeImage, uploadAll, reset, setMountedRef } =
+    useMediaUpload(orgId);
+
+  useEffect(() => {
+    setMountedRef(true);
+    return () => setMountedRef(false);
+  }, [setMountedRef]);
+
+  const canSubmit = body.trim().length > 0 && !submitting && !isUploading && canCreatePost;
   const remaining = MAX_BODY_LENGTH - body.length;
+  const submitLabel = isUploading
+    ? "Uploading..."
+    : submitting
+      ? "Posting..."
+      : "Post";
+
+  const handlePickImages = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      showToast("Photo library access is required to attach images", "error");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.85,
+      selectionLimit: MAX_IMAGES - images.length,
+    });
+
+    if (result.canceled || !result.assets) return;
+    addImages(result.assets);
+  }, [images.length, addImages]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit || !userId || !orgId) return;
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.from("feed_posts").insert({
-        organization_id: orgId,
-        author_id: userId,
-        body: body.trim(),
+      // Upload images first (if any)
+      let mediaIds: string[] = [];
+      if (images.length > 0) {
+        mediaIds = await uploadAll();
+        // If all uploads failed, abort
+        if (mediaIds.length === 0 && images.length > 0) {
+          showToast("Image upload failed. Please try again.", "error");
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      // Create post via web API (handles media linking)
+      const response = await fetchWithAuth("/api/feed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orgId,
+          body: body.trim(),
+          mediaIds,
+        }),
       });
-      if (error) throw error;
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to create post");
+      }
+
+      reset();
       showToast("Post created");
       router.back();
     } catch (e) {
@@ -59,7 +117,7 @@ export default function NewPostScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [canSubmit, userId, orgId, body, router]);
+  }, [canSubmit, userId, orgId, body, images, uploadAll, reset, router]);
 
   if (!canCreatePost) {
     return (
@@ -116,11 +174,11 @@ export default function NewPostScreen() {
               onPress={handleSubmit}
               disabled={!canSubmit}
               style={[styles.postButton, !canSubmit && styles.postButtonDisabled]}
-              accessibilityLabel="Post"
+              accessibilityLabel={submitLabel}
               accessibilityRole="button"
             >
               <Text style={[styles.postButtonText, !canSubmit && styles.postButtonTextDisabled]}>
-                Post
+                {submitLabel}
               </Text>
             </Pressable>
           </View>
@@ -149,6 +207,13 @@ export default function NewPostScreen() {
             textAlignVertical="top"
           />
         </ScrollView>
+        <MediaPickerBar
+          images={images}
+          isUploading={isUploading}
+          onAddPress={handlePickImages}
+          onRemove={removeImage}
+          maxImages={MAX_IMAGES}
+        />
         {remaining < 1000 && (
           <View style={styles.charCounter}>
             <Text
