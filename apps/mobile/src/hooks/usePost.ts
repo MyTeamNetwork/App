@@ -31,7 +31,7 @@ export function usePost(postId: string | undefined): UsePostReturn {
       // Fetch post with author
       const { data: postData, error: postError } = await supabase
         .from("feed_posts")
-        .select("*, author:users!feed_posts_author_id_fkey(id, full_name, avatar_url)")
+        .select("*, author:users!feed_posts_author_id_fkey(id, full_name:name, avatar_url)")
         .eq("id", postId)
         .is("deleted_at", null)
         .single();

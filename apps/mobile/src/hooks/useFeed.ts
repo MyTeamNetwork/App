@@ -69,7 +69,7 @@ export function useFeed(orgId: string | null): UseFeedReturn {
           count,
         } = await supabase
           .from("feed_posts")
-          .select("*, author:users!feed_posts_author_id_fkey(id, full_name, avatar_url)", {
+          .select("*, author:users!feed_posts_author_id_fkey(id, full_name:name, avatar_url)", {
             count: "exact",
           })
           .eq("organization_id", orgId)

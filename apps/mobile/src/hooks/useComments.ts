@@ -25,7 +25,7 @@ export function useComments(postId: string | undefined, orgId: string | null): U
 
       const { data, error: fetchError } = await supabase
         .from("feed_comments")
-        .select("*, author:users!feed_comments_author_id_fkey(id, full_name, avatar_url)")
+        .select("*, author:users!feed_comments_author_id_fkey(id, full_name:name, avatar_url)")
         .eq("post_id", postId)
         .is("deleted_at", null)
         .order("created_at", { ascending: true });

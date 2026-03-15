@@ -101,6 +101,12 @@ function OrgLayoutInner() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="feed"
+        options={{
+          headerShown: false,
+        }}
+      />
       {/* Standalone screens and folders without their own _layout.tsx */}
       <Stack.Screen
         name="competitions/new"
