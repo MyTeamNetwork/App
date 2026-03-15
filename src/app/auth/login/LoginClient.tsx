@@ -48,6 +48,11 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
   const isSocialLoading = isGoogleLoading || isLinkedInLoading;
 
   const handleSocialLogin = async (provider: "google" | typeof LINKEDIN_OIDC_PROVIDER) => {
+    if (!isVerified || !captchaToken) {
+      setError("Please complete the captcha verification");
+      return;
+    }
+
     const setLoading = provider === "google" ? setIsGoogleLoading : setIsLinkedInLoading;
     setLoading(true);
     setError(null);
@@ -63,6 +68,7 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
     if (error) {
       setError(error.message);
       setLoading(false);
+      captchaRef.current?.reset();
     }
   };
 

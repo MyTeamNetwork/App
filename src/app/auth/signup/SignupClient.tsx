@@ -153,6 +153,11 @@ export function SignupClient({
   };
 
   const handleSocialSignup = async (provider: "google" | typeof LINKEDIN_OIDC_PROVIDER) => {
+    if (!isVerified || !captchaToken) {
+      setError("Please complete the captcha verification");
+      return;
+    }
+
     if (!ageBracket || isMinor === null || !ageToken) {
       setError("Please complete the date of birth step first");
       return;
@@ -167,12 +172,15 @@ export function SignupClient({
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: callbackUrl },
+      options: {
+        redirectTo: callbackUrl,
+      },
     });
 
     if (error) {
       setError(error.message);
       setLoading(false);
+      captchaRef.current?.reset();
     }
     // Don't clear age gate data here — user may be bounced back if OAuth fails.
     // The useEffect at mount restores age gate state from sessionStorage.
