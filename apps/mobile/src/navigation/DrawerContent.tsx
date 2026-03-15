@@ -21,6 +21,7 @@ import {
   Home,
   LogOut,
   MessageCircle,
+  Newspaper,
   Receipt,
   Settings,
   SlidersHorizontal,
@@ -30,6 +31,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { signOut } from "@/lib/supabase";
 import { getWebAppUrl } from "@/lib/web-api";
+import { isFeatureEnabled } from "@/lib/featureFlags";
 import { spacing, fontSize, fontWeight } from "@/lib/theme";
 import { NEUTRAL, SEMANTIC } from "@/lib/design-tokens";
 
@@ -111,12 +113,31 @@ export function DrawerContent(props: DrawerContentComponentProps) {
       { label: "Forms", href: `/(app)/${slug}/forms`, icon: ClipboardList },
     ];
 
-    return [
+    // Community section (gated by feature flag)
+    const communityItems: NavItem[] = [];
+    if (isFeatureEnabled("socialFeedEnabled")) {
+      communityItems.push({
+        label: "Feed",
+        icon: Newspaper,
+        href: `/(app)/(drawer)/${slug}/feed`,
+      });
+    }
+
+    const sections: NavSection[] = [
       { id: "main", title: null, items: mainItems },
+    ];
+
+    if (communityItems.length > 0) {
+      sections.push({ id: "community", title: "Community", items: communityItems });
+    }
+
+    sections.push(
       { id: "training", title: "Training", items: trainingItems },
       { id: "money", title: "Money", items: moneyItems },
       { id: "other", title: "Other", items: otherItems },
-    ];
+    );
+
+    return sections;
   }, [slug, permissions.canViewAlumni]);
 
   // Pinned footer items
