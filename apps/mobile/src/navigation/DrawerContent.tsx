@@ -11,6 +11,7 @@ import * as Linking from "expo-linking";
 import {
   Award,
   BookOpen,
+  Briefcase,
   Building2,
   ClipboardList,
   DollarSign,
@@ -113,8 +114,14 @@ export function DrawerContent(props: DrawerContentComponentProps) {
       { label: "Forms", href: `/(app)/${slug}/forms`, icon: ClipboardList },
     ];
 
-    // Community section (gated by feature flag)
-    const communityItems: NavItem[] = [];
+    // Community section
+    const communityItems: NavItem[] = [
+      {
+        label: "Jobs",
+        icon: Briefcase,
+        href: `/(app)/${slug}/jobs`,
+      },
+    ];
     if (isFeatureEnabled("socialFeedEnabled")) {
       communityItems.push({
         label: "Feed",
