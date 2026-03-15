@@ -1,9 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import { fetchWithAuth } from "@/lib/web-api";
 import type { AlumniBucket } from "@teammeet/types";
-
-// The web app URL for API calls
-const WEB_API_URL = process.env.EXPO_PUBLIC_WEB_URL || "https://www.myteamnetwork.com";
 
 export interface SubscriptionData {
   bucket: AlumniBucket;
@@ -40,19 +38,11 @@ export function useSubscription(organizationId: string | null): UseSubscriptionR
       setLoading(true);
       setError(null);
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData?.session?.access_token) {
-        throw new Error("Not authenticated");
-      }
-
-      const response = await fetch(
-        `${WEB_API_URL}/api/organizations/${organizationId}/subscription`,
+      const response = await fetchWithAuth(
+        `/api/organizations/${organizationId}/subscription`,
         {
           method: "GET",
-          headers: {
-            Authorization: `Bearer ${sessionData.session.access_token}`,
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
         }
       );
 
