@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { extname } from "path";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getUserFromRequest } from "@/lib/supabase/get-user-from-request";
 import { createServiceClient } from "@/lib/supabase/service";
 import { uploadIntentSchema } from "@/lib/schemas/media";
 import { validateJson, validationErrorResponse, ValidationError } from "@/lib/security/validation";
@@ -18,8 +18,7 @@ const BUCKET = "org-media";
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user, supabase } = await getUserFromRequest(request);
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
