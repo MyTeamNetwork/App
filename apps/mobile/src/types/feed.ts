@@ -10,7 +10,12 @@ export interface PostAuthor {
   avatar_url: string | null;
 }
 
-/** Media attachment from media_uploads join */
+/**
+ * Lightweight media attachment shape from the media_uploads join.
+ * Intentionally different from MediaItem in @teammeet/types — this is a
+ * minimal join projection (id, path, mime, filename) used in feed posts,
+ * not the full media asset record.
+ */
 export interface MediaAttachment {
   id: string;
   storage_path: string;
