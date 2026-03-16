@@ -41,7 +41,7 @@ export async function POST() {
 
     const oauthState = createLinkedInOAuthState({
       userId: user.id,
-      redirectPath: "/settings/linkedin",
+      redirectPath: "/settings/connected-accounts",
     });
 
     const redirectUrl = getLinkedInAuthUrl(oauthState.state);

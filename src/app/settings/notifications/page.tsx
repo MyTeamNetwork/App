@@ -206,15 +206,6 @@ function NotificationSettingsContent() {
         </p>
       </Card>
 
-      {/* LinkedIn info card */}
-      <Card className="p-5 space-y-3">
-        <p className="font-medium text-foreground">LinkedIn &amp; Connected Accounts</p>
-        <p className="text-sm text-muted-foreground">
-          Manage your LinkedIn profile URL, OAuth connections, and Google Calendar sync from
-          the Connected Accounts section on your member profile page.
-        </p>
-      </Card>
-
       {/* Email Notifications Section */}
       <div className="space-y-2">
         <h2 className="text-lg font-semibold text-foreground">Email Notifications</h2>

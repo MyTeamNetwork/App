@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
+  { href: "/settings/connected-accounts", label: "Connected Accounts" },
   { href: "/settings/notifications", label: "Notifications" },
 ];
 
