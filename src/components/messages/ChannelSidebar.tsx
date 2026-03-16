@@ -10,7 +10,7 @@ interface ChatGroupItem {
   name: string;
   description: string | null;
   is_default: boolean;
-  last_activity_at?: string | null;
+  updated_at?: string | null;
 }
 
 interface ThreadItem {
@@ -167,11 +167,13 @@ export function ChannelSidebar({
                         : "border-l-2 border-transparent text-muted-foreground hover:bg-muted/30 hover:text-foreground"
                     }`}
                   >
-                    <span className="text-muted-foreground font-medium">#</span>
+                    <svg className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                    </svg>
                     <span className="flex-1 truncate font-medium">{group.name}</span>
-                    {group.last_activity_at && (
+                    {group.updated_at && (
                       <span className="text-xs text-muted-foreground flex-shrink-0">
-                        {formatRelativeTime(group.last_activity_at)}
+                        {formatRelativeTime(group.updated_at)}
                       </span>
                     )}
                   </Link>
