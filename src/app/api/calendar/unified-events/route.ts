@@ -231,10 +231,11 @@ export async function GET(request: Request) {
       try {
         const { data: eventsData, error: eventsError } = await supabase
           .from("events")
-          .select("id, title, start_date, end_date, location, event_type, audience, is_philanthropy, recurrence_group_id, deleted_at, organization_id")
+          .select("id, title, start_date, end_date, location, event_type, is_philanthropy, recurrence_group_id")
           .eq("organization_id", orgId)
           .is("deleted_at", null)
           .lte("start_date", end.toISOString())
+          .or(`end_date.gte.${start.toISOString()},end_date.is.null`)
           .order("start_date", { ascending: true });
 
         if (eventsError) {
@@ -319,10 +320,11 @@ export async function GET(request: Request) {
       try {
         const { data: calendarData, error: calendarError } = await supabase
           .from("calendar_events")
-          .select("id, title, start_at, end_at, all_day, location, feed_id, scope, user_id, calendar_feeds(provider, google_calendar_id)")
+          .select("id, title, start_at, end_at, all_day, location, feed_id, scope, user_id, calendar_feeds(provider)")
           .eq("organization_id", orgId)
           .or(`scope.eq.org,user_id.eq.${user.id}`)
           .lte("start_at", end.toISOString())
+          .or(`end_at.gte.${start.toISOString()},end_at.is.null`)
           .order("start_at", { ascending: true });
 
         if (calendarError) {
@@ -363,7 +365,7 @@ export async function GET(request: Request) {
       try {
         const { data: classesData, error: classesError } = await supabase
           .from("academic_schedules")
-          .select("*")
+          .select("id, title, start_date, end_date, start_time, end_time, occurrence_type, day_of_week, day_of_month")
           .eq("organization_id", orgId)
           .eq("user_id", user.id)
           .is("deleted_at", null);

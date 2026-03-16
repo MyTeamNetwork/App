@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { ButtonLink } from "@/components/ui";
 
+// Static content — ISR revalidates every hour
+export const revalidate = 3600;
+
 type PrivacySection = {
   id: string;
   number: string;

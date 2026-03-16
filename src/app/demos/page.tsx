@@ -3,6 +3,9 @@ import Link from "next/link";
 import { ButtonLink } from "@/components/ui";
 import { LandingAnimations } from "@/components/marketing";
 
+// Static content — ISR revalidates every hour
+export const revalidate = 3600;
+
 type Demo = {
   title: string;
   description?: string;
