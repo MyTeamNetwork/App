@@ -364,6 +364,37 @@ export async function getMembersToReinstate(
   return (data || []) as GraduatingMember[];
 }
 
+// ---------------------------------------------------------------------------
+// Batch helpers — replace N+1 loops in the graduation cron
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch organization details for multiple IDs in a single query.
+ * Returns a Map keyed by org ID. Missing IDs are absent from the map.
+ */
+export async function batchGetOrganizations(
+  supabase: SupabaseClient<Database>,
+  orgIds: string[]
+): Promise<Map<string, OrgWithSlug>> {
+  if (orgIds.length === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("id, name, slug")
+    .in("id", orgIds);
+
+  if (error) {
+    throw new Error(`Failed to batch-fetch organizations: ${error.message}`);
+  }
+
+  const result = new Map<string, OrgWithSlug>();
+  for (const org of data ?? []) {
+    result.set(org.id, org as OrgWithSlug);
+  }
+  return result;
+}
+
+
 /**
  * Dry-run result for the graduation cron job.
  */
