@@ -224,8 +224,37 @@ export async function GET(request: Request) {
                     body: email.body,
                   });
                 }
-              } else if (!result.success) {
-                results.errors.push(`Failed to transition ${member.id}: ${result.error}`);
+              } else if (!result.success && !result.skipped) {
+                // The RPC rejected the transition — most likely quota was exceeded mid-batch
+                // (capacity snapshot was taken once per org, so a prior member in this same
+                // batch may have consumed the last slot). Fall back to revoking access.
+                const isQuotaError = result.error?.toLowerCase().includes("quota");
+                if (isQuotaError) {
+                  debugLog("graduation-cron", "quota exceeded mid-batch, falling back to revoke", {
+                    memberId: maskPII(member.id),
+                    orgId: maskPII(orgId),
+                    error: result.error,
+                  });
+                  const revokeResult = await revokeMemberAccess(supabase, member.id, member.user_id, orgId);
+
+                  if (revokeResult.success && !revokeResult.skipped) {
+                    results.accessRevoked++;
+                    const email = buildNoCapacityEmail(member, org, currentCount, limit!);
+
+                    // Keep emails sequential for Resend rate-limit safety
+                    for (const adminEmail of adminEmails) {
+                      await sendEmail({
+                        to: adminEmail,
+                        subject: email.subject,
+                        body: email.body,
+                      });
+                    }
+                  } else if (!revokeResult.success) {
+                    results.errors.push(`Failed to revoke ${member.id} after quota exceeded: ${revokeResult.error}`);
+                  }
+                } else {
+                  results.errors.push(`Failed to transition ${member.id}: ${result.error}`);
+                }
               }
             } else {
               // Revoke access

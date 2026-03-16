@@ -581,7 +581,12 @@ export async function getGraduationDryRun(
     getMembersNearingGraduation(supabase, 30),
   ]);
 
-  // Determine capacity per org for past-graduation members
+  // Determine capacity per org for past-graduation members.
+  // NOTE: This snapshot is taken once before any transitions occur, so it may be
+  // slightly optimistic for orgs near their quota limit. For example, an org at
+  // 249/250 with 3 graduating members would show all 3 in toAlumni, but the live
+  // cron run would transition only the first and revoke the remaining two. This is
+  // an acceptable approximation for a preview — dry-run does not write anything.
   const orgIds = [...new Set(pastGraduation.map((m) => m.organization_id))];
   const capacityMap = await batchCheckAlumniCapacity(supabase, orgIds);
   const capacityByOrg: Record<string, { hasCapacity: boolean; currentCount: number; limit: number | null }> = {};
