@@ -80,3 +80,36 @@ export function getCachedDonationStats(orgId: string) {
     { revalidate: 300, tags: [`donation-stats-${orgId}`] }
   )(orgId);
 }
+
+interface EnterpriseAlumniStatsRpc {
+  total_count: number;
+  org_stats: Array<{ name: string; slug: string; count: number }>;
+  top_industries: Array<{ name: string; count: number }>;
+  filter_options: {
+    years: number[];
+    industries: string[];
+    companies: string[];
+    cities: string[];
+    positions: string[];
+  };
+}
+
+/**
+ * Cached enterprise alumni stats via RPC. Revalidate on alumni data changes.
+ * Tag: `enterprise-alumni-stats-${enterpriseId}`
+ */
+export function getCachedEnterpriseAlumniStats(enterpriseId: string) {
+  return typedCache(
+    async (id: string) => {
+      const supabase = createServiceClient();
+      const { data, error } = await (supabase as any).rpc(
+        "get_enterprise_alumni_stats",
+        { p_enterprise_id: id }
+      ) as { data: EnterpriseAlumniStatsRpc | null; error: unknown };
+      if (error) throw new Error(`Enterprise alumni stats RPC failed`);
+      return data;
+    },
+    ["enterprise-alumni-stats", enterpriseId],
+    { revalidate: 300, tags: [`enterprise-alumni-stats-${enterpriseId}`] }
+  )(enterpriseId);
+}
