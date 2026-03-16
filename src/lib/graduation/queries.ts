@@ -433,7 +433,7 @@ export async function batchGetOrgAdminEmails(
     .in("id", userIds);
 
   if (usersError || !users) {
-    return result;
+    throw new Error(`Failed to batch-fetch admin user emails: ${usersError?.message ?? "no data"}`);
   }
 
   const emailById = new Map<string, string | null>();
