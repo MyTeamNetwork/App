@@ -453,6 +453,109 @@ export async function batchGetOrgAdminEmails(
   return result;
 }
 
+/**
+ * Result type for alumni capacity check.
+ */
+export interface CapacityResult {
+  hasCapacity: boolean;
+  currentCount: number;
+  limit: number | null;
+}
+
+/**
+ * Check alumni capacity for multiple organizations in 3 queries total.
+ * Mirrors the per-org logic in checkAlumniCapacity but batched.
+ */
+export async function batchCheckAlumniCapacity(
+  supabase: SupabaseClient<Database>,
+  orgIds: string[]
+): Promise<Map<string, CapacityResult>> {
+  if (orgIds.length === 0) return new Map();
+
+  // Query 1: subscriptions
+  const { data: subscriptions, error: subError } = await supabase
+    .from("organization_subscriptions")
+    .select("organization_id, alumni_bucket")
+    .in("organization_id", orgIds);
+
+  if (subError) {
+    throw new Error(`Failed to batch-check alumni capacity: ${subError.message}`);
+  }
+
+  // Build bucket map; orgs without a subscription default to "none"
+  const bucketByOrg = new Map<string, string>();
+  for (const sub of subscriptions ?? []) {
+    bucketByOrg.set(sub.organization_id as string, (sub.alumni_bucket as string) || "none");
+  }
+
+  // Query 2: alumni table counts (source of truth for quota)
+  const { data: alumniRows, error: alumniError } = await supabase
+    .from("alumni")
+    .select("organization_id")
+    .is("deleted_at", null)
+    .in("organization_id", orgIds);
+
+  if (alumniError) {
+    throw new Error(`Failed to batch-fetch alumni counts: ${alumniError.message}`);
+  }
+
+  const alumniCountByOrg = new Map<string, number>();
+  for (const row of alumniRows ?? []) {
+    const orgId = row.organization_id as string;
+    alumniCountByOrg.set(orgId, (alumniCountByOrg.get(orgId) ?? 0) + 1);
+  }
+
+  // Query 3: user_organization_roles counts (cross-reference)
+  const { data: roleRows, error: roleError } = await supabase
+    .from("user_organization_roles")
+    .select("organization_id")
+    .eq("role", "alumni")
+    .eq("status", "active")
+    .in("organization_id", orgIds);
+
+  const roleCountByOrg = new Map<string, number>();
+  if (!roleError) {
+    for (const row of roleRows ?? []) {
+      const orgId = row.organization_id as string;
+      roleCountByOrg.set(orgId, (roleCountByOrg.get(orgId) ?? 0) + 1);
+    }
+  }
+
+  const result = new Map<string, CapacityResult>();
+
+  for (const orgId of orgIds) {
+    const bucket = bucketByOrg.get(orgId) ?? "none";
+    const limit = getAlumniLimit(bucket as Parameters<typeof getAlumniLimit>[0]);
+
+    if (limit === null) {
+      result.set(orgId, { hasCapacity: true, currentCount: 0, limit: null });
+      continue;
+    }
+
+    const currentCount = alumniCountByOrg.get(orgId) ?? 0;
+    const roleCount = roleCountByOrg.get(orgId) ?? 0;
+
+    if (!roleError && roleCount !== currentCount) {
+      console.warn(
+        `[graduation] ALUMNI COUNT MISMATCH: org=${maskPII(orgId)} alumni_table=${currentCount} roles_table=${roleCount}. ` +
+        "The alumni table and user_organization_roles disagree. This may indicate a failed DB trigger (handle_org_member_sync)."
+      );
+    }
+
+    debugLog("graduation", "batchCheckAlumniCapacity", {
+      orgId: maskPII(orgId),
+      bucket,
+      limit,
+      alumniTableCount: currentCount,
+      rolesTableCount: roleCount,
+      hasCapacity: currentCount < limit,
+    });
+
+    result.set(orgId, { hasCapacity: currentCount < limit, currentCount, limit });
+  }
+
+  return result;
+}
 
 /**
  * Dry-run result for the graduation cron job.

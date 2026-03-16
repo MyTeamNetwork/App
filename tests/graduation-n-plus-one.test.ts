@@ -4,6 +4,7 @@ import { createSupabaseStub } from "./utils/supabaseStub.ts";
 import {
   batchGetOrganizations,
   batchGetOrgAdminEmails,
+  batchCheckAlumniCapacity,
 } from "../src/lib/graduation/queries.ts";
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,7 @@ describe("batchGetOrganizations", () => {
   });
 
   it("empty orgIds returns empty map without DB call", async () => {
+    // Seed data to verify we don't touch the DB
     stub.seed("organizations", [
       { id: "org1", name: "Org One", slug: "org-one" },
     ]);
@@ -116,6 +118,7 @@ describe("batchGetOrgAdminEmails", () => {
   });
 
   it("org with no admin roles maps to empty array", async () => {
+    // No roles seeded for org1 — it has no admins
     stub.seed("user_organization_roles", [
       { user_id: "u1", organization_id: "org2", role: "admin", status: "active" },
     ]);
@@ -165,5 +168,122 @@ describe("batchGetOrgAdminEmails", () => {
         return true;
       }
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 7: batchCheckAlumniCapacity
+// ---------------------------------------------------------------------------
+
+describe("batchCheckAlumniCapacity", () => {
+  let stub: ReturnType<typeof createSupabaseStub>;
+
+  beforeEach(() => {
+    stub = createSupabaseStub();
+  });
+
+  it("returns Map<string, CapacityResult> for all orgs", async () => {
+    stub.seed("organization_subscriptions", [
+      { organization_id: "org1", alumni_bucket: "0-250" },
+      { organization_id: "org2", alumni_bucket: "0-250" },
+    ]);
+    stub.seed("alumni", [
+      { organization_id: "org1", deleted_at: null },
+      { organization_id: "org1", deleted_at: null },
+    ]);
+    stub.seed("user_organization_roles", [
+      { organization_id: "org1", role: "alumni", status: "active" },
+      { organization_id: "org1", role: "alumni", status: "active" },
+    ]);
+
+    const result = await batchCheckAlumniCapacity(stub as never, ["org1", "org2"]);
+
+    assert.ok(result instanceof Map, "Should return a Map");
+    assert.strictEqual(result.size, 2, "Should have entries for both orgs");
+
+    const org1 = result.get("org1");
+    assert.ok(org1, "org1 should be in the map");
+    assert.strictEqual(org1.hasCapacity, true, "org1 should have capacity (2 < 250)");
+    assert.strictEqual(org1.currentCount, 2, "org1 should have currentCount 2");
+    assert.strictEqual(org1.limit, 250, "org1 limit should be 250");
+
+    const org2 = result.get("org2");
+    assert.ok(org2, "org2 should be in the map");
+    assert.strictEqual(org2.hasCapacity, true, "org2 should have capacity (0 < 250)");
+    assert.strictEqual(org2.currentCount, 0, "org2 should have currentCount 0");
+  });
+
+  it("alumni_bucket 'none' → hasCapacity: false", async () => {
+    stub.seed("organization_subscriptions", [
+      { organization_id: "org1", alumni_bucket: "none" },
+    ]);
+    // No alumni seeded — count is 0, but limit is also 0
+
+    const result = await batchCheckAlumniCapacity(stub as never, ["org1"]);
+
+    const org1 = result.get("org1");
+    assert.ok(org1, "org1 should be in the map");
+    assert.strictEqual(org1.hasCapacity, false, "bucket 'none' means no capacity");
+    assert.strictEqual(org1.limit, 0, "limit should be 0 for 'none' bucket");
+  });
+
+  it("unlimited bucket → hasCapacity: true, limit: null", async () => {
+    stub.seed("organization_subscriptions", [
+      { organization_id: "org1", alumni_bucket: "5000+" },
+    ]);
+    // Seed many alumni — should still have capacity
+    for (let i = 0; i < 10; i++) {
+      stub.seed("alumni", [{ organization_id: "org1", deleted_at: null }]);
+    }
+
+    const result = await batchCheckAlumniCapacity(stub as never, ["org1"]);
+
+    const org1 = result.get("org1");
+    assert.ok(org1, "org1 should be in the map");
+    assert.strictEqual(org1.hasCapacity, true, "unlimited bucket should always have capacity");
+    assert.strictEqual(org1.limit, null, "limit should be null for unlimited bucket");
+  });
+
+  it("cross-references alumni table count vs roles table count", async () => {
+    stub.seed("organization_subscriptions", [
+      { organization_id: "org1", alumni_bucket: "0-250" },
+    ]);
+    // Alumni table: 3 records
+    stub.seed("alumni", [
+      { organization_id: "org1", deleted_at: null },
+      { organization_id: "org1", deleted_at: null },
+      { organization_id: "org1", deleted_at: null },
+    ]);
+    // Roles table: 2 records (mismatch — will trigger warning)
+    stub.seed("user_organization_roles", [
+      { organization_id: "org1", role: "alumni", status: "active" },
+      { organization_id: "org1", role: "alumni", status: "active" },
+    ]);
+
+    // This should succeed but log a warning; the alumni table count is authoritative
+    const result = await batchCheckAlumniCapacity(stub as never, ["org1"]);
+
+    const org1 = result.get("org1");
+    assert.ok(org1, "org1 should be in the map");
+    // alumni table is authoritative: 3 records
+    assert.strictEqual(org1.currentCount, 3, "currentCount should use alumni table as source of truth");
+    assert.strictEqual(org1.hasCapacity, true, "3 < 250, so has capacity");
+  });
+
+  it("empty orgIds returns empty map", async () => {
+    const result = await batchCheckAlumniCapacity(stub as never, []);
+
+    assert.ok(result instanceof Map, "Should return a Map");
+    assert.strictEqual(result.size, 0, "Empty input → empty map");
+  });
+
+  it("org with no subscription defaults to 'none' bucket → hasCapacity: false", async () => {
+    // No subscription seeded for org1
+    const result = await batchCheckAlumniCapacity(stub as never, ["org1"]);
+
+    const org1 = result.get("org1");
+    assert.ok(org1, "org1 should still be in the map");
+    assert.strictEqual(org1.hasCapacity, false, "No subscription → no capacity");
+    assert.strictEqual(org1.limit, 0, "No subscription → limit 0");
   });
 });
