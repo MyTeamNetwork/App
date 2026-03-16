@@ -45,7 +45,7 @@ BEGIN
       a.graduation_year,
       lower(trim(a.industry))     AS industry_norm,
       lower(trim(a.current_company)) AS company_norm,
-      lower(trim(a.city))         AS city_norm,
+      lower(trim(a.current_city)) AS city_norm,
       lower(trim(a.position_title)) AS position_norm
     FROM public.alumni a
     INNER JOIN enterprise_orgs eo ON eo.org_id = a.organization_id
