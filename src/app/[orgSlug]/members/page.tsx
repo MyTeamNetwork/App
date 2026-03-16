@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Badge, Avatar, Button, EmptyState } from "@/components/ui";
 import { PageHeader } from "@/components/layout";
@@ -33,15 +34,11 @@ interface MemberWithAdminFlag {
 export default async function MembersPage({ params, searchParams }: MembersPageProps) {
   const { orgSlug } = await params;
   const filters = await searchParams;
+  const { organization: org, isAdmin } = await getOrgContext(orgSlug);
+  if (!org) notFound();
+
   const supabase = await createClient();
-  const [user, orgCtx] = await Promise.all([
-    getCurrentUser(),
-    getOrgContext(orgSlug),
-  ]);
-
-  const { organization: org, isAdmin } = orgCtx;
-  if (!org) return null;
-
+  const user = await getCurrentUser();
   const dataClient = resolveDataClient(user, supabase, "view_members");
 
   // Build query with filters
