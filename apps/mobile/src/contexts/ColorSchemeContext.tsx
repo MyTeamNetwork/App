@@ -102,8 +102,8 @@ export function ColorSchemeProvider({ children }: { children: React.ReactNode })
     colorScheme,
     preference,
     setPreference,
-    neutral: colorScheme === "dark" ? (NEUTRAL_DARK as unknown as NeutralColors) : NEUTRAL,
-    semantic: colorScheme === "dark" ? (SEMANTIC_DARK as unknown as SemanticColors) : SEMANTIC,
+    neutral: colorScheme === "dark" ? NEUTRAL_DARK : NEUTRAL,
+    semantic: colorScheme === "dark" ? SEMANTIC_DARK : SEMANTIC,
   };
 
   // Render children even before hydration so the app does not flash;

@@ -56,7 +56,7 @@ export const SEMANTIC = {
 } as const;
 
 // Neutral dark palette (mirrors NEUTRAL keys for dark mode)
-export const NEUTRAL_DARK = {
+export const NEUTRAL_DARK: { [K in keyof typeof NEUTRAL]: string } = {
   // Backgrounds
   background: "#0f172a",      // slate-900 - main content
   surface: "#1e293b",         // slate-800 - cards, sheets
@@ -85,7 +85,7 @@ export const NEUTRAL_DARK = {
 } as const;
 
 // Semantic dark palette (mirrors SEMANTIC keys for dark mode)
-export const SEMANTIC_DARK = {
+export const SEMANTIC_DARK: { [K in keyof typeof SEMANTIC]: string } = {
   // Success
   success: "#34d399",         // emerald-400
   successLight: "#064e3b",    // emerald-900
@@ -247,8 +247,8 @@ export const ANIMATION = {
 } as const;
 
 // Type exports for convenience
-export type NeutralColors = typeof NEUTRAL;
-export type SemanticColors = typeof SEMANTIC;
+export type NeutralColors = { [K in keyof typeof NEUTRAL]: string };
+export type SemanticColors = { [K in keyof typeof SEMANTIC]: string };
 export type EnergyColors = typeof ENERGY;
 export type RoleColors = typeof ROLE_COLORS;
 export type RSVPColors = typeof RSVP_COLORS;
