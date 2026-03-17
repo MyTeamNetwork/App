@@ -5,7 +5,6 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
-  StyleSheet,
   Pressable,
 } from "react-native";
 import { Image } from "expo-image";
@@ -20,10 +19,12 @@ import { useUnreadAnnouncementCount } from "@/hooks/useUnreadAnnouncementCount";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useAuth } from "@/hooks/useAuth";
+import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
+import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
 import type { Announcement } from "@teammeet/types";
 import { APP_CHROME } from "@/lib/chrome";
-import { NEUTRAL, SEMANTIC, SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
+import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { AnnouncementCard, type AnnouncementCardAnnouncement } from "@/components/cards/AnnouncementCard";
 import { SkeletonList } from "@/components/ui/Skeleton";
@@ -34,12 +35,110 @@ export default function AnnouncementsScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const { permissions } = useOrgRole();
-  const styles = useMemo(() => createStyles(), []);
+  const { neutral, semantic } = useAppColorScheme();
   // Use orgId from context for data hook (eliminates redundant org fetch)
   const { announcements, loading, error, refetch, refetchIfStale } = useAnnouncements(orgId);
   const { markAsRead } = useUnreadAnnouncementCount(orgId);
   const [refreshing, setRefreshing] = useState(false);
   const isRefetchingRef = useRef(false);
+
+  const styles = useThemedStyles((n, s) => ({
+    container: {
+      flex: 1,
+      backgroundColor: APP_CHROME.gradientEnd,
+    },
+    // Gradient header styles
+    headerGradient: {
+      paddingBottom: SPACING.md,
+    },
+    headerSafeArea: {
+      // SafeAreaView handles top inset
+    },
+    headerContent: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.xs,
+      minHeight: 40,
+      gap: SPACING.sm,
+    },
+    orgLogoButton: {
+      width: 36,
+      height: 36,
+    },
+    orgLogo: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+    },
+    orgAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: APP_CHROME.avatarBackground,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
+    orgAvatarText: {
+      ...TYPOGRAPHY.titleSmall,
+      fontWeight: "700" as const,
+      color: APP_CHROME.avatarText,
+    },
+    headerTextContainer: {
+      flex: 1,
+    },
+    headerTitle: {
+      ...TYPOGRAPHY.titleLarge,
+      color: APP_CHROME.headerTitle,
+    },
+    headerMeta: {
+      ...TYPOGRAPHY.caption,
+      color: APP_CHROME.headerMeta,
+      marginTop: 2,
+    },
+    // Content sheet
+    contentSheet: {
+      flex: 1,
+      backgroundColor: n.surface,
+    },
+    listContent: {
+      padding: SPACING.md,
+      paddingBottom: 40,
+      flexGrow: 1,
+    },
+    // Cards
+    card: {
+      marginBottom: SPACING.md,
+    },
+    // Empty state
+    emptyContainer: {
+      flex: 1,
+      justifyContent: "center" as const,
+      alignItems: "center" as const,
+      paddingVertical: 64,
+    },
+    emptyTitle: {
+      ...TYPOGRAPHY.headlineMedium,
+      color: n.foreground,
+      marginBottom: SPACING.sm,
+    },
+    emptyText: {
+      ...TYPOGRAPHY.bodyMedium,
+      color: n.muted,
+    },
+    // Loading/Error states
+    centered: {
+      flex: 1,
+      justifyContent: "center" as const,
+      alignItems: "center" as const,
+      padding: 20,
+      backgroundColor: n.background,
+    },
+    errorText: {
+      ...TYPOGRAPHY.bodyMedium,
+      color: s.error,
+    },
+  }));
 
   // Sort announcements: pinned first, then by created_at descending
   const sortedAnnouncements = useMemo(() => {
@@ -73,14 +172,14 @@ export default function AnnouncementsScreen() {
       {
         id: "open-in-web",
         label: "Open in Web",
-        icon: <ExternalLink size={20} color={NEUTRAL.foreground} />,
+        icon: <ExternalLink size={20} color={neutral.foreground} />,
         onPress: () => {
           const webUrl = `https://www.myteamnetwork.com/${orgSlug}/announcements`;
           Linking.openURL(webUrl);
         },
       },
     ];
-  }, [permissions.canUseAdminActions, orgSlug]);
+  }, [permissions.canUseAdminActions, orgSlug, neutral.foreground]);
 
   // Refetch on tab focus if data is stale, and mark as read
   useFocusEffect(
@@ -208,7 +307,7 @@ export default function AnnouncementsScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor={SEMANTIC.success}
+              tintColor={semantic.success}
             />
           }
           ListEmptyComponent={
@@ -228,102 +327,3 @@ export default function AnnouncementsScreen() {
     </View>
   );
 }
-
-const createStyles = () =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: APP_CHROME.gradientEnd,
-    },
-    // Gradient header styles
-    headerGradient: {
-      paddingBottom: SPACING.md,
-    },
-    headerSafeArea: {
-      // SafeAreaView handles top inset
-    },
-    headerContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: SPACING.md,
-      paddingTop: SPACING.xs,
-      minHeight: 40,
-      gap: SPACING.sm,
-    },
-    orgLogoButton: {
-      width: 36,
-      height: 36,
-    },
-    orgLogo: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-    },
-    orgAvatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: APP_CHROME.avatarBackground,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    orgAvatarText: {
-      ...TYPOGRAPHY.titleSmall,
-      fontWeight: "700",
-      color: APP_CHROME.avatarText,
-    },
-    headerTextContainer: {
-      flex: 1,
-    },
-    headerTitle: {
-      ...TYPOGRAPHY.titleLarge,
-      color: APP_CHROME.headerTitle,
-    },
-    headerMeta: {
-      ...TYPOGRAPHY.caption,
-      color: APP_CHROME.headerMeta,
-      marginTop: 2,
-    },
-    // Content sheet
-    contentSheet: {
-      flex: 1,
-      backgroundColor: NEUTRAL.surface,
-    },
-    listContent: {
-      padding: SPACING.md,
-      paddingBottom: 40,
-      flexGrow: 1,
-    },
-    // Cards
-    card: {
-      marginBottom: SPACING.md,
-    },
-    // Empty state
-    emptyContainer: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      paddingVertical: 64,
-    },
-    emptyTitle: {
-      ...TYPOGRAPHY.headlineMedium,
-      color: NEUTRAL.foreground,
-      marginBottom: SPACING.sm,
-    },
-    emptyText: {
-      ...TYPOGRAPHY.bodyMedium,
-      color: NEUTRAL.muted,
-    },
-    // Loading/Error states
-    centered: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 20,
-      backgroundColor: NEUTRAL.background,
-    },
-    errorText: {
-      ...TYPOGRAPHY.bodyMedium,
-      color: SEMANTIC.error,
-    },
-  });

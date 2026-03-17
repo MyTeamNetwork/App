@@ -20,8 +20,10 @@ import { useOrgStats } from "@/hooks/useOrgStats";
 import { useFeed } from "@/hooks/useFeed";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
+import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
+import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { APP_CHROME } from "@/lib/chrome";
-import { NEUTRAL, SEMANTIC, SPACING, RADIUS, SHADOWS, ANIMATION } from "@/lib/design-tokens";
+import { SPACING, RADIUS, SHADOWS, ANIMATION } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { FeedTab } from "@/components/home/FeedTab";
 import { OverviewTab } from "@/components/home/OverviewTab";
@@ -51,6 +53,8 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
   useOrgRole(); // subscribes to role changes; triggers re-render on role updates
+
+  const { neutral, semantic } = useAppColorScheme();
 
   const handleDrawerToggle = useCallback(() => {
     try {
@@ -275,10 +279,171 @@ export default function HomeScreen() {
     opacity: eventsOpacity.value,
   }));
 
+  const styles = useThemedStyles((n, s) => ({
+    container: {
+      flex: 1,
+      backgroundColor: n.background,
+    },
+    headerGradient: {
+      paddingBottom: SPACING.xl,
+    },
+    headerContent: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.xs,
+      minHeight: 44,
+      gap: SPACING.sm,
+    },
+    orgLogoButton: {
+      width: 44,
+      height: 44,
+    },
+    orgLogo: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+    },
+    orgAvatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: APP_CHROME.avatarBackground,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
+    orgAvatarText: {
+      ...TYPOGRAPHY.titleSmall,
+      fontWeight: "700" as const,
+      color: APP_CHROME.avatarText,
+    },
+    headerTextContainer: {
+      flex: 1,
+    },
+    headerGreeting: {
+      ...TYPOGRAPHY.headlineSmall,
+      color: APP_CHROME.headerTitle,
+    },
+    headerMeta: {
+      ...TYPOGRAPHY.caption,
+      color: APP_CHROME.headerMeta,
+      marginTop: 2,
+    },
+    headerIconButton: {
+      width: 36,
+      height: 36,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
+    contentSheet: {
+      flex: 1,
+      backgroundColor: n.surface,
+      borderTopLeftRadius: RADIUS.xxl,
+      borderTopRightRadius: RADIUS.xxl,
+      overflow: "hidden" as const,
+      marginTop: -SPACING.sm,
+    },
+    // Segmented control — lighter background, sliding pill
+    segmentedControl: {
+      flexDirection: "row" as const,
+      backgroundColor: n.divider,
+      borderRadius: RADIUS.lg,
+      padding: SPACING.xxs,
+      marginHorizontal: SPACING.md,
+      marginTop: SPACING.sm,
+      marginBottom: SPACING.sm,
+      position: "relative" as const,
+    },
+    segmentPill: {
+      position: "absolute" as const,
+      top: SPACING.xxs,
+      bottom: SPACING.xxs,
+      // Width is set to 1/3 of the container; works because all three tabs are flex:1
+      // We rely on translateX to move the pill; actual width is computed at render time.
+      // Using percentage-like value: each tab occupies 33.33% of the container.
+      width: "33.33%",
+      borderRadius: RADIUS.md,
+      backgroundColor: s.success,
+      ...SHADOWS.sm,
+    },
+    segment: {
+      flex: 1,
+      paddingVertical: SPACING.sm,
+      alignItems: "center" as const,
+      borderRadius: RADIUS.md,
+      zIndex: 1,
+    },
+    segmentText: {
+      ...TYPOGRAPHY.labelMedium,
+      color: n.muted,
+    },
+    segmentTextActive: {
+      color: n.surface,
+      fontWeight: "600" as const,
+    },
+    // Tab crossfade container
+    tabContentContainer: {
+      flex: 1,
+      position: "relative" as const,
+    },
+    tabPane: {
+      position: "absolute" as const,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    },
+    // Loading / error states
+    centered: {
+      flex: 1,
+      justifyContent: "center" as const,
+      alignItems: "center" as const,
+      padding: 24,
+      backgroundColor: n.background,
+    },
+    errorCard: {
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      borderColor: n.border,
+      padding: SPACING.xl,
+      alignItems: "center" as const,
+      ...SHADOWS.sm,
+    },
+    errorTitle: {
+      ...TYPOGRAPHY.titleMedium,
+      color: n.foreground,
+      marginTop: SPACING.sm,
+    },
+    errorText: {
+      ...TYPOGRAPHY.bodySmall,
+      color: n.muted,
+      textAlign: "center" as const,
+      marginTop: SPACING.xs,
+    },
+    retryButton: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: SPACING.sm,
+      marginTop: SPACING.md,
+      paddingVertical: SPACING.sm + 2,
+      paddingHorizontal: SPACING.lg,
+      borderRadius: RADIUS.md,
+      backgroundColor: s.success,
+    },
+    retryButtonPressed: {
+      opacity: 0.8,
+    },
+    retryButtonText: {
+      ...TYPOGRAPHY.labelMedium,
+      color: n.surface,
+    },
+  }));
+
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color={SEMANTIC.success} />
+        <ActivityIndicator size="large" color={semantic.success} />
       </View>
     );
   }
@@ -287,7 +452,7 @@ export default function HomeScreen() {
     return (
       <View style={styles.centered}>
         <View style={styles.errorCard}>
-          <RefreshCw size={40} color={NEUTRAL.border} />
+          <RefreshCw size={40} color={neutral.border} />
           <Text style={styles.errorTitle}>Something went wrong</Text>
           <Text style={styles.errorText}>{error}</Text>
           <Pressable
@@ -296,7 +461,7 @@ export default function HomeScreen() {
             accessibilityLabel="Retry loading"
             accessibilityRole="button"
           >
-            <RefreshCw size={16} color={NEUTRAL.surface} />
+            <RefreshCw size={16} color={neutral.surface} />
             <Text style={styles.retryButtonText}>Try again</Text>
           </Pressable>
         </View>
@@ -457,164 +622,3 @@ export default function HomeScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: NEUTRAL.background,
-  },
-  headerGradient: {
-    paddingBottom: SPACING.xl,
-  },
-  headerContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.xs,
-    minHeight: 44,
-    gap: SPACING.sm,
-  },
-  orgLogoButton: {
-    width: 44,
-    height: 44,
-  },
-  orgLogo: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  orgAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: APP_CHROME.avatarBackground,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  orgAvatarText: {
-    ...TYPOGRAPHY.titleSmall,
-    fontWeight: "700",
-    color: APP_CHROME.avatarText,
-  },
-  headerTextContainer: {
-    flex: 1,
-  },
-  headerGreeting: {
-    ...TYPOGRAPHY.headlineSmall,
-    color: APP_CHROME.headerTitle,
-  },
-  headerMeta: {
-    ...TYPOGRAPHY.caption,
-    color: APP_CHROME.headerMeta,
-    marginTop: 2,
-  },
-  headerIconButton: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  contentSheet: {
-    flex: 1,
-    backgroundColor: NEUTRAL.surface,
-    borderTopLeftRadius: RADIUS.xxl,
-    borderTopRightRadius: RADIUS.xxl,
-    overflow: "hidden",
-    marginTop: -SPACING.sm,
-  },
-  // Segmented control — lighter background, sliding pill
-  segmentedControl: {
-    flexDirection: "row",
-    backgroundColor: NEUTRAL.divider,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.xxs,
-    marginHorizontal: SPACING.md,
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.sm,
-    position: "relative",
-  },
-  segmentPill: {
-    position: "absolute",
-    top: SPACING.xxs,
-    bottom: SPACING.xxs,
-    // Width is set to 1/3 of the container; works because all three tabs are flex:1
-    // We rely on translateX to move the pill; actual width is computed at render time.
-    // Using percentage-like value: each tab occupies 33.33% of the container.
-    width: "33.33%",
-    borderRadius: RADIUS.md,
-    backgroundColor: SEMANTIC.success,
-    ...SHADOWS.sm,
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: SPACING.sm,
-    alignItems: "center",
-    borderRadius: RADIUS.md,
-    zIndex: 1,
-  },
-  segmentText: {
-    ...TYPOGRAPHY.labelMedium,
-    color: NEUTRAL.muted,
-  },
-  segmentTextActive: {
-    color: NEUTRAL.surface,
-    fontWeight: "600",
-  },
-  // Tab crossfade container
-  tabContentContainer: {
-    flex: 1,
-    position: "relative",
-  },
-  tabPane: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  // Loading / error states
-  centered: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    backgroundColor: NEUTRAL.background,
-  },
-  errorCard: {
-    backgroundColor: NEUTRAL.surface,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-    padding: SPACING.xl,
-    alignItems: "center",
-    ...SHADOWS.sm,
-  },
-  errorTitle: {
-    ...TYPOGRAPHY.titleMedium,
-    color: NEUTRAL.foreground,
-    marginTop: SPACING.sm,
-  },
-  errorText: {
-    ...TYPOGRAPHY.bodySmall,
-    color: NEUTRAL.muted,
-    textAlign: "center",
-    marginTop: SPACING.xs,
-  },
-  retryButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: RADIUS.md,
-    backgroundColor: SEMANTIC.success,
-  },
-  retryButtonPressed: {
-    opacity: 0.8,
-  },
-  retryButtonText: {
-    ...TYPOGRAPHY.labelMedium,
-    color: NEUTRAL.surface,
-  },
-});

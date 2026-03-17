@@ -5,7 +5,6 @@ import {
   FlatList,
   RefreshControl,
   Pressable,
-  StyleSheet,
 } from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,8 +14,10 @@ import { useFocusEffect, useRouter, useNavigation } from "expo-router";
 import { ArrowUpDown, Users, Search } from "lucide-react-native";
 import { useMemberDirectory, type DirectoryMember } from "@/hooks/useMemberDirectory";
 import { useOrg } from "@/contexts/OrgContext";
+import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
+import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { APP_CHROME } from "@/lib/chrome";
-import { NEUTRAL, SEMANTIC, SPACING, RADIUS } from "@/lib/design-tokens";
+import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import {
   DirectorySearchBar,
@@ -27,28 +28,6 @@ import {
   DirectoryErrorState,
 } from "@/components/directory";
 
-// Local colors for directory components (legacy compat)
-const DIRECTORY_COLORS = {
-  background: NEUTRAL.surface,
-  foreground: NEUTRAL.foreground,
-  card: NEUTRAL.surface,
-  border: NEUTRAL.border,
-  muted: NEUTRAL.muted,
-  mutedForeground: NEUTRAL.secondary,
-  primary: SEMANTIC.success,
-  primaryLight: SEMANTIC.successLight,
-  primaryDark: SEMANTIC.successDark,
-  primaryForeground: "#ffffff",
-  secondary: SEMANTIC.info,
-  secondaryLight: SEMANTIC.infoLight,
-  secondaryDark: SEMANTIC.infoDark,
-  secondaryForeground: "#ffffff",
-  mutedSurface: NEUTRAL.background,
-  success: SEMANTIC.success,
-  warning: SEMANTIC.warning,
-  error: SEMANTIC.error,
-};
-
 type RoleFilter = "all" | "admin" | "member";
 type SortOption = "name" | "year";
 
@@ -58,13 +37,122 @@ export default function MembersScreen() {
   const { orgSlug, orgId, orgName, orgLogoUrl } = useOrg();
   // Use orgId from context for data hook (eliminates redundant org fetch)
   const { members, loading, error, refetch, refetchIfStale } = useMemberDirectory(orgId);
-  const styles = useMemo(() => createStyles(), []);
+  const { neutral, semantic } = useAppColorScheme();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState<RoleFilter>("all");
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>("name");
   const isRefetchingRef = useRef(false);
+
+  // Local colors for directory components (dynamic)
+  const directoryColors = useMemo(() => ({
+    background: neutral.surface,
+    foreground: neutral.foreground,
+    card: neutral.surface,
+    border: neutral.border,
+    muted: neutral.muted,
+    mutedForeground: neutral.secondary,
+    primary: semantic.success,
+    primaryLight: semantic.successLight,
+    primaryDark: semantic.successDark,
+    primaryForeground: "#ffffff",
+    secondary: semantic.info,
+    secondaryLight: semantic.infoLight,
+    secondaryDark: semantic.infoDark,
+    secondaryForeground: "#ffffff",
+    mutedSurface: neutral.background,
+    success: semantic.success,
+    warning: semantic.warning,
+    error: semantic.error,
+  }), [neutral, semantic]);
+
+  const styles = useThemedStyles((n, s) => ({
+    container: {
+      flex: 1,
+      backgroundColor: n.background,
+    },
+    // Gradient header styles
+    headerGradient: {
+      paddingBottom: SPACING.md,
+    },
+    headerSafeArea: {
+      // SafeAreaView handles top inset
+    },
+    headerContent: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.xs,
+      minHeight: 40,
+      gap: SPACING.sm,
+    },
+    orgLogoButton: {
+      width: 36,
+      height: 36,
+    },
+    orgLogo: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+    },
+    orgAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: APP_CHROME.avatarBackground,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
+    orgAvatarText: {
+      ...TYPOGRAPHY.titleSmall,
+      fontWeight: "700" as const,
+      color: APP_CHROME.avatarText,
+    },
+    headerTextContainer: {
+      flex: 1,
+    },
+    headerTitle: {
+      ...TYPOGRAPHY.titleLarge,
+      color: APP_CHROME.headerTitle,
+    },
+    headerMeta: {
+      ...TYPOGRAPHY.caption,
+      color: APP_CHROME.headerMeta,
+      marginTop: 2,
+    },
+    contentSheet: {
+      flex: 1,
+      backgroundColor: n.surface,
+    },
+    listHeader: {
+      backgroundColor: n.surface,
+      paddingTop: SPACING.md,
+      paddingBottom: SPACING.sm,
+      gap: SPACING.md,
+    },
+    sortButton: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 4,
+      paddingHorizontal: SPACING.sm + 2,
+      paddingVertical: SPACING.sm,
+      backgroundColor: n.background,
+      borderRadius: RADIUS.md,
+    },
+    sortButtonPressed: {
+      opacity: 0.7,
+    },
+    sortButtonText: {
+      ...TYPOGRAPHY.labelSmall,
+      color: n.muted,
+    },
+    listContent: {
+      paddingHorizontal: SPACING.md,
+      paddingBottom: SPACING.xl,
+      flexGrow: 1,
+    },
+  }));
 
   const hasActiveFilters = !!(searchQuery || selectedRole !== "all" || selectedYear);
 
@@ -181,11 +269,11 @@ export default function MembersScreen() {
           subtitle={item.email}
           chips={chips}
           onPress={() => handleMemberPress(item)}
-          colors={DIRECTORY_COLORS}
+          colors={directoryColors}
         />
       );
     },
-    [handleMemberPress]
+    [handleMemberPress, directoryColors]
   );
 
   const roleOptions: { value: RoleFilter; label: string }[] = [
@@ -199,7 +287,7 @@ export default function MembersScreen() {
         value={searchQuery}
         onChangeText={setSearchQuery}
         placeholder="Search members..."
-        colors={DIRECTORY_COLORS}
+        colors={directoryColors}
         rightSlot={
           <Pressable
             onPress={toggleSort}
@@ -207,7 +295,7 @@ export default function MembersScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Sort by ${sortBy === "name" ? "year" : "name"}`}
           >
-            <ArrowUpDown size={14} color={NEUTRAL.muted} />
+            <ArrowUpDown size={14} color={neutral.muted} />
             <Text style={styles.sortButtonText}>{sortBy === "name" ? "A-Z" : "Year"}</Text>
           </Pressable>
         }
@@ -230,7 +318,7 @@ export default function MembersScreen() {
             labelExtractor: (y) => String(y),
           },
         ]}
-        colors={DIRECTORY_COLORS}
+        colors={directoryColors}
         hasActiveFilters={hasActiveFilters}
         onClearAll={clearAllFilters}
       />
@@ -241,10 +329,10 @@ export default function MembersScreen() {
     if (hasActiveFilters) {
       return (
         <DirectoryEmptyState
-          icon={<Search size={40} color={NEUTRAL.border} />}
+          icon={<Search size={40} color={neutral.border} />}
           title="No results found"
           subtitle="Try adjusting your search or filters"
-          colors={DIRECTORY_COLORS}
+          colors={directoryColors}
           showClearButton
           onClear={clearAllFilters}
         />
@@ -252,10 +340,10 @@ export default function MembersScreen() {
     }
     return (
       <DirectoryEmptyState
-        icon={<Users size={40} color={NEUTRAL.border} />}
+        icon={<Users size={40} color={neutral.border} />}
         title="No members yet"
         subtitle="Members will appear here once added to this organization"
-        colors={DIRECTORY_COLORS}
+        colors={directoryColors}
       />
     );
   };
@@ -294,7 +382,7 @@ export default function MembersScreen() {
           <DirectoryErrorState
             title="Unable to load members"
             message={error}
-            colors={DIRECTORY_COLORS}
+            colors={directoryColors}
             onRetry={handleRefresh}
           />
         </View>
@@ -333,7 +421,7 @@ export default function MembersScreen() {
           </SafeAreaView>
         </LinearGradient>
         <View style={styles.contentSheet}>
-          <DirectorySkeleton colors={DIRECTORY_COLORS} />
+          <DirectorySkeleton colors={directoryColors} />
         </View>
       </View>
     );
@@ -383,7 +471,7 @@ export default function MembersScreen() {
           ListHeaderComponent={renderListHeader}
           ListEmptyComponent={renderEmpty}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={SEMANTIC.success} />
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={semantic.success} />
           }
           keyboardShouldPersistTaps="handled"
           initialNumToRender={10}
@@ -396,91 +484,3 @@ export default function MembersScreen() {
     </View>
   );
 }
-
-const createStyles = () =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: NEUTRAL.background,
-    },
-    // Gradient header styles
-    headerGradient: {
-      paddingBottom: SPACING.md,
-    },
-    headerSafeArea: {
-      // SafeAreaView handles top inset
-    },
-    headerContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: SPACING.md,
-      paddingTop: SPACING.xs,
-      minHeight: 40,
-      gap: SPACING.sm,
-    },
-    orgLogoButton: {
-      width: 36,
-      height: 36,
-    },
-    orgLogo: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-    },
-    orgAvatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: APP_CHROME.avatarBackground,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    orgAvatarText: {
-      ...TYPOGRAPHY.titleSmall,
-      fontWeight: "700",
-      color: APP_CHROME.avatarText,
-    },
-    headerTextContainer: {
-      flex: 1,
-    },
-    headerTitle: {
-      ...TYPOGRAPHY.titleLarge,
-      color: APP_CHROME.headerTitle,
-    },
-    headerMeta: {
-      ...TYPOGRAPHY.caption,
-      color: APP_CHROME.headerMeta,
-      marginTop: 2,
-    },
-    contentSheet: {
-      flex: 1,
-      backgroundColor: NEUTRAL.surface,
-    },
-    listHeader: {
-      backgroundColor: NEUTRAL.surface,
-      paddingTop: SPACING.md,
-      paddingBottom: SPACING.sm,
-      gap: SPACING.md,
-    },
-    sortButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-      paddingHorizontal: SPACING.sm + 2,
-      paddingVertical: SPACING.sm,
-      backgroundColor: NEUTRAL.background,
-      borderRadius: RADIUS.md,
-    },
-    sortButtonPressed: {
-      opacity: 0.7,
-    },
-    sortButtonText: {
-      ...TYPOGRAPHY.labelSmall,
-      color: NEUTRAL.muted,
-    },
-    listContent: {
-      paddingHorizontal: SPACING.md,
-      paddingBottom: SPACING.xl,
-      flexGrow: 1,
-    },
-  });

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  StyleSheet,
   Alert,
   RefreshControl,
   Pressable,
@@ -34,8 +33,10 @@ import {
 import { supabase, signOut } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { normalizeRole, roleFlags } from "@teammeet/core";
+import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
+import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { APP_CHROME } from "@/lib/chrome";
-import { NEUTRAL, SEMANTIC, SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
+import { SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 
 interface Organization {
@@ -61,7 +62,7 @@ export default function MenuScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const { permissions } = useOrgRole();
-  const styles = useMemo(() => createStyles(), []);
+  const { neutral, semantic } = useAppColorScheme();
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
@@ -71,6 +72,235 @@ export default function MenuScreen() {
   const [error, setError] = useState<string | null>(null);
   const isRefetchingRef = useRef(false);
   const lastFetchTimeRef = useRef<number>(0);
+
+  const styles = useThemedStyles((n, s) => ({
+    container: {
+      flex: 1,
+      backgroundColor: n.background,
+    },
+    // Gradient header styles
+    headerGradient: {
+      paddingBottom: SPACING.md,
+    },
+    headerSafeArea: {
+      // SafeAreaView handles top inset
+    },
+    headerContent: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.xs,
+      minHeight: 40,
+      gap: SPACING.sm,
+    },
+    orgLogoButton: {
+      width: 36,
+      height: 36,
+    },
+    orgLogo: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+    },
+    orgAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: APP_CHROME.avatarBackground,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
+    orgAvatarText: {
+      ...TYPOGRAPHY.titleSmall,
+      fontWeight: "700" as const,
+      color: APP_CHROME.avatarText,
+    },
+    headerTextContainer: {
+      flex: 1,
+    },
+    headerTitle: {
+      ...TYPOGRAPHY.titleLarge,
+      color: APP_CHROME.headerTitle,
+    },
+    headerMeta: {
+      ...TYPOGRAPHY.caption,
+      color: APP_CHROME.headerMeta,
+      marginTop: 2,
+    },
+    contentSheet: {
+      flex: 1,
+      backgroundColor: n.surface,
+    },
+    scrollContent: {
+      padding: SPACING.md,
+      paddingBottom: 40,
+    },
+    accountBlock: {
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.lg,
+      padding: SPACING.md,
+      marginBottom: SPACING.lg,
+      borderWidth: 1,
+      borderColor: n.border,
+      ...SHADOWS.sm,
+    },
+    orgRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      justifyContent: "space-between" as const,
+      paddingBottom: SPACING.md,
+      borderBottomWidth: 1,
+      borderBottomColor: n.border,
+    },
+    orgInfo: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      flex: 1,
+    },
+    orgLogoSmall: {
+      width: 32,
+      height: 32,
+      borderRadius: RADIUS.md,
+      marginRight: SPACING.sm,
+    },
+    orgLogoPlaceholder: {
+      width: 32,
+      height: 32,
+      borderRadius: RADIUS.md,
+      backgroundColor: n.border,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      marginRight: SPACING.sm,
+    },
+    orgName: {
+      ...TYPOGRAPHY.titleMedium,
+      color: n.foreground,
+      flex: 1,
+    },
+    switchButton: {
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: SPACING.xs,
+      backgroundColor: n.background,
+      borderRadius: RADIUS.sm,
+    },
+    switchButtonText: {
+      ...TYPOGRAPHY.labelMedium,
+      color: s.success,
+    },
+    profileRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingTop: SPACING.md,
+    },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+    },
+    avatarPlaceholder: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: s.successLight,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
+    avatarInitials: {
+      ...TYPOGRAPHY.titleMedium,
+      fontWeight: "600" as const,
+      color: s.successDark,
+    },
+    profileInfo: {
+      flex: 1,
+      marginLeft: SPACING.sm,
+    },
+    profileName: {
+      ...TYPOGRAPHY.titleMedium,
+      color: n.foreground,
+    },
+    profileEdit: {
+      ...TYPOGRAPHY.bodySmall,
+      color: s.success,
+      marginTop: 2,
+    },
+    section: {
+      marginBottom: SPACING.lg,
+    },
+    sectionTitle: {
+      ...TYPOGRAPHY.overline,
+      color: n.muted,
+      marginBottom: SPACING.sm,
+      marginLeft: SPACING.xs,
+    },
+    menuCard: {
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      borderColor: n.border,
+      ...SHADOWS.sm,
+    },
+    menuItem: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      justifyContent: "space-between" as const,
+      padding: SPACING.md,
+      borderBottomWidth: 1,
+      borderBottomColor: n.border,
+    },
+    menuItemLeft: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      flex: 1,
+    },
+    menuItemLabel: {
+      ...TYPOGRAPHY.bodyLarge,
+      color: n.foreground,
+      marginLeft: SPACING.sm,
+    },
+    menuItemRight: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: SPACING.sm,
+    },
+    badge: {
+      backgroundColor: s.error,
+      borderRadius: 10,
+      minWidth: 20,
+      height: 20,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      paddingHorizontal: 6,
+    },
+    badgeText: {
+      ...TYPOGRAPHY.labelSmall,
+      color: "#ffffff",
+    },
+    errorContainer: {
+      backgroundColor: s.errorLight,
+      borderLeftWidth: 4,
+      borderLeftColor: s.error,
+      padding: SPACING.sm,
+      marginBottom: SPACING.md,
+      borderRadius: RADIUS.xs,
+    },
+    errorText: {
+      ...TYPOGRAPHY.bodySmall,
+      color: s.error,
+      fontWeight: "500" as const,
+      marginBottom: SPACING.sm,
+    },
+    retryButton: {
+      backgroundColor: s.error,
+      paddingVertical: SPACING.sm,
+      paddingHorizontal: SPACING.md,
+      borderRadius: RADIUS.sm,
+      alignSelf: "flex-start" as const,
+    },
+    retryButtonText: {
+      ...TYPOGRAPHY.labelMedium,
+      color: "#ffffff",
+    },
+  }));
 
   // Safe drawer toggle
   const handleDrawerToggle = useCallback(() => {
@@ -202,7 +432,7 @@ export default function MenuScreen() {
           </View>
         )}
         {item.showChevron !== false && (
-          <ChevronRight size={20} color={NEUTRAL.secondary} />
+          <ChevronRight size={20} color={neutral.secondary} />
         )}
       </View>
     </Pressable>
@@ -210,7 +440,7 @@ export default function MenuScreen() {
 
   const updatesItems: MenuItem[] = [
     {
-      icon: <Bell size={20} color={NEUTRAL.muted} />,
+      icon: <Bell size={20} color={neutral.muted} />,
       label: "Notifications",
       onPress: () => router.push(`/(app)/${orgSlug}/notifications`),
       badge: notificationCount,
@@ -222,7 +452,7 @@ export default function MenuScreen() {
 
   if (permissions.canViewDonations) {
     communityItems.push({
-      icon: <Heart size={20} color={NEUTRAL.muted} />,
+      icon: <Heart size={20} color={neutral.muted} />,
       label: "Donations",
       onPress: () => router.push(`/(app)/${orgSlug}/donations`),
     });
@@ -230,7 +460,7 @@ export default function MenuScreen() {
 
   if (permissions.canViewRecords) {
     communityItems.push({
-      icon: <Trophy size={20} color={NEUTRAL.muted} />,
+      icon: <Trophy size={20} color={neutral.muted} />,
       label: "Records",
       onPress: () => router.push(`/(app)/${orgSlug}/records`),
     });
@@ -238,7 +468,7 @@ export default function MenuScreen() {
 
   if (permissions.canViewForms) {
     communityItems.push({
-      icon: <FileText size={20} color={NEUTRAL.muted} />,
+      icon: <FileText size={20} color={neutral.muted} />,
       label: "Forms",
       onPress: () => router.push(`/(app)/${orgSlug}/forms`),
     });
@@ -246,17 +476,17 @@ export default function MenuScreen() {
 
   const adminItems: MenuItem[] = [
     {
-      icon: <Settings size={20} color={NEUTRAL.muted} />,
+      icon: <Settings size={20} color={neutral.muted} />,
       label: "Settings",
       onPress: () => router.push(`/(app)/${orgSlug}/settings`),
     },
     {
-      icon: <UserPlus size={20} color={NEUTRAL.muted} />,
+      icon: <UserPlus size={20} color={neutral.muted} />,
       label: "Invites",
       onPress: () => router.push(`/(app)/${orgSlug}/invites`),
     },
     {
-      icon: <CreditCard size={20} color={NEUTRAL.muted} />,
+      icon: <CreditCard size={20} color={neutral.muted} />,
       label: "Billing",
       onPress: () => router.push(`/(app)/${orgSlug}/billing`),
     },
@@ -280,22 +510,22 @@ export default function MenuScreen() {
 
   const appItems: MenuItem[] = [
     {
-      icon: <HelpCircle size={20} color={NEUTRAL.muted} />,
+      icon: <HelpCircle size={20} color={neutral.muted} />,
       label: "Help & Support",
       onPress: () => Linking.openURL("https://www.myteamnetwork.com/help"),
     },
     {
-      icon: <Info size={20} color={NEUTRAL.muted} />,
+      icon: <Info size={20} color={neutral.muted} />,
       label: "About TeamMeet",
       onPress: handleAbout,
     },
     {
-      icon: <FileText size={20} color={NEUTRAL.muted} />,
+      icon: <FileText size={20} color={neutral.muted} />,
       label: "Terms of Service",
       onPress: () => router.push("/(app)/terms"),
     },
     {
-      icon: <LogOut size={20} color={SEMANTIC.error} />,
+      icon: <LogOut size={20} color={semantic.error} />,
       label: "Sign Out",
       onPress: handleSignOut,
       showChevron: false,
@@ -348,7 +578,7 @@ export default function MenuScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor={SEMANTIC.success}
+              tintColor={semantic.success}
             />
           }
         >
@@ -371,7 +601,7 @@ export default function MenuScreen() {
                   <Image source={organization.logo_url} style={styles.orgLogoSmall} contentFit="contain" transition={200} />
                 ) : (
                   <View style={styles.orgLogoPlaceholder}>
-                    <Building2 size={20} color={NEUTRAL.muted} />
+                    <Building2 size={20} color={neutral.muted} />
                   </View>
                 )}
                 <Text style={styles.orgName} numberOfLines={1}>
@@ -400,7 +630,7 @@ export default function MenuScreen() {
                 </Text>
                 <Text style={styles.profileEdit}>Edit Profile</Text>
               </View>
-              <ChevronRight size={20} color={NEUTRAL.secondary} />
+              <ChevronRight size={20} color={neutral.secondary} />
             </Pressable>
           </View>
 
@@ -444,233 +674,3 @@ export default function MenuScreen() {
     </View>
   );
 }
-
-const createStyles = () =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: NEUTRAL.background,
-    },
-    // Gradient header styles
-    headerGradient: {
-      paddingBottom: SPACING.md,
-    },
-    headerSafeArea: {
-      // SafeAreaView handles top inset
-    },
-    headerContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: SPACING.md,
-      paddingTop: SPACING.xs,
-      minHeight: 40,
-      gap: SPACING.sm,
-    },
-    orgLogoButton: {
-      width: 36,
-      height: 36,
-    },
-    orgLogo: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-    },
-    orgAvatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: APP_CHROME.avatarBackground,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    orgAvatarText: {
-      ...TYPOGRAPHY.titleSmall,
-      fontWeight: "700",
-      color: APP_CHROME.avatarText,
-    },
-    headerTextContainer: {
-      flex: 1,
-    },
-    headerTitle: {
-      ...TYPOGRAPHY.titleLarge,
-      color: APP_CHROME.headerTitle,
-    },
-    headerMeta: {
-      ...TYPOGRAPHY.caption,
-      color: APP_CHROME.headerMeta,
-      marginTop: 2,
-    },
-    contentSheet: {
-      flex: 1,
-      backgroundColor: NEUTRAL.surface,
-    },
-    scrollContent: {
-      padding: SPACING.md,
-      paddingBottom: 40,
-    },
-    accountBlock: {
-      backgroundColor: NEUTRAL.surface,
-      borderRadius: RADIUS.lg,
-      padding: SPACING.md,
-      marginBottom: SPACING.lg,
-      borderWidth: 1,
-      borderColor: NEUTRAL.border,
-      ...SHADOWS.sm,
-    },
-    orgRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingBottom: SPACING.md,
-      borderBottomWidth: 1,
-      borderBottomColor: NEUTRAL.border,
-    },
-    orgInfo: {
-      flexDirection: "row",
-      alignItems: "center",
-      flex: 1,
-    },
-    orgLogoSmall: {
-      width: 32,
-      height: 32,
-      borderRadius: RADIUS.md,
-      marginRight: SPACING.sm,
-    },
-    orgLogoPlaceholder: {
-      width: 32,
-      height: 32,
-      borderRadius: RADIUS.md,
-      backgroundColor: NEUTRAL.border,
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: SPACING.sm,
-    },
-    orgName: {
-      ...TYPOGRAPHY.titleMedium,
-      color: NEUTRAL.foreground,
-      flex: 1,
-    },
-    switchButton: {
-      paddingHorizontal: SPACING.sm,
-      paddingVertical: SPACING.xs,
-      backgroundColor: NEUTRAL.background,
-      borderRadius: RADIUS.sm,
-    },
-    switchButtonText: {
-      ...TYPOGRAPHY.labelMedium,
-      color: SEMANTIC.success,
-    },
-    profileRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingTop: SPACING.md,
-    },
-    avatar: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-    },
-    avatarPlaceholder: {
-      width: 48,
-      height: 48,
-      borderRadius: 24,
-      backgroundColor: SEMANTIC.successLight,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarInitials: {
-      ...TYPOGRAPHY.titleMedium,
-      fontWeight: "600",
-      color: SEMANTIC.successDark,
-    },
-    profileInfo: {
-      flex: 1,
-      marginLeft: SPACING.sm,
-    },
-    profileName: {
-      ...TYPOGRAPHY.titleMedium,
-      color: NEUTRAL.foreground,
-    },
-    profileEdit: {
-      ...TYPOGRAPHY.bodySmall,
-      color: SEMANTIC.success,
-      marginTop: 2,
-    },
-    section: {
-      marginBottom: SPACING.lg,
-    },
-    sectionTitle: {
-      ...TYPOGRAPHY.overline,
-      color: NEUTRAL.muted,
-      marginBottom: SPACING.sm,
-      marginLeft: SPACING.xs,
-    },
-    menuCard: {
-      backgroundColor: NEUTRAL.surface,
-      borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: NEUTRAL.border,
-      ...SHADOWS.sm,
-    },
-    menuItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: SPACING.md,
-      borderBottomWidth: 1,
-      borderBottomColor: NEUTRAL.border,
-    },
-    menuItemLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      flex: 1,
-    },
-    menuItemLabel: {
-      ...TYPOGRAPHY.bodyLarge,
-      color: NEUTRAL.foreground,
-      marginLeft: SPACING.sm,
-    },
-    menuItemRight: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: SPACING.sm,
-    },
-    badge: {
-      backgroundColor: SEMANTIC.error,
-      borderRadius: 10,
-      minWidth: 20,
-      height: 20,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 6,
-    },
-    badgeText: {
-      ...TYPOGRAPHY.labelSmall,
-      color: "#ffffff",
-    },
-    errorContainer: {
-      backgroundColor: SEMANTIC.errorLight,
-      borderLeftWidth: 4,
-      borderLeftColor: SEMANTIC.error,
-      padding: SPACING.sm,
-      marginBottom: SPACING.md,
-      borderRadius: RADIUS.xs,
-    },
-    errorText: {
-      ...TYPOGRAPHY.bodySmall,
-      color: SEMANTIC.error,
-      fontWeight: "500",
-      marginBottom: SPACING.sm,
-    },
-    retryButton: {
-      backgroundColor: SEMANTIC.error,
-      paddingVertical: SPACING.sm,
-      paddingHorizontal: SPACING.md,
-      borderRadius: RADIUS.sm,
-      alignSelf: "flex-start",
-    },
-    retryButtonText: {
-      ...TYPOGRAPHY.labelMedium,
-      color: "#ffffff",
-    },
-  });

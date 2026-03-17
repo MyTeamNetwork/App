@@ -3,7 +3,6 @@ import {
   View,
   Text,
   FlatList,
-  StyleSheet,
   RefreshControl,
   ScrollView,
   Pressable,
@@ -19,11 +18,13 @@ import * as Linking from "expo-linking";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useEvents, type Event } from "@/hooks/useEvents";
+import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
+import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { APP_CHROME } from "@/lib/chrome";
-import { NEUTRAL, SEMANTIC, SPACING, RADIUS, SHADOWS, RSVP_COLORS } from "@/lib/design-tokens";
+import { SPACING, RADIUS, SHADOWS, RSVP_COLORS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { formatLongWeekdayDate, formatWeekdayShort } from "@/lib/date-format";
 import { getRsvpLabel, formatEventDate, formatEventTime } from "@teammeet/core";
@@ -35,13 +36,307 @@ export default function EventsScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const { isAdmin, permissions } = useOrgRole();
-  const styles = useMemo(() => createStyles(), []);
+  const { neutral, semantic } = useAppColorScheme();
   // Use orgId from context for data hook (eliminates redundant org fetch)
   const { events, loading, error, refetch, refetchIfStale } = useEvents(orgId);
   const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null); // null = show all
   const [refreshing, setRefreshing] = useState(false);
   const isRefetchingRef = useRef(false);
+
+  const styles = useThemedStyles((n, s) => ({
+    container: {
+      flex: 1,
+      backgroundColor: n.surface,
+    },
+    // Gradient header styles
+    headerGradient: {
+      paddingBottom: SPACING.md,
+    },
+    headerSafeArea: {
+      // SafeAreaView handles top inset
+    },
+    headerContent: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.xs,
+      minHeight: 40,
+      gap: SPACING.sm,
+    },
+    orgLogoButton: {
+      width: 36,
+      height: 36,
+    },
+    orgLogo: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+    },
+    orgAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: APP_CHROME.avatarBackground,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
+    orgAvatarText: {
+      ...TYPOGRAPHY.titleSmall,
+      fontWeight: "700" as const,
+      color: APP_CHROME.avatarText,
+    },
+    headerTextContainer: {
+      flex: 1,
+    },
+    headerTitle: {
+      ...TYPOGRAPHY.titleLarge,
+      color: APP_CHROME.headerTitle,
+    },
+    headerMeta: {
+      ...TYPOGRAPHY.caption,
+      color: APP_CHROME.headerMeta,
+      marginTop: 2,
+    },
+    headerRight: {
+      width: 36,
+      alignItems: "flex-end" as const,
+    },
+    headerSpacer: {
+      width: 36,
+    },
+    // Content sheet
+    contentSheet: {
+      flex: 1,
+      backgroundColor: n.surface,
+    },
+    // Toggle styles (segmented control)
+    toggleContainer: {
+      flexDirection: "row" as const,
+      marginHorizontal: SPACING.md,
+      marginTop: SPACING.md,
+      marginBottom: SPACING.sm,
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: n.border,
+      padding: 2,
+    },
+    toggleButton: {
+      flex: 1,
+      paddingVertical: SPACING.sm,
+      alignItems: "center" as const,
+      borderRadius: RADIUS.sm,
+    },
+    toggleActive: {
+      backgroundColor: n.background,
+    },
+    toggleText: {
+      ...TYPOGRAPHY.labelMedium,
+      color: n.muted,
+    },
+    toggleTextActive: {
+      color: n.foreground,
+      fontWeight: "600" as const,
+    },
+    // Date strip styles
+    dateStrip: {
+      maxHeight: 76,
+      marginBottom: SPACING.xs,
+    },
+    dateStripContent: {
+      paddingHorizontal: SPACING.md,
+      gap: SPACING.xs,
+    },
+    dateItem: {
+      alignItems: "center" as const,
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: RADIUS.md,
+      minWidth: 48,
+    },
+    dateItemSelected: {
+      backgroundColor: s.success,
+    },
+    dateDayName: {
+      ...TYPOGRAPHY.overline,
+      fontSize: 10,
+      color: n.muted,
+      marginBottom: 2,
+    },
+    dateDay: {
+      ...TYPOGRAPHY.titleMedium,
+      color: n.foreground,
+    },
+    dateTextSelected: {
+      color: "#ffffff",
+    },
+    dateToday: {
+      color: s.success,
+      fontWeight: "700" as const,
+    },
+    eventDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 2.5,
+      backgroundColor: s.success,
+      marginTop: 4,
+    },
+    // List content
+    listContent: {
+      padding: SPACING.md,
+      paddingTop: SPACING.sm,
+      paddingBottom: 40,
+      flexGrow: 1,
+    },
+    // Event card styles
+    eventCard: {
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      borderColor: n.border,
+      padding: SPACING.md,
+      marginBottom: SPACING.md,
+      ...SHADOWS.sm,
+    },
+    eventHeader: {
+      flexDirection: "row" as const,
+      justifyContent: "space-between" as const,
+      alignItems: "center" as const,
+      marginBottom: SPACING.sm,
+    },
+    eventTitle: {
+      ...TYPOGRAPHY.titleMedium,
+      color: n.foreground,
+      flex: 1,
+    },
+    rsvpBadge: {
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: SPACING.xs,
+      borderRadius: RADIUS.lg,
+      backgroundColor: n.border,
+      marginLeft: SPACING.sm,
+    },
+    rsvpGoing: {
+      backgroundColor: RSVP_COLORS.going.background,
+    },
+    rsvpMaybe: {
+      backgroundColor: RSVP_COLORS.maybe.background,
+    },
+    rsvpText: {
+      ...TYPOGRAPHY.labelSmall,
+      color: n.foreground,
+    },
+    eventDetails: {
+      gap: 4,
+    },
+    detailRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 6,
+    },
+    detailText: {
+      ...TYPOGRAPHY.bodySmall,
+      color: n.secondary,
+      flex: 1,
+    },
+    locationText: {
+      ...TYPOGRAPHY.bodySmall,
+      color: n.muted,
+      flex: 1,
+    },
+    // RSVP button
+    rsvpButton: {
+      backgroundColor: "transparent",
+      borderWidth: 1,
+      borderColor: s.success,
+      borderRadius: RADIUS.md,
+      paddingVertical: 8,
+      alignItems: "center" as const,
+      marginTop: SPACING.sm,
+    },
+    rsvpButtonText: {
+      ...TYPOGRAPHY.labelMedium,
+      color: s.success,
+    },
+    // Empty state styles
+    emptyState: {
+      flex: 1,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      paddingVertical: 48,
+      paddingHorizontal: SPACING.md,
+    },
+    emptyStateInline: {
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      paddingVertical: 32,
+      paddingHorizontal: SPACING.md,
+    },
+    emptyCard: {
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      borderColor: n.border,
+      padding: SPACING.lg,
+      alignItems: "center" as const,
+      width: "100%",
+      ...SHADOWS.sm,
+    },
+    emptyTitle: {
+      ...TYPOGRAPHY.titleMedium,
+      color: n.foreground,
+      marginTop: SPACING.md,
+    },
+    emptyTitleSmall: {
+      ...TYPOGRAPHY.titleSmall,
+      color: n.secondary,
+      marginTop: SPACING.sm,
+    },
+    emptySubtitle: {
+      ...TYPOGRAPHY.bodySmall,
+      color: n.secondary,
+      marginTop: SPACING.xs,
+      textAlign: "center" as const,
+    },
+    emptySubtitleSmall: {
+      ...TYPOGRAPHY.caption,
+      color: n.muted,
+      marginTop: SPACING.xs,
+      textAlign: "center" as const,
+    },
+    // Error state styles
+    errorContainer: {
+      flex: 1,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      padding: SPACING.md,
+    },
+    errorCard: {
+      backgroundColor: s.errorLight,
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      borderColor: s.error,
+      padding: SPACING.lg,
+    },
+    errorText: {
+      ...TYPOGRAPHY.bodyMedium,
+      color: s.error,
+      textAlign: "center" as const,
+    },
+    // Loading state
+    centered: {
+      flex: 1,
+      justifyContent: "center" as const,
+      alignItems: "center" as const,
+      padding: 24,
+      backgroundColor: n.background,
+    },
+    skeletonContainer: {
+      padding: SPACING.md,
+      paddingTop: SPACING.md,
+    },
+  }));
 
   // Safe drawer toggle - only dispatch if drawer is available
   const handleDrawerToggle = useCallback(() => {
@@ -62,7 +357,7 @@ export default function EventsScreen() {
       {
         id: "create-event",
         label: "Create Event",
-        icon: <Plus size={20} color={SEMANTIC.success} />,
+        icon: <Plus size={20} color={semantic.success} />,
         onPress: () => {
           router.push(`/(app)/${orgSlug}/events/new`);
         },
@@ -70,7 +365,7 @@ export default function EventsScreen() {
       {
         id: "open-in-web",
         label: "Open in Web",
-        icon: <ExternalLink size={20} color={NEUTRAL.foreground} />,
+        icon: <ExternalLink size={20} color={neutral.foreground} />,
         onPress: () => {
           // Open the events page in the web app for full admin capabilities
           const webUrl = `https://www.myteamnetwork.com/${orgSlug}/events`;
@@ -78,7 +373,7 @@ export default function EventsScreen() {
         },
       },
     ];
-  }, [permissions.canUseAdminActions, orgSlug, router]);
+  }, [permissions.canUseAdminActions, orgSlug, router, semantic.success, neutral.foreground]);
 
   // Refetch on tab focus if data is stale
   useFocusEffect(
@@ -173,7 +468,7 @@ export default function EventsScreen() {
 
       <View style={styles.eventDetails}>
         <View style={styles.detailRow}>
-          <Calendar size={13} color={NEUTRAL.secondary} />
+          <Calendar size={13} color={neutral.secondary} />
           <Text style={styles.detailText}>
             {formatEventDate(item.start_date)} at {formatEventTime(item.start_date)}
             {item.end_date && ` - ${formatEventTime(item.end_date)}`}
@@ -182,7 +477,7 @@ export default function EventsScreen() {
 
         {item.location && (
           <View style={styles.detailRow}>
-            <MapPin size={13} color={NEUTRAL.muted} />
+            <MapPin size={13} color={neutral.muted} />
             <Text style={styles.locationText} numberOfLines={1}>
               {item.location}
             </Text>
@@ -191,7 +486,7 @@ export default function EventsScreen() {
 
         {item.rsvp_count !== undefined && (
           <View style={styles.detailRow}>
-            <Users size={13} color={NEUTRAL.muted} />
+            <Users size={13} color={neutral.muted} />
             <Text style={styles.locationText}>{item.rsvp_count} attending</Text>
           </View>
         )}
@@ -205,7 +500,7 @@ export default function EventsScreen() {
       )}
     </Pressable>
     ),
-    [router, orgSlug, viewMode, styles]
+    [router, orgSlug, viewMode, styles, neutral]
   );
 
   const renderEmptyState = () => {
@@ -215,7 +510,7 @@ export default function EventsScreen() {
       const dateStr = formatLongWeekdayDate(selectedDate);
       return (
         <View style={styles.emptyStateInline}>
-          <Calendar size={32} color={NEUTRAL.muted} />
+          <Calendar size={32} color={neutral.muted} />
           <Text style={styles.emptyTitleSmall}>No events on {dateStr}</Text>
           <Text style={styles.emptySubtitleSmall}>Select "All" to see all upcoming events</Text>
         </View>
@@ -226,7 +521,7 @@ export default function EventsScreen() {
     return (
       <View style={styles.emptyState}>
         <View style={styles.emptyCard}>
-          <Calendar size={40} color={NEUTRAL.muted} />
+          <Calendar size={40} color={neutral.muted} />
           <Text style={styles.emptyTitle}>
             {viewMode === "upcoming" ? "No upcoming events" : "No past events"}
           </Text>
@@ -483,7 +778,7 @@ export default function EventsScreen() {
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={renderEmptyState}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={SEMANTIC.success} />
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={semantic.success} />
           }
           initialNumToRender={10}
           maxToRenderPerBatch={10}
@@ -495,298 +790,3 @@ export default function EventsScreen() {
     </View>
   );
 }
-
-const createStyles = () =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: NEUTRAL.surface,
-    },
-    // Gradient header styles
-    headerGradient: {
-      paddingBottom: SPACING.md,
-    },
-    headerSafeArea: {
-      // SafeAreaView handles top inset
-    },
-    headerContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: SPACING.md,
-      paddingTop: SPACING.xs,
-      minHeight: 40,
-      gap: SPACING.sm,
-    },
-    orgLogoButton: {
-      width: 36,
-      height: 36,
-    },
-    orgLogo: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-    },
-    orgAvatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: APP_CHROME.avatarBackground,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    orgAvatarText: {
-      ...TYPOGRAPHY.titleSmall,
-      fontWeight: "700",
-      color: APP_CHROME.avatarText,
-    },
-    headerTextContainer: {
-      flex: 1,
-    },
-    headerTitle: {
-      ...TYPOGRAPHY.titleLarge,
-      color: APP_CHROME.headerTitle,
-    },
-    headerMeta: {
-      ...TYPOGRAPHY.caption,
-      color: APP_CHROME.headerMeta,
-      marginTop: 2,
-    },
-    headerRight: {
-      width: 36,
-      alignItems: "flex-end",
-    },
-    headerSpacer: {
-      width: 36,
-    },
-    // Content sheet
-    contentSheet: {
-      flex: 1,
-      backgroundColor: NEUTRAL.surface,
-    },
-    // Toggle styles (segmented control)
-    toggleContainer: {
-      flexDirection: "row",
-      marginHorizontal: SPACING.md,
-      marginTop: SPACING.md,
-      marginBottom: SPACING.sm,
-      backgroundColor: NEUTRAL.surface,
-      borderRadius: RADIUS.md,
-      borderWidth: 1,
-      borderColor: NEUTRAL.border,
-      padding: 2,
-    },
-    toggleButton: {
-      flex: 1,
-      paddingVertical: SPACING.sm,
-      alignItems: "center",
-      borderRadius: RADIUS.sm,
-    },
-    toggleActive: {
-      backgroundColor: NEUTRAL.background,
-    },
-    toggleText: {
-      ...TYPOGRAPHY.labelMedium,
-      color: NEUTRAL.muted,
-    },
-    toggleTextActive: {
-      color: NEUTRAL.foreground,
-      fontWeight: "600",
-    },
-    // Date strip styles
-    dateStrip: {
-      maxHeight: 76,
-      marginBottom: SPACING.xs,
-    },
-    dateStripContent: {
-      paddingHorizontal: SPACING.md,
-      gap: SPACING.xs,
-    },
-    dateItem: {
-      alignItems: "center",
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: RADIUS.md,
-      minWidth: 48,
-    },
-    dateItemSelected: {
-      backgroundColor: SEMANTIC.success,
-    },
-    dateDayName: {
-      ...TYPOGRAPHY.overline,
-      fontSize: 10,
-      color: NEUTRAL.muted,
-      marginBottom: 2,
-    },
-    dateDay: {
-      ...TYPOGRAPHY.titleMedium,
-      color: NEUTRAL.foreground,
-    },
-    dateTextSelected: {
-      color: "#ffffff",
-    },
-    dateToday: {
-      color: SEMANTIC.success,
-      fontWeight: "700",
-    },
-    eventDot: {
-      width: 5,
-      height: 5,
-      borderRadius: 2.5,
-      backgroundColor: SEMANTIC.success,
-      marginTop: 4,
-    },
-    // List content
-    listContent: {
-      padding: SPACING.md,
-      paddingTop: SPACING.sm,
-      paddingBottom: 40,
-      flexGrow: 1,
-    },
-    // Event card styles
-    eventCard: {
-      backgroundColor: NEUTRAL.surface,
-      borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: NEUTRAL.border,
-      padding: SPACING.md,
-      marginBottom: SPACING.md,
-      ...SHADOWS.sm,
-    },
-    eventHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: SPACING.sm,
-    },
-    eventTitle: {
-      ...TYPOGRAPHY.titleMedium,
-      color: NEUTRAL.foreground,
-      flex: 1,
-    },
-    rsvpBadge: {
-      paddingHorizontal: SPACING.sm,
-      paddingVertical: SPACING.xs,
-      borderRadius: RADIUS.lg,
-      backgroundColor: NEUTRAL.border,
-      marginLeft: SPACING.sm,
-    },
-    rsvpGoing: {
-      backgroundColor: RSVP_COLORS.going.background,
-    },
-    rsvpMaybe: {
-      backgroundColor: RSVP_COLORS.maybe.background,
-    },
-    rsvpText: {
-      ...TYPOGRAPHY.labelSmall,
-      color: NEUTRAL.foreground,
-    },
-    eventDetails: {
-      gap: 4,
-    },
-    detailRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    detailText: {
-      ...TYPOGRAPHY.bodySmall,
-      color: NEUTRAL.secondary,
-      flex: 1,
-    },
-    locationText: {
-      ...TYPOGRAPHY.bodySmall,
-      color: NEUTRAL.muted,
-      flex: 1,
-    },
-    // RSVP button
-    rsvpButton: {
-      backgroundColor: "transparent",
-      borderWidth: 1,
-      borderColor: SEMANTIC.success,
-      borderRadius: RADIUS.md,
-      paddingVertical: 8,
-      alignItems: "center",
-      marginTop: SPACING.sm,
-    },
-    rsvpButtonText: {
-      ...TYPOGRAPHY.labelMedium,
-      color: SEMANTIC.success,
-    },
-    // Empty state styles
-    emptyState: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 48,
-      paddingHorizontal: SPACING.md,
-    },
-    emptyStateInline: {
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 32,
-      paddingHorizontal: SPACING.md,
-    },
-    emptyCard: {
-      backgroundColor: NEUTRAL.surface,
-      borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: NEUTRAL.border,
-      padding: SPACING.lg,
-      alignItems: "center",
-      width: "100%",
-      ...SHADOWS.sm,
-    },
-    emptyTitle: {
-      ...TYPOGRAPHY.titleMedium,
-      color: NEUTRAL.foreground,
-      marginTop: SPACING.md,
-    },
-    emptyTitleSmall: {
-      ...TYPOGRAPHY.titleSmall,
-      color: NEUTRAL.secondary,
-      marginTop: SPACING.sm,
-    },
-    emptySubtitle: {
-      ...TYPOGRAPHY.bodySmall,
-      color: NEUTRAL.secondary,
-      marginTop: SPACING.xs,
-      textAlign: "center",
-    },
-    emptySubtitleSmall: {
-      ...TYPOGRAPHY.caption,
-      color: NEUTRAL.muted,
-      marginTop: SPACING.xs,
-      textAlign: "center",
-    },
-    // Error state styles
-    errorContainer: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      padding: SPACING.md,
-    },
-    errorCard: {
-      backgroundColor: SEMANTIC.errorLight,
-      borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: SEMANTIC.error,
-      padding: SPACING.lg,
-    },
-    errorText: {
-      ...TYPOGRAPHY.bodyMedium,
-      color: SEMANTIC.error,
-      textAlign: "center",
-    },
-    // Loading state
-    centered: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 24,
-      backgroundColor: NEUTRAL.background,
-    },
-    skeletonContainer: {
-      padding: SPACING.md,
-      paddingTop: SPACING.md,
-    },
-  });
