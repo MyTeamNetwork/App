@@ -24,7 +24,7 @@ export type ResolvedColorScheme = "light" | "dark";
 interface ColorSchemeContextValue {
   colorScheme: ResolvedColorScheme;
   preference: ColorSchemePreference;
-  setPreference: (preference: ColorSchemePreference) => void;
+  setPreference: (preference: ColorSchemePreference) => Promise<void>;
   neutral: NeutralColors;
   semantic: SemanticColors;
 }

@@ -30,6 +30,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const isMountedRef = useRef(true);
+  const callIdRef = useRef(0);
 
   const debouncedQuery = useDebounce(query, 300);
 
@@ -42,6 +43,8 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
 
   const search = useCallback(
     async (q: string) => {
+      const callId = ++callIdRef.current;
+
       if (!orgId || q.length < 2) {
         if (isMountedRef.current) {
           setResults([]);
@@ -61,7 +64,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
             .select("id, user:users(id, name, email)")
             .eq("organization_id", orgId)
             .eq("status", "active")
-            .ilike("users.name", `%${q}%`)
+            .ilike("user.name", `%${q}%`)
             .limit(5),
 
           supabase
@@ -81,7 +84,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
             .limit(5),
         ]);
 
-        if (!isMountedRef.current) return;
+        if (!isMountedRef.current || callId !== callIdRef.current) return;
 
         if (membersRes.error) throw membersRes.error;
         if (eventsRes.error) throw eventsRes.error;
@@ -126,7 +129,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
             : "",
         }));
 
-        if (isMountedRef.current) {
+        if (isMountedRef.current && callId === callIdRef.current) {
           setResults([...memberResults, ...eventResults, ...announcementResults]);
         }
       } catch (e) {

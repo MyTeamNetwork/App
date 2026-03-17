@@ -6,6 +6,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback, useRef, ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import * as sentry from "@/lib/analytics/sentry";
 import type { Session, User, AuthChangeEvent } from "@supabase/supabase-js";
 
 export interface AuthContextValue {
@@ -29,12 +30,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     isMountedRef.current = true;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (isMountedRef.current) {
-        setSession(session);
-        setIsLoading(false);
-      }
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (isMountedRef.current) {
+          setSession(session);
+        }
+      })
+      .catch((error: Error) => {
+        sentry.captureException(error, { context: "AuthContext.getSession" });
+        if (isMountedRef.current) {
+          setSession(null);
+        }
+      })
+      .finally(() => {
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
+      });
 
     const {
       data: { subscription },

@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -53,16 +53,16 @@ export default function WelcomeScreen() {
   const router = useRouter();
   const { markWelcomeSeen } = useOnboarding();
   const flatListRef = useRef<FlatList>(null);
-  const currentIndexRef = useRef(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
   const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { x: number } } }) => {
     const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
-    if (newIndex !== currentIndexRef.current) {
-      currentIndexRef.current = newIndex;
-      if (Platform.OS === "ios") {
+    setCurrentIndex((prev) => {
+      if (newIndex !== prev && Platform.OS === "ios") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-    }
+      return newIndex;
+    });
   }, [width]);
 
   const handleGetStarted = useCallback(async () => {
@@ -127,7 +127,7 @@ export default function WelcomeScreen() {
           <Animated.View
             key={page.key}
             entering={FadeIn.delay(index * 100)}
-            style={styles.dot}
+            style={[styles.dot, index === currentIndex && styles.dotActive]}
           />
         ))}
       </View>
@@ -207,6 +207,12 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.4)",
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
+  },
+  dotActive: {
+    backgroundColor: "#ffffff",
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
 });
