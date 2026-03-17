@@ -15,6 +15,26 @@ import { AnnouncementCardCompact } from "@/components/cards/AnnouncementCard";
 import type { EventCardEvent } from "@/components/cards/EventCard";
 import type { AnnouncementCardAnnouncement } from "@/components/cards/AnnouncementCard";
 
+function SectionHeader({ title, onSeeAll }: { title: string; onSeeAll: () => void }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <Pressable
+        style={({ pressed }) => [
+          styles.seeAllButton,
+          pressed && { opacity: 0.7 },
+        ]}
+        onPress={onSeeAll}
+        accessibilityRole="button"
+        accessibilityLabel={`See all ${title.toLowerCase()}`}
+      >
+        <Text style={styles.seeAllText}>See all</Text>
+        <ChevronRight size={16} color={NEUTRAL.secondary} />
+      </Pressable>
+    </View>
+  );
+}
+
 interface EventsTabProps {
   orgSlug: string;
   events: EventCardEvent[];
@@ -46,27 +66,20 @@ export function EventsTab({
     <ScrollView
       contentContainerStyle={styles.scrollContent}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={SEMANTIC.success}
+        />
       }
       showsVerticalScrollIndicator={false}
     >
       {/* Upcoming Events section */}
       <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Upcoming Events</Text>
-          <Pressable
-            style={({ pressed }) => [
-              styles.seeAllButton,
-              pressed && { opacity: 0.7 },
-            ]}
-            onPress={() => onNavigate(`/(app)/${orgSlug}/(tabs)/events`)}
-            accessibilityRole="button"
-            accessibilityLabel="See all events"
-          >
-            <Text style={styles.seeAllText}>See all</Text>
-            <ChevronRight size={16} color={NEUTRAL.secondary} />
-          </Pressable>
-        </View>
+        <SectionHeader
+          title="Upcoming Events"
+          onSeeAll={() => onNavigate(`/(app)/${orgSlug}/(tabs)/events`)}
+        />
 
         {events.length === 0 ? (
           <View style={styles.emptyState}>
@@ -75,14 +88,19 @@ export function EventsTab({
           </View>
         ) : (
           <View style={styles.cardList}>
-            {events.map((event) => (
-              <EventCard
-                key={event.id}
-                event={event}
-                onPress={() => handleEventPress(event.id)}
-                onRSVP={() => handleEventPress(event.id)}
-                accentColor={SEMANTIC.success}
-              />
+            {events.map((event, index) => (
+              <View key={event.id}>
+                {index === 0 && (
+                  <Text style={styles.nextUpLabel}>NEXT UP</Text>
+                )}
+                <EventCard
+                  event={event}
+                  onPress={() => handleEventPress(event.id)}
+                  onRSVP={() => handleEventPress(event.id)}
+                  accentColor={SEMANTIC.success}
+                  style={index === 0 ? { backgroundColor: SEMANTIC.successLight } : undefined}
+                />
+              </View>
             ))}
           </View>
         )}
@@ -90,23 +108,10 @@ export function EventsTab({
 
       {/* Recent Announcements section */}
       <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Recent Announcements</Text>
-          <Pressable
-            style={({ pressed }) => [
-              styles.seeAllButton,
-              pressed && { opacity: 0.7 },
-            ]}
-            onPress={() =>
-              onNavigate(`/(app)/${orgSlug}/(tabs)/announcements`)
-            }
-            accessibilityRole="button"
-            accessibilityLabel="See all announcements"
-          >
-            <Text style={styles.seeAllText}>See all</Text>
-            <ChevronRight size={16} color={NEUTRAL.secondary} />
-          </Pressable>
-        </View>
+        <SectionHeader
+          title="Recent Announcements"
+          onSeeAll={() => onNavigate(`/(app)/${orgSlug}/(tabs)/announcements`)}
+        />
 
         {announcements.length === 0 ? (
           <View style={styles.emptyState}>
@@ -120,6 +125,7 @@ export function EventsTab({
                 key={announcement.id}
                 announcement={announcement}
                 onPress={() => handleAnnouncementPress(announcement.id)}
+                style={announcement.is_pinned ? { borderLeftWidth: 3, borderLeftColor: SEMANTIC.warning } : undefined}
               />
             ))}
           </View>
@@ -163,13 +169,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: SPACING.xl,
     gap: SPACING.sm,
-    backgroundColor: NEUTRAL.surface,
+    backgroundColor: NEUTRAL.background,
     borderRadius: RADIUS.lg,
     borderWidth: 1,
+    borderStyle: "dashed",
     borderColor: NEUTRAL.border,
   },
   emptyText: {
     ...TYPOGRAPHY.bodyMedium,
     color: NEUTRAL.muted,
+  },
+  nextUpLabel: {
+    ...TYPOGRAPHY.overline,
+    color: SEMANTIC.success,
+    marginBottom: SPACING.xs,
   },
 });
