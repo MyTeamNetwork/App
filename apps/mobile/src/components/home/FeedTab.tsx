@@ -6,15 +6,21 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
+  ScrollView,
   StyleSheet,
 } from "react-native";
-import { PenSquare } from "lucide-react-native";
+import { PenSquare, ChevronRight } from "lucide-react-native";
+import Animated, { FadeInUp, FadeOutUp } from "react-native-reanimated";
 import { NEUTRAL, SEMANTIC, SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { PostCard } from "@/components/feed/PostCard";
 import { NewPostsBanner } from "@/components/feed/NewPostsBanner";
 import { FeedComposerBar } from "./FeedComposerBar";
+import { EventCardCompact } from "@/components/cards/EventCard";
+import { AnnouncementCardCompact } from "@/components/cards/AnnouncementCard";
 import type { FeedPost } from "@/types/feed";
+import type { EventCardEvent } from "@/components/cards/EventCard";
+import type { AnnouncementCardAnnouncement } from "@/components/cards/AnnouncementCard";
 
 interface FeedTabProps {
   posts: FeedPost[];
@@ -29,6 +35,12 @@ interface FeedTabProps {
   onPostPress: (postId: string) => void;
   onLikeToggle: (postId: string) => void;
   onCreatePost: () => void;
+  upcomingEvents?: EventCardEvent[];
+  pinnedAnnouncement?: AnnouncementCardAnnouncement | null;
+  onEventPress?: (eventId: string) => void;
+  onAnnouncementPress?: (announcementId: string) => void;
+  userAvatarUrl?: string | null;
+  userName?: string | null;
 }
 
 export function FeedTab({
@@ -44,6 +56,12 @@ export function FeedTab({
   onPostPress,
   onLikeToggle,
   onCreatePost,
+  upcomingEvents,
+  pinnedAnnouncement,
+  onEventPress,
+  onAnnouncementPress,
+  userAvatarUrl,
+  userName,
 }: FeedTabProps) {
   const renderItem = useCallback(
     ({ item }: { item: FeedPost }) => (
@@ -56,11 +74,66 @@ export function FeedTab({
 
   const ListHeaderComponent = useMemo(
     () => (
-      <View style={styles.composerWrapper}>
-        <FeedComposerBar onPress={onCreatePost} />
+      <View>
+        {upcomingEvents && upcomingEvents.length > 0 && (
+          <View style={styles.sectionBlock}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>Coming Up</Text>
+              <Pressable
+                onPress={() => onEventPress?.(upcomingEvents[0].id)}
+                style={styles.seeAllButton}
+                accessibilityRole="button"
+                accessibilityLabel="See all events"
+              >
+                <Text style={styles.seeAllText}>See all</Text>
+                <ChevronRight size={14} color={SEMANTIC.info} />
+              </Pressable>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.eventStripContent}
+            >
+              {upcomingEvents.map((event) => (
+                <EventCardCompact
+                  key={event.id}
+                  event={event}
+                  onPress={() => onEventPress?.(event.id)}
+                  style={styles.eventCard}
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {pinnedAnnouncement != null && (
+          <View style={styles.pinnedWrapper}>
+            <AnnouncementCardCompact
+              announcement={pinnedAnnouncement}
+              onPress={() => onAnnouncementPress?.(pinnedAnnouncement.id)}
+              style={styles.pinnedCard}
+            />
+          </View>
+        )}
+
+        <View style={styles.composerWrapper}>
+          <FeedComposerBar
+            onPress={onCreatePost}
+            userAvatarUrl={userAvatarUrl}
+            userName={userName}
+          />
+        </View>
       </View>
     ),
-    [onCreatePost]
+    [
+      upcomingEvents,
+      pinnedAnnouncement,
+      onEventPress,
+      onAnnouncementPress,
+      onCreatePost,
+      userAvatarUrl,
+      userName,
+    ]
   );
 
   const ListFooterComponent = useMemo(
@@ -119,7 +192,11 @@ export function FeedTab({
         onEndReached={hasMore ? onLoadMore : undefined}
         onEndReachedThreshold={0.4}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={SEMANTIC.success}
+          />
         }
         contentContainerStyle={styles.listContent}
         initialNumToRender={8}
@@ -128,7 +205,9 @@ export function FeedTab({
         removeClippedSubviews={true}
       />
       {pendingPosts.length > 0 && (
-        <NewPostsBanner count={pendingPosts.length} onPress={onAcceptPending} />
+        <Animated.View entering={FadeInUp.springify()} exiting={FadeOutUp.springify()}>
+          <NewPostsBanner count={pendingPosts.length} onPress={onAcceptPending} />
+        </Animated.View>
       )}
     </View>
   );
@@ -140,6 +219,45 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: SPACING.xl,
+  },
+  sectionBlock: {
+    paddingTop: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  sectionLabel: {
+    ...TYPOGRAPHY.labelMedium,
+    color: NEUTRAL.muted,
+  },
+  seeAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.xxs,
+  },
+  seeAllText: {
+    ...TYPOGRAPHY.labelMedium,
+    color: SEMANTIC.info,
+  },
+  eventStripContent: {
+    paddingHorizontal: SPACING.md,
+  },
+  eventCard: {
+    width: 260,
+    marginRight: SPACING.sm,
+  },
+  pinnedWrapper: {
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  pinnedCard: {
+    borderLeftWidth: 3,
+    borderLeftColor: SEMANTIC.warning,
   },
   composerWrapper: {
     paddingHorizontal: SPACING.md,
