@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ const APPEARANCE_OPTIONS: Array<{ value: ColorSchemePreference; label: string; I
 export function SettingsNotificationsSection({ orgId }: Props) {
   const { prefs, loading: prefsLoading, saving: prefsSaving, updatePrefs } = useNotificationPreferences(orgId);
   const { preference, setPreference, neutral, semantic } = useAppColorScheme();
-  const colors = buildSettingsColors(neutral, semantic);
+  const colors = useMemo(() => buildSettingsColors(neutral, semantic), [neutral, semantic]);
   const baseStyles = useBaseStyles();
 
   const [expanded, setExpanded] = useState(true);

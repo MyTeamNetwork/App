@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -40,7 +40,7 @@ export default function SettingsScreen() {
   const { subscription, loading: subLoading, error: subError, refetch: refetchSubscription } = useSubscription(orgId);
   const { org, loading: orgSettingsLoading, updateName } = useOrgSettings(orgId);
   const { neutral, semantic } = useAppColorScheme();
-  const colors = buildSettingsColors(neutral, semantic);
+  const colors = useMemo(() => buildSettingsColors(neutral, semantic), [neutral, semantic]);
 
   const styles = createStyles(colors);
 

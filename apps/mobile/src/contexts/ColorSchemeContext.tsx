@@ -109,12 +109,13 @@ export function ColorSchemeProvider({ children }: { children: React.ReactNode })
   // Render children even before hydration so the app does not flash;
   // the system default ("light") is used until the stored value loads.
   if (!isHydrated) {
+    const preHydrateScheme = resolveScheme("system", systemColorScheme);
     const preHydrateValue: ColorSchemeContextValue = {
-      colorScheme: resolveScheme("system", systemColorScheme),
+      colorScheme: preHydrateScheme,
       preference: "system",
       setPreference,
-      neutral: NEUTRAL,
-      semantic: SEMANTIC,
+      neutral: preHydrateScheme === "dark" ? NEUTRAL_DARK : NEUTRAL,
+      semantic: preHydrateScheme === "dark" ? SEMANTIC_DARK : SEMANTIC,
     };
     return (
       <ColorSchemeContext.Provider value={preHydrateValue}>

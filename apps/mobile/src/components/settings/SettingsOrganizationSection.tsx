@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -22,7 +22,7 @@ interface Props {
 
 export function SettingsOrganizationSection({ org, orgLoading, updateName, isAdmin }: Props) {
   const { neutral, semantic } = useAppColorScheme();
-  const colors = buildSettingsColors(neutral, semantic);
+  const colors = useMemo(() => buildSettingsColors(neutral, semantic), [neutral, semantic]);
   const baseStyles = useBaseStyles();
 
   const [expanded, setExpanded] = useState(true);

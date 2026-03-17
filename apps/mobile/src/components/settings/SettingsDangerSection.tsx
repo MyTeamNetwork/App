@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ interface Props {
 export function SettingsDangerSection({ orgId, orgName, isAdmin, subscription, refetchSubscription }: Props) {
   const router = useRouter();
   const { neutral, semantic } = useAppColorScheme();
-  const colors = buildSettingsColors(neutral, semantic);
+  const colors = useMemo(() => buildSettingsColors(neutral, semantic), [neutral, semantic]);
   const baseStyles = useBaseStyles();
 
   const [expanded, setExpanded] = useState(false);

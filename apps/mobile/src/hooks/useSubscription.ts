@@ -1,17 +1,8 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { AlumniBucket } from "@teammeet/types";
+import { ALUMNI_LIMITS } from "@teammeet/core";
 import * as sentry from "@/lib/analytics/sentry";
-
-const ALUMNI_LIMITS: Record<string, number | null> = {
-  none: 0,
-  "0-250": 250,
-  "251-500": 500,
-  "501-1000": 1000,
-  "1001-2500": 2500,
-  "2500-5000": 5000,
-  "5000+": null,
-};
 
 export interface SubscriptionData {
   bucket: AlumniBucket;

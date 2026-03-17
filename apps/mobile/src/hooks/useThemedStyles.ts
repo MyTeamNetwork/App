@@ -14,6 +14,7 @@ export function useThemedStyles<T extends StyleSheet.NamedStyles<T>>(
   const { colorScheme, neutral, semantic } = useAppColorScheme();
   return useMemo(
     () => StyleSheet.create(factory(neutral, semantic)),
-    [colorScheme]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [colorScheme, factory]
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -44,7 +44,7 @@ interface Props {
 export function SettingsInvitesSection({ orgId, isAdmin, subscription }: Props) {
   const { invites, loading: invitesLoading, createInvite, revokeInvite, deleteInvite } = useInvites(orgId);
   const { neutral, semantic } = useAppColorScheme();
-  const colors = buildSettingsColors(neutral, semantic);
+  const colors = useMemo(() => buildSettingsColors(neutral, semantic), [neutral, semantic]);
   const baseStyles = useBaseStyles();
 
   const [expanded, setExpanded] = useState(false);

@@ -49,7 +49,7 @@ export function useNotificationPreferences(
       setLoading(true);
       setError(null);
 
-      let { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await supabase
         .from("notification_preferences")
         .select("id, email_address, email_enabled, push_enabled")
         .eq("organization_id", orgId)
@@ -161,7 +161,7 @@ export function useNotificationPreferences(
       try {
         if (prefs?.id) {
           // Update existing preferences
-          let { error: updateError } = await supabase
+          const { error: updateError } = await supabase
             .from("notification_preferences")
             .update(writePayload)
             .eq("id", prefs.id);
@@ -169,7 +169,7 @@ export function useNotificationPreferences(
           if (updateError) throw updateError;
         } else {
           // Insert new preferences
-          let { data, error: insertError } = await supabase
+          const { data, error: insertError } = await supabase
             .from("notification_preferences")
             .insert({
               organization_id: orgId,

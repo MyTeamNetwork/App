@@ -32,7 +32,7 @@ export function SettingsAccessSection({ orgId, isAdmin }: Props) {
     rejectMember,
   } = useMemberships(orgId);
   const { neutral, semantic } = useAppColorScheme();
-  const colors = buildSettingsColors(neutral, semantic);
+  const colors = useMemo(() => buildSettingsColors(neutral, semantic), [neutral, semantic]);
   const baseStyles = useBaseStyles();
 
   const [expanded, setExpanded] = useState(false);
