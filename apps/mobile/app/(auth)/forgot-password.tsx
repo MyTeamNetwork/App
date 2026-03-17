@@ -106,7 +106,7 @@ export default function ForgotPasswordScreen() {
       const { error } = await supabase.auth.resetPasswordForEmail(
         trimmedEmail.toLowerCase(),
         {
-          redirectTo: "teammeet://auth/reset-password",
+          redirectTo: "teammeet://reset-password",
         }
       );
 

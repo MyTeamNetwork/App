@@ -1,119 +1,49 @@
 import { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import * as Linking from "expo-linking";
-import { supabase } from "@/lib/supabase";
 import { captureException } from "@/lib/analytics";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function AuthCallbackScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
+  const params = useLocalSearchParams<{ error?: string; error_description?: string }>();
+  const { session } = useAuth();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    handleCallback();
-  }, []);
-
-  const handleCallback = async () => {
-    try {
-      // Get the current URL to extract tokens
-      const url = await Linking.getInitialURL();
-      
-      if (url) {
-        await processAuthUrl(url);
-      } else if (params.code) {
-        const { error: exchangeError } =
-          await supabase.auth.exchangeCodeForSession(params.code as string);
-        if (exchangeError) {
-          throw exchangeError;
-        }
-        router.replace("/(app)");
-      } else if (params.access_token && params.refresh_token) {
-        // Tokens might be passed as query params
-        await setSessionFromTokens(
-          params.access_token as string,
-          params.refresh_token as string
-        );
-      } else {
-        // No tokens found, redirect to login
-        router.replace("/(auth)/login");
-      }
-    } catch (err) {
-      captureException(err as Error, { screen: "AuthCallback" });
-      setError((err as Error).message);
-      // Wait a moment then redirect to login
-      setTimeout(() => {
-        router.replace("/(auth)/login");
-      }, 2000);
-    }
-  };
-
-  const processAuthUrl = async (url: string) => {
-    const parsedUrl = new URL(url);
-
-    // Handle OAuth errors
-    const errorParam = parsedUrl.searchParams.get("error");
-    const errorDescription =
-      parsedUrl.searchParams.get("error_description") ||
-      new URLSearchParams(parsedUrl.hash?.substring(1) || "").get("error_description");
-    if (errorParam) {
-      throw new Error(errorDescription || errorParam);
-    }
-
-    // PKCE flow: exchange authorization code for session
-    const code = parsedUrl.searchParams.get("code");
-    if (code) {
-      const { error: exchangeError } =
-        await supabase.auth.exchangeCodeForSession(code);
-      if (exchangeError) {
-        throw exchangeError;
-      }
+    if (session) {
       router.replace("/(app)");
+    }
+  }, [session, router]);
+
+  useEffect(() => {
+    if (!params.error && !params.error_description) {
       return;
     }
 
-    // Legacy/implicit flow fallback: extract tokens from hash or query params
-    let accessToken: string | null = null;
-    let refreshToken: string | null = null;
+    const message = params.error_description || params.error || "Authentication failed";
+    captureException(new Error(message), { screen: "AuthCallback" });
+    setError(message);
 
-    if (parsedUrl.hash) {
-      const hashParams = new URLSearchParams(parsedUrl.hash.substring(1));
-      accessToken = hashParams.get("access_token");
-      refreshToken = hashParams.get("refresh_token");
+    const timeout = setTimeout(() => {
+      router.replace("/(auth)/login");
+    }, 2000);
+
+    return () => clearTimeout(timeout);
+  }, [params.error, params.error_description, router]);
+
+  useEffect(() => {
+    if (session || error) {
+      return;
     }
 
-    if (!accessToken) {
-      accessToken = parsedUrl.searchParams.get("access_token");
-      refreshToken = parsedUrl.searchParams.get("refresh_token");
-    }
+    const timeout = setTimeout(() => {
+      setError("Sign-in could not be completed.");
+      router.replace("/(auth)/login");
+    }, 8000);
 
-    if (accessToken && refreshToken) {
-      await setSessionFromTokens(accessToken, refreshToken);
-    } else {
-      throw new Error("No authentication tokens found in callback URL");
-    }
-  };
-
-  const setSessionFromTokens = async (accessToken: string, refreshToken: string) => {
-    const { error: sessionError } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-
-    if (sessionError) {
-      throw sessionError;
-    }
-
-    // Verify session was set
-    const { data: sessionData } = await supabase.auth.getSession();
-    
-    if (!sessionData.session) {
-      throw new Error("Failed to establish session");
-    }
-
-    // Success! Navigate to app
-    router.replace("/(app)");
-  };
+    return () => clearTimeout(timeout);
+  }, [session, error, router]);
 
   if (error) {
     return (

@@ -219,7 +219,7 @@ export default function LoginScreen() {
       // Create redirect URI for the OAuth callback
       const redirectUri = makeRedirectUri({
         scheme: "teammeet",
-        path: "auth/callback",
+        path: "callback",
       });
 
       // Get the OAuth URL from Supabase (don't auto-redirect)
@@ -247,11 +247,15 @@ export default function LoginScreen() {
         // Check for hash fragment (implicit flow) or query params (PKCE)
         const hashParams = new URLSearchParams(url.hash.substring(1));
         const queryParams = new URLSearchParams(url.search);
+        const code = queryParams.get("code");
 
         const accessToken = hashParams.get("access_token") || queryParams.get("access_token");
         const refreshToken = hashParams.get("refresh_token") || queryParams.get("refresh_token");
 
-        if (accessToken && refreshToken) {
+        if (code) {
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) throw exchangeError;
+        } else if (accessToken && refreshToken) {
           // Set the session in Supabase
           const { error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,

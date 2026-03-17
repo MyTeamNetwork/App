@@ -166,7 +166,7 @@ export default function SignupScreen() {
         email: trimmedEmail.toLowerCase(),
         password,
         options: {
-          emailRedirectTo: "teammeet://auth/callback",
+          emailRedirectTo: "teammeet://callback",
         },
       });
 

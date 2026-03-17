@@ -4,9 +4,9 @@ import { useOnboarding } from "@/hooks/useOnboarding";
 
 export default function AuthLayout() {
   const router = useRouter();
-  const segments = useSegments() as string[];
+  const segments = Array.from(useSegments());
   const { loadWelcomeSeen } = useOnboarding();
-  const currentScreen = segments[segments.length - 1] ?? "index";
+  const currentScreen = segments.at(-1) ?? "index";
 
   useEffect(() => {
     let cancelled = false;
