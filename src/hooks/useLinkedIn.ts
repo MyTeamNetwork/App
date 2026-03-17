@@ -29,7 +29,11 @@ export interface UseLinkedInReturn {
   onDisconnect: () => Promise<void>;
 }
 
-export function useLinkedIn(): UseLinkedInReturn {
+interface UseLinkedInOptions {
+  redirectPath?: string;
+}
+
+export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
   const [linkedInUrl, setLinkedInUrl] = useState("");
   const [connection, setConnection] = useState<LinkedInConnection | null>(null);
   const [connectionLoading, setConnectionLoading] = useState(true);
@@ -124,7 +128,11 @@ export function useLinkedIn(): UseLinkedInReturn {
 
   const onConnect = useCallback(async () => {
     try {
-      const res = await fetch("/api/user/linkedin/connect", { method: "POST" });
+      const res = await fetch("/api/user/linkedin/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redirectPath: options?.redirectPath }),
+      });
 
       if (res.status === 404) {
         showFeedback("LinkedIn integration is not yet available.", "error", {
@@ -163,7 +171,7 @@ export function useLinkedIn(): UseLinkedInReturn {
         { duration: 8000 }
       );
     }
-  }, []);
+  }, [options?.redirectPath]);
 
   const onSync = useCallback(async () => {
     const res = await fetch("/api/user/linkedin/sync", { method: "POST" });

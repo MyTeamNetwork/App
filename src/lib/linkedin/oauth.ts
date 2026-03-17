@@ -103,7 +103,7 @@ export function getLinkedInAuthUrl(state: string): string {
     client_id: getLinkedInClientId(),
     redirect_uri: getLinkedInRedirectUri(),
     state,
-    scope: "openid profile email offline_access",
+    scope: "openid profile email",
   });
   return `${LINKEDIN_AUTH_URL}?${params.toString()}`;
 }
@@ -532,6 +532,10 @@ export function getLinkedInOAuthErrorMessage(error: string): string {
     invalid_request: "The authorization request was invalid. Please try again.",
     server_error: "LinkedIn's servers encountered an error. Please try again later.",
     temporarily_unavailable: "LinkedIn's servers are temporarily unavailable. Please try again later.",
+    redirect_uri_mismatch: "The LinkedIn app configuration is incorrect. Please contact support.",
+    unauthorized_client: "The LinkedIn app is not authorized. Please contact support.",
+    invalid_scope: "The requested LinkedIn permissions are not valid. Please contact support.",
+    invalid_scope_error: "The requested LinkedIn permissions are not valid. Please contact support.",
   };
   return messages[error] || "An unexpected error occurred. Please try again.";
 }

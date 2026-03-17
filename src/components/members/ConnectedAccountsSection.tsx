@@ -29,7 +29,7 @@ function ConnectedAccountsSectionContent({
   orgName,
 }: ConnectedAccountsSectionProps) {
   const pathname = usePathname();
-  const linkedIn = useLinkedIn();
+  const linkedIn = useLinkedIn({ redirectPath: pathname ?? undefined });
 
   const calendarSync = useGoogleCalendarSync({
     orgId,
