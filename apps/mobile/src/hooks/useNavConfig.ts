@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { fetchWithAuth } from "@/lib/web-api";
 import type { OrgRole } from "@teammeet/core";
+import * as sentry from "@/lib/analytics/sentry";
 
 export interface NavConfigEntry {
   label?: string;
@@ -63,6 +64,7 @@ export function useNavConfig(orgSlug: string | null): UseNavConfigReturn {
         setError(null);
       }
     } catch (e) {
+      sentry.captureException(e as Error, { context: "useNavConfig.fetchNavConfig" });
       if (isMountedRef.current) {
         setError((e as Error).message);
         setNavConfig({});
@@ -141,6 +143,7 @@ export function useNavConfig(orgSlug: string | null): UseNavConfigReturn {
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useNavConfig.saveNavConfig" });
         return { success: false, error: (e as Error).message };
       } finally {
         if (isMountedRef.current) {

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import { normalizeRole, ViewerContext } from "@teammeet/core";
+import * as sentry from "@/lib/analytics/sentry";
 
 const STORAGE_KEY_PREFIX = "notification_read_ids_";
 const STALE_TIME_MS = 30_000; // 30 seconds
@@ -289,6 +290,7 @@ export function useNotifications(
           setOffset(fetchOffset + (notificationsData?.length || 0));
         }
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useNotifications.fetchNotifications" });
         if (isMountedRef.current) {
           setError((e as Error).message);
         }

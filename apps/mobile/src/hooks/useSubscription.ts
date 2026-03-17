@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { fetchWithAuth } from "@/lib/web-api";
 import type { AlumniBucket } from "@teammeet/types";
+import * as sentry from "@/lib/analytics/sentry";
 
 export interface SubscriptionData {
   bucket: AlumniBucket;
@@ -58,6 +59,7 @@ export function useSubscription(organizationId: string | null): UseSubscriptionR
         setError(null);
       }
     } catch (e) {
+      sentry.captureException(e as Error, { context: "useSubscription.fetchSubscription" });
       if (isMountedRef.current) {
         setError((e as Error).message);
         setSubscription(null);

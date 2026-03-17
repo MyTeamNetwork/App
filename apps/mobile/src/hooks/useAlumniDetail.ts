@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import * as sentry from "@/lib/analytics/sentry";
 
 interface Alumni {
   id: string;
@@ -81,6 +82,7 @@ export function useAlumniDetail(orgSlug: string, alumniId: string): UseAlumniDet
         setAlumni(data as Alumni);
       }
     } catch (e) {
+      sentry.captureException(e as Error, { context: "useAlumniDetail.fetchAlumni" });
       if (isMountedRef.current) {
         setError((e as Error).message);
         setAlumni(null);

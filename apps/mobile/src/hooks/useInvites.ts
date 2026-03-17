@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import * as sentry from "@/lib/analytics/sentry";
 
 export interface Invite {
   id: string;
@@ -62,6 +63,7 @@ export function useInvites(orgId: string | null): UseInvitesReturn {
         setError(null);
       }
     } catch (e) {
+      sentry.captureException(e as Error, { context: "useInvites.fetchInvites" });
       if (isMountedRef.current) {
         setError((e as Error).message);
         setInvites([]);
@@ -137,6 +139,7 @@ export function useInvites(orgId: string | null): UseInvitesReturn {
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useInvites.createInvite" });
         return { success: false, error: (e as Error).message };
       }
     },
@@ -166,6 +169,7 @@ export function useInvites(orgId: string | null): UseInvitesReturn {
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useInvites.revokeInvite" });
         return { success: false, error: (e as Error).message };
       }
     },
@@ -189,6 +193,7 @@ export function useInvites(orgId: string | null): UseInvitesReturn {
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useInvites.deleteInvite" });
         return { success: false, error: (e as Error).message };
       }
     },

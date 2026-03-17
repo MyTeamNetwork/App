@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import * as sentry from "@/lib/analytics/sentry";
 
 export interface Membership {
   id: string;
@@ -93,6 +94,7 @@ export function useMemberships(orgId: string | null): UseMembershipsReturn {
         setError(null);
       }
     } catch (e) {
+      sentry.captureException(e as Error, { context: "useMemberships.fetchMemberships" });
       if (isMountedRef.current) {
         setError((e as Error).message);
         setMemberships([]);
@@ -168,6 +170,7 @@ export function useMemberships(orgId: string | null): UseMembershipsReturn {
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useMemberships.updateRole" });
         return { success: false, error: (e as Error).message };
       }
     },
@@ -203,6 +206,7 @@ export function useMemberships(orgId: string | null): UseMembershipsReturn {
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useMemberships.updateAccess" });
         return { success: false, error: (e as Error).message };
       }
     },
@@ -238,6 +242,7 @@ export function useMemberships(orgId: string | null): UseMembershipsReturn {
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useMemberships.rejectMember" });
         return { success: false, error: (e as Error).message };
       }
     },

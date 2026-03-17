@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import * as sentry from "@/lib/analytics/sentry";
 
 export interface NotificationPreferences {
   id: string;
@@ -81,6 +82,7 @@ export function useNotificationPreferences(
         setError(null);
       }
     } catch (e) {
+      sentry.captureException(e as Error, { context: "useNotificationPreferences.fetchPrefs" });
       if (isMountedRef.current) {
         setError((e as Error).message);
         setPrefs(null);
@@ -189,6 +191,7 @@ export function useNotificationPreferences(
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useNotificationPreferences.updatePrefs" });
         // Rollback on error
         if (isMountedRef.current) {
           setPrefs(previousPrefs);

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Organization } from "@teammeet/types";
+import * as sentry from "@/lib/analytics/sentry";
 
 interface UseOrganizationsReturn {
   organizations: Organization[];
@@ -49,6 +50,7 @@ export function useOrganizations(): UseOrganizationsReturn {
         setError(null);
       }
     } catch (e) {
+      sentry.captureException(e as Error, { context: "useOrganizations.fetchOrganizations" });
       if (isMountedRef.current) {
         setError((e as Error).message);
       }

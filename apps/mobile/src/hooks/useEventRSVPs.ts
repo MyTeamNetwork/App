@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import * as sentry from "@/lib/analytics/sentry";
 
 export interface EventRSVP {
   id: string;
@@ -92,6 +93,7 @@ export function useEventRSVPs(eventId: string | undefined): UseEventRSVPsReturn 
         setError(null);
       }
     } catch (e) {
+      sentry.captureException(e as Error, { context: "useEventRSVPs.fetchRSVPs" });
       if (isMountedRef.current) {
         const error = e as { message: string };
         setError(error.message);
@@ -178,6 +180,7 @@ export function useEventRSVPs(eventId: string | undefined): UseEventRSVPsReturn 
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useEventRSVPs.checkInAttendee" });
         return { success: false, error: (e as Error).message };
       }
     },
@@ -217,6 +220,7 @@ export function useEventRSVPs(eventId: string | undefined): UseEventRSVPsReturn 
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useEventRSVPs.undoCheckIn" });
         return { success: false, error: (e as Error).message };
       }
     },

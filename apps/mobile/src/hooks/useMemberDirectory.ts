@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import * as sentry from "@/lib/analytics/sentry";
 
 const STALE_TIME_MS = 30_000;
 const DEFAULT_PAGE_SIZE = 50;
@@ -139,6 +140,7 @@ export function useMemberDirectory(
           setOffset(fetchOffset + newData.length);
         }
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useMemberDirectory.fetchMembers" });
         if (isMountedRef.current) {
           setError((e as Error).message);
         }

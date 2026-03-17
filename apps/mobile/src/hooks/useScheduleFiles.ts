@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { ScheduleFile, User } from "@teammeet/types";
+import * as sentry from "@/lib/analytics/sentry";
 
 const STALE_TIME_MS = 30_000; // 30 seconds
 
@@ -136,6 +137,7 @@ export function useScheduleFiles(
             setAllFiles([]);
             setError(null);
           } else {
+            sentry.captureException(e as Error, { context: "useScheduleFiles.fetchFiles" });
             setError(error.message);
           }
         }
@@ -249,6 +251,7 @@ export function useScheduleFiles(
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useScheduleFiles.uploadFile" });
         const error = e as Error;
         return { success: false, error: error.message };
       }
@@ -286,6 +289,7 @@ export function useScheduleFiles(
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useScheduleFiles.deleteFile" });
         const error = e as Error;
         return { success: false, error: error.message };
       }

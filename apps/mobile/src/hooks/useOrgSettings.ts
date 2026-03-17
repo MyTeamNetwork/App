@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { fetchWithAuth } from "@/lib/web-api";
+import * as sentry from "@/lib/analytics/sentry";
 
 export interface OrgSettings {
   id: string;
@@ -54,6 +55,7 @@ export function useOrgSettings(orgSlug: string | null): UseOrgSettingsReturn {
         setError(null);
       }
     } catch (e) {
+      sentry.captureException(e as Error, { context: "useOrgSettings.fetchOrg" });
       if (isMountedRef.current) {
         setError((e as Error).message);
         setOrg(null);
@@ -126,6 +128,7 @@ export function useOrgSettings(orgSlug: string | null): UseOrgSettingsReturn {
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useOrgSettings.updateName" });
         return { success: false, error: (e as Error).message };
       }
     },
@@ -191,6 +194,7 @@ export function useOrgSettings(orgSlug: string | null): UseOrgSettingsReturn {
 
         return { success: true };
       } catch (e) {
+        sentry.captureException(e as Error, { context: "useOrgSettings.updateBranding" });
         return { success: false, error: (e as Error).message };
       }
     },
