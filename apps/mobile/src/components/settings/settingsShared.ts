@@ -1,6 +1,5 @@
-import { StyleSheet } from "react-native";
 import { formatMonthDayYearSafe } from "@/lib/date-format";
-import { SETTINGS_COLORS } from "./settingsColors";
+import { useThemedStyles } from "@/hooks/useThemedStyles";
 
 export { fontSize, fontWeight, spacing } from "@/lib/theme";
 
@@ -13,41 +12,42 @@ export function formatBucket(bucket: string): string {
   return `Alumni ${bucket}`;
 }
 
-export const baseStyles = StyleSheet.create({
-  section: {
-    marginBottom: 16,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-  },
-  sectionHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: SETTINGS_COLORS.foreground,
-  },
-  card: {
-    backgroundColor: SETTINGS_COLORS.card,
-    borderRadius: 12,
-    padding: 16,
-    borderCurve: "continuous",
-  } as any,
-  divider: {
-    height: 1,
-    backgroundColor: SETTINGS_COLORS.border,
-    marginVertical: 16,
-  },
-  loadingContainer: {
-    padding: 24,
-    alignItems: "center",
-    gap: 8,
-  },
-});
+export function useBaseStyles() {
+  return useThemedStyles((n, _s) => ({
+    section: {
+      marginBottom: 16,
+    },
+    sectionHeader: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      justifyContent: "space-between" as const,
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+    },
+    sectionHeaderLeft: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 12,
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: "600" as const,
+      color: n.foreground,
+    },
+    card: {
+      backgroundColor: n.surface,
+      borderRadius: 12,
+      padding: 16,
+    },
+    divider: {
+      height: 1,
+      backgroundColor: n.border,
+      marginVertical: 16,
+    },
+    loadingContainer: {
+      padding: 24,
+      alignItems: "center" as const,
+      gap: 8,
+    },
+  }));
+}

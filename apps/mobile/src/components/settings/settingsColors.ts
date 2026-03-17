@@ -1,20 +1,44 @@
-export const SETTINGS_COLORS = {
-  background: "#f8fafc",
-  foreground: "#0f172a",
-  primaryText: "#0f172a",
-  secondaryText: "#64748b",
-  mutedText: "#94a3b8",
-  muted: "#64748b",
-  mutedForeground: "#94a3b8",
-  border: "#e2e8f0",
-  card: "#ffffff",
-  primary: "#059669",
-  primaryForeground: "#ffffff",
-  primaryLight: "#d1fae5",
-  secondary: "#f1f5f9",
-  error: "#ef4444",
-  success: "#22c55e",
-  warning: "#f59e0b",
-};
+import type { NeutralColors, SemanticColors } from "@/lib/design-tokens";
 
-export type SettingsColors = typeof SETTINGS_COLORS;
+export interface SettingsColors {
+  background: string;
+  foreground: string;
+  primaryText: string;
+  secondaryText: string;
+  mutedText: string;
+  muted: string;
+  mutedForeground: string;
+  border: string;
+  card: string;
+  primary: string;
+  primaryForeground: string;
+  primaryLight: string;
+  secondary: string;
+  error: string;
+  success: string;
+  warning: string;
+}
+
+export function buildSettingsColors(
+  neutral: NeutralColors,
+  semantic: SemanticColors
+): SettingsColors {
+  return {
+    background: neutral.background,
+    foreground: neutral.foreground,
+    primaryText: neutral.foreground,
+    secondaryText: neutral.secondary,
+    mutedText: neutral.placeholder,
+    muted: neutral.muted,
+    mutedForeground: neutral.placeholder,
+    border: neutral.border,
+    card: neutral.surface,
+    primary: semantic.success,
+    primaryForeground: "#ffffff",
+    primaryLight: semantic.successLight,
+    secondary: neutral.divider,
+    error: semantic.error,
+    success: semantic.success,
+    warning: semantic.warning,
+  };
+}
