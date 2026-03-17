@@ -11,19 +11,12 @@ import {
 import { Bell, ChevronDown, Sun, Moon, Monitor } from "lucide-react-native";
 import { useNotificationPreferences } from "@/hooks/useNotificationPreferences";
 import { useAppColorScheme, type ColorSchemePreference } from "@/contexts/ColorSchemeContext";
-import { type SettingsColors } from "./settingsColors";
+import { SETTINGS_COLORS } from "./settingsColors";
+import { baseStyles, fontSize, fontWeight } from "./settingsShared";
 
 interface Props {
   orgId: string;
-  colors: SettingsColors;
 }
-
-const fontSize = { xs: 12, sm: 14, base: 16, lg: 18 };
-const fontWeight = {
-  normal: "400" as const,
-  medium: "500" as const,
-  semibold: "600" as const,
-};
 
 const APPEARANCE_OPTIONS: Array<{ value: ColorSchemePreference; label: string; Icon: typeof Sun }> = [
   { value: "light", label: "Light", Icon: Sun },
@@ -31,7 +24,7 @@ const APPEARANCE_OPTIONS: Array<{ value: ColorSchemePreference; label: string; I
   { value: "dark", label: "Dark", Icon: Moon },
 ];
 
-export function SettingsNotificationsSection({ orgId, colors }: Props) {
+export function SettingsNotificationsSection({ orgId }: Props) {
   const { prefs, loading: prefsLoading, saving: prefsSaving, updatePrefs } = useNotificationPreferences(orgId);
   const { preference, setPreference } = useAppColorScheme();
 
@@ -56,15 +49,15 @@ export function SettingsNotificationsSection({ orgId, colors }: Props) {
     });
   };
 
-  const styles = createStyles(colors);
+  const colors = SETTINGS_COLORS;
 
   return (
     <>
       {/* Appearance section */}
-      <View style={styles.section}>
+      <View style={baseStyles.section}>
         <View style={styles.appearanceHeader}>
           <Monitor size={20} color={colors.muted} />
-          <Text style={styles.sectionTitle}>Appearance</Text>
+          <Text style={baseStyles.sectionTitle}>Appearance</Text>
         </View>
         <View style={styles.segmentedControl}>
           {APPEARANCE_OPTIONS.map(({ value, label, Icon }) => {
@@ -101,14 +94,14 @@ export function SettingsNotificationsSection({ orgId, colors }: Props) {
       </View>
 
       {/* Notifications section */}
-      <View style={styles.section}>
+      <View style={baseStyles.section}>
       <Pressable
-        style={({ pressed }) => [styles.sectionHeader, pressed && { opacity: 0.7 }]}
+        style={({ pressed }) => [baseStyles.sectionHeader, pressed && { opacity: 0.7 }]}
         onPress={() => setExpanded((prev) => !prev)}
       >
-        <View style={styles.sectionHeaderLeft}>
+        <View style={baseStyles.sectionHeaderLeft}>
           <Bell size={20} color={colors.muted} />
-          <Text style={styles.sectionTitle}>Notifications</Text>
+          <Text style={baseStyles.sectionTitle}>Notifications</Text>
         </View>
         <ChevronDown
           size={20}
@@ -118,9 +111,9 @@ export function SettingsNotificationsSection({ orgId, colors }: Props) {
       </Pressable>
 
       {expanded && (
-        <View style={styles.card}>
+        <View style={baseStyles.card}>
           {prefsLoading ? (
-            <View style={styles.loadingContainer}>
+            <View style={baseStyles.loadingContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
             </View>
           ) : (
@@ -184,56 +177,27 @@ export function SettingsNotificationsSection({ orgId, colors }: Props) {
   );
 }
 
-const createStyles = (colors: SettingsColors) =>
-  StyleSheet.create({
-    section: {
-      marginBottom: 16,
-    },
-    sectionHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingVertical: 12,
-      paddingHorizontal: 4,
-    },
-    sectionHeaderLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-    },
-    sectionTitle: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-    },
-    card: {
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 16,
-      borderCurve: "continuous",
-    },
-    loadingContainer: {
-      padding: 24,
-      alignItems: "center",
-    },
+const c = SETTINGS_COLORS;
+
+const styles = StyleSheet.create({
     fieldGroup: {
       marginBottom: 16,
     },
     fieldLabel: {
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
-      color: colors.foreground,
+      color: c.foreground,
       marginBottom: 8,
     },
     input: {
-      backgroundColor: colors.background,
+      backgroundColor: c.background,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: c.border,
       borderRadius: 8,
       paddingVertical: 12,
       paddingHorizontal: 16,
       fontSize: fontSize.base,
-      color: colors.foreground,
+      color: c.foreground,
       marginBottom: 12,
     },
     switchRow: {
@@ -242,22 +206,22 @@ const createStyles = (colors: SettingsColors) =>
       justifyContent: "space-between",
       paddingVertical: 12,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      borderBottomColor: c.border,
     },
     switchInfo: {
       flex: 1,
     },
     switchLabel: {
       fontSize: fontSize.base,
-      color: colors.foreground,
+      color: c.foreground,
     },
     switchHint: {
       fontSize: 13,
-      color: colors.mutedForeground,
+      color: c.mutedForeground,
       marginTop: 2,
     },
     button: {
-      backgroundColor: colors.primary,
+      backgroundColor: c.primary,
       paddingVertical: 12,
       paddingHorizontal: 20,
       borderRadius: 8,
@@ -266,7 +230,7 @@ const createStyles = (colors: SettingsColors) =>
       marginTop: 16,
     },
     buttonText: {
-      color: colors.primaryForeground,
+      color: c.primaryForeground,
       fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
     },
@@ -279,7 +243,7 @@ const createStyles = (colors: SettingsColors) =>
     },
     segmentedControl: {
       flexDirection: "row",
-      backgroundColor: colors.card,
+      backgroundColor: c.card,
       borderRadius: 10,
       padding: 4,
       gap: 4,
@@ -295,7 +259,7 @@ const createStyles = (colors: SettingsColors) =>
       borderRadius: 8,
     },
     segmentOptionSelected: {
-      backgroundColor: colors.background,
+      backgroundColor: c.background,
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.08,
@@ -305,10 +269,10 @@ const createStyles = (colors: SettingsColors) =>
     segmentOptionText: {
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
-      color: colors.mutedForeground,
+      color: c.mutedForeground,
     },
     segmentOptionTextSelected: {
-      color: colors.primary,
+      color: c.primary,
       fontWeight: fontWeight.semibold,
     },
   });

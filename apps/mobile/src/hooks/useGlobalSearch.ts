@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
+import { useRequestTracker } from "@/hooks/useRequestTracker";
 
 export interface SearchResult {
   id: string;
@@ -30,7 +31,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const isMountedRef = useRef(true);
-  const callIdRef = useRef(0);
+  const { beginRequest, isCurrentRequest } = useRequestTracker();
 
   const debouncedQuery = useDebounce(query, 300);
 
@@ -43,7 +44,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
 
   const search = useCallback(
     async (q: string) => {
-      const callId = ++callIdRef.current;
+      const callId = beginRequest();
 
       if (!orgId || q.length < 2) {
         if (isMountedRef.current) {
@@ -85,7 +86,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
             .limit(5),
         ]);
 
-        if (!isMountedRef.current || callId !== callIdRef.current) return;
+        if (!isMountedRef.current || !isCurrentRequest(callId)) return;
 
         if (membersRes.error) throw membersRes.error;
         if (eventsRes.error) throw eventsRes.error;
@@ -125,11 +126,11 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
             : "",
         }));
 
-        if (isMountedRef.current && callId === callIdRef.current) {
+        if (isMountedRef.current && isCurrentRequest(callId)) {
           setResults([...memberResults, ...eventResults, ...announcementResults]);
         }
       } catch (e) {
-        if (isMountedRef.current && callId === callIdRef.current) {
+        if (isMountedRef.current && isCurrentRequest(callId)) {
           setResults([]);
           sentry.captureException(e as Error, {
             context: "useGlobalSearch",
@@ -138,7 +139,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
           });
         }
       } finally {
-        if (isMountedRef.current && callId === callIdRef.current) {
+        if (isMountedRef.current && isCurrentRequest(callId)) {
           setLoading(false);
         }
       }

@@ -11,35 +11,20 @@ import {
 } from "react-native";
 import { AlertTriangle, ChevronDown } from "lucide-react-native";
 import { useRouter } from "expo-router";
-import { useSubscription } from "@/hooks/useSubscription";
-import { formatMonthDayYearSafe } from "@/lib/date-format";
 import { fetchWithAuth } from "@/lib/web-api";
-import { useOrgSettings } from "@/hooks/useOrgSettings";
-import { type SettingsColors } from "./settingsColors";
+import { SETTINGS_COLORS } from "./settingsColors";
+import { baseStyles, formatDate, fontSize, fontWeight } from "./settingsShared";
 
 interface Props {
   orgId: string;
-  orgSlug: string;
+  orgName: string | null;
   isAdmin: boolean;
-  colors: SettingsColors;
+  subscription: { status: string; currentPeriodEnd: string | null } | null;
+  refetchSubscription: () => void;
 }
 
-function formatDate(dateString: string | null): string {
-  return formatMonthDayYearSafe(dateString, "N/A");
-}
-
-const fontSize = { xs: 12, sm: 14, base: 16, lg: 18 };
-const fontWeight = {
-  normal: "400" as const,
-  medium: "500" as const,
-  semibold: "600" as const,
-  bold: "700" as const,
-};
-
-export function SettingsDangerSection({ orgId, orgSlug, isAdmin, colors }: Props) {
+export function SettingsDangerSection({ orgId, orgName, isAdmin, subscription, refetchSubscription }: Props) {
   const router = useRouter();
-  const { subscription, refetch: refetchSubscription } = useSubscription(orgId);
-  const { org } = useOrgSettings(orgId);
 
   const [expanded, setExpanded] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -103,10 +88,10 @@ export function SettingsDangerSection({ orgId, orgSlug, isAdmin, colors }: Props
   };
 
   const confirmDeleteOrganization = async () => {
-    if (!orgId || !org) return;
+    if (!orgId || !orgName) return;
 
-    if (deleteConfirmText !== org.name && deleteConfirmText !== org.slug) {
-      Alert.alert("Error", `Please type "${org.name}" to confirm deletion.`);
+    if (deleteConfirmText !== orgName) {
+      Alert.alert("Error", `Please type "${orgName}" to confirm deletion.`);
       return;
     }
 
@@ -130,18 +115,18 @@ export function SettingsDangerSection({ orgId, orgSlug, isAdmin, colors }: Props
     }
   };
 
-  const styles = createStyles(colors);
+  const colors = SETTINGS_COLORS;
 
   return (
     <>
-      <View style={styles.section}>
+      <View style={baseStyles.section}>
         <Pressable
-          style={({ pressed }) => [styles.sectionHeader, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [baseStyles.sectionHeader, pressed && { opacity: 0.7 }]}
           onPress={() => setExpanded((prev) => !prev)}
         >
-          <View style={styles.sectionHeaderLeft}>
+          <View style={baseStyles.sectionHeaderLeft}>
             <AlertTriangle size={20} color={colors.warning} />
-            <Text style={styles.sectionTitle}>Danger Zone</Text>
+            <Text style={baseStyles.sectionTitle}>Danger Zone</Text>
           </View>
           <ChevronDown
             size={20}
@@ -151,7 +136,7 @@ export function SettingsDangerSection({ orgId, orgSlug, isAdmin, colors }: Props
         </Pressable>
 
         {expanded && (
-          <View style={[styles.card, styles.dangerCard]}>
+          <View style={[baseStyles.card, styles.dangerCard]}>
             <View style={styles.dangerItem}>
               <View style={styles.dangerInfo}>
                 <Text style={styles.dangerTitle}>Cancel Subscription</Text>
@@ -178,7 +163,7 @@ export function SettingsDangerSection({ orgId, orgSlug, isAdmin, colors }: Props
               </Pressable>
             </View>
 
-            <View style={styles.divider} />
+            <View style={baseStyles.divider} />
 
             <View style={styles.dangerItem}>
               <View style={styles.dangerInfo}>
@@ -208,13 +193,13 @@ export function SettingsDangerSection({ orgId, orgSlug, isAdmin, colors }: Props
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Delete Organization?</Text>
             <Text style={styles.modalDescription}>
-              Type <Text style={styles.modalBold}>{org?.name}</Text> to confirm deletion.
+              Type <Text style={styles.modalBold}>{orgName}</Text> to confirm deletion.
             </Text>
             <TextInput
               style={styles.modalInput}
               value={deleteConfirmText}
               onChangeText={setDeleteConfirmText}
-              placeholder={`Type "${org?.name}" to confirm`}
+              placeholder={`Type "${orgName}" to confirm`}
               placeholderTextColor={colors.mutedForeground}
             />
             <View style={styles.modalActions}>
@@ -230,10 +215,10 @@ export function SettingsDangerSection({ orgId, orgSlug, isAdmin, colors }: Props
               <Pressable
                 style={[
                   styles.modalDeleteButton,
-                  (deleting || deleteConfirmText !== org?.name) && styles.buttonDisabled,
+                  (deleting || deleteConfirmText !== orgName) && styles.buttonDisabled,
                 ]}
                 onPress={confirmDeleteOrganization}
-                disabled={deleting || deleteConfirmText !== org?.name}
+                disabled={deleting || deleteConfirmText !== orgName}
               >
                 {deleting ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -249,153 +234,123 @@ export function SettingsDangerSection({ orgId, orgSlug, isAdmin, colors }: Props
   );
 }
 
-const createStyles = (colors: SettingsColors) =>
-  StyleSheet.create({
-    section: {
-      marginBottom: 16,
-    },
-    sectionHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingVertical: 12,
-      paddingHorizontal: 4,
-    },
-    sectionHeaderLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-    },
-    sectionTitle: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-    },
-    card: {
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 16,
-      borderCurve: "continuous",
-    },
-    dangerCard: {
-      borderWidth: 1,
-      borderColor: colors.warning + "50",
-      backgroundColor: colors.warning + "08",
-    },
-    divider: {
-      height: 1,
-      backgroundColor: colors.border,
-      marginVertical: 16,
-    },
-    dangerItem: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      justifyContent: "space-between",
-      gap: 12,
-    },
-    dangerInfo: {
-      flex: 1,
-    },
-    dangerTitle: {
-      fontSize: 15,
-      fontWeight: fontWeight.medium,
-      color: colors.foreground,
-      marginBottom: 4,
-    },
-    dangerDescription: {
-      fontSize: 13,
-      color: colors.mutedForeground,
-    },
-    dangerButton: {
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      borderRadius: 6,
-      borderWidth: 1,
-      borderColor: colors.warning,
-    },
-    dangerButtonText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: colors.warning,
-    },
-    deleteButton: {
-      backgroundColor: colors.error,
-      borderColor: colors.error,
-    },
-    deleteButtonText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: "#fff",
-    },
-    buttonDisabled: {
-      opacity: 0.5,
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 24,
-    },
-    modalContent: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: 24,
-      width: "100%",
-      maxWidth: 400,
-    },
-    modalTitle: {
-      fontSize: fontSize.lg,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-      marginBottom: 12,
-    },
-    modalDescription: {
-      fontSize: 15,
-      color: colors.mutedForeground,
-      marginBottom: 20,
-    },
-    modalBold: {
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-    },
-    modalInput: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 8,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      fontSize: fontSize.base,
-      color: colors.foreground,
-      marginBottom: 20,
-    },
-    modalActions: {
-      flexDirection: "row",
-      gap: 12,
-    },
-    modalCancelButton: {
-      flex: 1,
-      paddingVertical: 12,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      alignItems: "center",
-    },
-    modalCancelText: {
-      fontSize: fontSize.base,
-      color: colors.muted,
-    },
-    modalDeleteButton: {
-      flex: 1,
-      backgroundColor: colors.error,
-      paddingVertical: 12,
-      borderRadius: 8,
-      alignItems: "center",
-    },
-    modalDeleteText: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-      color: "#fff",
-    },
-  });
+const colors = SETTINGS_COLORS;
+
+const styles = StyleSheet.create({
+  dangerCard: {
+    borderWidth: 1,
+    borderColor: colors.warning + "50",
+    backgroundColor: colors.warning + "08",
+  },
+  dangerItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  dangerInfo: {
+    flex: 1,
+  },
+  dangerTitle: {
+    fontSize: 15,
+    fontWeight: fontWeight.medium,
+    color: colors.foreground,
+    marginBottom: 4,
+  },
+  dangerDescription: {
+    fontSize: 13,
+    color: colors.mutedForeground,
+  },
+  dangerButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  dangerButtonText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: colors.warning,
+  },
+  deleteButton: {
+    backgroundColor: colors.error,
+    borderColor: colors.error,
+  },
+  deleteButtonText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    color: "#fff",
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 24,
+    width: "100%",
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+    color: colors.foreground,
+    marginBottom: 12,
+  },
+  modalDescription: {
+    fontSize: 15,
+    color: colors.mutedForeground,
+    marginBottom: 20,
+  },
+  modalBold: {
+    fontWeight: fontWeight.semibold,
+    color: colors.foreground,
+  },
+  modalInput: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    fontSize: fontSize.base,
+    color: colors.foreground,
+    marginBottom: 20,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+  },
+  modalCancelText: {
+    fontSize: fontSize.base,
+    color: colors.muted,
+  },
+  modalDeleteButton: {
+    flex: 1,
+    backgroundColor: colors.error,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  modalDeleteText: {
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.semibold,
+    color: "#fff",
+  },
+});

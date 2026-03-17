@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { Info } from "lucide-react-native";
 import { useOrg } from "@/contexts/OrgContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
+import { useOrgSettings } from "@/hooks/useOrgSettings";
 import { supabase } from "@/lib/supabase";
 import { normalizeRole, roleFlags } from "@teammeet/core";
 import { captureException } from "@/lib/analytics";
@@ -36,8 +37,10 @@ export default function SettingsScreen() {
   const navigation = useNavigation();
   const { orgSlug, orgId, orgName, orgLogoUrl } = useOrg();
   const { user } = useAuth();
-  const { refetch: refetchSubscription } = useSubscription(orgId);
-  const styles = useMemo(() => createStyles(), []);
+  const { subscription, loading: subLoading, error: subError, refetch: refetchSubscription } = useSubscription(orgId);
+  const { org, loading: orgSettingsLoading, updateName } = useOrgSettings(orgId);
+
+  const styles = createStyles();
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [roleLoading, setRoleLoading] = useState(true);
@@ -83,7 +86,7 @@ export default function SettingsScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetchSubscription();
+    await Promise.all([refetchSubscription()]);
     setRefreshing(false);
   }, [refetchSubscription]);
 
@@ -136,40 +139,43 @@ export default function SettingsScreen() {
           {!roleLoading && orgId && (
             <>
               <SettingsOrganizationSection
-                orgId={orgId}
+                org={org}
+                orgLoading={orgSettingsLoading}
+                updateName={updateName}
                 isAdmin={isAdmin}
-                colors={SETTINGS_COLORS}
               />
 
               <SettingsNotificationsSection
                 orgId={orgId}
-                colors={SETTINGS_COLORS}
               />
 
               <SettingsInvitesSection
                 orgId={orgId}
                 isAdmin={isAdmin}
-                colors={SETTINGS_COLORS}
+                subscription={subscription}
               />
 
               <SettingsAccessSection
                 orgId={orgId}
                 isAdmin={isAdmin}
-                colors={SETTINGS_COLORS}
               />
 
               <SettingsBillingSection
                 orgId={orgId}
                 orgSlug={orgSlug}
                 isAdmin={isAdmin}
-                colors={SETTINGS_COLORS}
+                subscription={subscription}
+                subLoading={subLoading}
+                subError={subError}
+                refetchSubscription={refetchSubscription}
               />
 
               <SettingsDangerSection
                 orgId={orgId}
-                orgSlug={orgSlug}
+                orgName={org?.name ?? null}
                 isAdmin={isAdmin}
-                colors={SETTINGS_COLORS}
+                subscription={subscription}
+                refetchSubscription={refetchSubscription}
               />
             </>
           )}

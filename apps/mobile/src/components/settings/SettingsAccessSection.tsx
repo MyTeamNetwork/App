@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -11,28 +11,15 @@ import {
 import { Image } from "expo-image";
 import { Users, ChevronDown, Check, X } from "lucide-react-native";
 import { useMemberships, getRoleLabel } from "@/hooks/useMemberships";
-import { formatMonthDayYearSafe } from "@/lib/date-format";
-import { type SettingsColors } from "./settingsColors";
+import { SETTINGS_COLORS } from "./settingsColors";
+import { baseStyles, formatDate, fontSize, fontWeight } from "./settingsShared";
 
 interface Props {
   orgId: string;
   isAdmin: boolean;
-  colors: SettingsColors;
 }
 
-function formatDate(dateString: string | null): string {
-  return formatMonthDayYearSafe(dateString, "N/A");
-}
-
-const fontSize = { xs: 12, sm: 14, base: 16, lg: 18 };
-const fontWeight = {
-  normal: "400" as const,
-  medium: "500" as const,
-  semibold: "600" as const,
-  bold: "700" as const,
-};
-
-export function SettingsAccessSection({ orgId, isAdmin, colors }: Props) {
+export function SettingsAccessSection({ orgId, isAdmin }: Props) {
   const {
     memberships,
     pendingMembers,
@@ -51,8 +38,9 @@ export function SettingsAccessSection({ orgId, isAdmin, colors }: Props) {
 
   if (!isAdmin) return null;
 
-  const activeMembers = memberships.filter((m) => m.status === "active");
-  const revokedMembers = memberships.filter((m) => m.status === "revoked");
+  const colors = SETTINGS_COLORS;
+  const activeMembers = useMemo(() => memberships.filter((m) => m.status === "active"), [memberships]);
+  const revokedMembers = useMemo(() => memberships.filter((m) => m.status === "revoked"), [memberships]);
   const totalPending = pendingMembers.length + pendingAlumni.length;
 
   const handleRoleChange = async (userId: string, newRole: "admin" | "active_member" | "alumni") => {
@@ -139,18 +127,16 @@ export function SettingsAccessSection({ orgId, isAdmin, colors }: Props) {
     );
   };
 
-  const styles = createStyles(colors);
-
   return (
     <>
-      <View style={styles.section}>
+      <View style={baseStyles.section}>
         <Pressable
-          style={({ pressed }) => [styles.sectionHeader, pressed && { opacity: 0.7 }]}
+          style={({ pressed }) => [baseStyles.sectionHeader, pressed && { opacity: 0.7 }]}
           onPress={() => setExpanded((prev) => !prev)}
         >
-          <View style={styles.sectionHeaderLeft}>
+          <View style={baseStyles.sectionHeaderLeft}>
             <Users size={20} color={colors.muted} />
-            <Text style={styles.sectionTitle}>Access Control</Text>
+            <Text style={baseStyles.sectionTitle}>Access Control</Text>
             {totalPending > 0 && (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{totalPending}</Text>
@@ -165,9 +151,9 @@ export function SettingsAccessSection({ orgId, isAdmin, colors }: Props) {
         </Pressable>
 
         {expanded && (
-          <View style={styles.card}>
+          <View style={baseStyles.card}>
             {membersLoading ? (
-              <View style={styles.loadingContainer}>
+              <View style={baseStyles.loadingContainer}>
                 <ActivityIndicator size="small" color={colors.primary} />
               </View>
             ) : (
@@ -218,7 +204,7 @@ export function SettingsAccessSection({ orgId, isAdmin, colors }: Props) {
                         </View>
                       </View>
                     ))}
-                    <View style={styles.divider} />
+                    <View style={baseStyles.divider} />
                   </>
                 )}
 
@@ -278,7 +264,7 @@ export function SettingsAccessSection({ orgId, isAdmin, colors }: Props) {
 
                 {revokedMembers.length > 0 && (
                   <>
-                    <View style={styles.divider} />
+                    <View style={baseStyles.divider} />
                     <Text style={styles.subsectionTitle}>Revoked Access ({revokedMembers.length})</Text>
                     {revokedMembers.map((member) => (
                       <View key={member.user_id} style={[styles.memberItem, styles.memberItemRevoked]}>
@@ -339,30 +325,11 @@ export function SettingsAccessSection({ orgId, isAdmin, colors }: Props) {
   );
 }
 
-const createStyles = (colors: SettingsColors) =>
-  StyleSheet.create({
-    section: {
-      marginBottom: 16,
-    },
-    sectionHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingVertical: 12,
-      paddingHorizontal: 4,
-    },
-    sectionHeaderLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-    },
-    sectionTitle: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-    },
+const c = SETTINGS_COLORS;
+
+const styles = StyleSheet.create({
     badge: {
-      backgroundColor: colors.warning,
+      backgroundColor: c.warning,
       borderRadius: 10,
       minWidth: 20,
       height: 20,
@@ -375,25 +342,10 @@ const createStyles = (colors: SettingsColors) =>
       fontSize: fontSize.xs,
       fontWeight: fontWeight.semibold,
     },
-    card: {
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: 16,
-      borderCurve: "continuous",
-    },
-    loadingContainer: {
-      padding: 24,
-      alignItems: "center",
-    },
-    divider: {
-      height: 1,
-      backgroundColor: colors.border,
-      marginVertical: 16,
-    },
     subsectionTitle: {
       fontSize: fontSize.sm,
       fontWeight: fontWeight.semibold,
-      color: colors.muted,
+      color: c.muted,
       textTransform: "uppercase",
       letterSpacing: 0.5,
       marginBottom: 12,
@@ -404,7 +356,7 @@ const createStyles = (colors: SettingsColors) =>
       justifyContent: "space-between",
       paddingVertical: 12,
       borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      borderBottomColor: c.border,
     },
     memberItemRevoked: {
       opacity: 0.6,
@@ -424,14 +376,14 @@ const createStyles = (colors: SettingsColors) =>
       width: 40,
       height: 40,
       borderRadius: 20,
-      backgroundColor: colors.primaryLight,
+      backgroundColor: c.primaryLight,
       alignItems: "center",
       justifyContent: "center",
     },
     memberAvatarText: {
       fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
-      color: colors.primary,
+      color: c.primary,
     },
     memberDetails: {
       flex: 1,
@@ -439,15 +391,15 @@ const createStyles = (colors: SettingsColors) =>
     memberName: {
       fontSize: 15,
       fontWeight: fontWeight.medium,
-      color: colors.foreground,
+      color: c.foreground,
     },
     memberEmail: {
       fontSize: 13,
-      color: colors.mutedForeground,
+      color: c.mutedForeground,
     },
     memberMeta: {
       fontSize: fontSize.xs,
-      color: colors.muted,
+      color: c.muted,
       marginTop: 2,
     },
     memberActions: {
@@ -459,7 +411,7 @@ const createStyles = (colors: SettingsColors) =>
       width: 32,
       height: 32,
       borderRadius: 16,
-      backgroundColor: colors.success + "20",
+      backgroundColor: c.success + "20",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -467,7 +419,7 @@ const createStyles = (colors: SettingsColors) =>
       width: 32,
       height: 32,
       borderRadius: 16,
-      backgroundColor: colors.error + "20",
+      backgroundColor: c.error + "20",
       alignItems: "center",
       justifyContent: "center",
     },
@@ -478,13 +430,13 @@ const createStyles = (colors: SettingsColors) =>
       paddingVertical: 6,
       paddingHorizontal: 10,
       borderRadius: 6,
-      backgroundColor: colors.background,
+      backgroundColor: c.background,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: c.border,
     },
     roleSelectorText: {
       fontSize: 13,
-      color: colors.foreground,
+      color: c.foreground,
     },
     removeButton: {
       width: 32,
@@ -497,12 +449,12 @@ const createStyles = (colors: SettingsColors) =>
       paddingVertical: 6,
       paddingHorizontal: 12,
       borderRadius: 6,
-      backgroundColor: colors.primary,
+      backgroundColor: c.primary,
     },
     restoreButtonText: {
       fontSize: 13,
       fontWeight: fontWeight.medium,
-      color: colors.primaryForeground,
+      color: c.primaryForeground,
     },
     modalOverlay: {
       flex: 1,
@@ -512,7 +464,7 @@ const createStyles = (colors: SettingsColors) =>
       padding: 24,
     },
     modalContent: {
-      backgroundColor: colors.card,
+      backgroundColor: c.card,
       borderRadius: 16,
       padding: 24,
       width: "100%",
@@ -521,12 +473,12 @@ const createStyles = (colors: SettingsColors) =>
     modalTitle: {
       fontSize: fontSize.lg,
       fontWeight: fontWeight.semibold,
-      color: colors.foreground,
+      color: c.foreground,
       marginBottom: 12,
     },
     modalDescription: {
       fontSize: 15,
-      color: colors.mutedForeground,
+      color: c.mutedForeground,
       marginBottom: 20,
     },
     modalActions: {
@@ -538,16 +490,16 @@ const createStyles = (colors: SettingsColors) =>
       paddingVertical: 12,
       borderRadius: 8,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: c.border,
       alignItems: "center",
     },
     modalCancelText: {
       fontSize: fontSize.base,
-      color: colors.muted,
+      color: c.muted,
     },
     modalConfirmButton: {
       flex: 1,
-      backgroundColor: colors.warning,
+      backgroundColor: c.warning,
       paddingVertical: 12,
       borderRadius: 8,
       alignItems: "center",

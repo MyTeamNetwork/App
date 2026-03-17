@@ -9,26 +9,17 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { Building2, ChevronDown } from "lucide-react-native";
-import { useOrgSettings } from "@/hooks/useOrgSettings";
-import { type SettingsColors } from "./settingsColors";
+import { SETTINGS_COLORS } from "./settingsColors";
+import { baseStyles, fontSize, fontWeight, spacing } from "./settingsShared";
 
 interface Props {
-  orgId: string | null;
+  org: { name: string; slug: string; logo_url: string | null; primary_color: string | null; secondary_color: string | null } | null;
+  orgLoading: boolean;
+  updateName: (name: string) => Promise<{ success: boolean; error?: string }>;
   isAdmin: boolean;
-  colors: SettingsColors;
 }
 
-const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 };
-const fontSize = { xs: 12, sm: 14, base: 16, lg: 18, xl: 20 };
-const fontWeight = {
-  normal: "400" as const,
-  medium: "500" as const,
-  semibold: "600" as const,
-  bold: "700" as const,
-};
-
-export function SettingsOrganizationSection({ orgId, isAdmin, colors }: Props) {
-  const { org, loading: orgLoading, updateName } = useOrgSettings(orgId);
+export function SettingsOrganizationSection({ org, orgLoading, updateName, isAdmin }: Props) {
 
   const [expanded, setExpanded] = useState(true);
   const [editedName, setEditedName] = useState("");
@@ -43,6 +34,8 @@ export function SettingsOrganizationSection({ orgId, isAdmin, colors }: Props) {
 
   if (!isAdmin) return null;
 
+  const colors = SETTINGS_COLORS;
+
   const handleSaveName = async () => {
     if (!editedName.trim() || editedName === org?.name) return;
     setNameSaving(true);
@@ -54,17 +47,15 @@ export function SettingsOrganizationSection({ orgId, isAdmin, colors }: Props) {
     setNameSaving(false);
   };
 
-  const styles = createStyles(colors);
-
   return (
-    <View style={styles.section}>
+    <View style={baseStyles.section}>
       <Pressable
-        style={({ pressed }) => [styles.sectionHeader, pressed && { opacity: 0.7 }]}
+        style={({ pressed }) => [baseStyles.sectionHeader, pressed && { opacity: 0.7 }]}
         onPress={() => setExpanded((prev) => !prev)}
       >
-        <View style={styles.sectionHeaderLeft}>
+        <View style={baseStyles.sectionHeaderLeft}>
           <Building2 size={20} color={colors.muted} />
-          <Text style={styles.sectionTitle}>Organization</Text>
+          <Text style={baseStyles.sectionTitle}>Organization</Text>
         </View>
         <ChevronDown
           size={20}
@@ -74,9 +65,9 @@ export function SettingsOrganizationSection({ orgId, isAdmin, colors }: Props) {
       </Pressable>
 
       {expanded && (
-        <View style={styles.card}>
+        <View style={baseStyles.card}>
           {orgLoading ? (
-            <View style={styles.loadingContainer}>
+            <View style={baseStyles.loadingContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
             </View>
           ) : (
@@ -104,7 +95,7 @@ export function SettingsOrganizationSection({ orgId, isAdmin, colors }: Props) {
                 </Pressable>
               </View>
 
-              <View style={styles.divider} />
+              <View style={baseStyles.divider} />
 
               <View style={styles.fieldGroup}>
                 <Text style={styles.fieldLabel}>Branding</Text>
@@ -143,65 +134,36 @@ export function SettingsOrganizationSection({ orgId, isAdmin, colors }: Props) {
   );
 }
 
-const createStyles = (colors: SettingsColors) =>
-  StyleSheet.create({
-    section: {
-      marginBottom: 16,
-    },
-    sectionHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingVertical: 12,
-      paddingHorizontal: 4,
-    },
-    sectionHeaderLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-    },
-    sectionTitle: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-      color: colors.foreground,
-    },
-    card: {
-      backgroundColor: colors.card,
-      borderRadius: 12,
-      padding: spacing.md,
-      borderCurve: "continuous",
-    },
-    loadingContainer: {
-      padding: 24,
-      alignItems: "center",
-    },
+const c = SETTINGS_COLORS;
+
+const styles = StyleSheet.create({
     fieldGroup: {
       marginBottom: spacing.md,
     },
     fieldLabel: {
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
-      color: colors.foreground,
+      color: c.foreground,
       marginBottom: spacing.sm,
     },
     input: {
-      backgroundColor: colors.background,
+      backgroundColor: c.background,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: c.border,
       borderRadius: 8,
       paddingVertical: 12,
       paddingHorizontal: spacing.md,
       fontSize: fontSize.base,
-      color: colors.foreground,
+      color: c.foreground,
       marginBottom: 12,
     },
     errorText: {
       fontSize: fontSize.sm,
-      color: colors.error,
+      color: c.error,
       marginBottom: spacing.sm,
     },
     button: {
-      backgroundColor: colors.primary,
+      backgroundColor: c.primary,
       paddingVertical: 12,
       paddingHorizontal: 20,
       borderRadius: 8,
@@ -212,18 +174,13 @@ const createStyles = (colors: SettingsColors) =>
       opacity: 0.5,
     },
     buttonText: {
-      color: colors.primaryForeground,
+      color: c.primaryForeground,
       fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
     },
-    divider: {
-      height: 1,
-      backgroundColor: colors.border,
-      marginVertical: spacing.md,
-    },
     hintText: {
       fontSize: 13,
-      color: colors.mutedForeground,
+      color: c.mutedForeground,
       marginTop: spacing.sm,
     },
     brandingPreview: {
@@ -270,10 +227,10 @@ const createStyles = (colors: SettingsColors) =>
       height: 24,
       borderRadius: 6,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: c.border,
     },
     colorLabel: {
       fontSize: fontSize.sm,
-      color: colors.muted,
+      color: c.muted,
     },
   });
