@@ -1,21 +1,40 @@
 import { useEffect } from "react";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { useOnboarding } from "@/hooks/useOnboarding";
 
 export default function AuthLayout() {
   const router = useRouter();
-  const { hasSeenWelcome, isLoaded, loadWelcomeSeen } = useOnboarding();
+  const segments = useSegments() as string[];
+  const { loadWelcomeSeen } = useOnboarding();
+  const currentScreen = segments[segments.length - 1] ?? "index";
 
   useEffect(() => {
-    loadWelcomeSeen();
-  }, [loadWelcomeSeen]);
+    let cancelled = false;
 
-  useEffect(() => {
-    if (!isLoaded) return;
-    if (!hasSeenWelcome) {
-      router.replace("/(auth)/welcome");
-    }
-  }, [isLoaded, hasSeenWelcome, router]);
+    const syncWelcomeRoute = async () => {
+      if (currentScreen !== "index" && currentScreen !== "welcome") {
+        return;
+      }
+
+      const hasSeenWelcome = await loadWelcomeSeen();
+      if (cancelled) return;
+
+      if (currentScreen === "index" && !hasSeenWelcome) {
+        router.replace("/(auth)/welcome");
+        return;
+      }
+
+      if (currentScreen === "welcome" && hasSeenWelcome) {
+        router.replace("/(auth)");
+      }
+    };
+
+    void syncWelcomeRoute();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentScreen, loadWelcomeSeen, router]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

@@ -60,11 +60,12 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
       try {
         const [membersRes, eventsRes, announcementsRes] = await Promise.all([
           supabase
-            .from("user_organization_roles")
-            .select("id, user:users(id, name, email)")
+            .from("members")
+            .select("id, first_name, last_name, email")
             .eq("organization_id", orgId)
             .eq("status", "active")
-            .ilike("user.name", `%${q}%`)
+            .is("deleted_at", null)
+            .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%`)
             .limit(5),
 
           supabase
@@ -90,20 +91,15 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
         if (eventsRes.error) throw eventsRes.error;
         if (announcementsRes.error) throw announcementsRes.error;
 
-        const memberResults: SearchResult[] = (membersRes.data ?? [])
-          .filter((row) => {
-            const user = row.user as { id: string; name: string | null; email: string } | null;
-            return user !== null;
-          })
-          .map((row) => {
-            const user = row.user as { id: string; name: string | null; email: string };
-            return {
-              id: row.id,
-              type: "member" as const,
-              title: user.name ?? user.email,
-              subtitle: user.email,
-            };
-          });
+        const memberResults: SearchResult[] = (membersRes.data ?? []).map((member) => {
+          const name = [member.first_name, member.last_name].filter(Boolean).join(" ").trim();
+          return {
+            id: member.id,
+            type: "member" as const,
+            title: name || member.email || "Unknown member",
+            subtitle: member.email || "",
+          };
+        });
 
         const eventResults: SearchResult[] = (eventsRes.data ?? []).map((event) => ({
           id: event.id,
@@ -133,7 +129,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
           setResults([...memberResults, ...eventResults, ...announcementResults]);
         }
       } catch (e) {
-        if (isMountedRef.current) {
+        if (isMountedRef.current && callId === callIdRef.current) {
           setResults([]);
           sentry.captureException(e as Error, {
             context: "useGlobalSearch",
@@ -142,7 +138,7 @@ export function useGlobalSearch(orgId: string | null): UseGlobalSearchReturn {
           });
         }
       } finally {
-        if (isMountedRef.current) {
+        if (isMountedRef.current && callId === callIdRef.current) {
           setLoading(false);
         }
       }
