@@ -1,124 +1,83 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import {
-  View,
-  Text,
-  ActivityIndicator,
-  ScrollView,
-  RefreshControl,
-  StyleSheet,
-  Pressable,
-} from "react-native";
+import { View, Text, ActivityIndicator, Pressable, StyleSheet } from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { DrawerActions } from "@react-navigation/native";
-
 import { useRouter, useFocusEffect, useNavigation } from "expo-router";
-import {
-  Calendar,
-  ChevronRight,
-  Users,
-  Megaphone,
-  GraduationCap,
-  RefreshCw,
-} from "lucide-react-native";
-import { supabase } from "@/lib/supabase";
+import { RefreshCw } from "lucide-react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { useEvents } from "@/hooks/useEvents";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
 import { useMembers } from "@/hooks/useMembers";
 import { useOrgStats } from "@/hooks/useOrgStats";
+import { useFeed } from "@/hooks/useFeed";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { APP_CHROME } from "@/lib/chrome";
 import { NEUTRAL, SEMANTIC, SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
-import { formatShortWeekdayDate, formatTime, formatWeekdayDateTime } from "@/lib/date-format";
-import { EventCard, type EventCardEvent } from "@/components/cards/EventCard";
-import { AnnouncementCardCompact } from "@/components/cards/AnnouncementCard";
-import { SkeletonEventCard, SkeletonAnnouncementCard } from "@/components/ui/Skeleton";
+import { FeedTab } from "@/components/home/FeedTab";
+import { OverviewTab } from "@/components/home/OverviewTab";
+import { EventsTab } from "@/components/home/EventsTab";
+import type { EventCardEvent } from "@/components/cards/EventCard";
 
-// Feature flag for activity feed (flip to true when ready)
-const SHOW_ACTIVITY_FEED = false;
+type ActiveTab = "feed" | "overview" | "events";
+
+const TAB_LABELS: { key: ActiveTab; label: string }[] = [
+  { key: "feed", label: "Feed" },
+  { key: "overview", label: "Overview" },
+  { key: "events", label: "Events" },
+];
 
 export default function HomeScreen() {
   const { orgSlug, orgId, orgName, orgLogoUrl } = useOrg();
   const router = useRouter();
   const navigation = useNavigation();
   const { user } = useAuth();
-  const { isAdmin } = useOrgRole();
-  const styles = useMemo(() => createStyles(), []);
+  useOrgRole(); // subscribes to role changes; triggers re-render on role updates
   const isMountedRef = useRef(true);
 
-  // Safe drawer toggle - only dispatch if drawer is available
   const handleDrawerToggle = useCallback(() => {
     try {
-      // Check if navigation has dispatch method (drawer navigator)
       if (navigation && typeof (navigation as any).dispatch === "function") {
         (navigation as any).dispatch(DrawerActions.toggleDrawer());
       }
     } catch {
-      // Drawer not available (web preview / tests) - no-op
+      // Drawer not available in web preview / tests — no-op
     }
   }, [navigation]);
 
-  const [userName, setUserName] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<ActiveTab>("feed");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [memberCount, setMemberCount] = useState(0);
   const isRefetchingRef = useRef(false);
 
-  // Use orgId from context for all data hooks (eliminates redundant org fetches)
   const { events, refetch: refetchEvents, refetchIfStale: refetchEventsIfStale } = useEvents(orgId);
   const { announcements, refetch: refetchAnnouncements, refetchIfStale: refetchAnnouncementsIfStale } = useAnnouncements(orgId);
   const { members, refetch: refetchMembers, refetchIfStale: refetchMembersIfStale } = useMembers(orgId);
   const { stats, refetch: refetchStats, refetchIfStale: refetchStatsIfStale } = useOrgStats(orgId);
-  const userId = user?.id ?? null;
-
-  // Get upcoming events (next 2)
-  const now = new Date();
-  const upcomingEvents = events
-    .filter((e) => new Date(e.start_date) >= now)
-    .slice(0, 2);
-
-  // Get the next upcoming event for the overview card
-  const nextEvent = upcomingEvents[0] || null;
-
-  // Get pinned announcement
-  const pinnedAnnouncement = announcements.find((a) => (a as any).is_pinned);
+  const {
+    posts,
+    loading: feedLoading,
+    loadingMore,
+    hasMore,
+    pendingPosts,
+    loadMore,
+    refetch: refetchFeed,
+    refetchIfStale: refetchFeedIfStale,
+    acceptPendingPosts,
+    toggleLike,
+  } = useFeed(orgId);
 
   const fetchData = useCallback(async () => {
-    if (!orgId || !user) {
-      return;
-    }
-
-    try {
-      // Fetch user profile name (role comes from useOrgRole hook)
-      const { data: roleData } = await supabase
-        .from("user_organization_roles")
-        .select("user:users(name)")
-        .eq("user_id", user.id)
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .single();
-
-      if (isMountedRef.current) {
-        if (roleData) {
-          const userData = roleData.user as { name: string | null } | null;
-          setUserName(userData?.name || null);
-        }
-        setError(null);
-      }
-    } catch (e) {
-      if (isMountedRef.current) {
-        setError((e as Error).message);
-      }
-    } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+    if (!orgId || !user) return;
+    // Role validation is handled by useOrgRole() and RLS on all data hooks.
+    // This function just transitions from loading → ready state.
+    if (isMountedRef.current) {
+      setError(null);
+      setLoading(false);
     }
   }, [orgId, user]);
 
@@ -131,71 +90,17 @@ export default function HomeScreen() {
     };
   }, [fetchData]);
 
-  useEffect(() => {
-    setMemberCount(members.length);
-  }, [members]);
+  const memberCount = members.length;
 
-  // Refetch on tab focus if data is stale
   useFocusEffect(
     useCallback(() => {
       refetchEventsIfStale();
       refetchAnnouncementsIfStale();
       refetchMembersIfStale();
       refetchStatsIfStale();
-    }, [refetchEventsIfStale, refetchAnnouncementsIfStale, refetchMembersIfStale, refetchStatsIfStale])
+      refetchFeedIfStale();
+    }, [refetchEventsIfStale, refetchAnnouncementsIfStale, refetchMembersIfStale, refetchStatsIfStale, refetchFeedIfStale])
   );
-
-  useEffect(() => {
-    if (!orgId) return;
-    const channel = supabase
-      .channel(`organization:${orgId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "organizations",
-          filter: `id=eq.${orgId}`,
-        },
-        () => {
-          fetchData();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [orgId, fetchData]);
-
-  useEffect(() => {
-    if (!orgId || !userId) return;
-    const channel = supabase
-      .channel(`organization-role:${orgId}:${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "user_organization_roles",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          const nextOrgId = (payload.new as { organization_id?: string } | null)
-            ?.organization_id;
-          const previousOrgId = (payload.old as { organization_id?: string } | null)
-            ?.organization_id;
-          if (nextOrgId === orgId || previousOrgId === orgId) {
-            fetchData();
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [orgId, userId, fetchData]);
 
   const handleRefresh = async () => {
     if (isRefetchingRef.current) return;
@@ -203,11 +108,11 @@ export default function HomeScreen() {
     isRefetchingRef.current = true;
     try {
       await Promise.all([
-        fetchData(),
         refetchEvents(),
         refetchAnnouncements(),
         refetchMembers(),
         refetchStats(),
+        refetchFeed(),
       ]);
     } finally {
       setRefreshing(false);
@@ -215,17 +120,43 @@ export default function HomeScreen() {
     }
   };
 
-  const formatNextEventDate = (dateString: string) => {
-    return formatShortWeekdayDate(dateString);
-  };
+  const handlePostPress = useCallback(
+    (postId: string) => router.push(`/(app)/(drawer)/${orgSlug}/feed/${postId}`),
+    [router, orgSlug]
+  );
 
-  const formatNextEventTime = (dateString: string) => {
-    return formatTime(dateString);
-  };
+  const handleCreatePost = useCallback(
+    () => router.push(`/(app)/(drawer)/${orgSlug}/feed/new`),
+    [router, orgSlug]
+  );
 
-  const formatEventTime = (dateString: string) => {
-    return formatWeekdayDateTime(dateString);
-  };
+  const handleNavigate = useCallback(
+    (path: string) => router.push(path as any),
+    [router]
+  );
+
+  const { transformedEvents, recentAnnouncements, eventsCount } = useMemo(() => {
+    const now = new Date();
+    const upcoming = events.filter((e) => new Date(e.start_date) >= now);
+
+    const transformed: EventCardEvent[] = upcoming.slice(0, 5).map((event) => ({
+      id: event.id,
+      title: event.title,
+      start_date: event.start_date,
+      end_date: event.end_date,
+      location: event.location,
+      rsvp_count: event.rsvp_count,
+      user_rsvp_status: event.user_rsvp_status as EventCardEvent["user_rsvp_status"],
+    }));
+
+    const recent = announcements.slice(0, 3);
+
+    return {
+      transformedEvents: transformed,
+      recentAnnouncements: recent,
+      eventsCount: upcoming.length,
+    };
+  }, [events, announcements]);
 
   if (loading) {
     return (
@@ -243,10 +174,7 @@ export default function HomeScreen() {
           <Text style={styles.errorTitle}>Something went wrong</Text>
           <Text style={styles.errorText}>{error}</Text>
           <Pressable
-            style={({ pressed }) => [
-              styles.retryButton,
-              pressed && styles.retryButtonPressed,
-            ]}
+            style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
             onPress={handleRefresh}
             accessibilityLabel="Retry loading"
             accessibilityRole="button"
@@ -259,29 +187,15 @@ export default function HomeScreen() {
     );
   }
 
-  const firstName = userName?.split(" ")[0] || user?.email?.split("@")[0] || "there";
-
-  // Transform events to EventCard format
-  const transformedEvents: EventCardEvent[] = upcomingEvents.map((event) => ({
-    id: event.id,
-    title: event.title,
-    start_date: event.start_date,
-    end_date: event.end_date,
-    location: event.location,
-    rsvp_count: (event as any).rsvp_count,
-    user_rsvp_status: (event as any).user_rsvp_status,
-  }));
-
   return (
     <View style={styles.container}>
-      {/* Custom Gradient Header */}
+      {/* Gradient Header */}
       <LinearGradient
         colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]}
         style={styles.headerGradient}
       >
-        <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
+        <SafeAreaView edges={["top"]}>
           <View style={styles.headerContent}>
-            {/* Logo */}
             <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
               {orgLogoUrl ? (
                 <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
@@ -292,13 +206,12 @@ export default function HomeScreen() {
               )}
             </Pressable>
 
-            {/* Text (left-aligned) */}
             <View style={styles.headerTextContainer}>
               <Text style={styles.headerTitle} numberOfLines={1}>
                 {orgName}
               </Text>
               <Text style={styles.headerMeta}>
-                {memberCount} {memberCount === 1 ? "member" : "members"} · {upcomingEvents.length} {upcomingEvents.length === 1 ? "event" : "events"}
+                {memberCount} {memberCount === 1 ? "member" : "members"} · {eventsCount} {eventsCount === 1 ? "event" : "events"}
               </Text>
             </View>
           </View>
@@ -307,176 +220,79 @@ export default function HomeScreen() {
 
       {/* Content Sheet */}
       <View style={styles.contentSheet}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={SEMANTIC.success} />
-          }
-        >
-        {/* Stats Row */}
-        <View style={styles.statsRow}>
-          <Pressable
-            style={({ pressed }) => [styles.statCard, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push(`/(app)/${orgSlug}/(tabs)/members`)}
-            accessibilityLabel={`${stats.activeMembers} members`}
-            accessibilityRole="button"
-          >
-            <Text style={styles.statCount}>{stats.activeMembers}</Text>
-            <Text style={styles.statLabel}>Members</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.statCard, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push(`/(app)/${orgSlug}/(tabs)/alumni`)}
-            accessibilityLabel={`${stats.alumni} alumni`}
-            accessibilityRole="button"
-          >
-            <Text style={styles.statCount}>{stats.alumni}</Text>
-            <Text style={styles.statLabel}>Alumni</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.statCard, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push(`/(app)/${orgSlug}/(tabs)/events`)}
-            accessibilityLabel={`${stats.upcomingEvents} upcoming events`}
-            accessibilityRole="button"
-          >
-            <Text style={styles.statCount}>{stats.upcomingEvents}</Text>
-            <Text style={styles.statLabel}>Events</Text>
-          </Pressable>
-        </View>
-
-        {/* Quick Access Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Quick Access</Text>
-          <View style={styles.quickActionsGrid}>
-          <Pressable
-            style={({ pressed }) => [styles.actionTile, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push(`/(app)/${orgSlug}/(tabs)/events`)}
-          >
-            <View style={styles.actionTileIcon}>
-              <Calendar size={22} color={NEUTRAL.foreground} strokeWidth={2} />
-            </View>
-            <Text style={styles.actionTileLabel}>Events</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.actionTile, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push(`/(app)/${orgSlug}/(tabs)/announcements`)}
-          >
-            <View style={styles.actionTileIcon}>
-              <Megaphone size={22} color={NEUTRAL.foreground} strokeWidth={2} />
-            </View>
-            <Text style={styles.actionTileLabel}>News</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.actionTile, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push(`/(app)/${orgSlug}/(tabs)/members`)}
-          >
-            <View style={styles.actionTileIcon}>
-              <Users size={22} color={NEUTRAL.foreground} strokeWidth={2} />
-            </View>
-            <Text style={styles.actionTileLabel}>Members</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.actionTile, pressed && { opacity: 0.7 }]}
-            onPress={() => router.push(`/(app)/${orgSlug}/(tabs)/alumni`)}
-          >
-            <View style={styles.actionTileIcon}>
-              <GraduationCap size={22} color={NEUTRAL.foreground} strokeWidth={2} />
-            </View>
-            <Text style={styles.actionTileLabel}>Alumni</Text>
-          </Pressable>
-          </View>
-        </View>
-
-        {/* Upcoming Events */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Upcoming Events</Text>
+        {/* Segmented Control */}
+        <View style={styles.segmentedControl}>
+          {TAB_LABELS.map(({ key, label }) => (
             <Pressable
-              style={({ pressed }) => [styles.seeAllButton, pressed && { opacity: 0.7 }]}
-              onPress={() => router.push(`/(app)/${orgSlug}/(tabs)/events`)}
+              key={key}
+              style={[styles.segment, activeTab === key && styles.segmentActive]}
+              onPress={() => setActiveTab(key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === key }}
             >
-              <Text style={styles.seeAllText}>See all</Text>
-              <ChevronRight size={16} color={NEUTRAL.secondary} />
+              <Text style={[styles.segmentText, activeTab === key && styles.segmentTextActive]}>
+                {label}
+              </Text>
             </Pressable>
-          </View>
-
-          {transformedEvents.length > 0 ? (
-            <View style={styles.eventsStack}>
-              {transformedEvents.map((event) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  onPress={() => router.push(`/(app)/${orgSlug}/events/${event.id}`)}
-                  onRSVP={() => router.push(`/(app)/${orgSlug}/events/${event.id}`)}
-                  accentColor={SEMANTIC.success}
-                />
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyCard}>
-              <Calendar size={24} color={NEUTRAL.muted} />
-              <Text style={styles.emptyText}>No upcoming events</Text>
-            </View>
-          )}
+          ))}
         </View>
 
-        {/* Pinned Announcement (Conditional - hidden if empty) */}
-        {pinnedAnnouncement && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Pinned</Text>
-            </View>
-
-            <AnnouncementCardCompact
-              announcement={{
-                id: pinnedAnnouncement.id,
-                title: pinnedAnnouncement.title,
-                body: pinnedAnnouncement.body,
-                created_at: pinnedAnnouncement.created_at,
-                is_pinned: true,
-              }}
-              onPress={() => router.push(`/(app)/${orgSlug}/announcements/${pinnedAnnouncement.id}`)}
-            />
-          </View>
+        {/* Tab Content */}
+        {activeTab === "feed" && (
+          <FeedTab
+            posts={posts}
+            pendingPosts={pendingPosts}
+            loading={feedLoading}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            onLoadMore={loadMore}
+            onAcceptPending={acceptPendingPosts}
+            onPostPress={handlePostPress}
+            onLikeToggle={toggleLike}
+            onCreatePost={handleCreatePost}
+          />
         )}
 
-        {/* Latest Activity (hidden until ready) */}
-        {SHOW_ACTIVITY_FEED && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Latest</Text>
-            </View>
-
-            <View style={styles.activityCard}>
-              <Text style={styles.activityEmpty}>
-                Activity feed coming soon
-              </Text>
-            </View>
-          </View>
+        {activeTab === "overview" && (
+          <OverviewTab
+            orgSlug={orgSlug}
+            stats={stats}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            onNavigate={handleNavigate}
+          />
         )}
-        </ScrollView>
+
+        {activeTab === "events" && (
+          <EventsTab
+            orgSlug={orgSlug}
+            events={transformedEvents}
+            announcements={recentAnnouncements.map((a) => ({
+              id: a.id,
+              title: a.title,
+              body: a.body,
+              created_at: a.created_at,
+              is_pinned: a.is_pinned,
+            }))}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            onNavigate={handleNavigate}
+          />
+        )}
       </View>
     </View>
   );
 }
 
-const createStyles = () =>
-  StyleSheet.create({
+const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: NEUTRAL.background,
     },
-    // Gradient header styles
     headerGradient: {
       paddingBottom: SPACING.md,
-    },
-    headerSafeArea: {
-      // SafeAreaView handles top inset
     },
     headerContent: {
       flexDirection: "row",
@@ -524,12 +340,6 @@ const createStyles = () =>
       flex: 1,
       backgroundColor: NEUTRAL.surface,
     },
-    content: {
-      padding: SPACING.md,
-      paddingTop: SPACING.sm,
-      paddingBottom: 40,
-      gap: SPACING.lg,
-    },
     centered: {
       flex: 1,
       justifyContent: "center",
@@ -537,117 +347,33 @@ const createStyles = () =>
       padding: 24,
       backgroundColor: NEUTRAL.background,
     },
-    // Stats row
-    statsRow: {
+    // Segmented control
+    segmentedControl: {
       flexDirection: "row",
-      gap: SPACING.sm,
-    },
-    statCard: {
-      flex: 1,
-      backgroundColor: NEUTRAL.surface,
-      borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: NEUTRAL.border,
-      padding: SPACING.md,
-      alignItems: "center",
-      ...SHADOWS.sm,
-    },
-    statCount: {
-      ...TYPOGRAPHY.headlineMedium,
-      color: NEUTRAL.foreground,
-      fontVariant: ["tabular-nums"],
-    },
-    statLabel: {
-      ...TYPOGRAPHY.caption,
-      color: NEUTRAL.muted,
-      marginTop: SPACING.xxs,
-    },
-    // Quick Actions (2x2 Grid)
-    quickActionsGrid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: SPACING.xs,
-    },
-    actionTile: {
-      flex: 1,
-      flexBasis: "45%",
-      minWidth: 140,
-      backgroundColor: "transparent",
-      paddingVertical: SPACING.sm,
-      paddingHorizontal: SPACING.sm,
-      alignItems: "center",
-      gap: SPACING.xs,
-    },
-    actionTileIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: RADIUS.lg,
       backgroundColor: NEUTRAL.background,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    actionTileLabel: {
-      ...TYPOGRAPHY.labelSmall,
-      color: NEUTRAL.secondary,
-    },
-    // Section styles
-    section: {
-      gap: SPACING.sm,
-    },
-    sectionLabel: {
-      ...TYPOGRAPHY.overline,
-      color: NEUTRAL.muted,
+      borderRadius: RADIUS.lg,
+      padding: SPACING.xxs,
+      marginHorizontal: SPACING.md,
+      marginTop: SPACING.sm,
       marginBottom: SPACING.sm,
     },
-    sectionHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
+    segment: {
+      flex: 1,
+      paddingVertical: SPACING.sm,
       alignItems: "center",
+      borderRadius: RADIUS.md,
     },
-    sectionTitle: {
-      ...TYPOGRAPHY.titleLarge,
-      color: NEUTRAL.foreground,
+    segmentActive: {
+      backgroundColor: SEMANTIC.success,
+      ...SHADOWS.sm,
     },
-    seeAllButton: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    seeAllText: {
+    segmentText: {
       ...TYPOGRAPHY.labelMedium,
-      color: NEUTRAL.secondary,
-    },
-    // Events (stacked)
-    eventsStack: {
-      gap: SPACING.md,
-    },
-    // Empty state
-    emptyCard: {
-      backgroundColor: NEUTRAL.surface,
-      borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: NEUTRAL.border,
-      padding: SPACING.lg,
-      alignItems: "center",
-      ...SHADOWS.sm,
-    },
-    emptyText: {
-      ...TYPOGRAPHY.bodySmall,
       color: NEUTRAL.muted,
-      marginTop: SPACING.sm,
     },
-    // Activity (future)
-    activityCard: {
-      backgroundColor: NEUTRAL.surface,
-      borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: NEUTRAL.border,
-      padding: SPACING.lg,
-      alignItems: "center",
-      ...SHADOWS.sm,
-    },
-    activityEmpty: {
-      ...TYPOGRAPHY.bodySmall,
-      color: NEUTRAL.muted,
+    segmentTextActive: {
+      color: NEUTRAL.surface,
+      fontWeight: "600",
     },
     // Error state
     errorCard: {

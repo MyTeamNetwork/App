@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import * as sentry from "@/lib/analytics/sentry";
 
 const STALE_TIME_MS = 30_000;
 
@@ -7,6 +8,7 @@ export interface OrgStats {
   activeMembers: number;
   alumni: number;
   upcomingEvents: number;
+  totalDonations: number;
 }
 
 interface UseOrgStatsReturn {
@@ -20,6 +22,7 @@ const DEFAULT_STATS: OrgStats = {
   activeMembers: 0,
   alumni: 0,
   upcomingEvents: 0,
+  totalDonations: 0,
 };
 
 export function useOrgStats(orgId: string | null): UseOrgStatsReturn {
@@ -42,7 +45,7 @@ export function useOrgStats(orgId: string | null): UseOrgStatsReturn {
 
       const now = new Date().toISOString();
 
-      const [activeMembersResult, alumniResult, eventsResult] = await Promise.all([
+      const [activeMembersResult, alumniResult, eventsResult, donationsResult] = await Promise.all([
         supabase
           .from("user_organization_roles")
           .select("*", { count: "exact", head: true })
@@ -61,6 +64,11 @@ export function useOrgStats(orgId: string | null): UseOrgStatsReturn {
           .eq("organization_id", orgId)
           .is("deleted_at", null)
           .gt("start_date", now),
+        supabase
+          .from("organization_donation_stats")
+          .select("total_amount_cents")
+          .eq("organization_id", orgId)
+          .maybeSingle(),
       ]);
 
       if (isMountedRef.current) {
@@ -68,11 +76,13 @@ export function useOrgStats(orgId: string | null): UseOrgStatsReturn {
           activeMembers: activeMembersResult.count ?? 0,
           alumni: alumniResult.count ?? 0,
           upcomingEvents: eventsResult.count ?? 0,
+          totalDonations: (donationsResult.data?.total_amount_cents ?? 0) / 100,
         });
         lastFetchTimeRef.current = Date.now();
       }
     } catch (e) {
-      // On error, keep existing stats — no toast needed for background stat fetch
+      // Keep existing stats on error — no toast needed for background stat fetch
+      sentry.captureException(e as Error, { context: "useOrgStats", orgId });
     } finally {
       if (isMountedRef.current) {
         setLoading(false);
