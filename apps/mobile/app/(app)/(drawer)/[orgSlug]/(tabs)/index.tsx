@@ -1,11 +1,17 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { View, Text, ActivityIndicator, Pressable, StyleSheet } from "react-native";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { View, Text, ActivityIndicator, Pressable, StyleSheet, LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { DrawerActions } from "@react-navigation/native";
 import { useRouter, useFocusEffect, useNavigation } from "expo-router";
-import { RefreshCw } from "lucide-react-native";
+import { Bell, RefreshCw } from "lucide-react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  type SharedValue,
+} from "react-native-reanimated";
 import { useAuth } from "@/hooks/useAuth";
 import { useEvents } from "@/hooks/useEvents";
 import { useAnnouncements } from "@/hooks/useAnnouncements";
@@ -15,7 +21,7 @@ import { useFeed } from "@/hooks/useFeed";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { APP_CHROME } from "@/lib/chrome";
-import { NEUTRAL, SEMANTIC, SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
+import { NEUTRAL, SEMANTIC, SPACING, RADIUS, SHADOWS, ANIMATION } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { FeedTab } from "@/components/home/FeedTab";
 import { OverviewTab } from "@/components/home/OverviewTab";
@@ -30,13 +36,21 @@ const TAB_LABELS: { key: ActiveTab; label: string }[] = [
   { key: "events", label: "Events" },
 ];
 
+const TAB_ORDER: ActiveTab[] = ["feed", "overview", "events"];
+
+function computeGreeting(hour: number): string {
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  if (hour >= 17 && hour < 21) return "Good evening";
+  return "Good night";
+}
+
 export default function HomeScreen() {
   const { orgSlug, orgId, orgName, orgLogoUrl } = useOrg();
   const router = useRouter();
   const navigation = useNavigation();
   const { user } = useAuth();
   useOrgRole(); // subscribes to role changes; triggers re-render on role updates
-  const isMountedRef = useRef(true);
 
   const handleDrawerToggle = useCallback(() => {
     try {
@@ -54,10 +68,67 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const isRefetchingRef = useRef(false);
 
+  // Tab pill animation
+  const pillX = useSharedValue(0);
+  const tabLayouts = useRef<Record<ActiveTab, number>>({
+    feed: 0,
+    overview: 0,
+    events: 0,
+  });
+
+  // Tab crossfade shared values
+  const feedOpacity = useSharedValue(1);
+  const overviewOpacity = useSharedValue(0);
+  const eventsOpacity = useSharedValue(0);
+
+  const opacityMap: Record<ActiveTab, SharedValue<number>> = {
+    feed: feedOpacity,
+    overview: overviewOpacity,
+    events: eventsOpacity,
+  };
+
+  const handleTabChange = useCallback(
+    (tab: ActiveTab) => {
+      setActiveTab(tab);
+
+      // Animate pill to new tab
+      pillX.value = withSpring(tabLayouts.current[tab], {
+        damping: ANIMATION.spring.damping,
+        stiffness: ANIMATION.spring.stiffness,
+      });
+
+      // Crossfade tabs
+      TAB_ORDER.forEach((t) => {
+        opacityMap[t].value = withSpring(t === tab ? 1 : 0, {
+          damping: ANIMATION.spring.damping,
+          stiffness: ANIMATION.spring.stiffness,
+        });
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pillX, feedOpacity, overviewOpacity, eventsOpacity]
+  );
+
+  const handleTabLayout = useCallback(
+    (tab: ActiveTab, x: number) => {
+      tabLayouts.current[tab] = x;
+      // Initialise pill position for active tab once layout is known
+      if (tab === activeTab) {
+        pillX.value = x;
+      }
+    },
+    [activeTab, pillX]
+  );
+
   const { events, refetch: refetchEvents, refetchIfStale: refetchEventsIfStale } = useEvents(orgId);
   const { announcements, refetch: refetchAnnouncements, refetchIfStale: refetchAnnouncementsIfStale } = useAnnouncements(orgId);
   const { members, refetch: refetchMembers, refetchIfStale: refetchMembersIfStale } = useMembers(orgId);
-  const { stats, refetch: refetchStats, refetchIfStale: refetchStatsIfStale } = useOrgStats(orgId);
+  const {
+    stats,
+    loading: statsLoading,
+    refetch: refetchStats,
+    refetchIfStale: refetchStatsIfStale,
+  } = useOrgStats(orgId);
   const {
     posts,
     loading: feedLoading,
@@ -71,24 +142,14 @@ export default function HomeScreen() {
     toggleLike,
   } = useFeed(orgId);
 
-  const fetchData = useCallback(async () => {
-    if (!orgId || !user) return;
-    // Role validation is handled by useOrgRole() and RLS on all data hooks.
-    // This function just transitions from loading → ready state.
-    if (isMountedRef.current) {
+  // Role validation is handled by useOrgRole() and RLS on all data hooks.
+  // Transition from loading → ready once org and user context are available.
+  useEffect(() => {
+    if (orgId && user) {
       setError(null);
       setLoading(false);
     }
   }, [orgId, user]);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    fetchData();
-
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, [fetchData]);
 
   const memberCount = members.length;
 
@@ -135,6 +196,31 @@ export default function HomeScreen() {
     [router]
   );
 
+  const handleBellPress = useCallback(
+    () => router.push(`/(app)/(drawer)/${orgSlug}/notifications` as any),
+    [router, orgSlug]
+  );
+
+  // Derive user identity for child tabs
+  const userMeta = useMemo(
+    () => (user?.user_metadata ?? {}) as { name?: string; avatar_url?: string },
+    [user]
+  );
+  const userName = userMeta.name ?? null;
+  const userAvatarUrl = userMeta.avatar_url ?? null;
+
+  // Greeting computed from time of day
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    return computeGreeting(hour);
+  }, []);
+
+  // First name only
+  const firstName = useMemo(
+    () => userName?.split(" ")[0] ?? null,
+    [userName]
+  );
+
   const { transformedEvents, recentAnnouncements, eventsCount } = useMemo(() => {
     const now = new Date();
     const upcoming = events.filter((e) => new Date(e.start_date) >= now);
@@ -149,7 +235,13 @@ export default function HomeScreen() {
       user_rsvp_status: event.user_rsvp_status as EventCardEvent["user_rsvp_status"],
     }));
 
-    const recent = announcements.slice(0, 3);
+    const recent = announcements.slice(0, 3).map((a) => ({
+      id: a.id,
+      title: a.title,
+      body: a.body,
+      created_at: a.created_at,
+      is_pinned: a.is_pinned,
+    }));
 
     return {
       transformedEvents: transformed,
@@ -157,6 +249,26 @@ export default function HomeScreen() {
       eventsCount: upcoming.length,
     };
   }, [events, announcements]);
+
+  const pinnedAnnouncement = useMemo(
+    () => announcements.find((a) => a.is_pinned) ?? null,
+    [announcements]
+  );
+
+  // Animated styles
+  const pillAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: pillX.value }],
+  }));
+
+  const feedAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: feedOpacity.value,
+  }));
+  const overviewAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: overviewOpacity.value,
+  }));
+  const eventsAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: eventsOpacity.value,
+  }));
 
   if (loading) {
     return (
@@ -196,6 +308,7 @@ export default function HomeScreen() {
       >
         <SafeAreaView edges={["top"]}>
           <View style={styles.headerContent}>
+            {/* Logo — opens drawer */}
             <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
               {orgLogoUrl ? (
                 <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
@@ -206,211 +319,282 @@ export default function HomeScreen() {
               )}
             </Pressable>
 
+            {/* Greeting block */}
             <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                {orgName}
+              <Text style={styles.headerGreeting} numberOfLines={1}>
+                {greeting}{firstName ? `, ${firstName}` : ""}
               </Text>
               <Text style={styles.headerMeta}>
-                {memberCount} {memberCount === 1 ? "member" : "members"} · {eventsCount} {eventsCount === 1 ? "event" : "events"}
+                {orgName} · {memberCount} {memberCount === 1 ? "member" : "members"}
               </Text>
             </View>
+
+            {/* Bell icon */}
+            <Pressable
+              onPress={handleBellPress}
+              style={styles.bellButton}
+              accessibilityLabel="Notifications"
+              accessibilityRole="button"
+            >
+              <Bell size={22} color={APP_CHROME.headerMeta} />
+            </Pressable>
           </View>
         </SafeAreaView>
       </LinearGradient>
 
-      {/* Content Sheet */}
+      {/* Content Sheet — overlaps gradient with rounded top corners */}
       <View style={styles.contentSheet}>
-        {/* Segmented Control */}
+        {/* Animated sliding pill tab bar */}
         <View style={styles.segmentedControl}>
+          {/* Sliding pill indicator */}
+          <Animated.View style={[styles.segmentPill, pillAnimatedStyle]} />
+
           {TAB_LABELS.map(({ key, label }) => (
             <Pressable
               key={key}
-              style={[styles.segment, activeTab === key && styles.segmentActive]}
-              onPress={() => setActiveTab(key)}
+              style={styles.segment}
+              onPress={() => handleTabChange(key)}
+              onLayout={(e: LayoutChangeEvent) => {
+                handleTabLayout(key, e.nativeEvent.layout.x);
+              }}
               accessibilityRole="tab"
               accessibilityState={{ selected: activeTab === key }}
             >
-              <Text style={[styles.segmentText, activeTab === key && styles.segmentTextActive]}>
+              <Text
+                style={[
+                  styles.segmentText,
+                  activeTab === key && styles.segmentTextActive,
+                ]}
+              >
                 {label}
               </Text>
             </Pressable>
           ))}
         </View>
 
-        {/* Tab Content */}
-        {activeTab === "feed" && (
-          <FeedTab
-            posts={posts}
-            pendingPosts={pendingPosts}
-            loading={feedLoading}
-            loadingMore={loadingMore}
-            hasMore={hasMore}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            onLoadMore={loadMore}
-            onAcceptPending={acceptPendingPosts}
-            onPostPress={handlePostPress}
-            onLikeToggle={toggleLike}
-            onCreatePost={handleCreatePost}
-          />
-        )}
+        {/* Tab content — all three always mounted, crossfade via opacity */}
+        <View style={styles.tabContentContainer}>
+          <Animated.View
+            style={[styles.tabPane, feedAnimatedStyle]}
+            pointerEvents={activeTab === "feed" ? "auto" : "none"}
+          >
+            <FeedTab
+              posts={posts}
+              pendingPosts={pendingPosts}
+              loading={feedLoading}
+              loadingMore={loadingMore}
+              hasMore={hasMore}
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              onLoadMore={loadMore}
+              onAcceptPending={acceptPendingPosts}
+              onPostPress={handlePostPress}
+              onLikeToggle={toggleLike}
+              onCreatePost={handleCreatePost}
+              upcomingEvents={transformedEvents}
+              pinnedAnnouncement={pinnedAnnouncement}
+              onEventPress={(id: string) =>
+                handleNavigate(`/(app)/(drawer)/${orgSlug}/events/${id}`)
+              }
+              onAnnouncementPress={(id: string) =>
+                handleNavigate(`/(app)/(drawer)/${orgSlug}/announcements/${id}`)
+              }
+              userAvatarUrl={userAvatarUrl}
+              userName={userName}
+            />
+          </Animated.View>
 
-        {activeTab === "overview" && (
-          <OverviewTab
-            orgSlug={orgSlug}
-            stats={stats}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            onNavigate={handleNavigate}
-          />
-        )}
+          <Animated.View
+            style={[styles.tabPane, overviewAnimatedStyle]}
+            pointerEvents={activeTab === "overview" ? "auto" : "none"}
+          >
+            <OverviewTab
+              orgSlug={orgSlug}
+              stats={stats}
+              loading={statsLoading}
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              onNavigate={handleNavigate}
+              onCreatePost={handleCreatePost}
+            />
+          </Animated.View>
 
-        {activeTab === "events" && (
-          <EventsTab
-            orgSlug={orgSlug}
-            events={transformedEvents}
-            announcements={recentAnnouncements.map((a) => ({
-              id: a.id,
-              title: a.title,
-              body: a.body,
-              created_at: a.created_at,
-              is_pinned: a.is_pinned,
-            }))}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            onNavigate={handleNavigate}
-          />
-        )}
+          <Animated.View
+            style={[styles.tabPane, eventsAnimatedStyle]}
+            pointerEvents={activeTab === "events" ? "auto" : "none"}
+          >
+            <EventsTab
+              orgSlug={orgSlug}
+              events={transformedEvents}
+              announcements={recentAnnouncements}
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              onNavigate={handleNavigate}
+            />
+          </Animated.View>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: NEUTRAL.background,
-    },
-    headerGradient: {
-      paddingBottom: SPACING.md,
-    },
-    headerContent: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: SPACING.md,
-      paddingTop: SPACING.xs,
-      minHeight: 40,
-      gap: SPACING.sm,
-    },
-    orgLogoButton: {
-      width: 36,
-      height: 36,
-    },
-    orgLogo: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-    },
-    orgAvatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: APP_CHROME.avatarBackground,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    orgAvatarText: {
-      ...TYPOGRAPHY.titleSmall,
-      fontWeight: "700",
-      color: APP_CHROME.avatarText,
-    },
-    headerTextContainer: {
-      flex: 1,
-    },
-    headerTitle: {
-      ...TYPOGRAPHY.titleLarge,
-      color: APP_CHROME.headerTitle,
-    },
-    headerMeta: {
-      ...TYPOGRAPHY.caption,
-      color: APP_CHROME.headerMeta,
-      marginTop: 2,
-    },
-    contentSheet: {
-      flex: 1,
-      backgroundColor: NEUTRAL.surface,
-    },
-    centered: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 24,
-      backgroundColor: NEUTRAL.background,
-    },
-    // Segmented control
-    segmentedControl: {
-      flexDirection: "row",
-      backgroundColor: NEUTRAL.background,
-      borderRadius: RADIUS.lg,
-      padding: SPACING.xxs,
-      marginHorizontal: SPACING.md,
-      marginTop: SPACING.sm,
-      marginBottom: SPACING.sm,
-    },
-    segment: {
-      flex: 1,
-      paddingVertical: SPACING.sm,
-      alignItems: "center",
-      borderRadius: RADIUS.md,
-    },
-    segmentActive: {
-      backgroundColor: SEMANTIC.success,
-      ...SHADOWS.sm,
-    },
-    segmentText: {
-      ...TYPOGRAPHY.labelMedium,
-      color: NEUTRAL.muted,
-    },
-    segmentTextActive: {
-      color: NEUTRAL.surface,
-      fontWeight: "600",
-    },
-    // Error state
-    errorCard: {
-      backgroundColor: NEUTRAL.surface,
-      borderRadius: RADIUS.lg,
-      borderWidth: 1,
-      borderColor: NEUTRAL.border,
-      padding: SPACING.xl,
-      alignItems: "center",
-      ...SHADOWS.sm,
-    },
-    errorTitle: {
-      ...TYPOGRAPHY.titleMedium,
-      color: NEUTRAL.foreground,
-      marginTop: SPACING.sm,
-    },
-    errorText: {
-      ...TYPOGRAPHY.bodySmall,
-      color: NEUTRAL.muted,
-      textAlign: "center",
-      marginTop: SPACING.xs,
-    },
-    retryButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: SPACING.sm,
-      marginTop: SPACING.md,
-      paddingVertical: SPACING.sm + 2,
-      paddingHorizontal: SPACING.lg,
-      borderRadius: RADIUS.md,
-      backgroundColor: SEMANTIC.success,
-    },
-    retryButtonPressed: {
-      opacity: 0.8,
-    },
-    retryButtonText: {
-      ...TYPOGRAPHY.labelMedium,
-      color: NEUTRAL.surface,
-    },
-  });
+  container: {
+    flex: 1,
+    backgroundColor: NEUTRAL.background,
+  },
+  headerGradient: {
+    paddingBottom: SPACING.xl,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.xs,
+    minHeight: 44,
+    gap: SPACING.sm,
+  },
+  orgLogoButton: {
+    width: 44,
+    height: 44,
+  },
+  orgLogo: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
+  orgAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: APP_CHROME.avatarBackground,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  orgAvatarText: {
+    ...TYPOGRAPHY.titleSmall,
+    fontWeight: "700",
+    color: APP_CHROME.avatarText,
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  headerGreeting: {
+    ...TYPOGRAPHY.headlineSmall,
+    color: APP_CHROME.headerTitle,
+  },
+  headerMeta: {
+    ...TYPOGRAPHY.caption,
+    color: APP_CHROME.headerMeta,
+    marginTop: 2,
+  },
+  bellButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  contentSheet: {
+    flex: 1,
+    backgroundColor: NEUTRAL.surface,
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
+    overflow: "hidden",
+    marginTop: -SPACING.sm,
+  },
+  // Segmented control — lighter background, sliding pill
+  segmentedControl: {
+    flexDirection: "row",
+    backgroundColor: NEUTRAL.divider,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xxs,
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+    position: "relative",
+  },
+  segmentPill: {
+    position: "absolute",
+    top: SPACING.xxs,
+    bottom: SPACING.xxs,
+    // Width is set to 1/3 of the container; works because all three tabs are flex:1
+    // We rely on translateX to move the pill; actual width is computed at render time.
+    // Using percentage-like value: each tab occupies 33.33% of the container.
+    width: "33.33%",
+    borderRadius: RADIUS.md,
+    backgroundColor: SEMANTIC.success,
+    ...SHADOWS.sm,
+  },
+  segment: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    alignItems: "center",
+    borderRadius: RADIUS.md,
+    zIndex: 1,
+  },
+  segmentText: {
+    ...TYPOGRAPHY.labelMedium,
+    color: NEUTRAL.muted,
+  },
+  segmentTextActive: {
+    color: NEUTRAL.surface,
+    fontWeight: "600",
+  },
+  // Tab crossfade container
+  tabContentContainer: {
+    flex: 1,
+    position: "relative",
+  },
+  tabPane: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  // Loading / error states
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+    backgroundColor: NEUTRAL.background,
+  },
+  errorCard: {
+    backgroundColor: NEUTRAL.surface,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+    padding: SPACING.xl,
+    alignItems: "center",
+    ...SHADOWS.sm,
+  },
+  errorTitle: {
+    ...TYPOGRAPHY.titleMedium,
+    color: NEUTRAL.foreground,
+    marginTop: SPACING.sm,
+  },
+  errorText: {
+    ...TYPOGRAPHY.bodySmall,
+    color: NEUTRAL.muted,
+    textAlign: "center",
+    marginTop: SPACING.xs,
+  },
+  retryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.md,
+    backgroundColor: SEMANTIC.success,
+  },
+  retryButtonPressed: {
+    opacity: 0.8,
+  },
+  retryButtonText: {
+    ...TYPOGRAPHY.labelMedium,
+    color: NEUTRAL.surface,
+  },
+});
