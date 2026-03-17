@@ -195,7 +195,7 @@ export function LinkedInSettingsPanel({
       )}
 
       {/* Section 3: Connect prompt (disconnected) */}
-      {!isConnected && oauthAvailable && (
+      {!isConnected && (
         <div className="p-5 space-y-3">
           <div className="flex items-center gap-2">
             <LinkedInIcon />
