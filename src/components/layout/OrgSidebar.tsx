@@ -12,7 +12,7 @@ import { NavGroupSection, NavItemLink } from "@/components/layout/NavGroupSectio
 import { useUIProfile } from "@/lib/analytics/use-ui-profile";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
+
 
 interface OrgSidebarProps {
   organization: Organization;
@@ -225,10 +225,6 @@ export function OrgSidebar({ organization, role, isDevAdmin = false, hasAlumniAc
 
       {/* User Section */}
       <div className="p-4 border-t border-border space-y-1">
-        <div className="flex items-center justify-between px-3 py-2.5">
-          <span className="text-sm font-medium text-muted-foreground">Theme</span>
-          <ThemeToggle />
-        </div>
         <Link
           href="/app"
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-[background-color,color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
