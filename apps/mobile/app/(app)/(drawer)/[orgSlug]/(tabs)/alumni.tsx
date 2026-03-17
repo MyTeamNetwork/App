@@ -221,6 +221,8 @@ export default function AlumniScreen() {
           <Pressable
             onPress={toggleSort}
             style={({ pressed }) => [styles.sortButton, pressed && styles.sortButtonPressed]}
+            accessibilityRole="button"
+            accessibilityLabel={`Sort by ${sortBy === "name" ? "year" : "name"}`}
           >
             <ArrowUpDown size={14} color={NEUTRAL.muted} />
             <Text style={styles.sortButtonText}>{sortBy === "name" ? "A-Z" : "Year"}</Text>
@@ -283,7 +285,12 @@ export default function AlumniScreen() {
         >
           <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
             <View style={styles.headerContent}>
-              <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
+              <Pressable
+                onPress={handleDrawerToggle}
+                style={styles.orgLogoButton}
+                accessibilityRole="button"
+                accessibilityLabel={`Open navigation for ${orgName ?? "organization"}`}
+              >
                 {orgLogoUrl ? (
                   <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
                 ) : (
@@ -320,7 +327,12 @@ export default function AlumniScreen() {
         >
           <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
             <View style={styles.headerContent}>
-              <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
+              <Pressable
+                onPress={handleDrawerToggle}
+                style={styles.orgLogoButton}
+                accessibilityRole="button"
+                accessibilityLabel={`Open navigation for ${orgName ?? "organization"}`}
+              >
                 {orgLogoUrl ? (
                   <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
                 ) : (
@@ -351,7 +363,12 @@ export default function AlumniScreen() {
       >
         <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
           <View style={styles.headerContent}>
-            <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
+            <Pressable
+              onPress={handleDrawerToggle}
+              style={styles.orgLogoButton}
+              accessibilityRole="button"
+              accessibilityLabel={`Open navigation for ${orgName ?? "organization"}`}
+            >
               {orgLogoUrl ? (
                 <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
               ) : (

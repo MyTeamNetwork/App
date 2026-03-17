@@ -20,6 +20,8 @@ import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useEvents, type Event } from "@/hooks/useEvents";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
+import { SkeletonList } from "@/components/ui/Skeleton";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { APP_CHROME } from "@/lib/chrome";
 import { NEUTRAL, SEMANTIC, SPACING, RADIUS, SHADOWS, RSVP_COLORS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
@@ -147,6 +149,8 @@ export default function EventsScreen() {
       <Pressable
         style={({ pressed }) => [styles.eventCard, pressed && { opacity: 0.7 }]}
         onPress={() => router.push(`/(app)/${orgSlug}/events/${item.id}`)}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.title}, ${item.start_date ? new Date(item.start_date).toLocaleDateString() : "no date"}`}
       >
       <View style={styles.eventHeader}>
         <Text style={styles.eventTitle} numberOfLines={1}>
@@ -248,7 +252,7 @@ export default function EventsScreen() {
     }
   }, [events, viewMode]);
 
-  if (error) {
+  if (loading && events.length === 0) {
     return (
       <View style={styles.container}>
         {/* Custom Gradient Header */}
@@ -260,6 +264,48 @@ export default function EventsScreen() {
             <View style={styles.headerContent}>
               {/* Logo */}
               <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
+                {orgLogoUrl ? (
+                  <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
+                ) : (
+                  <View style={styles.orgAvatar}>
+                    <Text style={styles.orgAvatarText}>{orgName?.[0] || "E"}</Text>
+                  </View>
+                )}
+              </Pressable>
+              <View style={styles.headerTextContainer}>
+                <Text style={styles.headerTitle}>Events</Text>
+              </View>
+            </View>
+          </SafeAreaView>
+        </LinearGradient>
+        <Animated.View
+          entering={FadeIn}
+          exiting={FadeOut}
+          style={[styles.contentSheet, styles.skeletonContainer]}
+        >
+          <SkeletonList type="event" count={4} />
+        </Animated.View>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        {/* Custom Gradient Header */}
+        <LinearGradient
+          colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]}
+          style={styles.headerGradient}
+        >
+          <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
+            <View style={styles.headerContent}>
+              {/* Logo */}
+              <Pressable
+                onPress={handleDrawerToggle}
+                style={styles.orgLogoButton}
+                accessibilityRole="button"
+                accessibilityLabel={`Open navigation for ${orgName ?? "organization"}`}
+              >
                 {orgLogoUrl ? (
                   <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
                 ) : (
@@ -295,7 +341,12 @@ export default function EventsScreen() {
         <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
           <View style={styles.headerContent}>
             {/* Logo */}
-            <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
+            <Pressable
+              onPress={handleDrawerToggle}
+              style={styles.orgLogoButton}
+              accessibilityRole="button"
+              accessibilityLabel={`Open navigation for ${orgName ?? "organization"}`}
+            >
               {orgLogoUrl ? (
                 <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
               ) : (
@@ -328,6 +379,9 @@ export default function EventsScreen() {
           <Pressable
             style={({ pressed }) => [styles.toggleButton, viewMode === "upcoming" && styles.toggleActive, pressed && { opacity: 0.7 }]}
             onPress={() => setViewMode("upcoming")}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: viewMode === "upcoming" }}
+            accessibilityLabel="Show upcoming events"
           >
             <Text
               style={[styles.toggleText, viewMode === "upcoming" && styles.toggleTextActive]}
@@ -338,6 +392,9 @@ export default function EventsScreen() {
           <Pressable
             style={({ pressed }) => [styles.toggleButton, viewMode === "past" && styles.toggleActive, pressed && { opacity: 0.7 }]}
             onPress={() => setViewMode("past")}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: viewMode === "past" }}
+            accessibilityLabel="Show past events"
           >
             <Text style={[styles.toggleText, viewMode === "past" && styles.toggleTextActive]}>
               Past
@@ -357,6 +414,9 @@ export default function EventsScreen() {
             <Pressable
               style={({ pressed }) => [styles.dateItem, selectedDate === null && styles.dateItemSelected, pressed && { opacity: 0.7 }]}
               onPress={() => setSelectedDate(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Show all events"
+              accessibilityState={{ selected: selectedDate === null }}
             >
               <Text
                 style={[
@@ -386,6 +446,9 @@ export default function EventsScreen() {
                   key={index}
                   style={({ pressed }) => [styles.dateItem, isSelected && styles.dateItemSelected, pressed && { opacity: 0.7 }]}
                   onPress={() => setSelectedDate(date)}
+                  accessibilityRole="button"
+                  accessibilityLabel={date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                  accessibilityState={{ selected: isSelected }}
                 >
                   <Text
                     style={[
@@ -721,5 +784,9 @@ const createStyles = () =>
       alignItems: "center",
       padding: 24,
       backgroundColor: NEUTRAL.background,
+    },
+    skeletonContainer: {
+      padding: SPACING.md,
+      paddingTop: SPACING.md,
     },
   });

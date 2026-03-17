@@ -309,7 +309,12 @@ export default function HomeScreen() {
         <SafeAreaView edges={["top"]}>
           <View style={styles.headerContent}>
             {/* Logo — opens drawer */}
-            <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
+            <Pressable
+              onPress={handleDrawerToggle}
+              style={styles.orgLogoButton}
+              accessibilityRole="button"
+              accessibilityLabel={`Open navigation for ${orgName ?? "organization"}`}
+            >
               {orgLogoUrl ? (
                 <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
               ) : (
