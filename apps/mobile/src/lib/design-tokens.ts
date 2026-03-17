@@ -55,6 +55,58 @@ export const SEMANTIC = {
   infoDark: "#0369a1",        // sky-700
 } as const;
 
+// Neutral dark palette (mirrors NEUTRAL keys for dark mode)
+export const NEUTRAL_DARK = {
+  // Backgrounds
+  background: "#0f172a",      // slate-900 - main content
+  surface: "#1e293b",         // slate-800 - cards, sheets
+  surfaceElevated: "#334155", // slate-700 - elevated cards
+
+  // Text hierarchy
+  foreground: "#f8fafc",      // slate-50 - primary text
+  secondary: "#cbd5e1",       // slate-300 - secondary text
+  muted: "#94a3b8",           // slate-400 - tertiary
+  placeholder: "#64748b",     // slate-500
+  disabled: "#475569",        // slate-600
+
+  // Borders & dividers
+  border: "#334155",          // slate-700
+  borderStrong: "#475569",    // slate-600
+  divider: "#1e293b",         // slate-800
+
+  // Dark variants (same as light — already dark)
+  dark900: "#0f172a",
+  dark950: "#020617",
+  dark800: "#1e293b",
+
+  // Overlays
+  overlay: "rgba(0, 0, 0, 0.6)",
+  overlayLight: "rgba(0, 0, 0, 0.3)",
+} as const;
+
+// Semantic dark palette (mirrors SEMANTIC keys for dark mode)
+export const SEMANTIC_DARK = {
+  // Success
+  success: "#34d399",         // emerald-400
+  successLight: "#064e3b",    // emerald-900
+  successDark: "#6ee7b7",     // emerald-300
+
+  // Warning
+  warning: "#fbbf24",         // amber-400
+  warningLight: "#78350f",    // amber-900
+  warningDark: "#fcd34d",     // amber-300
+
+  // Error
+  error: "#f87171",           // red-400
+  errorLight: "#7f1d1d",      // red-900
+  errorDark: "#fca5a5",       // red-300
+
+  // Info
+  info: "#38bdf8",            // sky-400
+  infoLight: "#0c4a6e",       // sky-900
+  infoDark: "#7dd3fc",        // sky-300
+} as const;
+
 // Sports energy accents
 export const ENERGY = {
   // Live event indicator

@@ -4,6 +4,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as Linking from "expo-linking";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { supabase } from "@/lib/supabase";
+import { ColorSchemeProvider } from "@/contexts/ColorSchemeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AuthLoadingScreen from "@/components/AuthLoadingScreen";
 import { init as initAnalytics, identify, reset as resetAnalytics, captureException, hydrateEnabled, setEnabled } from "@/lib/analytics";
@@ -58,9 +59,11 @@ if (Platform.OS === "web") {
  */
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootLayoutInner />
-    </AuthProvider>
+    <ColorSchemeProvider>
+      <AuthProvider>
+        <RootLayoutInner />
+      </AuthProvider>
+    </ColorSchemeProvider>
   );
 }
 
@@ -130,7 +133,7 @@ function RootLayoutInner() {
   const handleDeepLink = useCallback(async (event: { url: string }) => {
     const url = event.url;
 
-    // Validate the deep link URL hostname before processing tokens
+    // Accept the app's native scheme as well as trusted web hosts before processing auth data.
     const supabaseHost = process.env.EXPO_PUBLIC_SUPABASE_URL
       ? new URL(process.env.EXPO_PUBLIC_SUPABASE_URL).hostname
       : null;
@@ -141,8 +144,9 @@ function RootLayoutInner() {
     ].filter(Boolean);
 
     try {
-      const parsedHost = new URL(url).hostname;
-      if (!allowedHosts.includes(parsedHost)) {
+      const parsedUrl = new URL(url);
+      const isNativeAppLink = parsedUrl.protocol === "teammeet:";
+      if (!isNativeAppLink && !allowedHosts.includes(parsedUrl.hostname)) {
         return;
       }
     } catch {
