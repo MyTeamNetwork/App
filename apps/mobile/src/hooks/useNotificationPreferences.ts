@@ -36,12 +36,6 @@ export function useNotificationPreferences(
   const userId = user?.id ?? null;
   const userEmail = user?.email ?? null;
 
-  const isMissingPushEnabledColumnError = useCallback((value: unknown) => {
-    if (!value || typeof value !== "object") return false;
-    const maybeError = value as { message?: string };
-    return maybeError.message?.includes("push_enabled") ?? false;
-  }, []);
-
   const fetchPrefs = useCallback(async () => {
     const requestId = beginRequest();
 
@@ -61,23 +55,6 @@ export function useNotificationPreferences(
         .eq("organization_id", orgId)
         .eq("user_id", userId)
         .maybeSingle();
-
-      if (fetchError && isMissingPushEnabledColumnError(fetchError)) {
-        const fallback = await supabase
-          .from("notification_preferences")
-          .select("id, email_address, email_enabled")
-          .eq("organization_id", orgId)
-          .eq("user_id", userId)
-          .maybeSingle();
-
-        data = fallback.data
-          ? {
-              ...fallback.data,
-              push_enabled: true,
-            }
-          : null;
-        fetchError = fallback.error;
-      }
 
       if (fetchError) throw fetchError;
 
@@ -111,7 +88,7 @@ export function useNotificationPreferences(
         setLoading(false);
       }
     }
-  }, [beginRequest, isCurrentRequest, isMissingPushEnabledColumnError, orgId, userEmail, userId]);
+  }, [beginRequest, isCurrentRequest, orgId, userEmail, userId]);
 
   // Initial fetch
   useEffect(() => {
@@ -176,11 +153,6 @@ export function useNotificationPreferences(
         email_enabled: emailEnabled,
         push_enabled: pushEnabled,
       };
-      const fallbackPayload = {
-        email_address: emailAddress,
-        email_enabled: emailEnabled,
-      };
-
       // Optimistic update
       setPrefs((prev) => (prev ? { ...prev, ...updates } : prev));
       setSaving(true);
@@ -193,15 +165,6 @@ export function useNotificationPreferences(
             .from("notification_preferences")
             .update(writePayload)
             .eq("id", prefs.id);
-
-          if (updateError && isMissingPushEnabledColumnError(updateError)) {
-            const fallback = await supabase
-              .from("notification_preferences")
-              .update(fallbackPayload)
-              .eq("id", prefs.id);
-
-            updateError = fallback.error;
-          }
 
           if (updateError) throw updateError;
         } else {
@@ -217,23 +180,6 @@ export function useNotificationPreferences(
             })
             .select("id")
             .single();
-
-          if (insertError && isMissingPushEnabledColumnError(insertError)) {
-            const fallback = await supabase
-              .from("notification_preferences")
-              .insert({
-                organization_id: orgId,
-                user_id: userId,
-                ...fallbackPayload,
-                phone_number: null,
-                sms_enabled: false,
-              })
-              .select("id")
-              .single();
-
-            data = fallback.data;
-            insertError = fallback.error;
-          }
 
           if (insertError) throw insertError;
 
@@ -257,7 +203,7 @@ export function useNotificationPreferences(
         }
       }
     },
-    [isMissingPushEnabledColumnError, orgId, prefs, userEmail, userId]
+    [orgId, prefs, userEmail, userId]
   );
 
   return { prefs, loading, error, saving, updatePrefs, refetch: fetchPrefs };

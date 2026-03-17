@@ -20,8 +20,6 @@ interface SubscriptionData {
   status: string;
   bucket: AlumniBucket;
   currentPeriodEnd: string | null;
-  stripeSubscriptionId: string | null;
-  stripeCustomerId: string | null;
   alumniCount: number;
   alumniLimit: number | null;
 }
@@ -148,7 +146,7 @@ export function SettingsBillingSection({
 
     setPlanUpdating(true);
     try {
-      const endpoint = !subscription?.stripeSubscriptionId
+      const endpoint = subscription?.status !== "active"
         ? `/api/organizations/${orgId}/start-checkout`
         : `/api/organizations/${orgId}/subscription`;
 
@@ -294,7 +292,7 @@ export function SettingsBillingSection({
                 <Pressable
                   style={styles.billingButton}
                   onPress={handleManageBilling}
-                  disabled={billingLoading || !subscription.stripeCustomerId}
+                  disabled={billingLoading}
                 >
                   {billingLoading ? (
                     <ActivityIndicator size="small" color={colors.primaryForeground} />

@@ -1,8 +1,17 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { fetchWithAuth } from "@/lib/web-api";
 import type { AlumniBucket } from "@teammeet/types";
 import * as sentry from "@/lib/analytics/sentry";
+
+const ALUMNI_LIMITS: Record<string, number | null> = {
+  none: 0,
+  "0-250": 250,
+  "251-500": 500,
+  "501-1000": 1000,
+  "1001-2500": 2500,
+  "2500-5000": 5000,
+  "5000+": null,
+};
 
 export interface SubscriptionData {
   bucket: AlumniBucket;
@@ -10,8 +19,6 @@ export interface SubscriptionData {
   alumniCount: number;
   remaining: number | null;
   status: string;
-  stripeSubscriptionId: string | null;
-  stripeCustomerId: string | null;
   currentPeriodEnd: string | null;
 }
 
@@ -39,23 +46,37 @@ export function useSubscription(organizationId: string | null): UseSubscriptionR
       setLoading(true);
       setError(null);
 
-      const response = await fetchWithAuth(
-        `/api/organizations/${organizationId}/subscription`,
-        {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      const [subRes, alumniCountRes] = await Promise.all([
+        supabase.rpc("get_subscription_status", { p_org_id: organizationId }).maybeSingle(),
+        supabase
+          .from("user_organization_roles")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", organizationId)
+          .eq("role", "alumni")
+          .eq("status", "active")
+          .is("deleted_at", null),
+      ]);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to fetch subscription (${response.status})`);
-      }
-
-      const data = await response.json();
+      if (subRes.error) throw subRes.error;
+      if (alumniCountRes.error) throw alumniCountRes.error;
 
       if (isMountedRef.current) {
-        setSubscription(data);
+        if (subRes.data) {
+          const bucket = (subRes.data.alumni_bucket || "none") as AlumniBucket;
+          const alumniLimit = ALUMNI_LIMITS[bucket] ?? null;
+          const alumniCount = alumniCountRes.count ?? 0;
+
+          setSubscription({
+            bucket,
+            alumniLimit,
+            alumniCount,
+            remaining: alumniLimit !== null ? Math.max(0, alumniLimit - alumniCount) : null,
+            status: subRes.data.status || "active",
+            currentPeriodEnd: subRes.data.current_period_end || null,
+          });
+        } else {
+          setSubscription(null);
+        }
         setError(null);
       }
     } catch (e) {
