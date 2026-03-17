@@ -11,10 +11,9 @@ type StyleFactory<T extends StyleSheet.NamedStyles<T>> = (
 export function useThemedStyles<T extends StyleSheet.NamedStyles<T>>(
   factory: StyleFactory<T>
 ): T {
-  const { colorScheme, neutral, semantic } = useAppColorScheme();
+  const { neutral, semantic } = useAppColorScheme();
   return useMemo(
     () => StyleSheet.create(factory(neutral, semantic)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [colorScheme, factory]
+    [neutral, semantic, factory]
   );
 }
