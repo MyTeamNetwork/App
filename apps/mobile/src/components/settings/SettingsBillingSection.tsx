@@ -1,19 +1,16 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
   ActivityIndicator,
   Pressable,
   Alert,
-  Modal,
+  Linking,
 } from "react-native";
-import { CreditCard, ChevronDown, Check, ExternalLink } from "lucide-react-native";
-import { StripeWebView } from "@/components/StripeWebView";
-import { fetchWithAuth } from "@/lib/web-api";
-import { captureException } from "@/lib/analytics";
-import type { AlumniBucket } from "@teammeet/types";
-import { ALUMNI_LIMITS } from "@teammeet/core";
+import { CreditCard, ChevronDown, ExternalLink } from "lucide-react-native";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
+import { getWebAppUrl } from "@/lib/web-api";
+import type { AlumniBucket } from "@teammeet/types";
 import { buildSettingsColors } from "./settingsColors";
 import { useBaseStyles, formatDate, formatBucket, fontSize, fontWeight } from "./settingsShared";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
@@ -27,7 +24,6 @@ interface SubscriptionData {
 }
 
 interface Props {
-  orgId: string;
   orgSlug: string;
   isAdmin: boolean;
   subscription: SubscriptionData | null;
@@ -35,16 +31,6 @@ interface Props {
   subError: string | null;
   refetchSubscription: () => void;
 }
-
-
-const BUCKET_OPTIONS: { value: AlumniBucket; label: string }[] = [
-  { value: "0-250", label: "0\u2013250 alumni" },
-  { value: "251-500", label: "251\u2013500 alumni" },
-  { value: "501-1000", label: "501\u20131,000 alumni" },
-  { value: "1001-2500", label: "1,001\u20132,500 alumni" },
-  { value: "2500-5000", label: "2,500\u20135,000 alumni" },
-  { value: "5000+", label: "5,000+ (contact us)" },
-];
 
 function formatStatus(
   status: string,
@@ -69,7 +55,6 @@ function formatStatus(
 }
 
 export function SettingsBillingSection({
-  orgId,
   orgSlug,
   isAdmin,
   subscription,
@@ -82,18 +67,6 @@ export function SettingsBillingSection({
   const baseStyles = useBaseStyles();
 
   const [expanded, setExpanded] = useState(true);
-  const [billingPortalUrl, setBillingPortalUrl] = useState<string | null>(null);
-  const [billingLoading, setBillingLoading] = useState(false);
-  const [selectedBucket, setSelectedBucket] = useState<AlumniBucket>("0-250");
-  const [selectedInterval, setSelectedInterval] = useState<"month" | "year">("month");
-  const [planUpdating, setPlanUpdating] = useState(false);
-  const [showBucketPicker, setShowBucketPicker] = useState(false);
-
-  useEffect(() => {
-    if (subscription?.bucket && subscription.bucket !== selectedBucket) {
-      setSelectedBucket(subscription.bucket);
-    }
-  }, [subscription?.bucket]);
 
   const styles = useThemedStyles((n, s) => ({
     loadingText: {
@@ -119,31 +92,6 @@ export function SettingsBillingSection({
     retryButtonText: {
       color: "#ffffff",
       fontSize: fontSize.sm,
-      fontWeight: fontWeight.semibold,
-    },
-    fieldGroup: {
-      marginBottom: 16,
-    },
-    fieldLabel: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.medium,
-      color: n.foreground,
-      marginBottom: 8,
-    },
-    button: {
-      backgroundColor: s.success,
-      paddingVertical: 12,
-      paddingHorizontal: 20,
-      borderRadius: 8,
-      alignItems: "center" as const,
-      justifyContent: "center" as const,
-    },
-    buttonDisabled: {
-      opacity: 0.5,
-    },
-    buttonText: {
-      color: "#ffffff",
-      fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
     },
     subscriptionCard: {
@@ -180,46 +128,10 @@ export function SettingsBillingSection({
       fontSize: 13,
       fontWeight: fontWeight.semibold,
     },
-    pickerButton: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      justifyContent: "space-between" as const,
-      backgroundColor: n.background,
-      borderWidth: 1,
-      borderColor: n.border,
-      borderRadius: 8,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      marginBottom: 12,
-    },
-    pickerButtonText: {
-      fontSize: fontSize.base,
-      color: n.foreground,
-    },
-    intervalRow: {
-      flexDirection: "row" as const,
-      gap: 8,
-      marginBottom: 12,
-    },
-    intervalButton: {
-      flex: 1,
-      paddingVertical: 10,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: n.border,
-      alignItems: "center" as const,
-    },
-    intervalButtonActive: {
-      borderColor: s.success,
-      backgroundColor: s.success + "10",
-    },
-    intervalButtonText: {
+    webHint: {
       fontSize: fontSize.sm,
       color: n.muted,
-    },
-    intervalButtonTextActive: {
-      color: s.success,
-      fontWeight: fontWeight.semibold,
+      lineHeight: 20,
     },
     billingButton: {
       flexDirection: "row" as const,
@@ -251,303 +163,108 @@ export function SettingsBillingSection({
       color: n.muted,
       textAlign: "center" as const,
     },
-    pickerOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      justifyContent: "flex-end" as const,
-    },
-    pickerContent: {
-      backgroundColor: n.surface,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      padding: 20,
-      paddingBottom: 40,
-    },
-    pickerTitle: {
-      fontSize: fontSize.lg,
-      fontWeight: fontWeight.semibold,
-      color: n.foreground,
-      marginBottom: 16,
-      textAlign: "center" as const,
-    },
-    pickerOption: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      justifyContent: "space-between" as const,
-      paddingVertical: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: n.border,
-    },
-    pickerOptionDisabled: {
-      opacity: 0.5,
-    },
-    pickerOptionText: {
-      fontSize: fontSize.base,
-      color: n.foreground,
-    },
-    pickerOptionTextDisabled: {
-      color: n.muted,
-    },
   }));
 
   if (!isAdmin) return null;
 
   const statusInfo = subscription ? formatStatus(subscription.status, colors) : null;
 
-  const handleManageBilling = async () => {
-    if (!orgId) return;
-
-    setBillingLoading(true);
+  const handleOpenBillingInWeb = async () => {
     try {
-      const response = await fetchWithAuth("/api/stripe/billing-portal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ organizationId: orgId }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        Alert.alert("Error", data.error || "Failed to open billing portal");
-        return;
-      }
-
-      if (data.url) {
-        setBillingPortalUrl(data.url);
-      }
-    } catch (e) {
-      Alert.alert("Error", "Failed to open billing portal");
-      captureException(e as Error, { screen: "Settings", context: "billingPortal", orgId });
-    } finally {
-      setBillingLoading(false);
+      await Linking.openURL(`${getWebAppUrl()}/${orgSlug}/settings/billing`);
+    } catch {
+      Alert.alert("Error", "Unable to open billing on the web.");
     }
   };
 
-  const handleCloseBillingPortal = () => {
-    setBillingPortalUrl(null);
-    refetchSubscription();
-  };
+  const billingButtonLabel = subscription ? "Manage Billing on Web" : "Set Up Billing on Web";
 
-  const handleUpdatePlan = async () => {
-    if (!orgId) return;
-
-    const targetLimit = ALUMNI_LIMITS[selectedBucket];
-    if (subscription && targetLimit !== null && subscription.alumniCount > targetLimit) {
-      Alert.alert("Error", "You have more alumni than this plan allows. Choose a larger plan.");
-      return;
-    }
-
-    setPlanUpdating(true);
-    try {
-      const endpoint = subscription?.status !== "active"
-        ? `/api/organizations/${orgId}/start-checkout`
-        : `/api/organizations/${orgId}/subscription`;
-
-      const response = await fetchWithAuth(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ alumniBucket: selectedBucket, interval: selectedInterval }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to update subscription");
-      }
-
-      if (data.url) {
-        setBillingPortalUrl(data.url);
-      } else {
-        Alert.alert("Success", "Subscription updated.");
-        refetchSubscription();
-      }
-    } catch (e) {
-      Alert.alert("Error", (e as Error).message);
-    } finally {
-      setPlanUpdating(false);
-    }
-  };
+  const billingHint = subscription
+    ? "To change plans, manage payment methods, view invoices, or cancel your subscription, continue in the web billing portal."
+    : "Billing setup and checkout are handled on the web.";
 
   return (
-    <>
-      <View style={baseStyles.section}>
-        <Pressable
-          style={({ pressed }) => [baseStyles.sectionHeader, pressed && { opacity: 0.7 }]}
-          onPress={() => setExpanded((prev) => !prev)}
-        >
-          <View style={baseStyles.sectionHeaderLeft}>
-            <CreditCard size={20} color={colors.muted} />
-            <Text style={baseStyles.sectionTitle}>Billing</Text>
-          </View>
-          <ChevronDown
-            size={20}
-            color={colors.mutedForeground}
-            style={{ transform: [{ rotate: expanded ? "180deg" : "0deg" }] }}
-          />
-        </Pressable>
-
-        {expanded && (
-          <View style={baseStyles.card}>
-            {subLoading ? (
-              <View style={baseStyles.loadingContainer}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.loadingText}>Loading subscription...</Text>
-              </View>
-            ) : subError ? (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{subError}</Text>
-                <Pressable onPress={refetchSubscription} style={styles.retryButton}>
-                  <Text style={styles.retryButtonText}>Retry</Text>
-                </Pressable>
-              </View>
-            ) : subscription ? (
-              <>
-                <View style={styles.subscriptionCard}>
-                  <View style={styles.subscriptionRow}>
-                    <Text style={styles.subscriptionLabel}>Current Plan</Text>
-                    <Text style={styles.subscriptionValue}>{formatBucket(subscription.bucket)}</Text>
-                  </View>
-                  <View style={styles.subscriptionRow}>
-                    <Text style={styles.subscriptionLabel}>Status</Text>
-                    <View style={[styles.statusBadgeLarge, { backgroundColor: statusInfo?.color + "20" }]}>
-                      <View style={[styles.statusDot, { backgroundColor: statusInfo?.color }]} />
-                      <Text style={[styles.statusTextLarge, { color: statusInfo?.color }]}>
-                        {statusInfo?.label}
-                      </Text>
-                    </View>
-                  </View>
-                  {subscription.currentPeriodEnd && (
-                    <View style={styles.subscriptionRow}>
-                      <Text style={styles.subscriptionLabel}>Next Billing</Text>
-                      <Text style={styles.subscriptionValue}>{formatDate(subscription.currentPeriodEnd)}</Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={baseStyles.divider} />
-
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Change Plan</Text>
-                  <Pressable style={styles.pickerButton} onPress={() => setShowBucketPicker(true)}>
-                    <Text style={styles.pickerButtonText}>
-                      {BUCKET_OPTIONS.find((o) => o.value === selectedBucket)?.label || selectedBucket}
-                    </Text>
-                    <ChevronDown size={16} color={colors.mutedForeground} />
-                  </Pressable>
-
-                  <View style={styles.intervalRow}>
-                    <Pressable
-                      style={[styles.intervalButton, selectedInterval === "month" && styles.intervalButtonActive]}
-                      onPress={() => setSelectedInterval("month")}
-                    >
-                      <Text
-                        style={[
-                          styles.intervalButtonText,
-                          selectedInterval === "month" && styles.intervalButtonTextActive,
-                        ]}
-                      >
-                        Monthly
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.intervalButton, selectedInterval === "year" && styles.intervalButtonActive]}
-                      onPress={() => setSelectedInterval("year")}
-                    >
-                      <Text
-                        style={[
-                          styles.intervalButtonText,
-                          selectedInterval === "year" && styles.intervalButtonTextActive,
-                        ]}
-                      >
-                        Yearly (save ~17%)
-                      </Text>
-                    </Pressable>
-                  </View>
-
-                  <Pressable
-                    style={[
-                      styles.button,
-                      (planUpdating || selectedBucket === subscription.bucket) && styles.buttonDisabled,
-                    ]}
-                    onPress={handleUpdatePlan}
-                    disabled={planUpdating || selectedBucket === subscription.bucket}
-                  >
-                    {planUpdating ? (
-                      <ActivityIndicator size="small" color={colors.primaryForeground} />
-                    ) : (
-                      <Text style={styles.buttonText}>Update Plan</Text>
-                    )}
-                  </Pressable>
-                </View>
-
-                <View style={baseStyles.divider} />
-
-                <Pressable
-                  style={styles.billingButton}
-                  onPress={handleManageBilling}
-                  disabled={billingLoading}
-                >
-                  {billingLoading ? (
-                    <ActivityIndicator size="small" color={colors.primaryForeground} />
-                  ) : (
-                    <>
-                      <CreditCard size={18} color={colors.primaryForeground} />
-                      <Text style={styles.billingButtonText}>Manage Billing</Text>
-                      <ExternalLink size={16} color={colors.primaryForeground} />
-                    </>
-                  )}
-                </Pressable>
-              </>
-            ) : (
-              <View style={styles.noSubscription}>
-                <Text style={styles.noSubscriptionText}>No active subscription found.</Text>
-                <Text style={styles.noSubscriptionHint}>Set up billing from the web app.</Text>
-              </View>
-            )}
-          </View>
-        )}
-      </View>
-
-      {billingPortalUrl && (
-        <StripeWebView
-          visible={true}
-          url={billingPortalUrl}
-          onClose={handleCloseBillingPortal}
-          title="Billing Portal"
-          successUrls={[`/${orgSlug}`]}
-          cancelUrls={[`/${orgSlug}`]}
+    <View style={baseStyles.section}>
+      <Pressable
+        style={({ pressed }) => [baseStyles.sectionHeader, pressed && { opacity: 0.7 }]}
+        onPress={() => setExpanded((prev) => !prev)}
+      >
+        <View style={baseStyles.sectionHeaderLeft}>
+          <CreditCard size={20} color={colors.muted} />
+          <Text style={baseStyles.sectionTitle}>Billing</Text>
+        </View>
+        <ChevronDown
+          size={20}
+          color={colors.mutedForeground}
+          style={{ transform: [{ rotate: expanded ? "180deg" : "0deg" }] }}
         />
-      )}
+      </Pressable>
 
-      <Modal visible={showBucketPicker} transparent animationType="slide">
-        <Pressable style={styles.pickerOverlay} onPress={() => setShowBucketPicker(false)}>
-          <View style={styles.pickerContent}>
-            <Text style={styles.pickerTitle}>Select Alumni Plan</Text>
-            {BUCKET_OPTIONS.map((option) => {
-              const limit = ALUMNI_LIMITS[option.value];
-              const disabled = subscription && limit !== null && subscription.alumniCount > limit;
-              return (
-                <Pressable
-                  key={option.value}
-                  style={[styles.pickerOption, disabled && styles.pickerOptionDisabled]}
-                  onPress={() => {
-                    if (!disabled) {
-                      setSelectedBucket(option.value);
-                      setShowBucketPicker(false);
-                    }
-                  }}
-                  disabled={disabled ?? false}
-                >
-                  <Text style={[styles.pickerOptionText, disabled && styles.pickerOptionTextDisabled]}>
-                    {option.label}
-                  </Text>
-                  {selectedBucket === option.value && <Check size={18} color={colors.primary} />}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
-      </Modal>
-    </>
+      {expanded && (
+        <View style={baseStyles.card}>
+          {subLoading ? (
+            <View style={baseStyles.loadingContainer}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.loadingText}>Loading subscription...</Text>
+            </View>
+          ) : subError ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{subError}</Text>
+              <Pressable onPress={refetchSubscription} style={styles.retryButton}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : subscription ? (
+            <>
+              <View style={styles.subscriptionCard}>
+                <View style={styles.subscriptionRow}>
+                  <Text style={styles.subscriptionLabel}>Current Plan</Text>
+                  <Text style={styles.subscriptionValue}>{formatBucket(subscription.bucket)}</Text>
+                </View>
+                <View style={styles.subscriptionRow}>
+                  <Text style={styles.subscriptionLabel}>Status</Text>
+                  <View style={[styles.statusBadgeLarge, { backgroundColor: statusInfo?.color + "20" }]}>
+                    <View style={[styles.statusDot, { backgroundColor: statusInfo?.color }]} />
+                    <Text style={[styles.statusTextLarge, { color: statusInfo?.color }]}>
+                      {statusInfo?.label}
+                    </Text>
+                  </View>
+                </View>
+                {subscription.currentPeriodEnd && (
+                  <View style={styles.subscriptionRow}>
+                    <Text style={styles.subscriptionLabel}>Next Billing</Text>
+                    <Text style={styles.subscriptionValue}>{formatDate(subscription.currentPeriodEnd)}</Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={baseStyles.divider} />
+
+              <Text style={styles.webHint}>{billingHint}</Text>
+
+              <Pressable style={styles.billingButton} onPress={handleOpenBillingInWeb}>
+                <>
+                  <CreditCard size={18} color={colors.primaryForeground} />
+                  <Text style={styles.billingButtonText}>{billingButtonLabel}</Text>
+                  <ExternalLink size={16} color={colors.primaryForeground} />
+                </>
+              </Pressable>
+            </>
+          ) : (
+            <View style={styles.noSubscription}>
+              <Text style={styles.noSubscriptionText}>No active subscription found.</Text>
+              <Text style={styles.noSubscriptionHint}>{billingHint}</Text>
+              <Pressable style={styles.billingButton} onPress={handleOpenBillingInWeb}>
+                <>
+                  <CreditCard size={18} color={colors.primaryForeground} />
+                  <Text style={styles.billingButtonText}>{billingButtonLabel}</Text>
+                  <ExternalLink size={16} color={colors.primaryForeground} />
+                </>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
   );
 }

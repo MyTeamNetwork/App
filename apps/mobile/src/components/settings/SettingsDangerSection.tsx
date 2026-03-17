@@ -5,12 +5,13 @@ import {
   ActivityIndicator,
   Pressable,
   Alert,
+  Linking,
   Modal,
   TextInput,
 } from "react-native";
 import { AlertTriangle, ChevronDown } from "lucide-react-native";
 import { useRouter } from "expo-router";
-import { fetchWithAuth } from "@/lib/web-api";
+import { getWebAppUrl, fetchWithAuth } from "@/lib/web-api";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { buildSettingsColors } from "./settingsColors";
 import { useBaseStyles, formatDate, fontSize, fontWeight } from "./settingsShared";
@@ -18,20 +19,19 @@ import { useThemedStyles } from "@/hooks/useThemedStyles";
 
 interface Props {
   orgId: string;
+  orgSlug: string;
   orgName: string | null;
   isAdmin: boolean;
   subscription: { status: string; currentPeriodEnd: string | null } | null;
-  refetchSubscription: () => void;
 }
 
-export function SettingsDangerSection({ orgId, orgName, isAdmin, subscription, refetchSubscription }: Props) {
+export function SettingsDangerSection({ orgId, orgSlug, orgName, isAdmin, subscription }: Props) {
   const router = useRouter();
   const { neutral, semantic } = useAppColorScheme();
   const colors = useMemo(() => buildSettingsColors(neutral, semantic), [neutral, semantic]);
   const baseStyles = useBaseStyles();
 
   const [expanded, setExpanded] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -158,8 +158,6 @@ export function SettingsDangerSection({ orgId, orgName, isAdmin, subscription, r
   if (!isAdmin) return null;
 
   const handleCancelSubscription = async () => {
-    if (!orgId) return;
-
     const periodEnd = subscription?.currentPeriodEnd
       ? formatDate(subscription.currentPeriodEnd)
       : "the end of your billing period";
@@ -173,21 +171,10 @@ export function SettingsDangerSection({ orgId, orgName, isAdmin, subscription, r
           text: "Cancel Subscription",
           style: "destructive",
           onPress: async () => {
-            setCancelling(true);
             try {
-              const response = await fetchWithAuth(`/api/organizations/${orgId}/cancel-subscription`, {
-                method: "POST",
-              });
-              const data = await response.json();
-              if (!response.ok) {
-                throw new Error(data.error || "Unable to cancel subscription");
-              }
-              Alert.alert("Subscription Cancelled", "You can resubscribe anytime to keep your organization.");
-              refetchSubscription();
-            } catch (e) {
-              Alert.alert("Error", (e as Error).message);
-            } finally {
-              setCancelling(false);
+              await Linking.openURL(`${getWebAppUrl()}/${orgSlug}/settings/billing`);
+            } catch {
+              Alert.alert("Error", "Unable to open billing on the web.");
             }
           },
         },
@@ -262,23 +249,22 @@ export function SettingsDangerSection({ orgId, orgName, isAdmin, subscription, r
               <View style={styles.dangerInfo}>
                 <Text style={styles.dangerTitle}>Cancel Subscription</Text>
                 <Text style={styles.dangerDescription}>
-                  Your subscription will remain active until the end of your billing period.
+                  Open the web billing portal to cancel or manage your subscription.
                 </Text>
               </View>
               <Pressable
                 style={styles.dangerButton}
                 onPress={handleCancelSubscription}
                 disabled={
-                  cancelling ||
                   subscription?.status === "canceling" ||
                   subscription?.status === "canceled"
                 }
               >
-                {cancelling ? (
+                {subscription?.status === "canceling" ? (
                   <ActivityIndicator size="small" color={colors.warning} />
                 ) : (
                   <Text style={styles.dangerButtonText}>
-                    {subscription?.status === "canceling" ? "Cancelling..." : "Cancel"}
+                    {subscription?.status === "canceling" ? "Scheduled" : "Open on Web"}
                   </Text>
                 )}
               </Pressable>

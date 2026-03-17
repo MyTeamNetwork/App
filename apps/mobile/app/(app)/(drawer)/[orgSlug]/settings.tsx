@@ -163,7 +163,6 @@ export default function SettingsScreen() {
               />
 
               <SettingsBillingSection
-                orgId={orgId}
                 orgSlug={orgSlug}
                 isAdmin={isAdmin}
                 subscription={subscription}
@@ -174,10 +173,10 @@ export default function SettingsScreen() {
 
               <SettingsDangerSection
                 orgId={orgId}
+                orgSlug={orgSlug}
                 orgName={org?.name ?? null}
                 isAdmin={isAdmin}
                 subscription={subscription}
-                refetchSubscription={refetchSubscription}
               />
             </>
           )}
