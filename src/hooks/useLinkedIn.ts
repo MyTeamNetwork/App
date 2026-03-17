@@ -201,7 +201,8 @@ export function useLinkedIn(): UseLinkedInReturn {
     }
 
     setConnection(null);
-  }, []);
+    await refreshLinkedInStatus();
+  }, [refreshLinkedInStatus]);
 
   return {
     linkedInUrl,
