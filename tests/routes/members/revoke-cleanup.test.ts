@@ -251,9 +251,10 @@ describe("Revoke cleanup trigger — handle_org_member_sync", () => {
     // Route: change role from alumni → active_member (not a revocation)
     await simulateRoleChange(stub, orgId, userId, "active_member");
 
-    // Trigger fires on role change: old role was 'alumni', so alumni record is soft-deleted.
-    // The member record is NOT soft-deleted because the user is still active in the org.
-    // We simulate only the alumni cleanup here (trigger's IF OLD.role = 'alumni' branch).
+    // This scenario triggers section 4 of the SQL trigger (role change, not revocation).
+    // simulateRevocationCleanup is intentionally not used here — it models the
+    // status='revoked' path which unconditionally soft-deletes members. For a role
+    // change, only the alumni record is cleaned up (IF OLD.role = 'alumni' branch).
     await stub
       .from("alumni")
       .update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
