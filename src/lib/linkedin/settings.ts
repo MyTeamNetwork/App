@@ -5,6 +5,10 @@ import {
   getLinkedInConnectionSource,
   type LinkedInConnectionSource,
 } from "@/lib/linkedin/connection-source";
+import {
+  mapEnrichmentToFields,
+  type ProxycurlEnrichmentResult,
+} from "@/lib/linkedin/proxycurl";
 
 type LinkedInProfileTable = "members" | "alumni" | "parents";
 
@@ -93,15 +97,13 @@ export async function getLinkedInStatusForUser(
   // Extract enrichment data from linkedin_data JSONB if present
   let enrichment: LinkedInEnrichmentInfo | null = null;
   if (connectionRow?.linkedin_data?.enrichment) {
-    const e = connectionRow.linkedin_data.enrichment;
-    const currentJob = Array.isArray(e.experiences)
-      ? e.experiences.find((exp: { ends_at?: unknown }) => !exp.ends_at) ?? e.experiences[0]
-      : null;
-    const latestEdu = Array.isArray(e.education) ? e.education[0] : null;
+    const fields = mapEnrichmentToFields(
+      connectionRow.linkedin_data.enrichment as ProxycurlEnrichmentResult,
+    );
     enrichment = {
-      jobTitle: currentJob?.title || e.occupation || null,
-      currentCompany: currentJob?.company || null,
-      school: latestEdu?.school || null,
+      jobTitle: fields.job_title,
+      currentCompany: fields.current_company,
+      school: fields.school,
     };
   }
 

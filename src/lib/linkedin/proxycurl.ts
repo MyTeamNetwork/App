@@ -3,6 +3,8 @@
 // Docs: https://nubela.co/proxycurl/docs
 // ---------------------------------------------------------------------------
 
+import { isLinkedInProfileUrl } from "@/lib/alumni/linkedin-url";
+
 /** A single work experience entry from Proxycurl. */
 export interface ProxycurlExperience {
   starts_at: { day: number; month: number; year: number } | null;
@@ -82,7 +84,7 @@ export async function fetchLinkedInEnrichment(
     return null;
   }
 
-  if (!linkedinUrl || !linkedinUrl.includes("linkedin.com/in/")) {
+  if (!linkedinUrl || !isLinkedInProfileUrl(linkedinUrl)) {
     console.warn("[proxycurl] Invalid LinkedIn URL, skipping enrichment:", linkedinUrl);
     return null;
   }
@@ -146,11 +148,15 @@ export async function fetchLinkedInEnrichment(
 export function mapEnrichmentToFields(
   enrichment: ProxycurlEnrichmentResult,
 ): EnrichmentFields {
+  // Guard against persisted JSONB that may not match the current type shape
+  const experiences = Array.isArray(enrichment.experiences) ? enrichment.experiences : [];
+  const education = Array.isArray(enrichment.education) ? enrichment.education : [];
+
   // Find current job (no end date, most recent start)
-  const currentJob = enrichment.experiences.find((e) => !e.ends_at) ?? enrichment.experiences[0] ?? null;
+  const currentJob = experiences.find((e) => !e.ends_at) ?? experiences[0] ?? null;
 
   // Most recent education
-  const latestEdu = enrichment.education[0] ?? null;
+  const latestEdu = education[0] ?? null;
 
   // Build location string
   const locationParts = [enrichment.city, enrichment.state].filter(Boolean);

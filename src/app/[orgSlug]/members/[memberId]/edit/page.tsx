@@ -19,6 +19,7 @@ export default function EditMemberPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [orgId, setOrgId] = useState<string | null>(null);
 
   const {
     register,
@@ -69,6 +70,8 @@ export default function EditMemberPage() {
         setIsFetching(false);
         return;
       }
+
+      setOrgId(org.id);
 
       // Fetch member profile
       const { data: member } = await supabase
@@ -131,18 +134,11 @@ export default function EditMemberPage() {
   }, [orgSlug, memberId, reset]);
 
   const handleAccessUpdate = async () => {
-    if (!accessData.userId) return;
+    if (!accessData.userId || !orgId) return;
     setIsUpdatingAccess(true);
     setAccessError(null);
 
     const supabase = createClient();
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("id")
-      .eq("slug", orgSlug)
-      .single();
-
-    if (!org) return;
 
     const { error: updateError } = await supabase
       .from("user_organization_roles")
@@ -150,7 +146,7 @@ export default function EditMemberPage() {
         role: accessData.role as "admin" | "active_member" | "alumni",
         status: accessData.status as "active" | "revoked" | "pending",
       })
-      .eq("organization_id", org.id)
+      .eq("organization_id", orgId)
       .eq("user_id", accessData.userId);
 
     if (updateError) {
@@ -162,24 +158,12 @@ export default function EditMemberPage() {
   };
 
   const handleReinstate = async () => {
+    if (!orgId) return;
     setIsReinstating(true);
     setReinstateError(null);
 
-    const supabase = createClient();
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("id")
-      .eq("slug", orgSlug)
-      .single();
-
-    if (!org) {
-      setReinstateError("Organization not found");
-      setIsReinstating(false);
-      return;
-    }
-
     const response = await fetch(
-      `/api/organizations/${org.id}/members/${memberId}/reinstate`,
+      `/api/organizations/${orgId}/members/${memberId}/reinstate`,
       { method: "POST" }
     );
 
@@ -195,22 +179,11 @@ export default function EditMemberPage() {
   };
 
   const onSubmit = async (data: EditMemberForm) => {
+    if (!orgId) return;
     setIsLoading(true);
     setError(null);
 
     const supabase = createClient();
-
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("id")
-      .eq("slug", orgSlug)
-      .single();
-
-    if (!org) {
-      setError("Organization not found");
-      setIsLoading(false);
-      return;
-    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: updateError } = await (supabase as any)
@@ -230,7 +203,7 @@ export default function EditMemberPage() {
         updated_at: new Date().toISOString(),
       })
       .eq("id", memberId)
-      .eq("organization_id", org.id);
+      .eq("organization_id", orgId);
 
     if (updateError) {
       setError(updateError.message);
@@ -238,6 +211,7 @@ export default function EditMemberPage() {
       return;
     }
 
+    setIsLoading(false);
     router.refresh();
     router.push(`/${orgSlug}/members/${memberId}`);
   };

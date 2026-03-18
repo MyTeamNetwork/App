@@ -5,6 +5,11 @@ import { Badge, Button, Card, Input, Avatar, InlineBanner } from "@/components/u
 import { LinkedInIcon } from "@/components/shared/LinkedInIcon";
 import { optionalLinkedInProfileUrlSchema } from "@/lib/alumni/linkedin-url";
 import { showFeedback } from "@/lib/feedback/show-feedback";
+import {
+  LINKEDIN_OAUTH_SOURCE,
+  LINKEDIN_OIDC_SOURCE,
+  type LinkedInConnectionSource,
+} from "@/lib/linkedin/connection-source";
 
 export interface LinkedInEnrichment {
   jobTitle: string | null;
@@ -13,7 +18,7 @@ export interface LinkedInEnrichment {
 }
 
 export interface LinkedInConnection {
-  source: "oauth" | "oidc_login";
+  source: LinkedInConnectionSource;
   status: "connected" | "disconnected" | "error";
   linkedInName: string | null;
   linkedInEmail: string | null;
@@ -108,8 +113,8 @@ export function LinkedInSettingsPanel({
     }
   };
 
-  const isOidcLoginOnly = connection?.source === "oidc_login";
-  const canRetrySync = connection?.source === "oauth" && connection?.status === "error";
+  const isOidcLoginOnly = connection?.source === LINKEDIN_OIDC_SOURCE;
+  const canRetrySync = connection?.source === LINKEDIN_OAUTH_SOURCE && connection?.status === "error";
 
   // --- Loading skeleton ---
   if (connectionLoading) {

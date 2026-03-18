@@ -7,6 +7,7 @@ import {
 } from "@/lib/linkedin/config";
 import { showFeedback } from "@/lib/feedback/show-feedback";
 import type { LinkedInConnection } from "@/components/settings/LinkedInSettingsPanel";
+import { LINKEDIN_OAUTH_SOURCE } from "@/lib/linkedin/connection-source";
 
 interface LinkedInStatusResponse {
   linkedin_url: string | null;
@@ -104,7 +105,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
   }, [refreshLinkedInStatus]);
 
   const isConnected =
-    connection?.source === "oauth" && connection?.status === "connected";
+    connection?.source === LINKEDIN_OAUTH_SOURCE && connection?.status === "connected";
 
   const onLinkedInUrlSave = useCallback(async (url: string) => {
     const res = await fetch("/api/user/linkedin/url", {
@@ -209,6 +210,8 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
       throw new Error((data as { error?: string }).error ?? "Failed to disconnect");
     }
 
+    // Optimistic clear so the UI reflects disconnect immediately even if the
+    // follow-up status fetch fails (transient 401/500/network error).
     setConnection(null);
     await refreshLinkedInStatus();
   }, [refreshLinkedInStatus]);
