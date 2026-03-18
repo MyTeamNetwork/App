@@ -143,7 +143,8 @@ export function AnnouncementsFeed({
           </div>
           <input
             type="search"
-            className="input pl-10 w-full"
+            className="input w-full"
+            style={{ paddingLeft: "2.5rem" }}
             placeholder={`Search ${pageLabel.toLowerCase()}…`}
             aria-label={`Search ${pageLabel}`}
             value={query}
