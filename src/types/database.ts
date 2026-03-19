@@ -4685,18 +4685,13 @@ export type Database = {
         | "app_open"
         | "route_view"
         | "nav_click"
-        | "cta_click"
         | "page_dwell_bucket"
         | "directory_view"
         | "directory_filter_apply"
-        | "directory_sort_change"
         | "profile_card_open"
         | "events_view"
         | "event_open"
         | "rsvp_update"
-        | "form_open"
-        | "form_submit"
-        | "file_upload_attempt"
         | "donation_flow_start"
         | "donation_checkout_start"
         | "donation_checkout_result"
@@ -4861,18 +4856,13 @@ export const Constants = {
         "app_open",
         "route_view",
         "nav_click",
-        "cta_click",
         "page_dwell_bucket",
         "directory_view",
         "directory_filter_apply",
-        "directory_sort_change",
         "profile_card_open",
         "events_view",
         "event_open",
         "rsvp_update",
-        "form_open",
-        "form_submit",
-        "file_upload_attempt",
         "donation_flow_start",
         "donation_checkout_start",
         "donation_checkout_result",

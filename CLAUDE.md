@@ -346,6 +346,7 @@ Optional variables:
 - `PROXYCURL_API_KEY` - Enables LinkedIn profile enrichment via Proxycurl (~$0.01/lookup); enrichment silently skipped if not set
 - `ALERT_EMAIL_TO` - Comma-separated list of emails for error alerts (defaults to ADMIN_EMAIL)
 - `NEXT_PUBLIC_SITE_URL` - Canonical site URL used in auth and deployment checks
+- `NEXT_PUBLIC_APP_VERSION` - App version string for analytics events; currently never set (falls back to `"unknown"`). To enable, inject at build time in `next.config.mjs` via `env: { NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version }`
 
 Stored in `.env.local` (never commit this file).
 
