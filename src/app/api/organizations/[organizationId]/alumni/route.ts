@@ -6,6 +6,7 @@ import { baseSchemas, validateJson, ValidationError } from "@/lib/security/valid
 import { newAlumniSchema, type NewAlumniForm } from "@/lib/schemas/member";
 import { buildAlumniWritePayload, canMutateAlumni } from "@/lib/alumni/mutations";
 import { getAlumniCapacitySnapshot } from "@/lib/alumni/capacity";
+import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,6 +21,13 @@ export async function POST(req: Request, { params }: RouteParams) {
   if (!orgIdParsed.success) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
+
+  const rl = checkRateLimit(req, {
+    limitPerIp: 30,
+    limitPerUser: 20,
+    feature: "alumni management",
+  });
+  if (!rl.ok) return buildRateLimitResponse(rl);
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
