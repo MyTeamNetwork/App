@@ -3,6 +3,13 @@
  * Provides centralized color manipulation and CSS variable generation for org branding
  */
 
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+/** Returns the color if valid 6-digit hex, otherwise the fallback. */
+export function safeHexColor(raw: string | null | undefined, fallback: string): string {
+  return typeof raw === "string" && HEX_COLOR_RE.test(raw) ? raw : fallback;
+}
+
 /**
  * Adjusts a hex color by lightening or darkening it
  * @param hex - Hex color code (3 or 6 digits)

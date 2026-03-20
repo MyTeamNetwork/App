@@ -14,7 +14,7 @@ import { OrgAnalyticsProvider } from "@/components/analytics/OrgAnalyticsContext
 import { ConsentModal } from "@/components/analytics/ConsentModal";
 import { LinkedInUrlPrompt } from "@/components/linkedin/LinkedInUrlPrompt";
 import { AnalyticsProvider } from "@/components/analytics/AnalyticsProvider";
-import { computeOrgThemeVariables } from "@/lib/theming/org-colors";
+import { computeOrgThemeVariables, safeHexColor } from "@/lib/theming/org-colors";
 
 interface OrgLayoutProps {
   children: React.ReactNode;
@@ -171,8 +171,8 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
         .eq("organization_id", organization.id)
         .maybeSingle()
     : { data: null };
-  const primary = organization.primary_color || "#1e3a5f";
-  const secondary = organization.secondary_color || "#10b981";
+  const primary = safeHexColor(organization.primary_color, "#1e3a5f");
+  const secondary = safeHexColor(organization.secondary_color, "#10b981");
 
   // Compute theme variables for both light and dark modes
   const lightModeVars = computeOrgThemeVariables(primary, secondary, false);
