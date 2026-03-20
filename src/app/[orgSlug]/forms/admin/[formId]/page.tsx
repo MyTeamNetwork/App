@@ -130,7 +130,7 @@ export default async function FormSubmissionsPage({ params }: FormSubmissionsPag
 
       <NonSubmitters
         orgId={orgCtx.organization.id}
-        submitterUserIds={typedSubmissions.map((s) => s.user_id)}
+        submitterUserIds={typedSubmissions.map((s) => s.user_id).filter((id): id is string => id !== null)}
       />
     </div>
   );

@@ -204,7 +204,11 @@ export function trackBehavioralEvent(
     },
   };
 
-  void supabase.rpc("log_analytics_event", payload).then(null, () => {});
+  void supabase.rpc("log_analytics_event", payload).then(null, (err: unknown) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[analytics] log_analytics_event failed:", err);
+    }
+  });
 }
 
 export function trackOpsEvent(
@@ -234,5 +238,9 @@ export function trackOpsEvent(
     p_retryable: props.retryable ?? null,
   };
 
-  void supabase.rpc("log_ops_event", payload).then(null, () => {});
+  void supabase.rpc("log_ops_event", payload).then(null, (err: unknown) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[analytics] log_ops_event failed:", err);
+    }
+  });
 }
