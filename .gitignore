@@ -78,3 +78,6 @@ teamnetwork_linkedin_import_real.csv
 
 # Obsidian (local docs vault)
 docs/.obsidian/
+
+# Local issue-tracker metadata
+.beads/

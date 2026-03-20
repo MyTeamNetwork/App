@@ -482,7 +482,6 @@ When I report a bug, don't start by trying to fix it. Instead, start by writing 
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd sync
    git push
    git status  # MUST show "up to date with origin"
    ```
