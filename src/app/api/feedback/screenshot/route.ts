@@ -6,6 +6,7 @@ import {
   checkRateLimit,
   buildRateLimitResponse,
 } from "@/lib/security/rate-limit";
+import { isAnonymousFrictionAllowed } from "@/lib/feedback/anonymous-friction";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,6 +30,19 @@ export async function POST(request: Request) {
       data: { user },
     } = await supabase.auth.getUser();
 
+    const formData = await request.formData();
+    const file = formData.get("file");
+    const contextValue = formData.get("context");
+    const triggerValue = formData.get("trigger");
+    const context =
+      typeof contextValue === "string" ? contextValue.trim() : "";
+    const trigger =
+      typeof triggerValue === "string" ? triggerValue.trim() : "";
+
+    if (!user && !isAnonymousFrictionAllowed(context, trigger)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const anonymous = !user;
     const rateLimit = checkRateLimit(request, {
       userId: user?.id ?? null,
@@ -43,9 +57,6 @@ export async function POST(request: Request) {
     if (!rateLimit.ok) {
       return buildRateLimitResponse(rateLimit);
     }
-
-    const formData = await request.formData();
-    const file = formData.get("file");
 
     if (!file || typeof file === "string") {
       return NextResponse.json(

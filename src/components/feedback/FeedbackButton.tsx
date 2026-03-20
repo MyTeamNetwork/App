@@ -43,6 +43,8 @@ export function FeedbackButton({ context, trigger, className = "" }: FeedbackBut
       if (data.screenshot) {
         const up = new FormData();
         up.append("file", data.screenshot);
+        up.append("context", context);
+        up.append("trigger", trigger);
         const shotRes = await fetch("/api/feedback/screenshot", {
           method: "POST",
           body: up,
