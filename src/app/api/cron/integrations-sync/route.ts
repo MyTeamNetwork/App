@@ -38,7 +38,7 @@ export async function GET(request: Request) {
   };
 
   if (error) {
-    console.error("[integrations-cron] Failed to load integrations:", error);
+    debugLog("integrations-cron", "failed to load integrations", { error });
     return NextResponse.json({ error: "Database error" }, { status: 500 });
   }
 
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
             const refreshToken = decryptToken(integration.refresh_token_enc);
             const newTokens = await refreshAccessToken(refreshToken);
 
-            await (supabase as any)
+            const { count } = (await (supabase as any)
               .from("org_integrations")
               .update({
                 access_token_enc: encryptToken(newTokens.access_token),
@@ -75,9 +75,22 @@ export async function GET(request: Request) {
                 updated_at: new Date().toISOString(),
               })
               .eq("id", integration.id)
-              .eq("token_expires_at", integration.token_expires_at);
+              .eq("token_expires_at", integration.token_expires_at)
+              .select("id", { count: "exact", head: true })) as {
+              count: number;
+            };
 
-            accessToken = newTokens.access_token;
+            if (count === 0) {
+              // Another process refreshed — re-read the current token
+              const { data: refreshed } = (await (supabase as any)
+                .from("org_integrations")
+                .select("access_token_enc")
+                .eq("id", integration.id)
+                .single()) as { data: { access_token_enc: string } };
+              accessToken = decryptToken(refreshed.access_token_enc);
+            } else {
+              accessToken = newTokens.access_token;
+            }
           } else {
             accessToken = decryptToken(integration.access_token_enc);
           }

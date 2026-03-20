@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { exchangeCodeForTokens, encryptToken, makeSyncError, getBlackbaudSubscriptionKey } from "@/lib/blackbaud/oauth";
 import { createBlackbaudClient } from "@/lib/blackbaud/client";
 import { getAppUrl } from "@/lib/url";
+import { debugLog } from "@/lib/debug";
 import type { BlackbaudConstituent } from "@/lib/blackbaud/types";
 
 export const dynamic = "force-dynamic";
@@ -118,7 +119,7 @@ export async function GET(req: Request) {
     const redirectPath = oauthState.redirect_path || "/app";
     return NextResponse.redirect(`${appUrl}${redirectPath}?success=blackbaud_connected`);
   } catch (err) {
-    console.error("[blackbaud-callback] Token exchange failed:", err);
+    debugLog("blackbaud-callback", "token exchange failed", { error: err instanceof Error ? err.message : String(err) });
 
     const syncError = makeSyncError(
       "code_exchange",

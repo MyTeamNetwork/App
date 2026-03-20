@@ -62,7 +62,7 @@ export async function upsertConstituents(
           const alumniUpdatedAt = currentAlumni.updated_at ? new Date(currentAlumni.updated_at) : null;
           const userHasEdited = lastSync && alumniUpdatedAt && alumniUpdatedAt > lastSync;
 
-          const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+          const updates: Record<string, unknown> = {};
 
           if (!userHasEdited) {
             // No user edits since last sync — safe to overwrite all fields
@@ -79,6 +79,11 @@ export async function upsertConstituents(
             if (!currentAlumni.address_summary && record.address_summary) updates.address_summary = record.address_summary;
             if (!currentAlumni.graduation_year && record.graduation_year) updates.graduation_year = record.graduation_year;
           }
+
+          // Only bump updated_at when actual fields change (prevents sticky provenance)
+          const hasFieldChanges = Object.keys(updates).length > 0;
+          if (!hasFieldChanges) { unchanged += 1; continue; }
+          updates.updated_at = new Date().toISOString();
 
           const { error: updateError } = await supabase
             .from("alumni")
@@ -131,14 +136,24 @@ export async function upsertConstituents(
           continue;
         }
 
-        // Create external ID mapping
-        await supabase.from("alumni_external_ids").insert({
+        // Create external ID mapping — rollback alumni if this fails
+        const { error: mappingError } = await supabase.from("alumni_external_ids").insert({
           alumni_id: newAlumni.id,
           integration_id: integrationId,
           external_id: record.external_id,
           external_data: record as unknown,
           last_synced_at: new Date().toISOString(),
         });
+
+        if (mappingError) {
+          debugLog("blackbaud-storage", "mapping insert failed, rolling back alumni", {
+            alumniId: newAlumni.id,
+            error: mappingError.message,
+          });
+          await supabase.from("alumni").delete().eq("id", newAlumni.id);
+          skipped += 1;
+          continue;
+        }
 
         created += 1;
         runningCount += 1;

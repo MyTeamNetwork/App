@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   }
 
   const serviceSupabase = createServiceClient();
-  const { error } = await (serviceSupabase as any)
+  const { error, count } = (await (serviceSupabase as any)
     .from("org_integrations")
     .update({
       status: "disconnected",
@@ -46,10 +46,15 @@ export async function POST(req: Request) {
       updated_at: new Date().toISOString(),
     })
     .eq("organization_id", orgContext.organization.id)
-    .eq("provider", "blackbaud");
+    .eq("provider", "blackbaud")
+    .select("id", { count: "exact", head: true })) as { error: any; count: number };
 
   if (error) {
     return NextResponse.json({ error: "Failed to disconnect" }, { status: 500, headers: rateLimit.headers });
+  }
+
+  if (count === 0) {
+    return NextResponse.json({ error: "No Blackbaud connection found" }, { status: 404, headers: rateLimit.headers });
   }
 
   return NextResponse.json({ success: true }, { headers: rateLimit.headers });
