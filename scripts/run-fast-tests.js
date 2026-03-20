@@ -1,14 +1,11 @@
 // scripts/run-fast-tests.js
 // Runs all fast tests (excludes e2e + integration) using Node's built-in test runner.
 // Uses Node 22+ built-in fs.globSync — no external dependencies.
-import { globSync } from "node:fs";
-import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+const { globSync } = require("node:fs");
+const { execFileSync } = require("node:child_process");
+const path = require("node:path");
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const root = resolve(__dirname, "..");
+const root = path.resolve(__dirname, "..");
 
 const DISCOVERY_GLOB = "tests/**/*.test.ts";
 const EXCLUDED_DIRS = ["tests/e2e/**", "tests/integration/**"];

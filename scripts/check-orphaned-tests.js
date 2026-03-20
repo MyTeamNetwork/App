@@ -1,7 +1,7 @@
 // scripts/check-orphaned-tests.js
 // Fails if any test file under tests/ is not covered by the test:fast glob.
 // Uses Node 22+ built-in fs.globSync — no external dependencies.
-import { globSync } from "node:fs";
+const { globSync } = require("node:fs");
 
 // This MUST match the glob used in package.json test:fast
 const DISCOVERY_GLOB = "tests/**/*.test.ts";

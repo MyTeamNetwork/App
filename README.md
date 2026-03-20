@@ -2,6 +2,9 @@ TeamNetwork is a multi-tenant Next.js 14 application for organization membership
 
 ## Getting Started
 
+This repository expects Node.js 22 or newer for the built-in `fs.globSync`
+APIs used by the test discovery scripts.
+
 Copy `.env.local.example` to `.env.local` and fill in the values your local environment needs:
 
 ```bash
