@@ -31,7 +31,12 @@ test.describe("Invite management", () => {
     const newestRow = inviteRows.first();
     await newestRow.getByTestId("invite-revoke").click();
 
-    // Verify the invite is revoked (row may show "Revoked" status or be removed)
-    await page.waitForTimeout(1000);
+    // Verify the invite is revoked — revoke button should no longer be present on that row,
+    // or the row count should decrease back to the original
+    await expect(async () => {
+      const revokeButtons = newestRow.getByTestId("invite-revoke");
+      const count = await revokeButtons.count();
+      expect(count).toBe(0);
+    }).toPass({ timeout: 10000 });
   });
 });

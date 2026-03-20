@@ -47,6 +47,6 @@ test.describe("Event management", () => {
       (url) => url.pathname === `/${orgSlug}/events`,
       { timeout: 30000 }
     );
-    await expect(page.getByText(event.title)).not.toBeVisible();
+    await expect(page.getByText(updatedTitle)).not.toBeVisible();
   });
 });
