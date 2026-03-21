@@ -10,10 +10,7 @@ import {
   checkCacheEligibility,
   normalizePrompt,
   hashPrompt,
-  buildPermissionScopeKey,
-  type CacheEligibility,
 } from "../../../src/lib/ai/semantic-cache-utils.ts";
-import type { CacheLookupResult } from "../../../src/lib/ai/semantic-cache.ts";
 
 /**
  * Tests for POST /api/ai/[orgId]/chat

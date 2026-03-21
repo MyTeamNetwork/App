@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CACHE_VERSION,

@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 // Surface constants and TTLs
 // ---------------------------------------------------------------------------
 
-const CACHE_SURFACES = ["general", "members", "analytics", "events"] as const;
+export const CACHE_SURFACES = ["general", "members", "analytics", "events"] as const;
 export type CacheSurface = (typeof CACHE_SURFACES)[number];
 
 export const CACHE_VERSION = 1 as const;
