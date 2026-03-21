@@ -89,7 +89,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   const result = await rejectAdoptionRequest(requestId, user.id);
 
   if (!result.success) {
-    return respond({ error: result.error }, 400);
+    return respond({ error: result.error }, result.status ?? 400);
   }
 
   return respond({ success: true });

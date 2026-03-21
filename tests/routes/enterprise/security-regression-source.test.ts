@@ -43,6 +43,18 @@ test("adopt route propagates status from createAdoptionRequest", () => {
   );
 });
 
+test("reject adoption route propagates status from rejectAdoptionRequest", () => {
+  const source = readSource(
+    "src/app/api/organizations/[organizationId]/adoption-requests/[requestId]/reject/route.ts"
+  );
+  const normalized = squishWhitespace(source);
+
+  assert.ok(
+    normalized.includes("return respond({ error: result.error }, result.status ?? 400);"),
+    "reject adoption route must propagate status for infra/server failures"
+  );
+});
+
 test("billing portal route does not trust Origin header", () => {
   const source = readSource("src/app/api/enterprise/[enterpriseId]/billing/portal/route.ts");
   const normalized = squishWhitespace(source);
