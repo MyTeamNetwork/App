@@ -82,11 +82,9 @@ export async function POST(request: Request) {
     } catch (error) {
         console.error("[calendar-event-sync] Error:", error);
 
-        // Don't fail the request - calendar sync errors should not block event operations
         return NextResponse.json({
             success: false,
-            message: "Calendar sync encountered an error but event operation completed.",
-            error: error instanceof Error ? error.message : "Unknown error",
-        });
+            message: "Calendar sync encountered an error.",
+        }, { status: 500 });
     }
 }

@@ -110,9 +110,13 @@ export async function POST(req: Request, { params }: RouteParams) {
           adopted_by_request: requestId,
         },
       });
-    } catch {
-      // Adoption was successful even if Stripe cancellation fails.
-      // The subscription will continue until manual intervention or next billing cycle.
+    } catch (err) {
+      console.error("[accept-adoption] Stripe cancellation failed after adoption", {
+        orgId: organizationId,
+        subscriptionId: orgSub.stripe_subscription_id,
+        requestId,
+        err,
+      });
     }
   }
 

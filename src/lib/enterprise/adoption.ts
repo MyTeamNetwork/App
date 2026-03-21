@@ -156,11 +156,16 @@ export async function acceptAdoptionRequest(
 
   // Get request with org and enterprise info
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: request } = await (supabase as any)
+  const { data: request, error: requestError } = await (supabase as any)
     .from("enterprise_adoption_requests")
     .select("*, enterprise:enterprises(*)")
     .eq("id", requestId)
-    .single() as { data: AdoptionRequestRow | null };
+    .single() as { data: AdoptionRequestRow | null; error: unknown };
+
+  if (requestError) {
+    console.error("[acceptAdoptionRequest] Failed to fetch request:", requestError);
+    return { success: false, error: "Internal error", status: 503 };
+  }
 
   if (!request) {
     return { success: false, error: "Request not found" };
@@ -182,11 +187,16 @@ export async function acceptAdoptionRequest(
 
   // Re-verify org is standalone
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: org } = await (supabase as any)
+  const { data: org, error: orgVerifyError } = await (supabase as any)
     .from("organizations")
     .select("enterprise_id")
     .eq("id", request.organization_id)
-    .single() as { data: { enterprise_id: string | null } | null };
+    .single() as { data: { enterprise_id: string | null } | null; error: unknown };
+
+  if (orgVerifyError) {
+    console.error("[acceptAdoptionRequest] Failed to re-verify org:", orgVerifyError);
+    return { success: false, error: "Internal error", status: 503 };
+  }
 
   if (org?.enterprise_id) {
     return { success: false, error: "Organization already belongs to an enterprise" };
@@ -329,15 +339,20 @@ export async function acceptAdoptionRequest(
 export async function rejectAdoptionRequest(
   requestId: string,
   respondedBy: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; status?: number }> {
   const supabase = createServiceClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: request } = await (supabase as any)
+  const { data: request, error: requestError } = await (supabase as any)
     .from("enterprise_adoption_requests")
     .select("status")
     .eq("id", requestId)
-    .single() as { data: { status: string } | null };
+    .single() as { data: { status: string } | null; error: unknown };
+
+  if (requestError) {
+    console.error("[rejectAdoptionRequest] Failed to fetch request:", requestError);
+    return { success: false, error: "Internal error", status: 503 };
+  }
 
   if (!request) {
     return { success: false, error: "Request not found" };
@@ -348,7 +363,7 @@ export async function rejectAdoptionRequest(
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (supabase as any)
+  const { error: updateError } = await (supabase as any)
     .from("enterprise_adoption_requests")
     .update({
       status: "rejected",
@@ -356,6 +371,11 @@ export async function rejectAdoptionRequest(
       responded_at: new Date().toISOString(),
     })
     .eq("id", requestId);
+
+  if (updateError) {
+    console.error("[rejectAdoptionRequest] Failed to update request:", updateError);
+    return { success: false, error: "Internal error", status: 503 };
+  }
 
   return { success: true };
 }

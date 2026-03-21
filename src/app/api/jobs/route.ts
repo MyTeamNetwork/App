@@ -122,8 +122,11 @@ export async function POST(request: NextRequest) {
     // Validate job fields (mediaIds handled separately below)
     const validationResult = createJobSchema.safeParse({ ...jobFields, mediaIds });
     if (!validationResult.success) {
+      const details = validationResult.error.issues.map(
+        (issue) => `${issue.path.join(".") || "body"}: ${issue.message}`
+      );
       return NextResponse.json(
-        { error: "Validation failed", details: validationResult.error.issues },
+        { error: "Validation failed", details },
         { status: 400 }
       );
     }

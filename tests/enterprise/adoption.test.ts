@@ -65,6 +65,7 @@ interface AcceptAdoptionResult {
 interface RejectAdoptionResult {
   success: boolean;
   error?: string;
+  status?: number;
 }
 
 // ── Simulation helpers mirroring adoption.ts exact branching ──────────────────
@@ -142,7 +143,9 @@ function simulateCreateAdoptionRequest(params: {
  */
 function simulateAcceptAdoptionRequest(params: {
   request: AdoptionRequestRow | null;
+  requestFetchError?: unknown;
   reVerifiedOrg: { enterprise_id: string | null } | null;
+  orgVerifyError?: unknown;
   quotaCheck: AdoptionQuotaResult;
   seatQuota: SeatQuotaInfo;
   orgSub: OrgSubscriptionRow | null;
@@ -153,10 +156,14 @@ function simulateAcceptAdoptionRequest(params: {
   rollbackError?: { message: string } | null;
 }): AcceptAdoptionResult {
   const {
-    request, reVerifiedOrg, quotaCheck, seatQuota,
+    request, requestFetchError, reVerifiedOrg, orgVerifyError, quotaCheck, seatQuota,
     orgSub, orgUpdateError, subUpdateError, subCreateError,
     markAcceptedError,
   } = params;
+
+  if (requestFetchError) {
+    return { success: false, error: "Internal error", status: 503 };
+  }
 
   if (!request) {
     return { success: false, error: "Request not found" };
@@ -168,6 +175,10 @@ function simulateAcceptAdoptionRequest(params: {
 
   if (request.expires_at && new Date(request.expires_at) < new Date()) {
     return { success: false, error: "Request has expired" };
+  }
+
+  if (orgVerifyError) {
+    return { success: false, error: "Internal error", status: 503 };
   }
 
   if (reVerifiedOrg?.enterprise_id) {
@@ -221,8 +232,14 @@ function simulateAcceptAdoptionRequest(params: {
  */
 function simulateRejectAdoptionRequest(params: {
   request: { status: string } | null;
+  requestFetchError?: unknown;
+  updateError?: unknown;
 }): RejectAdoptionResult {
-  const { request } = params;
+  const { request, requestFetchError, updateError } = params;
+
+  if (requestFetchError) {
+    return { success: false, error: "Internal error", status: 503 };
+  }
 
   if (!request) {
     return { success: false, error: "Request not found" };
@@ -230,6 +247,10 @@ function simulateRejectAdoptionRequest(params: {
 
   if (request.status !== "pending") {
     return { success: false, error: "Request has already been processed" };
+  }
+
+  if (updateError) {
+    return { success: false, error: "Internal error", status: 503 };
   }
 
   return { success: true };
@@ -714,6 +735,42 @@ describe("acceptAdoptionRequest", () => {
 
     assert.strictEqual(result.success, true);
   });
+
+  it("returns 503 when request fetch DB errors", () => {
+    const result = simulateAcceptAdoptionRequest({
+      request: null,
+      requestFetchError: new Error("timeout"),
+      reVerifiedOrg: null,
+      quotaCheck: { allowed: true },
+      seatQuota: { currentCount: 0, maxAllowed: null },
+      orgSub: null,
+      orgUpdateError: null,
+      subUpdateError: null,
+      subCreateError: null,
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.status, 503);
+    assert.strictEqual(result.error, "Internal error");
+  });
+
+  it("returns 503 when org re-verify DB errors", () => {
+    const result = simulateAcceptAdoptionRequest({
+      request: makeRequest(),
+      reVerifiedOrg: null,
+      orgVerifyError: new Error("timeout"),
+      quotaCheck: { allowed: true },
+      seatQuota: { currentCount: 0, maxAllowed: null },
+      orgSub: null,
+      orgUpdateError: null,
+      subUpdateError: null,
+      subCreateError: null,
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.status, 503);
+    assert.strictEqual(result.error, "Internal error");
+  });
 });
 
 // ── rejectAdoptionRequest ──────────────────────────────────────────────────────
@@ -751,6 +808,28 @@ describe("rejectAdoptionRequest", () => {
     const result = simulateRejectAdoptionRequest({ request: { status: "pending" } });
 
     assert.strictEqual(result.success, true);
+  });
+
+  it("returns 503 when request fetch DB errors", () => {
+    const result = simulateRejectAdoptionRequest({
+      request: null,
+      requestFetchError: new Error("timeout"),
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.status, 503);
+    assert.strictEqual(result.error, "Internal error");
+  });
+
+  it("returns 503 when update fails", () => {
+    const result = simulateRejectAdoptionRequest({
+      request: { status: "pending" },
+      updateError: new Error("DB write failed"),
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.status, 503);
+    assert.strictEqual(result.error, "Internal error");
   });
 });
 
