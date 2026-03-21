@@ -7,6 +7,16 @@ import type { BlackbaudTokenResponse, SyncError } from "./types";
 
 // ── Environment helpers ──────────────────────────────────────
 
+/** Returns true when all required Blackbaud env vars are set. */
+export function isBlackbaudConfigured(): boolean {
+  return !!(
+    process.env.BLACKBAUD_CLIENT_ID?.trim() &&
+    process.env.BLACKBAUD_CLIENT_SECRET?.trim() &&
+    process.env.BLACKBAUD_TOKEN_ENCRYPTION_KEY?.trim() &&
+    process.env.BLACKBAUD_SUBSCRIPTION_KEY?.trim()
+  );
+}
+
 function getBlackbaudClientId(): string {
   const val = process.env.BLACKBAUD_CLIENT_ID;
   if (!val || val.trim() === "") {

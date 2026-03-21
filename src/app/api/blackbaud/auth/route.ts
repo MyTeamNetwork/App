@@ -3,12 +3,19 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getOrgContext } from "@/lib/auth/roles";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { getAuthorizationUrl } from "@/lib/blackbaud/oauth";
+import { getAuthorizationUrl, isBlackbaudConfigured } from "@/lib/blackbaud/oauth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
+  if (!isBlackbaudConfigured()) {
+    return NextResponse.json(
+      { error: "Blackbaud integration is not configured in this environment" },
+      { status: 503 }
+    );
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 

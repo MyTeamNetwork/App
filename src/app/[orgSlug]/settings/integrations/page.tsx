@@ -39,6 +39,7 @@ export default function IntegrationsPage() {
 
   const [integration, setIntegration] = useState<IntegrationRow | null>(null);
   const [lastSyncLog, setLastSyncLog] = useState<SyncLogRow | null>(null);
+  const [blackbaudAvailable, setBlackbaudAvailable] = useState(false);
 
   // Handle OAuth callback URL params
   useEffect(() => {
@@ -132,6 +133,15 @@ export default function IntegrationsPage() {
         setLastSyncLog(syncLog || null);
       }
 
+      // Check if Blackbaud is configured in this environment
+      try {
+        const statusRes = await fetch("/api/blackbaud/status");
+        const statusData = await statusRes.json();
+        setBlackbaudAvailable(statusData.configured === true);
+      } catch {
+        setBlackbaudAvailable(false);
+      }
+
       setLoading(false);
     };
 
@@ -175,6 +185,7 @@ export default function IntegrationsPage() {
               : null
           }
           loading={loading}
+          blackbaudAvailable={blackbaudAvailable}
         />
       )}
     </div>

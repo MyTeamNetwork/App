@@ -33,6 +33,7 @@ export interface BlackbaudSettingsPanelProps {
   integration: IntegrationData | null;
   lastSyncLog: SyncLogData | null;
   loading: boolean;
+  blackbaudAvailable: boolean;
 }
 
 function formatLastSync(lastSyncedAt: string | null): string {
@@ -54,6 +55,7 @@ export function BlackbaudSettingsPanel({
   integration,
   lastSyncLog,
   loading,
+  blackbaudAvailable,
 }: BlackbaudSettingsPanelProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -148,15 +150,25 @@ export function BlackbaudSettingsPanel({
           </div>
           {isConnected && <Badge variant="success">Connected</Badge>}
           {isError && <Badge variant="error">Error</Badge>}
+          {isDisconnected && !blackbaudAvailable && <Badge variant="muted">Unavailable</Badge>}
         </div>
 
         {isDisconnected && (
           <>
-            <p className="text-sm text-muted-foreground">
-              Connect your Blackbaud RE NXT account to automatically sync constituent data
-              into your alumni directory.
-            </p>
-            <Button onClick={handleConnect}>Connect Blackbaud</Button>
+            {!blackbaudAvailable ? (
+              <p className="text-sm text-muted-foreground">
+                Blackbaud integration is not configured in this environment. Contact your
+                administrator to set up the Blackbaud developer credentials.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Connect your Blackbaud RE NXT account to automatically sync constituent data
+                  into your alumni directory.
+                </p>
+                <Button onClick={handleConnect}>Connect Blackbaud</Button>
+              </>
+            )}
           </>
         )}
 
