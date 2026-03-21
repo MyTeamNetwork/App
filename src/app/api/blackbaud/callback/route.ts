@@ -34,19 +34,21 @@ export async function GET(req: Request) {
   }
 
   const serviceSupabase = createServiceClient();
-  const { data: oauthState, error: lookupError } = await (serviceSupabase as any)
+
+  // Atomic state claim: read + mark as used in one operation.
+  // This prevents replay attacks from concurrent requests.
+  const { data: oauthState, error: claimError } = await (serviceSupabase as any)
     .from("org_integration_oauth_state")
-    .select("id, organization_id, provider, user_id, redirect_path, initiated_at, used")
+    .update({ used: true })
     .eq("id", state)
     .eq("provider", "blackbaud")
+    .eq("used", false)
+    .select("id, organization_id, provider, user_id, redirect_path, initiated_at, used")
     .maybeSingle() as { data: any | null; error: any };
 
-  if (lookupError || !oauthState) {
+  if (claimError || !oauthState) {
+    // Either the state doesn't exist, was already consumed, or DB error
     return NextResponse.redirect(`${appUrl}/app?error=blackbaud_invalid_state`);
-  }
-
-  if (oauthState.used) {
-    return NextResponse.redirect(`${appUrl}/app?error=blackbaud_state_reused`);
   }
 
   if (oauthState.user_id !== user.id) {
@@ -58,8 +60,8 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${appUrl}/app?error=blackbaud_state_expired`);
   }
 
-  // Re-check admin access BEFORE consuming state (so transient errors are retryable)
-  const { data: adminRole, error: roleError } = await supabase
+  // Re-check admin access (state already consumed, so not retryable on transient error)
+  const { data: adminRole } = await supabase
     .from("user_organization_roles")
     .select("role")
     .eq("organization_id", oauthState.organization_id)
@@ -68,26 +70,9 @@ export async function GET(req: Request) {
     .eq("status", "active")
     .maybeSingle();
 
-  if (!adminRole && roleError) {
-    // Transient DB error — don't consume state, let user retry
-    debugLog("blackbaud-callback", "admin check transient error", { error: roleError.message });
-    return NextResponse.redirect(`${appUrl}/app?error=blackbaud_admin_check_failed`);
-  }
-
   if (!adminRole) {
-    // Definitive: user no longer admin — consume state to prevent replay, then reject
-    await (serviceSupabase as any)
-      .from("org_integration_oauth_state")
-      .update({ used: true })
-      .eq("id", oauthState.id);
     return NextResponse.redirect(`${appUrl}/app?error=blackbaud_access_revoked`);
   }
-
-  // Mark state as used (prevent replay)
-  await (serviceSupabase as any)
-    .from("org_integration_oauth_state")
-    .update({ used: true })
-    .eq("id", oauthState.id);
 
   try {
     const tokens = await exchangeCodeForTokens(code);
@@ -127,7 +112,7 @@ export async function GET(req: Request) {
     }
 
     // Success: upsert integration row as active
-    await (serviceSupabase as any)
+    const { error: upsertError } = await (serviceSupabase as any)
       .from("org_integrations")
       .upsert({
         organization_id: oauthState.organization_id,
@@ -140,6 +125,12 @@ export async function GET(req: Request) {
         last_sync_error: null,
         updated_at: new Date().toISOString(),
       }, { onConflict: "organization_id,provider" });
+
+    if (upsertError) {
+      debugLog("blackbaud-callback", "integration upsert failed", { error: upsertError.message });
+      const redirectPath = oauthState.redirect_path || "/app";
+      return NextResponse.redirect(`${appUrl}${redirectPath}?error=blackbaud_save_failed`);
+    }
 
     const redirectPath = oauthState.redirect_path || "/app";
     return NextResponse.redirect(`${appUrl}${redirectPath}?success=blackbaud_connected`);

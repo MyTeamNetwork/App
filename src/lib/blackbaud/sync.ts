@@ -28,31 +28,14 @@ export interface SyncDeps {
 export async function runSync(deps: SyncDeps): Promise<SyncResult> {
   const { client, supabase, integrationId, syncType, lastSyncedAt } = deps;
 
-  // ── Concurrency guard ──
-  const { data: runningSyncs } = await supabase
-    .from("integration_sync_log")
-    .select("id, started_at")
-    .eq("integration_id", integrationId)
-    .eq("status", "running")
-    .limit(1);
+  // ── Concurrency guard (insert-first, catch unique violation) ──
+  // The unique partial index on (integration_id) WHERE status = 'running'
+  // atomically prevents concurrent syncs.
+  const UNIQUE_VIOLATION = "23505";
+  const STALE_THRESHOLD_MS = 30 * 60 * 1000;
 
-  if (runningSyncs && runningSyncs.length > 0) {
-    const runningSync = runningSyncs[0];
-    const startedAt = new Date(runningSync.started_at);
-    const STALE_THRESHOLD_MS = 30 * 60 * 1000;
+  let syncLogId: string | null = null;
 
-    if (Date.now() - startedAt.getTime() < STALE_THRESHOLD_MS) {
-      return { ok: false, created: 0, updated: 0, unchanged: 0, skipped: 0, error: "Sync already in progress" };
-    }
-
-    // Stale lock — mark as failed and proceed
-    await supabase
-      .from("integration_sync_log")
-      .update({ status: "failed", error_message: "Stale lock released", completed_at: new Date().toISOString() })
-      .eq("id", runningSync.id);
-  }
-
-  // Create sync log entry (concurrency lock)
   const { data: syncLog, error: logError } = await supabase
     .from("integration_sync_log")
     .insert({
@@ -64,7 +47,56 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
     .single();
 
   if (logError) {
-    debugLog("blackbaud-sync", "failed to create sync log", { error: logError.message });
+    const pgCode = (logError as { code?: string }).code;
+    if (pgCode === UNIQUE_VIOLATION) {
+      // Another sync is running — check if stale
+      const { data: runningSyncs } = await supabase
+        .from("integration_sync_log")
+        .select("id, started_at")
+        .eq("integration_id", integrationId)
+        .eq("status", "running")
+        .limit(1);
+
+      if (runningSyncs && runningSyncs.length > 0) {
+        const runningSync = runningSyncs[0];
+        const startedAt = new Date(runningSync.started_at);
+
+        if (Date.now() - startedAt.getTime() < STALE_THRESHOLD_MS) {
+          return { ok: false, created: 0, updated: 0, unchanged: 0, skipped: 0, error: "Sync already in progress" };
+        }
+
+        // Stale lock — mark as failed and retry
+        await supabase
+          .from("integration_sync_log")
+          .update({ status: "failed", error_message: "Stale lock released", completed_at: new Date().toISOString() })
+          .eq("id", runningSync.id);
+
+        // Retry insert after releasing stale lock
+        const { data: retryLog, error: retryError } = await supabase
+          .from("integration_sync_log")
+          .insert({
+            integration_id: integrationId,
+            sync_type: syncType,
+            status: "running",
+          })
+          .select("id")
+          .single();
+
+        if (retryError) {
+          debugLog("blackbaud-sync", "failed to acquire sync lock after stale release", { error: retryError.message });
+          return { ok: false, created: 0, updated: 0, unchanged: 0, skipped: 0, error: "Sync already in progress" };
+        }
+
+        syncLogId = retryLog?.id ?? null;
+      } else {
+        // Unique violation but no running sync found (race resolved) — bail
+        return { ok: false, created: 0, updated: 0, unchanged: 0, skipped: 0, error: "Sync already in progress" };
+      }
+    } else {
+      debugLog("blackbaud-sync", "failed to create sync log", { error: logError.message });
+    }
+  } else {
+    syncLogId = syncLog?.id ?? null;
   }
 
   const totals: SyncResult = { ok: true, created: 0, updated: 0, unchanged: 0, skipped: 0 };
@@ -153,7 +185,7 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
     }
 
     // Update sync log as completed
-    if (syncLog?.id) {
+    if (syncLogId) {
       await supabase
         .from("integration_sync_log")
         .update({
@@ -164,7 +196,7 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
           records_skipped: totals.skipped,
           completed_at: new Date().toISOString(),
         })
-        .eq("id", syncLog.id);
+        .eq("id", syncLogId);
     }
 
     // Update integration state
@@ -183,7 +215,7 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
     const errorMessage = err instanceof Error ? err.message : String(err);
     const syncError = makeSyncError("api_fetch", "SYNC_FAILED", errorMessage);
 
-    if (syncLog?.id) {
+    if (syncLogId) {
       await supabase
         .from("integration_sync_log")
         .update({
@@ -195,7 +227,7 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
           error_message: errorMessage,
           completed_at: new Date().toISOString(),
         })
-        .eq("id", syncLog.id);
+        .eq("id", syncLogId);
     }
 
     await supabase
