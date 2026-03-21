@@ -71,6 +71,12 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
           .update({ status: "failed", error_message: "Stale lock released", completed_at: new Date().toISOString() })
           .eq("id", runningSync.id);
 
+        debugLog("blackbaud-sync", "released stale sync lock", {
+          staleId: runningSync.id,
+          integrationId,
+          staleSinceMs: Date.now() - startedAt.getTime(),
+        });
+
         // Retry insert after releasing stale lock
         const { data: retryLog, error: retryError } = await supabase
           .from("integration_sync_log")
@@ -94,6 +100,7 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
       }
     } else {
       debugLog("blackbaud-sync", "failed to create sync log", { error: logError.message });
+      return { ok: false, created: 0, updated: 0, unchanged: 0, skipped: 0, error: `Failed to acquire sync lock: ${logError.message}` };
     }
   } else {
     syncLogId = syncLog?.id ?? null;
