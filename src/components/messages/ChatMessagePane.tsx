@@ -114,7 +114,18 @@ export function ChatMessagePane({
   }, [userMap]);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    let retries = 0;
+    const maxRetries = 3;
+    const attemptScroll = () => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+      if (retries < maxRetries) {
+        retries++;
+        requestAnimationFrame(attemptScroll);
+      }
+    };
+    requestAnimationFrame(attemptScroll);
   }, []);
 
   useEffect(() => {
@@ -177,7 +188,7 @@ export function ChatMessagePane({
         }
       }
       setIsLoading(false);
-      setTimeout(scrollToBottom, 100);
+      scrollToBottom();
     }
     loadMessages();
   }, [group.id, supabase, scrollToBottom, fetchUnknownUsers, memberJoinedAt]);
@@ -266,7 +277,7 @@ export function ChatMessagePane({
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
-    setTimeout(scrollToBottom, 50);
+    scrollToBottom();
 
     let responseData: { message?: ChatMessage; error?: string } | null = null;
     try {

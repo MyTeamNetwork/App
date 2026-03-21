@@ -71,7 +71,7 @@ export function useChatRealtime({
               { ...newMsg, author: resolvedMap.get(newMsg.author_id) },
             ];
           });
-          setTimeout(scrollToBottom, 100);
+          scrollToBottom();
         }
       } else if (payload.eventType === "UPDATE") {
         const updated = payload.new as ChatMessage;
