@@ -5,6 +5,7 @@ import { getBlackbaudSubscriptionKey } from "@/lib/blackbaud/oauth";
 import { refreshTokenWithFallback } from "@/lib/blackbaud/token-refresh";
 import { createBlackbaudClient } from "@/lib/blackbaud/client";
 import { runSync } from "@/lib/blackbaud/sync";
+import { checkBlackbaudHealth } from "@/lib/blackbaud/health";
 import { getAlumniCapacitySnapshot } from "@/lib/alumni/capacity";
 import { debugLog } from "@/lib/debug";
 
@@ -62,6 +63,20 @@ export async function GET(request: Request) {
             accessToken,
             subscriptionKey: getBlackbaudSubscriptionKey(),
           });
+
+          const health = await checkBlackbaudHealth(client);
+          if (!health.ok) {
+            debugLog("integrations-cron", "health check failed", {
+              integrationId: integration.id,
+              reason: health.reason,
+            });
+            return {
+              id: integration.id,
+              orgId: integration.organization_id,
+              status: "error",
+              error: `Blackbaud health check failed: ${health.reason}`,
+            };
+          }
 
           const result = await runSync({
             client,
