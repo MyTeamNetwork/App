@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 
 describe("checkBlackbaudHealth", () => {
   it("returns { ok: true } on 200 response", async () => {
-    const { createBlackbaudClient } = await import("../src/lib/blackbaud/client");
-    const { checkBlackbaudHealth } = await import("../src/lib/blackbaud/health");
+    const { createBlackbaudClient } = await import("../src/lib/blackbaud/client.ts");
+    const { checkBlackbaudHealth } = await import("../src/lib/blackbaud/health.ts");
 
     const client = createBlackbaudClient({
       accessToken: "test-token",
@@ -19,8 +19,8 @@ describe("checkBlackbaudHealth", () => {
   });
 
   it("returns { ok: false, reason: 'unauthorized' } on 401 response", async () => {
-    const { createBlackbaudClient } = await import("../src/lib/blackbaud/client");
-    const { checkBlackbaudHealth } = await import("../src/lib/blackbaud/health");
+    const { createBlackbaudClient } = await import("../src/lib/blackbaud/client.ts");
+    const { checkBlackbaudHealth } = await import("../src/lib/blackbaud/health.ts");
 
     const client = createBlackbaudClient({
       accessToken: "bad-token",
@@ -35,8 +35,8 @@ describe("checkBlackbaudHealth", () => {
   });
 
   it("returns { ok: false, reason: 'forbidden' } on 403 response", async () => {
-    const { createBlackbaudClient } = await import("../src/lib/blackbaud/client");
-    const { checkBlackbaudHealth } = await import("../src/lib/blackbaud/health");
+    const { createBlackbaudClient } = await import("../src/lib/blackbaud/client.ts");
+    const { checkBlackbaudHealth } = await import("../src/lib/blackbaud/health.ts");
 
     const client = createBlackbaudClient({
       accessToken: "test-token",
@@ -51,8 +51,8 @@ describe("checkBlackbaudHealth", () => {
   });
 
   it("returns { ok: false, reason: 'network_error' } when fetch throws", async () => {
-    const { createBlackbaudClient } = await import("../src/lib/blackbaud/client");
-    const { checkBlackbaudHealth } = await import("../src/lib/blackbaud/health");
+    const { createBlackbaudClient } = await import("../src/lib/blackbaud/client.ts");
+    const { checkBlackbaudHealth } = await import("../src/lib/blackbaud/health.ts");
 
     const client = createBlackbaudClient({
       accessToken: "test-token",

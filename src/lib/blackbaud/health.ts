@@ -21,10 +21,10 @@ export async function checkBlackbaudHealth(
     const message = err instanceof Error ? err.message : String(err);
 
     if (message.includes("(401)")) {
-      return { ok: false, reason: "unauthorized", error: message };
+      return { ok: false, reason: "unauthorized", status: 401, error: message };
     }
     if (message.includes("(403)")) {
-      return { ok: false, reason: "forbidden", error: message };
+      return { ok: false, reason: "forbidden", status: 403, error: message };
     }
 
     const statusMatch = message.match(/\((\d{3})\)/);

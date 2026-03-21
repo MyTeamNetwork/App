@@ -51,6 +51,7 @@ export async function refreshTokenWithFallback(
       })
       .eq("id", integration.id)
       .eq("token_expires_at", integration.token_expires_at)
+      // Supabase returns number | null; null treated as 0 (CAS miss)
       .select("id", { count: "exact", head: true })) as { count: number };
 
     if (count > 0) {
