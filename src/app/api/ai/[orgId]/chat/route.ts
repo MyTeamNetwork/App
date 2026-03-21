@@ -9,8 +9,15 @@ import { createZaiClient, getZaiModel } from "@/lib/ai/client";
 import { buildPromptContext } from "@/lib/ai/context-builder";
 import { composeResponse, type UsageAccumulator } from "@/lib/ai/response-composer";
 import { logAiRequest } from "@/lib/ai/audit";
-import { createSSEStream, SSE_HEADERS } from "@/lib/ai/sse";
+import { createSSEStream, SSE_HEADERS, type CacheStatus } from "@/lib/ai/sse";
 import { resolveOwnThread } from "@/lib/ai/thread-resolver";
+import {
+  normalizePrompt,
+  hashPrompt,
+  buildPermissionScopeKey,
+  checkCacheEligibility,
+} from "@/lib/ai/semantic-cache-utils";
+import { lookupSemanticCache, writeCacheEntry } from "@/lib/ai/semantic-cache";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -55,6 +62,17 @@ export async function POST(
   }
 
   const { message, surface, threadId: existingThreadId, idempotencyKey } = validatedBody;
+
+  // Cache state — declared here so both the cache check block and the finally block can access them
+  let cacheStatus: CacheStatus = "ineligible";
+  let cacheEntryId: string | undefined;
+  let cacheBypassReason: string | undefined;
+  const eligibility = checkCacheEligibility({
+    message,
+    threadId: existingThreadId,
+    surface,
+    bypassCache: validatedBody.bypassCache,
+  });
 
   // 4. Validate provided thread ownership before any cleanup or writes
   let threadId = existingThreadId;
@@ -151,6 +169,71 @@ export async function POST(
       { error: "Failed to save message" },
       { status: 500, headers: rateLimit.headers }
     );
+  }
+
+  // 8.5 Semantic cache check
+  if (process.env.DISABLE_AI_CACHE !== "true" && eligibility.eligible) {
+    const normalized = normalizePrompt(message);
+    const promptHash = hashPrompt(normalized);
+    const permissionScopeKey = buildPermissionScopeKey(ctx.orgId, ctx.role);
+
+    const cacheResult = await lookupSemanticCache({
+      normalizedPrompt: normalized,
+      promptHash,
+      orgId: ctx.orgId,
+      surface,
+      permissionScopeKey,
+      supabase: ctx.serviceSupabase,
+    });
+
+    if (cacheResult.ok) {
+      cacheStatus = "hit_exact";
+      cacheEntryId = cacheResult.hit.id;
+
+      // Insert assistant message with cached content already complete
+      const { data: cachedAssistantMsg, error: cachedAssistantError } = await ctx.supabase
+        .from("ai_messages")
+        .insert({
+          thread_id: threadId,
+          role: "assistant",
+          status: "complete",
+          content: cacheResult.hit.responseContent,
+        })
+        .select("id")
+        .single();
+
+      if (cachedAssistantError || !cachedAssistantMsg) {
+        console.error("[ai-chat] cache hit assistant message failed:", cachedAssistantError);
+        // Fall through to live path
+      } else {
+        const cachedStream = createSSEStream(async (enqueue) => {
+          enqueue({ type: "chunk", content: cacheResult.hit.responseContent });
+          enqueue({
+            type: "done",
+            threadId: threadId!,
+            cache: { status: "hit_exact", entryId: cacheResult.hit.id },
+          });
+        });
+
+        // Fire-and-forget audit
+        logAiRequest(ctx.serviceSupabase, {
+          threadId: threadId!,
+          messageId: cachedAssistantMsg.id,
+          userId: ctx.userId,
+          orgId: ctx.orgId,
+          intent: "general",
+          latencyMs: Date.now() - startTime,
+          cacheStatus: "hit_exact",
+          cacheEntryId: cacheResult.hit.id,
+        });
+
+        return new Response(cachedStream, { headers: { ...SSE_HEADERS, ...rateLimit.headers } });
+      }
+    } else {
+      cacheStatus = cacheResult.reason === "miss" ? "miss" : "bypass";
+    }
+  } else if (!eligibility.eligible) {
+    cacheBypassReason = eligibility.reason;
   }
 
   // 9. Insert assistant placeholder
@@ -264,6 +347,26 @@ export async function POST(
         })
         .eq("id", assistantMessageId);
 
+      // Cache write — fire-and-forget, only on successful miss responses
+      if (fullContent && eligibility.eligible && cacheStatus === "miss") {
+        const normalized = normalizePrompt(message);
+        const promptHash = hashPrompt(normalized);
+        const permissionScopeKey = buildPermissionScopeKey(ctx.orgId, ctx.role);
+
+        writeCacheEntry({
+          normalizedPrompt: normalized,
+          promptHash,
+          responseContent: fullContent,
+          orgId: ctx.orgId,
+          surface,
+          permissionScopeKey,
+          sourceMessageId: assistantMessageId,
+          supabase: ctx.serviceSupabase,
+        }).catch((err) => {
+          console.error("[ai-cache] write failed:", err);
+        });
+      }
+
       // Audit log — fire-and-forget (never awaited)
       logAiRequest(ctx.serviceSupabase, {
         threadId: threadId!,
@@ -275,6 +378,9 @@ export async function POST(
         model: process.env.ZAI_API_KEY ? getZaiModel() : undefined,
         inputTokens: usageRef.current?.inputTokens,
         outputTokens: usageRef.current?.outputTokens,
+        cacheStatus,
+        cacheEntryId,
+        cacheBypassReason,
       });
     }
   });
