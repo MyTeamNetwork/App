@@ -3,7 +3,7 @@ import {
   CACHE_VERSION,
   getCacheExpiresAt,
   type CacheSurface,
-} from "./semantic-cache-utils";
+} from "./semantic-cache-utils.ts";
 
 // ---------------------------------------------------------------------------
 // Types
