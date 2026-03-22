@@ -1,13 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 describe("logAiRequest", () => {
+  type InsertedAuditRow = Record<string, unknown>;
+
   function createMockServiceSupabase(opts: { shouldError?: boolean } = {}) {
-    const insertedRows: any[] = [];
+    const insertedRows: InsertedAuditRow[] = [];
     return {
       insertedRows,
       from: () => ({
-        insert: (row: any) => {
+        insert: (row: InsertedAuditRow) => {
           insertedRows.push(row);
           if (opts.shouldError) {
             return { error: { message: "Insert failed" } };
@@ -98,5 +101,24 @@ describe("logAiRequest", () => {
     });
     assert.equal(mock.insertedRows.length, 1);
     assert.equal(mock.insertedRows[0].thread_id, null);
+  });
+
+  it("persists cache telemetry fields", async () => {
+    const { logAiRequest } = await import("../src/lib/ai/audit.ts");
+    const mock = createMockServiceSupabase();
+
+    await logAiRequest(mock as any, {
+      threadId: "t1",
+      messageId: "m1",
+      userId: "u1",
+      orgId: "o1",
+      cacheStatus: "miss",
+      cacheEntryId: "cache-1",
+      cacheBypassReason: "unsupported_surface",
+    });
+
+    assert.equal(mock.insertedRows[0].cache_status, "miss");
+    assert.equal(mock.insertedRows[0].cache_entry_id, "cache-1");
+    assert.equal(mock.insertedRows[0].cache_bypass_reason, "unsupported_surface");
   });
 });

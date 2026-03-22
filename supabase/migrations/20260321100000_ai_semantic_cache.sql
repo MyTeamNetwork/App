@@ -34,6 +34,10 @@ CREATE INDEX idx_ai_semantic_cache_expiry
   ON ai_semantic_cache(expires_at)
   WHERE invalidated_at IS NULL;
 
+CREATE INDEX idx_ai_semantic_cache_invalidated_at
+  ON ai_semantic_cache(invalidated_at)
+  WHERE invalidated_at IS NOT NULL;
+
 -- ═══════════════════════════════════════════
 -- RLS Policies
 -- ═══════════════════════════════════════════
@@ -48,21 +52,34 @@ ALTER TABLE ai_semantic_cache ENABLE ROW LEVEL SECURITY;
 -- ═══════════════════════════════════════════
 
 -- Removes entries expired for more than 1 day, or invalidated for more than 1 day
-CREATE OR REPLACE FUNCTION purge_expired_ai_semantic_cache()
+CREATE OR REPLACE FUNCTION public.purge_expired_ai_semantic_cache()
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   deleted_count integer;
 BEGIN
-  DELETE FROM ai_semantic_cache
-  WHERE expires_at < now() - interval '1 day'
-     OR (invalidated_at IS NOT NULL AND invalidated_at < now() - interval '1 day');
+  WITH doomed AS (
+    SELECT id
+    FROM public.ai_semantic_cache
+    WHERE expires_at < now() - interval '1 day'
+       OR (invalidated_at IS NOT NULL AND invalidated_at < now() - interval '1 day')
+    ORDER BY COALESCE(invalidated_at, expires_at)
+    LIMIT 500
+  )
+  DELETE FROM public.ai_semantic_cache
+  WHERE id IN (SELECT id FROM doomed);
   GET DIAGNOSTICS deleted_count = ROW_COUNT;
   RETURN deleted_count;
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.purge_expired_ai_semantic_cache() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.purge_expired_ai_semantic_cache() FROM anon;
+REVOKE EXECUTE ON FUNCTION public.purge_expired_ai_semantic_cache() FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.purge_expired_ai_semantic_cache() TO service_role;
 
 -- ═══════════════════════════════════════════
 -- Audit Log: cache observability columns

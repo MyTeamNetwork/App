@@ -10,6 +10,11 @@ const migration = readFileSync(
   "utf8"
 );
 
+const vercelConfig = readFileSync(
+  new URL("../vercel.json", import.meta.url),
+  "utf8"
+);
+
 describe("ai_semantic_cache migration contract", () => {
   it("enables RLS on cache table", () => {
     assert.match(
@@ -39,11 +44,45 @@ describe("ai_semantic_cache migration contract", () => {
     );
   });
 
+  it("creates invalidated_at index for purge scans", () => {
+    assert.match(
+      migration,
+      /CREATE INDEX idx_ai_semantic_cache_invalidated_at[\s\S]*?ON ai_semantic_cache\(invalidated_at\)/i
+    );
+  });
+
   it("creates purge function for expired cache entries", () => {
     assert.match(
       migration,
-      /CREATE OR REPLACE FUNCTION purge_expired_ai_semantic_cache\(\)/i
+      /CREATE OR REPLACE FUNCTION public\.purge_expired_ai_semantic_cache\(\)/i
     );
+  });
+
+  it("locks purge function search_path to public", () => {
+    assert.match(migration, /SET search_path = public/i);
+  });
+
+  it("revokes purge execution from public-facing roles and grants service_role", () => {
+    assert.match(
+      migration,
+      /REVOKE EXECUTE ON FUNCTION public\.purge_expired_ai_semantic_cache\(\) FROM PUBLIC;/i
+    );
+    assert.match(
+      migration,
+      /REVOKE EXECUTE ON FUNCTION public\.purge_expired_ai_semantic_cache\(\) FROM anon;/i
+    );
+    assert.match(
+      migration,
+      /REVOKE EXECUTE ON FUNCTION public\.purge_expired_ai_semantic_cache\(\) FROM authenticated;/i
+    );
+    assert.match(
+      migration,
+      /GRANT EXECUTE ON FUNCTION public\.purge_expired_ai_semantic_cache\(\) TO service_role;/i
+    );
+  });
+
+  it("bounds purge work to a fixed batch size", () => {
+    assert.match(migration, /LIMIT 500/i);
   });
 
   it("adds cache_status column to ai_audit_log", () => {
@@ -69,6 +108,17 @@ describe("ai_semantic_cache migration contract", () => {
     assert.match(
       migration,
       /char_length\(response_content\)\s*<=\s*16000/i
+    );
+  });
+
+  it("schedules the ai cache purge cron route", () => {
+    const parsed = JSON.parse(vercelConfig) as {
+      crons?: Array<{ path: string; schedule: string }>;
+    };
+
+    assert.ok(
+      parsed.crons?.some((cron) => cron.path === "/api/cron/ai-cache-purge"),
+      "expected vercel.json to schedule /api/cron/ai-cache-purge"
     );
   });
 });

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { CacheStatus } from "./sse";
 
 interface AuditEntry {
   threadId: string | null;
@@ -12,9 +13,15 @@ interface AuditEntry {
   inputTokens?: number;
   outputTokens?: number;
   error?: string;
-  cacheStatus?: string; // 'bypass' | 'miss' | 'hit_exact' | 'hit_semantic' | 'ineligible'
+  cacheStatus?: CacheStatus;
   cacheEntryId?: string; // UUID of the cache entry that was hit
   cacheBypassReason?: string; // why cache was bypassed (eligibility reason)
+}
+
+interface AuditInsertClient {
+  from(table: "ai_audit_log"): {
+    insert(row: Record<string, unknown>): Promise<{ error: unknown }> | { error: unknown };
+  };
 }
 
 function redactSensitive(value: string): string {
@@ -50,7 +57,7 @@ export async function logAiRequest(
       cache_bypass_reason: entry.cacheBypassReason ?? null,
     };
 
-    const { error } = await (serviceSupabase as any)
+    const { error } = await (serviceSupabase as unknown as AuditInsertClient)
       .from("ai_audit_log")
       .insert(row);
 

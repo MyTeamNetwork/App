@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
@@ -17,10 +18,33 @@ import {
 // Mock Supabase factory
 // ---------------------------------------------------------------------------
 
+interface MockSelectResult {
+  data: unknown;
+  error: { code?: string; message: string } | null;
+}
+
+interface MockInsertRow {
+  org_id: string;
+  surface: string;
+  permission_scope_key: string;
+  cache_version: number;
+  prompt_normalized: string;
+  prompt_hash: string;
+  response_content: string;
+  source_message_id: string;
+  expires_at: string;
+}
+
+interface MockInvalidationRow {
+  invalidated_at: string;
+  invalidation_reason: string;
+}
+
 function createMockServiceSupabase(opts: {
-  selectResult?: { data: any; error: any };
-  insertResult?: { data: any; error: any };
-  captureInsertRow?: (row: any) => void;
+  selectResult?: MockSelectResult;
+  insertResult?: MockSelectResult;
+  captureInsertRow?: (row: MockInsertRow) => void;
+  captureInvalidationRow?: (row: MockInvalidationRow) => void;
 }) {
   return {
     from: () => ({
@@ -31,7 +55,17 @@ function createMockServiceSupabase(opts: {
         limit: function () { return this; },
         maybeSingle: async () => opts.selectResult ?? { data: null, error: null },
       }),
-      insert: async (row: any) => {
+      update: (row: MockInvalidationRow) => {
+        opts.captureInvalidationRow?.(row);
+        return {
+          eq: function () { return this; },
+          is: function () { return this; },
+          lte: async function () {
+            return { data: null, error: null };
+          },
+        };
+      },
+      insert: async (row: MockInsertRow) => {
         opts.captureInsertRow?.(row);
         return opts.insertResult ?? { data: null, error: null };
       },
@@ -151,6 +185,15 @@ describe("checkCacheEligibility", () => {
     assert.equal(result.reason, "bypass_requested");
   });
 
+  it("returns ineligible with unsupported_surface for non-general surfaces", () => {
+    const result = checkCacheEligibility({
+      message: "What are the organization bylaws?",
+      surface: "events",
+    });
+    assert.equal(result.eligible, false);
+    assert.equal(result.reason, "unsupported_surface");
+  });
+
   it("returns ineligible with has_thread_context when threadId is provided", () => {
     const result = checkCacheEligibility({
       message: "What are the organization bylaws?",
@@ -217,10 +260,18 @@ describe("checkCacheEligibility", () => {
     assert.equal(result.reason, "contains_personalization");
   });
 
-  it("returns ineligible with implies_write_or_tool for 'Create an annual event'", () => {
-    // "Create" is a write/tool marker; avoid "new" which is a temporal marker
+  it("returns ineligible with requires_live_org_context for org-data questions", () => {
     const result = checkCacheEligibility({
-      message: "Create an annual event for the organization",
+      message: "Summarize the member roster for this organization",
+      surface: "general",
+    });
+    assert.equal(result.eligible, false);
+    assert.equal(result.reason, "requires_live_org_context");
+  });
+
+  it("returns ineligible with implies_write_or_tool for 'Create an annual event'", () => {
+    const result = checkCacheEligibility({
+      message: "Create a welcome page for the organization",
       surface: "general",
     });
     assert.equal(result.eligible, false);
@@ -228,13 +279,6 @@ describe("checkCacheEligibility", () => {
   });
 
   it("word boundary: 'renew' should NOT match 'new'", () => {
-    const result = checkCacheEligibility({
-      message: "How do I renew my membership?",
-      surface: "general",
-    });
-    // 'renew' embeds 'new' but word boundary should prevent a match on 'new'
-    // however 'my' IS a personalization marker, so we expect personalization to fire
-    // Use a message without personalization markers to isolate the word-boundary test
     const cleanResult = checkCacheEligibility({
       message: "How does renewal work for the organization?",
       surface: "general",
@@ -252,7 +296,7 @@ describe("checkCacheEligibility", () => {
 
   it("returns ineligible for write markers: 'delete'", () => {
     const result = checkCacheEligibility({
-      message: "Delete the old announcements",
+      message: "Delete the cached draft response",
       surface: "general",
     });
     assert.equal(result.eligible, false);
@@ -261,7 +305,7 @@ describe("checkCacheEligibility", () => {
 
   it("returns ineligible for write markers: 'send'", () => {
     const result = checkCacheEligibility({
-      message: "Send an email to all members",
+      message: "Send the policy summary to the board",
       surface: "general",
     });
     assert.equal(result.eligible, false);
@@ -331,7 +375,6 @@ describe("getCacheExpiresAt", () => {
 
 describe("lookupSemanticCache", () => {
   const baseParams = {
-    normalizedPrompt: "what are the organization bylaws?",
     promptHash: hashPrompt("what are the organization bylaws?"),
     orgId: "org-1",
     surface: "general" as const,
@@ -410,7 +453,7 @@ describe("writeCacheEntry", () => {
 
   it("inserts a row with the correct fields on success", async () => {
     const { writeCacheEntry } = await import("../src/lib/ai/semantic-cache.ts");
-    let capturedRow: any = null;
+    let capturedRow: MockInsertRow | null = null;
     const mock = createMockServiceSupabase({
       insertResult: { data: null, error: null },
       captureInsertRow: (row) => { capturedRow = row; },
@@ -428,6 +471,20 @@ describe("writeCacheEntry", () => {
     assert.equal(capturedRow.source_message_id, "msg-42");
     assert.ok(capturedRow.expires_at, "expires_at should be set");
     assert.ok(capturedRow.cache_version !== undefined, "cache_version should be set");
+  });
+
+  it("invalidates expired conflicting rows before inserting a replacement", async () => {
+    const { writeCacheEntry } = await import("../src/lib/ai/semantic-cache.ts");
+    let invalidationRow: MockInvalidationRow | null = null;
+    const mock = createMockServiceSupabase({
+      insertResult: { data: null, error: null },
+      captureInvalidationRow: (row) => { invalidationRow = row; },
+    });
+
+    await writeCacheEntry({ ...baseParams, supabase: mock as any });
+
+    assert.equal(invalidationRow?.invalidation_reason, "replaced_after_expiry");
+    assert.ok(invalidationRow?.invalidated_at, "expired conflicts should be invalidated first");
   });
 
   it("skips write when responseContent exceeds 16000 chars", async () => {

@@ -21,14 +21,13 @@ export type CacheHit = Readonly<{
 
 export type CacheLookupResult =
   | { readonly ok: true; readonly hit: CacheHit }
-  | { readonly ok: false; readonly reason: "miss" | "disabled" | "error" };
+  | { readonly ok: false; readonly reason: "miss" | "error" };
 
 // ---------------------------------------------------------------------------
 // Lookup
 // ---------------------------------------------------------------------------
 
 export async function lookupSemanticCache(params: {
-  normalizedPrompt: string;
   promptHash: string;
   orgId: string;
   surface: CacheSurface;
@@ -102,6 +101,22 @@ export async function writeCacheEntry(params: {
     return;
   }
 
+  const nowIso = new Date().toISOString();
+
+  await (supabase as any)
+    .from("ai_semantic_cache")
+    .update({
+      invalidated_at: nowIso,
+      invalidation_reason: "replaced_after_expiry",
+    })
+    .eq("org_id", orgId)
+    .eq("surface", surface)
+    .eq("permission_scope_key", permissionScopeKey)
+    .eq("cache_version", CACHE_VERSION)
+    .eq("prompt_hash", promptHash)
+    .is("invalidated_at", null)
+    .lte("expires_at", nowIso);
+
   const row = {
     org_id: orgId,
     surface,
@@ -120,8 +135,7 @@ export async function writeCacheEntry(params: {
 
   if (error) {
     if (error.code === UNIQUE_VIOLATION_CODE) {
-      // Row already exists — this is expected on concurrent requests, not a failure
-      console.error("[ai-cache] duplicate entry, skipping write:", error.message);
+      // Row already exists — this is expected on concurrent requests, not a failure.
       return;
     }
     console.error("[ai-cache] write failed:", error);

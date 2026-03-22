@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
@@ -24,7 +25,10 @@ function createMockServiceSupabase(opts: {
         const methods = ["select", "eq", "is", "gte", "lt", "order", "limit", "in"];
 
         for (const method of methods) {
-          chain[method] = (..._args: unknown[]) => chain;
+          chain[method] = (...args: unknown[]) => {
+            void args;
+            return chain;
+          };
         }
 
         chain.maybeSingle = async () =>
@@ -48,7 +52,10 @@ function createMockServiceSupabase(opts: {
         const methods = ["eq", "is", "gte", "lt", "order", "limit", "in"];
 
         for (const method of methods) {
-          chain[method] = (..._args: unknown[]) => chain;
+          chain[method] = (...args: unknown[]) => {
+            void args;
+            return chain;
+          };
         }
 
         chain.then = (resolve: (value: unknown) => void) => {
@@ -86,9 +93,15 @@ function createMockServiceSupabase(opts: {
           const eventsChain: Record<string, any> = {};
           const eventMethods = ["eq", "is", "gte", "lt", "order", "limit", "in"];
           for (const m of eventMethods) {
-            eventsChain[m] = (..._a: unknown[]) => eventsChain;
+            eventsChain[m] = (...args: unknown[]) => {
+              void args;
+              return eventsChain;
+            };
           }
-          eventsChain.select = (..._a: unknown[]) => eventsChain;
+          eventsChain.select = (...args: unknown[]) => {
+            void args;
+            return eventsChain;
+          };
           eventsChain.then = (resolve: (value: unknown) => void) => {
             resolve(
               shouldFail
@@ -269,5 +282,74 @@ describe("AI prompt context builder", () => {
 
     assert.ok(contextMessage);
     assert.ok(!contextMessage!.includes("Donation Summary"));
+  });
+
+  it("shared_static context keeps org overview but omits user and live-org sections", async () => {
+    const { buildUntrustedOrgContextMessage } = await import("../src/lib/ai/context-builder.ts");
+    const contextMessage = await buildUntrustedOrgContextMessage({
+      orgId: "o1",
+      userId: "u1",
+      role: "admin",
+      contextMode: "shared_static",
+      serviceSupabase: createMockServiceSupabase({
+        org: {
+          name: "Acme Org",
+          slug: "acme",
+          org_type: "club",
+          description: "Team mission and values",
+        },
+        userName: "Jane Admin",
+        memberCount: 42,
+        alumniCount: 150,
+        parentCount: 10,
+        eventCount: 3,
+        upcomingEvents: [
+          { title: "Spring Gala", start_date: "2026-04-01T18:00:00Z", location: "Main Hall" },
+        ],
+        announcements: [{ title: "Welcome back", published_at: "2026-03-15T12:00:00Z" }],
+        donationStats: { total_amount: 50000, donation_count: 25, last_donation_at: "2026-03-10T00:00:00Z" },
+      }) as any,
+    });
+
+    assert.ok(contextMessage);
+    assert.match(contextMessage!, /## Organization Overview/);
+    assert.match(contextMessage!, /- Name: Acme Org/);
+    assert.ok(!contextMessage!.includes("## Current User"));
+    assert.ok(!contextMessage!.includes("## Counts"));
+    assert.ok(!contextMessage!.includes("## Upcoming Events"));
+    assert.ok(!contextMessage!.includes("## Recent Announcements"));
+    assert.ok(!contextMessage!.includes("## Donation Summary"));
+  });
+
+  it("shared_static context skips querying user and mutable org tables", async () => {
+    const { buildUntrustedOrgContextMessage } = await import("../src/lib/ai/context-builder.ts");
+    const queriedTables: string[] = [];
+    const baseMock = createMockServiceSupabase({
+      org: { name: "Test Org", slug: "test" },
+      userName: "Test User",
+      memberCount: 12,
+      alumniCount: 4,
+      parentCount: 2,
+      eventCount: 1,
+      announcements: [{ title: "Update", published_at: "2026-03-15T12:00:00Z" }],
+      donationStats: { total_amount: 5000, donation_count: 1, last_donation_at: "2026-03-10T00:00:00Z" },
+    });
+
+    const mock = {
+      from: (table: string) => {
+        queriedTables.push(table);
+        return baseMock.from(table);
+      },
+    };
+
+    await buildUntrustedOrgContextMessage({
+      orgId: "o1",
+      userId: "u1",
+      role: "admin",
+      contextMode: "shared_static",
+      serviceSupabase: mock as any,
+    });
+
+    assert.deepEqual(queriedTables, ["organizations"]);
   });
 });

@@ -29,9 +29,11 @@ export interface EligibilityInput {
 }
 
 export type CacheIneligibleReason =
+  | "unsupported_surface"
   | "has_thread_context"
   | "contains_temporal_marker"
   | "contains_personalization"
+  | "requires_live_org_context"
   | "implies_write_or_tool"
   | "bypass_requested"
   | "message_too_short"
@@ -66,6 +68,28 @@ const TEMPORAL_MARKERS = [
 ];
 
 const PERSONALIZATION_MARKERS = ["my", "mine", "i am", "i'm", "me", "myself"];
+
+const LIVE_CONTEXT_MARKERS = [
+  "member",
+  "members",
+  "alumni",
+  "parent",
+  "parents",
+  "event",
+  "events",
+  "announcement",
+  "announcements",
+  "donation",
+  "donations",
+  "stat",
+  "stats",
+  "count",
+  "counts",
+  "total",
+  "totals",
+  "roster",
+  "attendance",
+];
 
 const WRITE_OR_TOOL_MARKERS = [
   "create",
@@ -135,10 +159,14 @@ export function buildPermissionScopeKey(orgId: string, role: string): string {
 export function checkCacheEligibility(
   params: EligibilityInput
 ): CacheEligibility {
-  const { message, threadId, bypassCache } = params;
+  const { message, threadId, bypassCache, surface } = params;
 
   if (bypassCache) {
     return { eligible: false, reason: "bypass_requested" };
+  }
+
+  if (surface !== "general") {
+    return { eligible: false, reason: "unsupported_surface" };
   }
 
   // v1 only caches standalone first-turn prompts
@@ -162,6 +190,10 @@ export function checkCacheEligibility(
 
   if (containsWordBoundary(normalized, PERSONALIZATION_MARKERS)) {
     return { eligible: false, reason: "contains_personalization" };
+  }
+
+  if (containsWordBoundary(normalized, LIVE_CONTEXT_MARKERS)) {
+    return { eligible: false, reason: "requires_live_org_context" };
   }
 
   if (containsWordBoundary(normalized, WRITE_OR_TOOL_MARKERS)) {

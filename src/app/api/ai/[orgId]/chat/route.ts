@@ -28,6 +28,7 @@ export async function POST(
 ) {
   const { orgId } = await params;
   const startTime = Date.now();
+  const cacheDisabled = process.env.DISABLE_AI_CACHE === "true";
 
   // 1. Rate limit — get user first to allow per-user limiting
   const supabase = await createClient();
@@ -64,7 +65,11 @@ export async function POST(
   const { message, surface, threadId: existingThreadId, idempotencyKey } = validatedBody;
 
   // Cache state — declared here so both the cache check block and the finally block can access them
-  let cacheStatus: CacheStatus = "ineligible";
+  let cacheStatus: CacheStatus = cacheDisabled
+    ? "disabled"
+    : validatedBody.bypassCache
+      ? "bypass"
+      : "ineligible";
   let cacheEntryId: string | undefined;
   let cacheBypassReason: string | undefined;
   const eligibility = checkCacheEligibility({
@@ -73,6 +78,13 @@ export async function POST(
     surface,
     bypassCache: validatedBody.bypassCache,
   });
+  let usesSharedStaticContext = false;
+
+  if (cacheDisabled) {
+    cacheBypassReason = "disabled_via_env";
+  } else if (!eligibility.eligible) {
+    cacheBypassReason = eligibility.reason;
+  }
 
   // 4. Validate provided thread ownership before any cleanup or writes
   let threadId = existingThreadId;
@@ -117,6 +129,10 @@ export async function POST(
             type: "done",
             threadId: existingMsg.thread_id,
             replayed: true,
+            cache: {
+              status: cacheStatus,
+              ...(cacheBypassReason ? { bypassReason: cacheBypassReason } : {}),
+            },
           });
         }),
         { headers: { ...SSE_HEADERS, ...rateLimit.headers } }
@@ -171,14 +187,30 @@ export async function POST(
     );
   }
 
+  const insertAssistantMessage = async (input: {
+    content: string | null;
+    status: "pending" | "complete";
+  }) =>
+    ctx.supabase
+      .from("ai_messages")
+      .insert({
+        thread_id: threadId,
+        org_id: ctx.orgId,
+        user_id: ctx.userId,
+        role: "assistant",
+        status: input.status,
+        content: input.content,
+      })
+      .select("id")
+      .single();
+
   // 8.5 Semantic cache check
-  if (process.env.DISABLE_AI_CACHE !== "true" && eligibility.eligible) {
+  if (!cacheDisabled && eligibility.eligible) {
     const normalized = normalizePrompt(message);
     const promptHash = hashPrompt(normalized);
     const permissionScopeKey = buildPermissionScopeKey(ctx.orgId, ctx.role);
 
     const cacheResult = await lookupSemanticCache({
-      normalizedPrompt: normalized,
       promptHash,
       orgId: ctx.orgId,
       surface,
@@ -191,19 +223,16 @@ export async function POST(
       cacheEntryId = cacheResult.hit.id;
 
       // Insert assistant message with cached content already complete
-      const { data: cachedAssistantMsg, error: cachedAssistantError } = await ctx.supabase
-        .from("ai_messages")
-        .insert({
-          thread_id: threadId,
-          role: "assistant",
-          status: "complete",
+      const { data: cachedAssistantMsg, error: cachedAssistantError } =
+        await insertAssistantMessage({
           content: cacheResult.hit.responseContent,
-        })
-        .select("id")
-        .single();
+          status: "complete",
+        });
 
       if (cachedAssistantError || !cachedAssistantMsg) {
         console.error("[ai-chat] cache hit assistant message failed:", cachedAssistantError);
+        cacheStatus = "error";
+        cacheBypassReason = "cache_hit_persist_failed";
         // Fall through to live path
       } else {
         const cachedStream = createSSEStream(async (enqueue) => {
@@ -211,12 +240,12 @@ export async function POST(
           enqueue({
             type: "done",
             threadId: threadId!,
+            replayed: true,
             cache: { status: "hit_exact", entryId: cacheResult.hit.id },
           });
         });
 
-        // Fire-and-forget audit
-        logAiRequest(ctx.serviceSupabase, {
+        await logAiRequest(ctx.serviceSupabase, {
           threadId: threadId!,
           messageId: cachedAssistantMsg.id,
           userId: ctx.userId,
@@ -230,25 +259,19 @@ export async function POST(
         return new Response(cachedStream, { headers: { ...SSE_HEADERS, ...rateLimit.headers } });
       }
     } else {
-      cacheStatus = cacheResult.reason === "miss" ? "miss" : "bypass";
+      cacheStatus = cacheResult.reason === "miss" ? "miss" : "error";
+      usesSharedStaticContext = cacheResult.reason === "miss";
+      if (cacheResult.reason === "error") {
+        cacheBypassReason = "cache_lookup_failed";
+      }
     }
-  } else if (!eligibility.eligible) {
-    cacheBypassReason = eligibility.reason;
   }
 
   // 9. Insert assistant placeholder
-  const { data: assistantMsg, error: assistantError } = await ctx.supabase
-    .from("ai_messages")
-    .insert({
-      thread_id: threadId,
-      org_id: ctx.orgId,
-      user_id: ctx.userId,
-      role: "assistant",
-      status: "pending",
-      content: null,
-    })
-    .select("id")
-    .single();
+  const { data: assistantMsg, error: assistantError } = await insertAssistantMessage({
+    content: null,
+    status: "pending",
+  });
 
   if (assistantError || !assistantMsg) {
     console.error("[ai-chat] assistant placeholder failed:", assistantError);
@@ -264,6 +287,8 @@ export async function POST(
   const stream = createSSEStream(async (enqueue) => {
     let fullContent = "";
     const usageRef: { current: UsageAccumulator | null } = { current: null };
+    let streamCompletedSuccessfully = false;
+    let auditErrorMessage: string | undefined;
 
     try {
       // Guard: ZAI_API_KEY required
@@ -272,7 +297,16 @@ export async function POST(
           "AI assistant is not configured. Please set the ZAI_API_KEY environment variable.";
         enqueue({ type: "chunk", content: msg });
         fullContent = msg;
-        enqueue({ type: "done", threadId: threadId! });
+        enqueue({
+          type: "done",
+          threadId: threadId!,
+          cache: {
+            status: cacheStatus,
+            ...(cacheEntryId ? { entryId: cacheEntryId } : {}),
+            ...(cacheBypassReason ? { bypassReason: cacheBypassReason } : {}),
+          },
+        });
+        streamCompletedSuccessfully = true;
         return;
       }
 
@@ -291,6 +325,7 @@ export async function POST(
           userId: ctx.userId,
           role: ctx.role,
           serviceSupabase: ctx.serviceSupabase,
+          contextMode: usesSharedStaticContext ? "shared_static" : "full",
         }),
         ctx.supabase
           .from("ai_messages")
@@ -322,6 +357,7 @@ export async function POST(
           fullContent += event.content;
           enqueue(event);
         } else if (event.type === "error") {
+          auditErrorMessage = event.message;
           enqueue(event);
           return;
         }
@@ -333,27 +369,47 @@ export async function POST(
         type: "done",
         threadId: threadId!,
         ...(usage ? { usage: { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } } : {}),
+        cache: {
+          status: cacheStatus,
+          ...(cacheEntryId ? { entryId: cacheEntryId } : {}),
+          ...(cacheBypassReason ? { bypassReason: cacheBypassReason } : {}),
+        },
       });
+      streamCompletedSuccessfully = true;
     } catch (err) {
       console.error("[ai-chat] stream error:", err);
+      auditErrorMessage = err instanceof Error ? err.message : "stream_failed";
       enqueue({ type: "error", message: "An error occurred", retryable: true });
     } finally {
       // Update assistant message row to final state
-      await ctx.supabase
+      const finalStatus = streamCompletedSuccessfully ? "complete" : "error";
+      const finalContent = streamCompletedSuccessfully ? fullContent : fullContent || "[error]";
+
+      const { error: finalizeError } = await ctx.supabase
         .from("ai_messages")
         .update({
-          content: fullContent || "[error]",
-          status: fullContent ? "complete" : "error",
+          content: finalContent,
+          status: finalStatus,
         })
         .eq("id", assistantMessageId);
 
-      // Cache write — fire-and-forget, only on successful miss responses
-      if (fullContent && eligibility.eligible && cacheStatus === "miss") {
+      if (finalizeError) {
+        console.error("[ai-chat] assistant finalize failed:", finalizeError);
+        auditErrorMessage ??= "assistant_finalize_failed";
+      }
+
+      const canWriteCache =
+        streamCompletedSuccessfully &&
+        !finalizeError &&
+        eligibility.eligible &&
+        cacheStatus === "miss";
+
+      if (canWriteCache) {
         const normalized = normalizePrompt(message);
         const promptHash = hashPrompt(normalized);
         const permissionScopeKey = buildPermissionScopeKey(ctx.orgId, ctx.role);
 
-        writeCacheEntry({
+        await writeCacheEntry({
           normalizedPrompt: normalized,
           promptHash,
           responseContent: fullContent,
@@ -362,13 +418,10 @@ export async function POST(
           permissionScopeKey,
           sourceMessageId: assistantMessageId,
           supabase: ctx.serviceSupabase,
-        }).catch((err) => {
-          console.error("[ai-cache] write failed:", err);
         });
       }
 
-      // Audit log — fire-and-forget (never awaited)
-      logAiRequest(ctx.serviceSupabase, {
+      await logAiRequest(ctx.serviceSupabase, {
         threadId: threadId!,
         messageId: assistantMessageId,
         userId: ctx.userId,
@@ -378,6 +431,7 @@ export async function POST(
         model: process.env.ZAI_API_KEY ? getZaiModel() : undefined,
         inputTokens: usageRef.current?.inputTokens,
         outputTokens: usageRef.current?.outputTokens,
+        error: auditErrorMessage,
         cacheStatus,
         cacheEntryId,
         cacheBypassReason,

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 interface BuildPromptInput {
@@ -5,6 +6,7 @@ interface BuildPromptInput {
   userId: string;
   role: string;
   serviceSupabase: SupabaseClient;
+  contextMode?: "full" | "shared_static";
 }
 
 interface OrgInfo {
@@ -122,8 +124,9 @@ function formatCurrency(amount: number): string {
 }
 
 async function loadPromptContextData(input: BuildPromptInput): Promise<PromptContextData> {
-  const { orgId, userId, serviceSupabase } = input;
+  const { orgId, userId, serviceSupabase, contextMode = "full" } = input;
   const now = new Date().toISOString();
+  const useSharedStaticContext = contextMode === "shared_static";
 
   const [
     org,
@@ -142,83 +145,97 @@ async function loadPromptContextData(input: BuildPromptInput): Promise<PromptCon
         .eq("id", orgId)
         .maybeSingle()
     ),
-    safeQuery<{ name: string }>("user name", () =>
-      (serviceSupabase as any)
-        .from("users")
-        .select("name")
-        .eq("id", userId)
-        .maybeSingle()
-    ).then((result) =>
-      result.ok
-        ? { ok: true as const, data: result.data?.name ?? null }
-        : { ok: false as const }
-    ),
-    safeCount("active member count", () =>
-      (serviceSupabase as any)
-        .from("members")
-        .select("*", { count: "exact", head: true })
-        .eq("organization_id", orgId)
-        .is("deleted_at", null)
-        .eq("status", "active")
-    ),
-    safeCount("alumni count", () =>
-      (serviceSupabase as any)
-        .from("alumni")
-        .select("*", { count: "exact", head: true })
-        .eq("organization_id", orgId)
-        .is("deleted_at", null)
-    ),
-    safeCount("parent count", () =>
-      (serviceSupabase as any)
-        .from("parents")
-        .select("*", { count: "exact", head: true })
-        .eq("organization_id", orgId)
-        .is("deleted_at", null)
-    ),
-    // Single query returns both rows (limit 5) and total count
-    (async (): Promise<QueryResult<EventsResult>> => {
-      try {
-        const { data, count, error } = await (serviceSupabase as any)
-          .from("events")
-          .select("title, start_date, location", { count: "exact" })
+    useSharedStaticContext
+      ? Promise.resolve({ ok: false as const })
+      : safeQuery<{ name: string }>("user name", () =>
+        (serviceSupabase as any)
+          .from("users")
+          .select("name")
+          .eq("id", userId)
+          .maybeSingle()
+      ).then((result) =>
+        result.ok
+          ? { ok: true as const, data: result.data?.name ?? null }
+          : { ok: false as const }
+      ),
+    useSharedStaticContext
+      ? Promise.resolve({ ok: false as const })
+      : safeCount("active member count", () =>
+        (serviceSupabase as any)
+          .from("members")
+          .select("*", { count: "exact", head: true })
           .eq("organization_id", orgId)
           .is("deleted_at", null)
-          .gte("start_date", now)
-          .order("start_date", { ascending: true })
-          .limit(5);
-        if (error) {
+          .eq("status", "active")
+      ),
+    useSharedStaticContext
+      ? Promise.resolve({ ok: false as const })
+      : safeCount("alumni count", () =>
+        (serviceSupabase as any)
+          .from("alumni")
+          .select("*", { count: "exact", head: true })
+          .eq("organization_id", orgId)
+          .is("deleted_at", null)
+      ),
+    useSharedStaticContext
+      ? Promise.resolve({ ok: false as const })
+      : safeCount("parent count", () =>
+        (serviceSupabase as any)
+          .from("parents")
+          .select("*", { count: "exact", head: true })
+          .eq("organization_id", orgId)
+          .is("deleted_at", null)
+      ),
+    // Single query returns both rows (limit 5) and total count
+    useSharedStaticContext
+      ? Promise.resolve({ ok: false as const })
+      : (async (): Promise<QueryResult<EventsResult>> => {
+        try {
+          const { data, count, error } = await (serviceSupabase as any)
+            .from("events")
+            .select("title, start_date, location", { count: "exact" })
+            .eq("organization_id", orgId)
+            .is("deleted_at", null)
+            .gte("start_date", now)
+            .order("start_date", { ascending: true })
+            .limit(5);
+          if (error) {
+            console.warn("[ai-context-builder] omitted upcoming events:", error);
+            return { ok: false };
+          }
+          return { ok: true, data: { events: data ?? [], totalCount: count ?? 0 } };
+        } catch (error) {
           console.warn("[ai-context-builder] omitted upcoming events:", error);
           return { ok: false };
         }
-        return { ok: true, data: { events: data ?? [], totalCount: count ?? 0 } };
-      } catch (error) {
-        console.warn("[ai-context-builder] omitted upcoming events:", error);
-        return { ok: false };
+      })(),
+    useSharedStaticContext
+      ? Promise.resolve({ ok: false as const })
+      : safeQuery<RecentAnnouncement[]>("recent announcements", () => {
+        const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        return (serviceSupabase as any)
+          .from("announcements")
+          .select("title, published_at")
+          .eq("organization_id", orgId)
+          .is("deleted_at", null)
+          .gte("published_at", twoWeeksAgo)
+          .order("published_at", { ascending: false })
+          .limit(5);
       }
-    })(),
-    safeQuery<RecentAnnouncement[]>("recent announcements", () => {
-      const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-      return (serviceSupabase as any)
-        .from("announcements")
-        .select("title, published_at")
-        .eq("organization_id", orgId)
-        .is("deleted_at", null)
-        .gte("published_at", twoWeeksAgo)
-        .order("published_at", { ascending: false })
-        .limit(5);
-    }
-    ).then((result) =>
-      result.ok
-        ? { ok: true as const, data: result.data ?? [] }
-        : { ok: false as const }
-    ),
-    safeQuery<DonationStats>("donation stats", () =>
-      (serviceSupabase as any)
-        .from("organization_donation_stats")
-        .select("total_amount, donation_count, last_donation_at")
-        .eq("organization_id", orgId)
-        .maybeSingle()
-    ),
+      ).then((result) =>
+        result.ok
+          ? { ok: true as const, data: result.data ?? [] }
+          : { ok: false as const }
+      ),
+    useSharedStaticContext
+      ? Promise.resolve({ ok: false as const })
+      : safeQuery<DonationStats>("donation stats", () =>
+        (serviceSupabase as any)
+          .from("organization_donation_stats")
+          .select("total_amount, donation_count, last_donation_at")
+          .eq("organization_id", orgId)
+          .maybeSingle()
+      ),
   ]);
 
   return {

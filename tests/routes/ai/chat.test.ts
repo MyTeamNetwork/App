@@ -11,6 +11,7 @@ import {
   normalizePrompt,
   hashPrompt,
 } from "../../../src/lib/ai/semantic-cache-utils.ts";
+import { sendMessageSchema } from "../../../src/lib/schemas/ai-assistant.ts";
 
 /**
  * Tests for POST /api/ai/[orgId]/chat
@@ -69,7 +70,7 @@ type CacheSimResultStatus =
   | "miss"
   | "bypass"
   | "ineligible"
-  | "env_disabled";
+  | "disabled";
 
 interface CacheSimResult {
   /** Whether the cache lookup was attempted at all */
@@ -194,10 +195,10 @@ function simulateCacheFlow(
 
   // Env-level kill switch
   if (disableAiCache) {
-    return { lookupAttempted: false, writeAttempted: false, status: "env_disabled" };
+    return { lookupAttempted: false, writeAttempted: false, status: "disabled" };
   }
 
-  const eligibility: CacheEligibility = checkCacheEligibility({
+  const eligibility = checkCacheEligibility({
     message,
     surface,
     threadId,
@@ -208,7 +209,7 @@ function simulateCacheFlow(
     return {
       lookupAttempted: false,
       writeAttempted: false,
-      status: "ineligible",
+      status: eligibility.reason === "bypass_requested" ? "bypass" : "ineligible",
       bypassReason: eligibility.reason,
     };
   }
@@ -618,8 +619,7 @@ test("SSE_HEADERS constant has correct Content-Type for event-stream", async () 
 // ── Semantic cache behavior ───────────────────────────────────────────────────
 
 describe("semantic cache behavior", () => {
-  // Fixture: a standalone eligible prompt with no temporal/personalization markers
-  const ELIGIBLE_MESSAGE = "What are the member benefits?";
+  const ELIGIBLE_MESSAGE = "What is the organization's mission statement?";
 
   it("cache-eligible standalone prompt returns cache hit when store contains matching entry", () => {
     const store = createMockCacheStore();
@@ -656,7 +656,7 @@ describe("semantic cache behavior", () => {
     assert.strictEqual(store.writeCallCount, 1);
   });
 
-  it("bypassCache=true skips lookup and marks status as ineligible with reason bypass_requested", () => {
+  it("bypassCache=true skips lookup and marks status as bypass with reason bypass_requested", () => {
     const store = createMockCacheStore();
     // Even if there is a matching entry, bypass should prevent lookup
     const promptHash = hashPrompt(normalizePrompt(ELIGIBLE_MESSAGE));
@@ -668,10 +668,7 @@ describe("semantic cache behavior", () => {
     );
 
     assert.strictEqual(result.lookupAttempted, false);
-    assert.ok(
-      result.status === "ineligible" || result.status === "bypass",
-      `expected ineligible or bypass, got ${result.status}`
-    );
+    assert.strictEqual(result.status, "bypass");
     assert.strictEqual(result.bypassReason, "bypass_requested");
     assert.strictEqual(store.lookupCallCount, 0);
   });
@@ -694,7 +691,7 @@ describe("semantic cache behavior", () => {
     const store = createMockCacheStore();
 
     const result = simulateCacheFlow(
-      { message: "What events are happening today?", surface: "events" },
+      { message: "What is happening today at the organization?", surface: "general" },
       store
     );
 
@@ -702,6 +699,20 @@ describe("semantic cache behavior", () => {
     assert.strictEqual(result.status, "ineligible");
     assert.strictEqual(result.bypassReason, "contains_temporal_marker");
     assert.strictEqual(store.lookupCallCount, 0);
+  });
+
+  it("non-general surfaces are always ineligible for shared cache", () => {
+    const store = createMockCacheStore();
+
+    const result = simulateCacheFlow(
+      { message: ELIGIBLE_MESSAGE, surface: "members" },
+      store
+    );
+
+    assert.strictEqual(result.lookupAttempted, false);
+    assert.strictEqual(result.writeAttempted, false);
+    assert.strictEqual(result.status, "ineligible");
+    assert.strictEqual(result.bypassReason, "unsupported_surface");
   });
 
   it("DISABLE_AI_CACHE=true bypasses cache entirely without attempting lookup", () => {
@@ -717,7 +728,7 @@ describe("semantic cache behavior", () => {
 
     assert.strictEqual(result.lookupAttempted, false);
     assert.strictEqual(result.writeAttempted, false);
-    assert.strictEqual(result.status, "env_disabled");
+    assert.strictEqual(result.status, "disabled");
     assert.strictEqual(store.lookupCallCount, 0);
     assert.strictEqual(store.writeCallCount, 0);
   });
@@ -749,5 +760,35 @@ describe("semantic cache behavior", () => {
     assert.strictEqual(hitResult.writeAttempted, false);
     // Write count must not have incremented on the second call
     assert.strictEqual(store.writeCallCount, 1);
+  });
+});
+
+describe("sendMessageSchema cache aliases", () => {
+  it("accepts bypass_cache and normalizes it to bypassCache", () => {
+    const parsed = sendMessageSchema.parse({
+      ...VALID_BODY,
+      bypass_cache: true,
+    });
+
+    assert.strictEqual(parsed.bypassCache, true);
+  });
+
+  it("accepts bypassCache directly", () => {
+    const parsed = sendMessageSchema.parse({
+      ...VALID_BODY,
+      bypassCache: true,
+    });
+
+    assert.strictEqual(parsed.bypassCache, true);
+  });
+
+  it("rejects mismatched bypass_cache and bypassCache values", () => {
+    assert.throws(() =>
+      sendMessageSchema.parse({
+        ...VALID_BODY,
+        bypass_cache: true,
+        bypassCache: false,
+      })
+    );
   });
 });

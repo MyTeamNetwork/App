@@ -1,4 +1,11 @@
-export type CacheStatus = "hit_exact" | "hit_semantic" | "miss" | "bypass" | "ineligible";
+export type CacheStatus =
+  | "hit_exact"
+  | "hit_semantic"
+  | "miss"
+  | "bypass"
+  | "ineligible"
+  | "disabled"
+  | "error";
 
 export type SSEEvent =
   | { type: "chunk"; content: string }
@@ -10,6 +17,7 @@ export type SSEEvent =
       cache?: {
         status: CacheStatus;
         entryId?: string;
+        bypassReason?: string;
       };
     }
   | { type: "error"; message: string; retryable: boolean };
@@ -33,7 +41,7 @@ export function createSSEStream(
       const enqueue = (event: SSEEvent) => controller.enqueue(encodeSSE(event));
       try {
         await generator(enqueue);
-      } catch (err) {
+      } catch {
         enqueue({ type: "error", message: "Internal error", retryable: false });
       } finally {
         controller.close();
