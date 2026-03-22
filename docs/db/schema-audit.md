@@ -256,7 +256,7 @@ The live schema covers:
 | `save_user_linkedin_url(uuid, text)` | Sync LinkedIn URL across member/alumni/parent profiles | `20260703000000` |
 | `sync_user_linkedin_profile_fields(uuid, text, text, text)` | Sync name/photo from LinkedIn to profiles | `20260704000000` |
 | `sync_user_linkedin_enrichment(uuid, text...)` | Sync Proxycurl enrichment data to member/alumni | `20260707000000` |
-| `purge_expired_ai_semantic_cache()` | TTL cleanup for AI semantic cache (service-role only, batch 500) | `20260321100000` |
+| `purge_expired_ai_semantic_cache()` | TTL cleanup for AI semantic cache (service-role only, batch 500) | `20260321100001` |
 
 ---
 

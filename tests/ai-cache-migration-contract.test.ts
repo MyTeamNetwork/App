@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 
 const migration = readFileSync(
   new URL(
-    "../supabase/migrations/20260321100000_ai_semantic_cache.sql",
+    "../supabase/migrations/20260321100001_ai_semantic_cache.sql",
     import.meta.url
   ),
   "utf8"
