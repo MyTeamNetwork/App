@@ -53,8 +53,10 @@ export function AIPanel({ orgId }: AIPanelProps) {
   }, [orgId]);
 
   const loadMessages = useCallback(
-    async (threadId: string) => {
-      setMessagesLoading(true);
+    async (threadId: string, options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setMessagesLoading(true);
+      }
       try {
         const response = await fetch(`/api/ai/${orgId}/threads/${threadId}/messages`);
         if (response.status === 404) {
@@ -80,11 +82,19 @@ export function AIPanel({ orgId }: AIPanelProps) {
     void loadThreads();
   }, [isOpen, loadThreads]);
 
+  // Skip the activeThreadId effect's redundant load after handleSend already
+  // refreshed messages silently.
+  const skipEffectLoadRef = useRef(false);
+
   useEffect(() => {
     if (!isOpen) return;
     if (!activeThreadId) {
       setMessages([]);
       setMessagesLoading(false);
+      return;
+    }
+    if (skipEffectLoadRef.current) {
+      skipEffectLoadRef.current = false;
       return;
     }
     void loadMessages(activeThreadId);
@@ -132,11 +142,12 @@ export function AIPanel({ orgId }: AIPanelProps) {
       }
 
       if (result.threadId !== activeThreadId) {
+        skipEffectLoadRef.current = true;
         setActiveThreadId(result.threadId);
       }
 
       await Promise.all([
-        loadMessages(result.threadId),
+        loadMessages(result.threadId, { silent: true }),
         loadThreads(),
       ]);
     },
