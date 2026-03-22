@@ -233,8 +233,7 @@ export function AIPanel({ orgId }: AIPanelProps) {
               loading={messagesLoading}
               streamingContent={currentContent}
               isStreaming={isStreaming}
-              previewAssistantContent={isStreaming ? currentContent : pendingAssistantContent ?? undefined}
-              previewAssistantStreaming={isStreaming}
+              previewAssistantContent={pendingAssistantContent ?? undefined}
             />
             <MessageInput
               isStreaming={isStreaming}

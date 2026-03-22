@@ -11,7 +11,6 @@ interface MessageListProps {
   streamingContent?: string;
   isStreaming?: boolean;
   previewAssistantContent?: string;
-  previewAssistantStreaming?: boolean;
 }
 
 export function MessageList({
@@ -20,7 +19,6 @@ export function MessageList({
   streamingContent,
   isStreaming,
   previewAssistantContent,
-  previewAssistantStreaming,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastAssistantMessage = [...messages]
@@ -101,9 +99,6 @@ export function MessageList({
             <div className="space-y-2 break-words [&_table]:block [&_table]:w-full [&_table]:overflow-x-auto [&_table]:text-left">
               <AssistantMessageContent content={previewAssistantContent ?? ""} />
             </div>
-            {previewAssistantStreaming ? (
-              <span className="ml-1 inline-block h-4 w-0.5 animate-pulse rounded-full bg-indigo-500" />
-            ) : null}
           </div>
         </div>
       )}
