@@ -169,7 +169,7 @@ interface ContextMetadata {
 
 Metadata is passed to audit logging (`context_surface`, `context_token_estimate` columns).
 
-The system prompt includes a `NARROW_PANEL_POLICY` instructing the LLM to avoid tables and multi-column layouts, plus a trusted `Current local date/time:` line for relative-time questions.
+The system prompt includes a `NARROW_PANEL_POLICY` instructing the LLM to avoid tables and multi-column layouts, plus a trusted `Current local date/time:` line for relative-time questions. It also instructs the LLM to prefer real human names over raw emails in member/admin lists, avoid placeholder renderings like `Member(email@example.com)`, and describe remaining no-name records as email-only member/admin accounts.
 
 ## Test Coverage
 

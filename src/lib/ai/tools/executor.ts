@@ -119,8 +119,28 @@ interface MemberToolRow {
   email: string | null;
 }
 
+interface UserNameRow {
+  id: string;
+  name: string | null;
+}
+
 function buildMemberName(firstName: string, lastName: string): string {
   return [firstName, lastName].filter(Boolean).join(" ").trim();
+}
+
+function isPlaceholderMemberName(firstName: string, lastName: string): boolean {
+  const normalizedFirstName = firstName.trim();
+  const normalizedLastName = lastName.trim();
+
+  return (
+    (normalizedFirstName.length === 0 && normalizedLastName.length === 0) ||
+    (normalizedFirstName === "Member" && normalizedLastName.length === 0)
+  );
+}
+
+function isTrustworthyHumanName(value: string | null | undefined): value is string {
+  const normalizedValue = value?.trim() ?? "";
+  return normalizedValue.length > 0 && normalizedValue !== "Member" && !normalizedValue.includes("@");
 }
 
 async function listMembers(
@@ -139,18 +159,61 @@ async function listMembers(
       .order("created_at", { ascending: false })
       .limit(limit);
 
+    if (!Array.isArray(data) || error) {
+      return { data, error };
+    }
+
+    const members = data as MemberToolRow[];
+    const linkedUserIds = [...new Set(
+      members
+        .map((member) => member.user_id)
+        .filter((userId): userId is string => typeof userId === "string" && userId.length > 0)
+    )];
+
+    const userNameById = new Map<string, string>();
+
+    if (linkedUserIds.length > 0) {
+      const { data: userRows, error: userError } = await sb
+        .from("users")
+        .select("id, name")
+        .in("id", linkedUserIds);
+
+      if (userError) {
+        return { data: null, error: userError };
+      }
+
+      if (Array.isArray(userRows)) {
+        for (const user of userRows as UserNameRow[]) {
+          if (isTrustworthyHumanName(user.name)) {
+            userNameById.set(user.id, user.name.trim());
+          }
+        }
+      }
+    }
+
     return {
-      data: Array.isArray(data)
-        ? (data as MemberToolRow[]).map((member) => ({
-            id: member.id,
-            user_id: member.user_id,
-            status: member.status,
-            role: member.role,
-            created_at: member.created_at,
-            name: buildMemberName(member.first_name, member.last_name),
-            email: member.email,
-          }))
-        : data,
+      data: members.map((member) => {
+        const memberName = buildMemberName(member.first_name, member.last_name);
+        const fallbackUserName =
+          member.user_id && !isPlaceholderMemberName(member.first_name, member.last_name)
+            ? null
+            : member.user_id
+              ? userNameById.get(member.user_id) ?? null
+              : null;
+
+        return {
+          id: member.id,
+          user_id: member.user_id,
+          status: member.status,
+          role: member.role,
+          created_at: member.created_at,
+          name:
+            memberName && !isPlaceholderMemberName(member.first_name, member.last_name)
+              ? memberName
+              : fallbackUserName ?? "",
+          email: member.email,
+        };
+      }),
       error,
     };
   });

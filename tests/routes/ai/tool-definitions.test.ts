@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { AI_TOOLS, TOOL_NAMES } from "../../../src/lib/ai/tools/definitions.ts";
 import type { ToolName } from "../../../src/lib/ai/tools/definitions.ts";
 
+type ToolProperties = Record<string, { type?: string; maximum?: number }>;
+type ToolParameters = { properties?: ToolProperties; additionalProperties?: boolean; required?: string[] };
+
 test("AI_TOOLS exports 3 tool definitions", () => {
   assert.equal(AI_TOOLS.length, 3);
 });
@@ -31,17 +34,21 @@ test("ToolName type is derived from AI_TOOLS", () => {
 
 test("list_members has limit parameter but no status parameter", () => {
   const tool = AI_TOOLS.find((t) => t.function.name === "list_members")!;
-  const props = (tool.function.parameters as any).properties;
+  const params = tool.function.parameters as ToolParameters;
+  const props = params.properties as ToolProperties;
   assert.ok(props.limit);
   assert.equal(props.limit.type, "integer");
   assert.equal(props.limit.maximum, 50);
+  assert.match(tool.function.description, /best available human name/i);
+  assert.match(tool.function.description, /email-only member or admin account/i);
   // Amendment #2: No status filter — alumni/parents are separate tables
   assert.equal(props.status, undefined);
 });
 
 test("list_events has limit and upcoming parameters", () => {
   const tool = AI_TOOLS.find((t) => t.function.name === "list_events")!;
-  const props = (tool.function.parameters as any).properties;
+  const params = tool.function.parameters as ToolParameters;
+  const props = params.properties as ToolProperties;
   assert.ok(props.limit);
   assert.equal(props.limit.maximum, 25);
   assert.ok(props.upcoming);
@@ -50,6 +57,6 @@ test("list_events has limit and upcoming parameters", () => {
 
 test("get_org_stats has no required parameters", () => {
   const tool = AI_TOOLS.find((t) => t.function.name === "get_org_stats")!;
-  const params = tool.function.parameters as any;
+  const params = tool.function.parameters as ToolParameters;
   assert.equal(params.required, undefined);
 });

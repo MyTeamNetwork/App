@@ -829,7 +829,7 @@ const COMPONENTS = [
     built: [
       'AI_TOOLS defines 3 OpenAI function-calling tools: list_members, list_events, get_org_stats',
       'Full Zod argument validation per tool (limit, upcoming) with fail-closed behavior',
-      'list_members reads valid members columns only and normalizes first_name + last_name into name',
+      'list_members reads valid members columns only, prefers members first_name + last_name, and falls back to public.users.name for placeholder linked rows',
       'executeToolCall with safeToolQuery/safeToolCount error wrappers',
       'Two-pass tool loop: Pass 1 conditionally streams with tools, Pass 2 feeds tool results back (no tools, prevents chaining)',
       'tool_status SSE events emitted: calling, done, error',

@@ -17,7 +17,7 @@ const TOOL_BY_NAME = {
     function: {
       name: "list_members" as const,
       description:
-        "List active organization members. Returns name, email, role, and added date. Use for questions about who is in the org, member counts, or searching for people. Only returns active members — alumni and parents are tracked separately.",
+        "List active organization members. Returns the best available human name, email, role, and added date. Prefer real names over raw emails. If a record has no trustworthy human name, treat it as an email-only member or admin account instead of using placeholder labels. Only returns active members — alumni and parents are tracked separately.",
       parameters: {
         type: "object" as const,
         properties: {

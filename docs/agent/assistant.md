@@ -2,7 +2,7 @@
 
 ## Summary
 
-The AI assistant is an admin-only, org-scoped chat feature. Admins open a slide-out panel, ask questions about their organization, and receive streaming LLM responses grounded in live org data. Conversations are persisted as threads and messages, with full audit logging and an exact-hash semantic cache for deduplication. Tool attachment is routed by inferred surface, while exact casual turns skip both RAG and pass-1 tools for lower latency.
+The AI assistant is an admin-only, org-scoped chat feature. Admins open a slide-out panel, ask questions about their organization, and receive streaming LLM responses grounded in live org data. Conversations are persisted as threads and messages, with full audit logging and an exact-hash semantic cache for deduplication. Tool attachment is routed by inferred surface, while exact casual turns skip both RAG and pass-1 tools for lower latency. For member lookups, the assistant now prefers real human names, falls back to `public.users.name` when linked `members` rows still have placeholder identity, and treats remaining no-name records as email-only accounts instead of rendering `Member(email)`.
 
 ## Tech Stack
 

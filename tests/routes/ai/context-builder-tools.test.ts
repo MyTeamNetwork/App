@@ -56,6 +56,9 @@ test("system prompt includes tool usage guidance", async () => {
   });
   assert.match(prompt, /Do NOT use tools for greetings/);
   assert.match(prompt, /do not emit user-visible filler text/i);
+  assert.match(prompt, /prefer real human names over raw emails/i);
+  assert.match(prompt, /Do NOT present placeholder identities like Member\(email@example\.com\)/);
+  assert.match(prompt, /email-only member account or email-only admin account/i);
 });
 
 test("system prompt includes the injected current local date and time", async () => {

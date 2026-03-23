@@ -41,6 +41,10 @@ function createToolSupabaseStub(overrides: Record<string, any> = {}) {
         entry.filters.push({ col, val });
         return builder;
       },
+      in(col: string, val: unknown[]) {
+        entry.filters.push({ col, op: "in", val });
+        return builder;
+      },
       gte(col: string, val: unknown) {
         entry.filters.push({ col, op: "gte", val });
         return builder;
@@ -96,6 +100,12 @@ beforeEach(() => {
         error: null,
       },
     },
+    users: {
+      select: {
+        data: [{ id: "u1", name: "Alice Jones" }],
+        error: null,
+      },
+    },
     events: {
       select: { data: [{ id: "e1", title: "Spring Gala", start_date: "2026-04-01" }], error: null },
     },
@@ -130,6 +140,10 @@ test("list_members returns org-scoped members", async () => {
   assert.ok(memberQuery.filters.some((f: any) => f.col === "status" && f.val === "active"));
   assert.deepEqual(memberQuery.orderBy, { column: "created_at", ascending: false });
   assert.equal(memberQuery.limitValue, 20);
+  const userQuery = stub.queries.find((q) => q.table === "users");
+  assert.ok(userQuery);
+  assert.equal(userQuery.columns, "id, name");
+  assert.ok(userQuery.filters.some((f: any) => f.col === "id" && f.op === "in" && f.val.includes("u1")));
 });
 
 test("list_members trims whitespace when composing a normalized name", async () => {
@@ -157,6 +171,142 @@ test("list_members trims whitespace when composing a normalized name", async () 
   assert.equal(result.ok, true);
   if (result.ok) {
     assert.equal((result.data as any[])[0].name, "Alice");
+  }
+});
+
+test("list_members falls back to public.users.name for placeholder member names", async () => {
+  stub = createToolSupabaseStub({
+    members: {
+      select: {
+        data: [{
+          id: "m3",
+          user_id: "u3",
+          status: "active",
+          role: "admin",
+          created_at: "2026-03-18T12:00:00Z",
+          first_name: "Member",
+          last_name: "",
+          email: "placeholder@example.com",
+        }],
+        error: null,
+      },
+    },
+    users: {
+      select: {
+        data: [{ id: "u3", name: "Seann Farrell" }],
+        error: null,
+      },
+    },
+  });
+  ctx = { orgId: ORG_ID, serviceSupabase: stub as any };
+
+  const result = await executeToolCall(ctx, { name: "list_members", args: {} });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal((result.data as any[])[0].name, "Seann Farrell");
+  }
+});
+
+test("list_members falls back to public.users.name for blank member names", async () => {
+  stub = createToolSupabaseStub({
+    members: {
+      select: {
+        data: [{
+          id: "m4",
+          user_id: "u4",
+          status: "active",
+          role: "admin",
+          created_at: "2026-03-17T12:00:00Z",
+          first_name: "",
+          last_name: "",
+          email: "blank@example.com",
+        }],
+        error: null,
+      },
+    },
+    users: {
+      select: {
+        data: [{ id: "u4", name: "Dylan Burak" }],
+        error: null,
+      },
+    },
+  });
+  ctx = { orgId: ORG_ID, serviceSupabase: stub as any };
+
+  const result = await executeToolCall(ctx, { name: "list_members", args: {} });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal((result.data as any[])[0].name, "Dylan Burak");
+  }
+});
+
+test("list_members keeps a valid members name over public.users.name", async () => {
+  stub = createToolSupabaseStub({
+    members: {
+      select: {
+        data: [{
+          id: "m5",
+          user_id: "u5",
+          status: "active",
+          role: "active_member",
+          created_at: "2026-03-16T12:00:00Z",
+          first_name: "Actual",
+          last_name: "Member",
+          email: "actual@example.com",
+        }],
+        error: null,
+      },
+    },
+    users: {
+      select: {
+        data: [{ id: "u5", name: "Directory Override" }],
+        error: null,
+      },
+    },
+  });
+  ctx = { orgId: ORG_ID, serviceSupabase: stub as any };
+
+  const result = await executeToolCall(ctx, { name: "list_members", args: {} });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal((result.data as any[])[0].name, "Actual Member");
+  }
+});
+
+test("list_members returns an empty name when no trustworthy human name exists", async () => {
+  stub = createToolSupabaseStub({
+    members: {
+      select: {
+        data: [{
+          id: "m6",
+          user_id: "u6",
+          status: "active",
+          role: "admin",
+          created_at: "2026-03-15T12:00:00Z",
+          first_name: "Member",
+          last_name: "",
+          email: "no-name@example.com",
+        }],
+        error: null,
+      },
+    },
+    users: {
+      select: {
+        data: [{ id: "u6", name: "no-name@example.com" }],
+        error: null,
+      },
+    },
+  });
+  ctx = { orgId: ORG_ID, serviceSupabase: stub as any };
+
+  const result = await executeToolCall(ctx, { name: "list_members", args: {} });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal((result.data as any[])[0].name, "");
   }
 });
 
