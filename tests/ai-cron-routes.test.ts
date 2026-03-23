@@ -128,6 +128,59 @@ describe("ai-cron-routes", () => {
       assert.equal(error, null);
     });
 
+    it("drains multiple 500-row batches until a partial batch is returned", async () => {
+      const rpcCalls: string[] = [];
+      const responses = [500, 500, 120];
+
+      const mockSupabase = {
+        rpc: async (fn: string) => {
+          rpcCalls.push(fn);
+          return { data: responses.shift() ?? 0, error: null };
+        },
+      };
+
+      let deletedCount = 0;
+      let batches = 0;
+      while (deletedCount < 5_000) {
+        const { data, error } = await mockSupabase.rpc("purge_expired_ai_semantic_cache");
+        assert.equal(error, null);
+
+        const batchDeleted = Math.max(0, Number(data ?? 0));
+        deletedCount += batchDeleted;
+        batches++;
+
+        if (batchDeleted < 500) {
+          break;
+        }
+      }
+
+      assert.equal(deletedCount, 1_120);
+      assert.equal(batches, 3);
+      assert.equal(rpcCalls.length, 3);
+    });
+
+    it("stops at the 5000-row cap even if every batch is full", async () => {
+      let calls = 0;
+      const mockSupabase = {
+        rpc: async () => {
+          calls++;
+          return { data: 500, error: null };
+        },
+      };
+
+      let deletedCount = 0;
+      while (deletedCount < 5_000) {
+        const { data } = await mockSupabase.rpc("purge_expired_ai_semantic_cache");
+        deletedCount += Number(data ?? 0);
+        if (Number(data ?? 0) < 500) {
+          break;
+        }
+      }
+
+      assert.equal(deletedCount, 5_000);
+      assert.equal(calls, 10);
+    });
+
     it("reports purge failure with error details", async () => {
       const mockSupabase = {
         rpc: async () => ({
@@ -145,14 +198,16 @@ describe("ai-cron-routes", () => {
 
     it("returns deletedCount from RPC result", () => {
       const rpcData = 15;
-      const response = { ok: true, deletedCount: rpcData ?? 0 };
+      const response = { ok: true, deletedCount: rpcData ?? 0, batches: 1, capped: false };
 
       assert.equal(response.deletedCount, 15);
+      assert.equal(response.batches, 1);
+      assert.equal(response.capped, false);
     });
 
     it("defaults deletedCount to 0 when RPC returns null", () => {
       const rpcData = null;
-      const response = { ok: true, deletedCount: rpcData ?? 0 };
+      const response = { ok: true, deletedCount: rpcData ?? 0, batches: 1, capped: false };
 
       assert.equal(response.deletedCount, 0);
     });

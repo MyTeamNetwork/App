@@ -22,9 +22,7 @@ import {
 import { executeToolCall } from "@/lib/ai/tools/executor";
 import { resolveOwnThread } from "@/lib/ai/thread-resolver";
 import {
-  normalizePrompt,
-  hashPrompt,
-  buildPermissionScopeKey,
+  buildSemanticCacheKeyParts,
   checkCacheEligibility,
   type CacheSurface,
 } from "@/lib/ai/semantic-cache-utils";
@@ -121,10 +119,8 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   const effectiveSurface = routing.effectiveSurface;
   const resolvedIntent = routing.intent;
   const resolvedIntentType = routing.intentType;
-  const skipRetrieval = routing.skipRetrieval;
   const requestNow = new Date().toISOString();
   const requestTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
-  const pass1Tools = getPass1Tools(effectiveSurface, skipRetrieval);
 
   // Cache state — declared here so both the cache check block and the finally block can access them
   let cacheStatus: CacheStatus = cacheDisabled
@@ -147,6 +143,8 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   } else if (!eligibility.eligible) {
     cacheBypassReason = eligibility.reason;
   }
+  const skipRagRetrieval = routing.skipRetrieval || eligibility.eligible;
+  const pass1Tools = getPass1Tools(effectiveSurface, routing.skipRetrieval);
 
   // 4. Validate provided thread ownership before any cleanup or writes
   let threadId = existingThreadId;
@@ -278,15 +276,16 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
 
   // 8.5 Semantic cache check
   if (!cacheDisabled && eligibility.eligible) {
-    const normalized = normalizePrompt(message);
-    const promptHash = hashPrompt(normalized);
-    const permissionScopeKey = buildPermissionScopeKey(ctx.orgId, ctx.role);
+    const cacheKey = buildSemanticCacheKeyParts({
+      message,
+      orgId: ctx.orgId,
+      role: ctx.role,
+    });
 
     const cacheResult = await lookupSemanticCache({
-      promptHash,
+      cacheKey,
       orgId: ctx.orgId,
       surface: effectiveSurface,
-      permissionScopeKey,
       supabase: ctx.serviceSupabase,
     });
 
@@ -348,7 +347,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   let ragError: string | undefined;
 
   const hasEmbeddingKey = !!process.env.EMBEDDING_API_KEY;
-  if (hasEmbeddingKey && !skipRetrieval) {
+  if (hasEmbeddingKey && !skipRagRetrieval) {
     try {
       const retrieved = await retrieveRelevantChunksFn({
         query: message,
@@ -609,20 +608,33 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         !toolCallMade;
 
       if (canWriteCache) {
-        const normalized = normalizePrompt(message);
-        const promptHash = hashPrompt(normalized);
-        const permissionScopeKey = buildPermissionScopeKey(ctx.orgId, ctx.role);
+        const cacheKey = buildSemanticCacheKeyParts({
+          message,
+          orgId: ctx.orgId,
+          role: ctx.role,
+        });
 
-        await writeCacheEntry({
-          normalizedPrompt: normalized,
-          promptHash,
+        const cacheWriteResult = await writeCacheEntry({
+          cacheKey,
           responseContent: fullContent,
           orgId: ctx.orgId,
           surface: effectiveSurface,
-          permissionScopeKey,
           sourceMessageId: assistantMessageId,
           supabase: ctx.serviceSupabase,
         });
+
+        if (cacheWriteResult.status === "inserted") {
+          cacheEntryId = cacheWriteResult.entryId;
+        } else if (cacheWriteResult.status === "duplicate" && !cacheBypassReason) {
+          cacheBypassReason = "cache_write_duplicate";
+        } else if (
+          cacheWriteResult.status === "skipped_too_large" &&
+          !cacheBypassReason
+        ) {
+          cacheBypassReason = "cache_write_skipped_too_large";
+        } else if (cacheWriteResult.status === "error" && !cacheBypassReason) {
+          cacheBypassReason = "cache_write_failed";
+        }
       }
 
       await logAiRequestFn(ctx.serviceSupabase, {

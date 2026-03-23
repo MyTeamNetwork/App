@@ -647,7 +647,7 @@ const COMPONENTS = [
       'ContextMetadata returned (sectionsIncluded, sectionsExcluded, estimatedTokens)',
       'Untrusted org context injected as user role (prompt injection safe)',
       'System prompt with NARROW_PANEL_POLICY',
-      'shared_static mode overrides surface for cache-hit contexts',
+      'shared_static mode overrides surface for cache-eligible miss contexts',
       'Cross-surface thread reset on navigation (prevents thread/surface mismatch)',
       'Thread list filtered by current surface',
       'context_surface persisted per message (effective surface at send time)',
@@ -672,7 +672,7 @@ const COMPONENTS = [
     ],
     built: [
       'Exact-hash SHA-256 prompt deduplication',
-      'Surface-specific TTLs defined: general 24h, members 4h, analytics 2h, events 4h',
+      'Surface-specific TTLs defined: general 12h, members 4h, analytics 2h, events 4h',
       'Permission scope key (SHA-256 of orgId:role)',
       'Cache eligibility filtering (temporal, personalization, live context, write markers)',
       'Prompt normalization before hashing',

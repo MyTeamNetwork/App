@@ -2,7 +2,7 @@
 
 ## Overview
 
-The chat pipeline handles the full lifecycle of an AI chat request: rate limiting, admin auth, input validation, thread management, semantic cache check, prompt construction, conditional tool attachment, LLM streaming via SSE, message persistence, cache write-back, and audit logging. All orchestration lives in a single route handler with dependency injection for testability.
+The chat pipeline handles the full lifecycle of an AI chat request: rate limiting, admin auth, input validation, thread management, semantic cache check, prompt construction, conditional tool attachment, LLM streaming via SSE, message persistence, cache write-back, and audit logging. The cache is intentionally conservative in v1: only standalone first-turn `general` prompts are eligible, cache-eligible turns use `shared_static` context, and those turns skip RAG retrieval entirely. All orchestration lives in a single route handler with dependency injection for testability.
 
 ## File Map
 
@@ -71,6 +71,11 @@ Client POST /api/ai/{orgId}/chat
   │       ├─ MISS → continue to live path with contextMode = "shared_static"
   │       └─ ERROR → continue to live path with full context
   │
+  ├─ 8.6 RAG retrieval
+  │       ├─ Casual turns skip retrieval
+  │       ├─ Cache-eligible turns also skip retrieval
+  │       └─ All other turns may retrieve additive chunks
+  │
   ├─ 9.  Insert assistant placeholder (status: pending)
   ├─ 10. Build prompt context + fetch history (parallel)
   │       ├─ buildPromptContext (surface-gated queries + token budget)
@@ -94,7 +99,8 @@ Client POST /api/ai/{orgId}/chat
   └─ 13.5 CACHE WRITE (if miss + stream succeeded + finalize succeeded)
           ├─ Invalidate expired conflicting rows
           ├─ Insert new cache row with surface-specific TTL
-          └─ Unique constraint (23505) silently ignored on concurrent writes
+          ├─ Record inserted `cache_entry_id` in audit metadata
+          └─ Surface duplicate / oversize / error outcomes via write-result metadata
 ```
 
 ## Configuration

@@ -2,7 +2,7 @@
 
 ## Summary
 
-The AI assistant is an admin-only, org-scoped chat feature. Admins open a slide-out panel, ask questions about their organization, and receive streaming LLM responses grounded in live org data. Conversations are persisted as threads and messages, with full audit logging and an exact-hash semantic cache for deduplication. Tool attachment is routed by inferred surface, while exact casual turns skip both RAG and pass-1 tools for lower latency. For member lookups, the assistant now prefers real human names, falls back to `public.users.name` when linked `members` rows still have placeholder identity, and treats remaining no-name records as email-only accounts instead of rendering `Member(email)`.
+The AI assistant is an admin-only, org-scoped chat feature. Admins open a slide-out panel, ask questions about their organization, and receive streaming LLM responses grounded in live org data. Conversations are persisted as threads and messages, with full audit logging and a conservative exact-hash semantic cache for deduplication. In v1, the cache only applies to standalone first-turn `general` prompts, uses `shared_static` context, and skips RAG retrieval entirely for cache-eligible requests so cached responses stay tied to stable org overview data. Tool attachment is routed by inferred surface, while exact casual turns skip both RAG and pass-1 tools for lower latency. For member lookups, the assistant now prefers real human names, falls back to `public.users.name` when linked `members` rows still have placeholder identity, and treats remaining no-name records as email-only accounts instead of rendering `Member(email)`.
 
 ## Tech Stack
 
@@ -22,7 +22,7 @@ The AI assistant is an admin-only, org-scoped chat feature. Admins open a slide-
 | Subsystem | Codemap | Description |
 |---|---|---|
 | Chat Pipeline | [chat-pipeline-codemap.md](chat-pipeline-codemap.md) | Request validation, auth, context building, LLM streaming, message persistence, audit |
-| Semantic Cache | [semantic-cache-codemap.md](semantic-cache-codemap.md) | Exact-hash prompt deduplication, TTL expiry, daily cron purge |
+| Semantic Cache | [semantic-cache-codemap.md](semantic-cache-codemap.md) | Exact-hash prompt deduplication, 12h general TTL, hourly bounded purge |
 | Thread Management | [threads-codemap.md](threads-codemap.md) | CRUD for threads and messages, cursor pagination, soft-delete |
 | UI Panel | [ui-panel-codemap.md](ui-panel-codemap.md) | Slide-out panel, SSE stream consumer, thread/message display |
 
@@ -63,7 +63,7 @@ Four migrations create all AI-related schema:
 | GET | `/api/ai/[orgId]/threads` | List threads (cursor-paginated) |
 | DELETE | `/api/ai/[orgId]/threads/[threadId]` | Soft-delete a thread |
 | GET | `/api/ai/[orgId]/threads/[threadId]/messages` | List messages in a thread |
-| GET | `/api/cron/ai-cache-purge` | Daily cron: hard-delete expired cache rows |
+| GET | `/api/cron/ai-cache-purge` | Hourly cron: drain expired cache rows in bounded batches |
 
 ## Access Control
 

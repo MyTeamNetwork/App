@@ -2,7 +2,7 @@
 
 ## Overview
 
-Each incoming chat message flows through a lightweight intent router that classifies the message content and resolves an effective surface for context loading, caching, and tool selection. The system deliberately separates **thread surface** (stable, set at creation, used for UI grouping) from **message context_surface** (per-turn, content-inferred, determines what data the LLM sees). A casual gate additionally short-circuits RAG and suppresses pass-1 tool attachment for greetings, thanks, and farewells.
+Each incoming chat message flows through a lightweight intent router that classifies the message content and resolves an effective surface for context loading, caching, and tool selection. The system deliberately separates **thread surface** (stable, set at creation, used for UI grouping) from **message context_surface** (per-turn, content-inferred, determines what data the LLM sees). A casual gate short-circuits RAG and suppresses pass-1 tool attachment for greetings, thanks, and farewells, and the cache layer independently skips RAG for cache-eligible first-turn `general` prompts.
 
 ## File Map
 
@@ -64,7 +64,7 @@ init_ai_chat RPC
   ┌─ checkCacheEligibility(effectiveSurface)
   │    only "general" is eligible in v1
   │
-  ├─ if !skipRetrieval: retrieveRelevantChunks()
+  ├─ if !skipRetrieval and prompt is not cache-eligible: retrieveRelevantChunks()
   │    → ragChunks (additive, non-blocking)
   │
   ├─ buildPromptContext({ surface: effectiveSurface, ragChunks, now, timeZone })
@@ -122,7 +122,7 @@ Count word-boundary regex matches (`(?<!\w)keyword(?!\w)`) per surface:
 
 3. **Rerouting automatically bypasses cache.** Only `"general"` is cache-eligible in v1. Rerouting to any other surface makes the message cache-ineligible — no coordination needed between router and cache.
 
-4. **RAG is always non-blocking.** Retrieval errors are caught and logged; the request continues without chunks. The casual gate is an optimization that avoids the embedding API call entirely for messages that won't benefit from retrieved context.
+4. **RAG is always non-blocking, and sometimes intentionally skipped.** Retrieval errors are caught and logged; the request continues without chunks. The casual gate avoids the embedding API call for exact casual turns, and the cache layer also avoids retrieval for cache-eligible first-turn `general` prompts so cached responses do not depend on mutable retrieved chunks.
 
 5. **`init_ai_chat` is service-role only.** Users cannot inject arbitrary `context_surface` or `intent` values. The RPC is restricted to `service_role` via explicit `REVOKE`/`GRANT`.
 
@@ -134,4 +134,4 @@ Count word-boundary regex matches (`(?<!\w)keyword(?!\w)`) per surface:
 
 - **[intent-type-taxonomy.md](intent-type-taxonomy.md)** — Second classification axis: intent *type* (`knowledge_query`, `action_request`, `navigation`, `casual`) — what the user wants, orthogonal to the surface routing documented here
 - **[chat-pipeline-codemap.md](chat-pipeline-codemap.md)** — Full pipeline orchestration, token budget, section priorities
-- **[semantic-cache-codemap.md](semantic-cache-codemap.md)** — Cache eligibility rules, surface TTLs, per-surface gating
+- **[semantic-cache-codemap.md](semantic-cache-codemap.md)** — Cache eligibility rules, freshness policy, and no-RAG-on-cacheable-path contract

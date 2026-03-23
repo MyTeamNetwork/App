@@ -14,6 +14,55 @@ let buildPromptContextCalls: any[] = [];
 let initChatCalls: any[] = [];
 let retrieveRelevantChunksCalls: any[] = [];
 
+function createSemanticCacheServiceSupabase(options: {
+  rpc: (fn: string, params: any) => Promise<{ data: any; error: any }>;
+  lookupRow?: { id: string; response_content: string; created_at: string } | null;
+  insertId?: string;
+}) {
+  const insertedRows: Array<Record<string, unknown>> = [];
+
+  return {
+    insertedRows,
+    rpc: options.rpc,
+    from(table: string) {
+      if (table !== "ai_semantic_cache") {
+        throw new Error(`Unexpected table: ${table}`);
+      }
+
+      return {
+        select() {
+          return {
+            eq() { return this; },
+            is() { return this; },
+            gt() { return this; },
+            maybeSingle: async () => ({
+              data: options.lookupRow ?? null,
+              error: null,
+            }),
+          };
+        },
+        update() {
+          return {
+            eq() { return this; },
+            is() { return this; },
+            lte: async () => ({ data: null, error: null }),
+          };
+        },
+        insert(row: Record<string, unknown>) {
+          insertedRows.push(row);
+          return {
+            select() { return this; },
+            single: async () => ({
+              data: options.insertId ? { id: options.insertId } : null,
+              error: null,
+            }),
+          };
+        },
+      };
+    },
+  };
+}
+
 function createSupabaseStub() {
   const state = {
     threadCount: 0,
@@ -387,6 +436,44 @@ test("POST /api/ai/[orgId]/chat skips RAG retrieval for casual messages regardle
   assert.equal(auditEntries[0].ragError, undefined);
 });
 
+test("POST /api/ai/[orgId]/chat skips RAG retrieval for cache-eligible prompts and records inserted cache_entry_id", async () => {
+  delete process.env.DISABLE_AI_CACHE;
+  process.env.EMBEDDING_API_KEY = "embed-key";
+
+  const cacheServiceSupabase = createSemanticCacheServiceSupabase({
+    rpc: aiContext.serviceSupabase.rpc,
+    lookupRow: null,
+    insertId: "cache-entry-1",
+  });
+  aiContext.serviceSupabase = cacheServiceSupabase;
+
+  const request = new Request(`http://localhost/api/ai/${ORG_ID}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: "Explain the organization bylaws",
+      surface: "general",
+      idempotencyKey: VALID_IDEMPOTENCY_KEY,
+    }),
+  });
+
+  const response = await POST(request as any, {
+    params: Promise.resolve({ orgId: ORG_ID }),
+  });
+
+  assert.equal(response.status, 200);
+  await response.text();
+
+  assert.equal(retrieveRelevantChunksCalls.length, 0);
+  assert.equal(buildPromptContextCalls.length, 1);
+  assert.equal(buildPromptContextCalls[0].contextMode, "shared_static");
+  assert.equal(buildPromptContextCalls[0].ragChunks, undefined);
+  assert.equal(cacheServiceSupabase.insertedRows.length, 1);
+  assert.equal(auditEntries[0].cacheStatus, "miss");
+  assert.equal(auditEntries[0].cacheEntryId, "cache-entry-1");
+  assert.equal(auditEntries[0].cacheBypassReason, undefined);
+});
+
 test("POST /api/ai/[orgId]/chat still runs RAG retrieval for non-casual messages", async () => {
   process.env.EMBEDDING_API_KEY = "embed-key";
 
@@ -422,6 +509,77 @@ test("POST /api/ai/[orgId]/chat still runs RAG retrieval for non-casual messages
   assert.equal(auditEntries[0].ragChunkCount, 1);
   assert.equal(auditEntries[0].ragTopSimilarity, 0.91);
   assert.equal(auditEntries[0].ragError, undefined);
+});
+
+test("POST /api/ai/[orgId]/chat records cache_write_skipped_too_large when miss content exceeds cache limit", async () => {
+  delete process.env.DISABLE_AI_CACHE;
+
+  const cacheServiceSupabase = createSemanticCacheServiceSupabase({
+    rpc: aiContext.serviceSupabase.rpc,
+    lookupRow: null,
+    insertId: "cache-entry-oversized",
+  });
+  aiContext.serviceSupabase = cacheServiceSupabase;
+
+  POST = createChatPostHandler({
+    createClient: async () => supabaseStub as any,
+    getAiOrgContext: async () => aiContext,
+    buildPromptContext: async (input: any) => {
+      buildPromptContextCalls.push(input);
+      return {
+        systemPrompt: "System prompt",
+        orgContextMessage: null,
+        metadata: { surface: input.surface, estimatedTokens: 100 },
+      };
+    },
+    createZaiClient: () => ({ client: "fake" } as any),
+    getZaiModel: () => "glm-5",
+    composeResponse: (async function* (options: {
+      onUsage?: (usage: { inputTokens: number; outputTokens: number }) => void;
+    }) {
+      options.onUsage?.({ inputTokens: 12, outputTokens: 7 });
+      yield { type: "chunk", content: "x".repeat(16001) };
+    }) as any,
+    logAiRequest: async (_serviceSupabase: unknown, entry: unknown) => {
+      auditEntries.push(entry);
+    },
+    retrieveRelevantChunks: async (input: any) => {
+      retrieveRelevantChunksCalls.push(input);
+      return [];
+    },
+    resolveOwnThread: async () => ({
+      ok: true,
+      thread: {
+        id: "thread-1",
+        user_id: ADMIN_USER.id,
+        org_id: ORG_ID,
+        surface: "general",
+        title: "Thread",
+      },
+    }),
+  });
+
+  const request = new Request(`http://localhost/api/ai/${ORG_ID}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: "Explain the organization bylaws",
+      surface: "general",
+      idempotencyKey: VALID_IDEMPOTENCY_KEY,
+    }),
+  });
+
+  const response = await POST(request as any, {
+    params: Promise.resolve({ orgId: ORG_ID }),
+  });
+
+  assert.equal(response.status, 200);
+  await response.text();
+
+  assert.equal(cacheServiceSupabase.insertedRows.length, 0);
+  assert.equal(auditEntries[0].cacheStatus, "miss");
+  assert.equal(auditEntries[0].cacheEntryId, undefined);
+  assert.equal(auditEntries[0].cacheBypassReason, "cache_write_skipped_too_large");
 });
 
 test("POST /api/ai/[orgId]/chat returns 403 when org access is unauthorized", async () => {
