@@ -97,3 +97,37 @@ The `20260321100001` migration creates the `vector` extension, but all cache loo
 
 ### 8. Migration filename mismatch (fixed)
 The contract test and semantic cache codemap previously referenced `20260321100000` instead of the actual filename `20260321100001`. Fixed in this PR.
+
+## v2 Roadmap — Research-Backed Enhancements
+
+The following features are deferred from v1 tool calling. Each is mapped to the relevant research paper for implementation guidance.
+
+### Write Actions + Safety Gates
+- **Paper:** ILION — Deterministic Pre-Execution Safety Gates (`2603.13247`)
+- **What:** Add write tools (create_event, send_announcement, update_member_role) with a deterministic BLOCK/ALLOW gate before execution
+- **Design:** Rule-based gate over action metadata (table, operation, scope). Any destructive or broadcast action requires explicit user confirmation via SSE `pending_action` event. Full audit trail for every BLOCK/ALLOW decision.
+
+### Parallel Tool Execution
+- **Paper:** LLM Compiler for Parallel Function Calling (`2312.04511`)
+- **What:** Planner → DAG of tasks → concurrent execution when dependencies allow
+- **Design:** Extend the tool loop to accept multiple tool calls per LLM turn. Execute independent tools via `Promise.all`. Dependent tools wait via `$id` reference resolution.
+
+### Output Validation / Hallucination Detection
+- **Paper:** NeMo Guardrails (`2310.10501`), LettuceDetect (`2502.17125`), FACTOID (`2403.19113`)
+- **What:** Post-response verification that claims are grounded in tool results
+- **Design:** After the LLM generates a response using tool data, run a lightweight entailment check that each factual claim maps to a specific tool result field. Flag ungrounded claims.
+
+### Intent-Aware Tool Selection
+- **Paper:** Arch-Router (`2506.16655`), LLM Routing Survey (`2502.00409`)
+- **What:** Only offer relevant tools based on the detected intent/surface
+- **Design:** Use `resolveSurfaceRouting()` to filter `AI_TOOLS` before passing to the LLM. Members surface → only `list_members`. Events surface → only `list_events`. Reduces tool-selection noise.
+
+### Vector Semantic Cache
+- **Paper:** VectorQ — Adaptive Semantic Prompt Caching (`2502.03771`), Domain-Specific Embeddings (`2504.02268`)
+- **What:** Upgrade exact-match SHA-256 cache to embedding similarity lookup
+- **Design:** pgvector extension already enabled. Generate embeddings on cache write, use adaptive cosine threshold per-surface for cache hits. Domain-tuned embeddings outperform general models.
+
+### Data Analyst (SQL Generation)
+- **Paper:** Text-to-SQL Survey (`2410.06011`), APEX-SQL (`2602.16720`), TrustSQL (`2403.15879`)
+- **What:** Let admins ask ad-hoc data questions ("donation trend by month", "members who joined after January")
+- **Design:** Schema-aware SQL generation with read-only sandbox. Must support abstaining from infeasible queries (TrustSQL pattern). LIDA pipeline (`2303.02927`) for chart generation.
