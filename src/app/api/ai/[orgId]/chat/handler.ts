@@ -20,6 +20,7 @@ import {
 import { lookupSemanticCache, writeCacheEntry } from "@/lib/ai/semantic-cache";
 import { retrieveRelevantChunks } from "@/lib/ai/rag-retriever";
 import type { RagChunkInput } from "@/lib/ai/context-builder";
+import { resolveSurfaceRouting } from "@/lib/ai/intent-router";
 
 export interface ChatRouteDeps {
   createClient?: typeof createClient;
@@ -85,6 +86,10 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   }
 
   const { message, surface, threadId: existingThreadId, idempotencyKey } = validatedBody;
+  const routing = resolveSurfaceRouting(message, surface);
+  const effectiveSurface = routing.effectiveSurface;
+  const resolvedIntent = routing.intent;
+  const skipRetrieval = routing.skipRetrieval;
 
   // Cache state — declared here so both the cache check block and the finally block can access them
   let cacheStatus: CacheStatus = cacheDisabled
@@ -97,7 +102,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   const eligibility = checkCacheEligibility({
     message,
     threadId: existingThreadId,
-    surface,
+    surface: effectiveSurface,
     bypassCache: validatedBody.bypassCache,
   });
   let usesSharedStaticContext = false;
@@ -200,6 +205,8 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
       p_message: message,
       p_idempotency_key: idempotencyKey,
       p_thread_id: threadId ?? null,
+      p_intent: resolvedIntent,
+      p_context_surface: effectiveSurface,
     }
   );
 
@@ -224,6 +231,8 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         org_id: ctx.orgId,
         user_id: ctx.userId,
         role: "assistant",
+        intent: resolvedIntent,
+        context_surface: effectiveSurface,
         status: input.status,
         content: input.content,
       })
@@ -239,7 +248,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
     const cacheResult = await lookupSemanticCache({
       promptHash,
       orgId: ctx.orgId,
-      surface,
+      surface: effectiveSurface,
       permissionScopeKey,
       supabase: ctx.serviceSupabase,
     });
@@ -276,11 +285,11 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
           messageId: cachedAssistantMsg.id,
           userId: ctx.userId,
           orgId: ctx.orgId,
-          intent: "general",
+          intent: resolvedIntent,
           latencyMs: Date.now() - startTime,
           cacheStatus: "hit_exact",
           cacheEntryId: cacheResult.hit.id,
-          contextSurface: surface,
+          contextSurface: effectiveSurface,
         });
 
         return new Response(cachedStream, { headers: { ...SSE_HEADERS, ...rateLimit.headers } });
@@ -301,7 +310,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   let ragError: string | undefined;
 
   const hasEmbeddingKey = !!process.env.EMBEDDING_API_KEY;
-  if (hasEmbeddingKey) {
+  if (hasEmbeddingKey && !skipRetrieval) {
     try {
       const retrieved = await retrieveRelevantChunksFn({
         query: message,
@@ -372,7 +381,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
       // Mark assistant message as streaming
       await ctx.supabase
         .from("ai_messages")
-        .update({ intent: "general", status: "streaming" })
+        .update({ intent: resolvedIntent, context_surface: effectiveSurface, status: "streaming" })
         .eq("id", assistantMessageId);
 
       // Build context and fetch history in parallel
@@ -384,7 +393,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
             role: ctx.role,
             serviceSupabase: ctx.serviceSupabase,
             contextMode: usesSharedStaticContext ? "shared_static" : "full",
-            surface,
+            surface: effectiveSurface,
             ragChunks: ragChunks.length > 0 ? ragChunks : undefined,
           }),
           ctx.supabase
@@ -483,7 +492,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
           promptHash,
           responseContent: fullContent,
           orgId: ctx.orgId,
-          surface,
+          surface: effectiveSurface,
           permissionScopeKey,
           sourceMessageId: assistantMessageId,
           supabase: ctx.serviceSupabase,
@@ -495,7 +504,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         messageId: assistantMessageId,
         userId: ctx.userId,
         orgId: ctx.orgId,
-        intent: "general",
+        intent: resolvedIntent,
         latencyMs: Date.now() - startTime,
         model: process.env.ZAI_API_KEY ? getZaiModelFn() : undefined,
         inputTokens: usageRef.current?.inputTokens,
@@ -504,7 +513,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         cacheStatus,
         cacheEntryId,
         cacheBypassReason,
-        contextSurface: (contextMetadata?.surface ?? surface) as import("@/lib/ai/semantic-cache-utils").CacheSurface,
+        contextSurface: (contextMetadata?.surface ?? effectiveSurface) as import("@/lib/ai/semantic-cache-utils").CacheSurface,
         contextTokenEstimate: contextMetadata?.estimatedTokens,
         ragChunkCount: ragChunkCount > 0 ? ragChunkCount : undefined,
         ragTopSimilarity,

@@ -88,6 +88,8 @@ export type Database = {
           cache_bypass_reason: string | null
           cache_entry_id: string | null
           cache_status: string | null
+          context_surface: string | null
+          context_token_estimate: number | null
           created_at: string
           error: string | null
           expires_at: string
@@ -110,6 +112,8 @@ export type Database = {
           cache_bypass_reason?: string | null
           cache_entry_id?: string | null
           cache_status?: string | null
+          context_surface?: string | null
+          context_token_estimate?: number | null
           created_at?: string
           error?: string | null
           expires_at?: string
@@ -132,6 +136,8 @@ export type Database = {
           cache_bypass_reason?: string | null
           cache_entry_id?: string | null
           cache_status?: string | null
+          context_surface?: string | null
+          context_token_estimate?: number | null
           created_at?: string
           error?: string | null
           expires_at?: string
@@ -302,6 +308,7 @@ export type Database = {
       ai_messages: {
         Row: {
           content: string | null
+          context_surface: string | null
           created_at: string
           id: string
           idempotency_key: string | null
@@ -315,6 +322,7 @@ export type Database = {
         }
         Insert: {
           content?: string | null
+          context_surface?: string | null
           created_at?: string
           id?: string
           idempotency_key?: string | null
@@ -328,6 +336,7 @@ export type Database = {
         }
         Update: {
           content?: string | null
+          context_surface?: string | null
           created_at?: string
           id?: string
           idempotency_key?: string | null
