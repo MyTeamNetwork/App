@@ -528,8 +528,8 @@
       <div class="progress-bar-fill" id="progressFill"></div>
     </div>
     <div class="progress-stats">
-      <span class="progress-pct" id="progressPct">48%</span>
-      <span id="progressLabel">5 of 10 components</span>
+      <span class="progress-pct" id="progressPct">74%</span>
+      <span id="progressLabel">9 of 11 components</span>
     </div>
   </div>
 
@@ -650,7 +650,8 @@ const COMPONENTS = [
       'shared_static mode overrides surface for cache-hit contexts',
       'Cross-surface thread reset on navigation (prevents thread/surface mismatch)',
       'Thread list filtered by current surface',
-      'context_surface persisted per message (effective surface at send time)'
+      'context_surface persisted per message (effective surface at send time)',
+      'AVAILABLE TOOLS section in system prompt instructs LLM on tool usage and trust boundary'
     ],
     missing: [
       'No richer data sources per surface (e.g., individual member records for members surface)'
@@ -690,11 +691,12 @@ const COMPONENTS = [
     id: 'intent',
     label: 'Intent + Plan Builder',
     shortLabel: 'Intent',
-    pct: 10,
-    status: 'stub',
+    pct: 75,
+    status: 'built',
     layer: 'routing',
     x: 310, y: 170,
     files: [
+      'src/lib/ai/intent-router.ts',
       'supabase/migrations/20260319000000_ai_assistant_tables.sql',
       'src/lib/schemas/ai-assistant.ts'
     ],
@@ -702,13 +704,18 @@ const COMPONENTS = [
       'intent column on ai_messages (DB schema ready)',
       'surface enum: general, members, analytics, events',
       'Thread surface stored and accessible',
-      'intent field in audit log (always "general" — placeholder)'
+      'Keyword-based intent classifier (resolveSurfaceRouting)',
+      'Scores messages across members, analytics, events keyword lists',
+      'Detects ambiguous queries when surfaces score equally',
+      'skipRetrieval: true for casual messages (greetings, thanks) via regex',
+      'Returns rerouted flag when inferred surface differs from requested',
+      'Maps surface → intent: members_query, analytics_query, events_query, general_query, ambiguous_query',
+      'Routing based on classified intent — effectiveSurface drives context selection',
+      'Tools passed to LLM based on surface (surface-aware tool gating)'
     ],
     missing: [
-      'No intent classification logic — hardcoded to "general" in handler',
-      'No routing based on classified intent',
       'No plan decomposition for multi-step requests',
-      'No function/tool selection based on intent'
+      'No ML-based classification (current is keyword heuristic)'
     ]
   },
   {
@@ -753,7 +760,7 @@ const COMPONENTS = [
       'Abandoned stream detection (5-min timeout, prevents stuck threads)'
     ],
     missing: [
-      'No per-action permission checks (future tool calls)'
+      'No per-action permission checks for write tools (read-only tools execute freely)'
     ]
   },
   {
@@ -809,25 +816,32 @@ const COMPONENTS = [
     id: 'actions',
     label: 'Action Executor',
     shortLabel: 'Actions',
-    pct: 10,
-    status: 'stub',
+    pct: 80,
+    status: 'built',
     layer: 'execution',
     x: 690, y: 170,
     files: [
-      'src/lib/ai/response-composer.ts'
+      'src/lib/ai/tools/definitions.ts',
+      'src/lib/ai/tools/executor.ts',
+      'src/lib/ai/response-composer.ts',
+      'src/app/api/ai/[orgId]/chat/handler.ts'
     ],
     built: [
-      'toolResults parameter exists in ComposeOptions',
-      'Tool results injected as framed user message',
-      'toolCalls field in AuditEntry (placeholder)'
+      'AI_TOOLS defines 3 OpenAI function-calling tools: list_members, list_events, get_org_stats',
+      'Full Zod argument validation per tool (limit, offset, status, upcoming)',
+      'executeToolCall with safeToolQuery/safeToolCount error wrappers',
+      'Two-pass tool loop: Pass 1 streams with tools, Pass 2 feeds tool results back (no tools, prevents chaining)',
+      'tool_status SSE events emitted: calling, done, error',
+      'Malformed args fail closed — no {} fallback, error pushed to tool results',
+      'Cache bypass when toolCallMade = true (tool responses are dynamic)',
+      'Usage accumulated across both passes via usageRef',
+      'Tool calls recorded in audit log (toolCalls array)'
     ],
     missing: [
-      'No tool/function definitions registered',
-      'No OpenAI-compatible function calling',
-      'No action confirmation workflow',
-      'No write-action safety checks',
-      'No tool dispatch logic (handler never passes toolResults to composer)',
-      'Would enable: create events, send announcements, manage members'
+      'No write actions (create events, send announcements, manage members)',
+      'No action confirmation workflow for write actions',
+      'No tool chaining (intentionally limited to single pass)',
+      'No streaming tool execution (tools run synchronously between passes)'
     ]
   },
   {
@@ -866,9 +880,12 @@ const COMPONENTS = [
       'AsyncGenerator-based SSE streaming',
       'OpenAI-compatible client (z.ai / glm-5 via ZAI_MODEL env)',
       'Token usage accumulation (input + output)',
-      'SSE encoding with chunk/done/error events',
+      'SSE encoding with chunk/done/error/tool_status events',
       'Configurable temperature (0.7) and max_tokens (2000)',
-      'streaming → complete status transitions on ai_messages'
+      'streaming → complete status transitions on ai_messages',
+      'Tool call detection: streams OpenAI deltas, assembles multi-chunk argsJson by index',
+      'Yields tool_call_requested events with assembled tool call data',
+      'Pass 2 mode: reconstructs assistant + tool role messages per OpenAI function-calling protocol'
     ],
     missing: [
       'No structured output parsing',
@@ -895,11 +912,13 @@ const COMPONENTS = [
       'Secret redaction (sk-*, key_*, AIza*, sbp_*, eyJ*, Bearer *)',
       'Token usage tracking (input + output)',
       'Latency measurement',
-      'Model and intent recorded (intent always "general" until classifier built)',
+      'Model and intent recorded (keyword classifier live, maps to surface-specific intents)',
       'Cache telemetry (status, entry ID, bypass reason)',
       'Context metadata (surface, token estimate, contextMode) on all paths',
       'SSE delivery to client with replayed flag',
-      'RAG telemetry (rag_chunk_count, rag_top_similarity, rag_error)'
+      'RAG telemetry (rag_chunk_count, rag_top_similarity, rag_error)',
+      'toolCalls array in audit entries (names + args of all executed tools)',
+      'cacheBypassReason: tool_call_made recorded when tools used'
     ],
     missing: [
       'No real-time monitoring dashboard',
@@ -918,12 +937,10 @@ const CONNECTIONS = [
   { from: 'context', to: 'composer', type: 'data-flow', label: 'prompt' },
   { from: 'rag', to: 'composer', type: 'data-flow', label: 'chunks' },
   { from: 'composer', to: 'audit', type: 'event', label: 'log + deliver' },
+  { from: 'policy', to: 'intent', type: 'data-flow', label: 'classify' },
+  { from: 'composer', to: 'actions', type: 'tool-call', label: 'tool call' },
+  { from: 'actions', to: 'composer', type: 'data-flow', label: 'tool results' },
   // Future connections (dashed — not yet wired)
-  { from: 'policy', to: 'intent', type: 'data-flow', label: 'classify', dashed: true },
-  { from: 'intent', to: 'validator', type: 'data-flow', label: 'validate', dashed: true },
-  { from: 'validator', to: 'actions', type: 'tool-call', label: 'execute', dashed: true },
-  { from: 'validator', to: 'analyst', type: 'tool-call', label: 'query', dashed: true },
-  { from: 'actions', to: 'composer', type: 'data-flow', label: 'results', dashed: true },
   { from: 'analyst', to: 'composer', type: 'data-flow', label: 'results', dashed: true }
 ];
 
@@ -983,7 +1000,7 @@ function getVisibleComponents() {
     visible = visible.filter(c => c.status === 'missing' || c.status === 'stub');
   } else if (state.preset === 'critical') {
     visible = visible.filter(c =>
-      ['intake', 'context', 'policy', 'composer', 'audit', 'intent', 'validator'].includes(c.id)
+      ['intake', 'context', 'policy', 'composer', 'audit', 'intent', 'actions'].includes(c.id)
     );
   }
 
