@@ -483,7 +483,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         cacheStatus,
         cacheEntryId,
         cacheBypassReason,
-        contextSurface: contextMetadata?.surface,
+        contextSurface: contextMetadata?.surface ?? surface,
         contextTokenEstimate: contextMetadata?.estimatedTokens,
       });
     }
