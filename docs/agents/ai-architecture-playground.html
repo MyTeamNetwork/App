@@ -625,7 +625,7 @@ const COMPONENTS = [
     id: 'context',
     label: 'Context Enrichment',
     shortLabel: 'Context',
-    pct: 85,
+    pct: 95,
     status: 'built',
     layer: 'composition',
     x: 60, y: 170,
@@ -633,33 +633,47 @@ const COMPONENTS = [
       'src/lib/ai/context-builder.ts'
     ],
     built: [
-      '8 parallel queries (org, user, members, alumni, parents, events, announcements, donations)',
+      'Surface-based context selection (general/members/analytics/events)',
+      'Queries gated by surface — events skips members, alumni, parents, announcements, donations',
+      '4000-token budget with priority-based section dropping',
+      'SectionName union type for compile-time section name safety',
+      'ContextMetadata returned (sectionsIncluded, sectionsExcluded, estimatedTokens)',
       'Untrusted org context injected as user role (prompt injection safe)',
       'System prompt with NARROW_PANEL_POLICY',
-      'Conditional donation stats (only if count > 0)'
+      'shared_static mode overrides surface for cache-hit contexts'
     ],
     missing: [
-      'No dynamic context selection based on intent/surface',
-      'No semantic relevance filtering',
-      'No context budget or token-aware truncation'
+      'UI hardcodes surface to "general" — needs route-derived surface in AIPanel.tsx',
+      'No richer data sources per surface (e.g., member list for members surface)'
     ]
   },
   {
     id: 'cache',
     label: 'Semantic Cache',
     shortLabel: 'Cache',
-    pct: 0,
-    status: 'missing',
+    pct: 90,
+    status: 'built',
     layer: 'routing',
     x: 310, y: 40,
-    files: [],
-    built: [],
+    files: [
+      'src/lib/ai/semantic-cache.ts',
+      'src/lib/ai/semantic-cache-utils.ts',
+      'supabase/migrations/20260321100001_ai_semantic_cache.sql'
+    ],
+    built: [
+      'Exact-hash SHA-256 prompt deduplication',
+      'Surface-specific TTLs: general 24h, members 4h, analytics 2h, events 4h',
+      'Permission scope key (SHA-256 of orgId:role)',
+      'Cache eligibility filtering (temporal, personalization, live context, write markers)',
+      'Prompt normalization before hashing',
+      'Cache write-back on successful responses',
+      'Purge function for expired entries',
+      'pgvector extension pre-loaded for future similarity search',
+      'DISABLE_AI_CACHE env kill switch'
+    ],
     missing: [
-      'No embedding-based similarity cache',
-      'No cache layer exists at all',
-      'Idempotency dedup only (exact key match, not semantic)',
-      'Would need pgvector or Redis + embeddings',
-      'Estimated: reduce LLM calls by 30-40% for repeated questions'
+      'No embedding-based similarity matching (v2 — pgvector ready)',
+      'Only caches general surface (non-general always ineligible)'
     ]
   },
   {
@@ -716,14 +730,17 @@ const COMPONENTS = [
     id: 'rag',
     label: 'FAQ / RAG',
     shortLabel: 'RAG',
-    pct: 0,
-    status: 'missing',
+    pct: 5,
+    status: 'stub',
     layer: 'execution',
     x: 560, y: 40,
-    files: [],
-    built: [],
+    files: [
+      'supabase/migrations/20260321100001_ai_semantic_cache.sql'
+    ],
+    built: [
+      'pgvector extension enabled (CREATE EXTENSION IF NOT EXISTS vector)'
+    ],
     missing: [
-      'No pgvector extension enabled',
       'No embedding generation pipeline',
       'No vector similarity search',
       'No document chunking or indexing',
@@ -803,13 +820,14 @@ const COMPONENTS = [
     id: 'audit',
     label: 'Audit + Deliver',
     shortLabel: 'Audit',
-    pct: 90,
+    pct: 95,
     status: 'built',
     layer: 'delivery',
     x: 810, y: 260,
     files: [
       'src/lib/ai/audit.ts',
-      'supabase/migrations/20260319000000_ai_assistant_tables.sql'
+      'supabase/migrations/20260319000000_ai_assistant_tables.sql',
+      'supabase/migrations/20260710100000_ai_audit_log_context_columns.sql'
     ],
     built: [
       'ai_audit_log table with 90-day TTL',
@@ -818,6 +836,8 @@ const COMPONENTS = [
       'Token usage tracking (input + output)',
       'Latency measurement',
       'Model and intent recorded',
+      'Cache telemetry (status, entry ID, bypass reason)',
+      'Context metadata (surface, token estimate) on all paths',
       'SSE delivery to client with replayed flag'
     ],
     missing: [
