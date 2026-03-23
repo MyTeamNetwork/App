@@ -5,7 +5,7 @@ import OpenAI from "openai";
 // ---------------------------------------------------------------------------
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai";
-const DEFAULT_MODEL = "text-embedding-004";
+const DEFAULT_MODEL = "gemini-embedding-001";
 const EXPECTED_DIMENSIONS = 768;
 
 function getEmbeddingConfig() {

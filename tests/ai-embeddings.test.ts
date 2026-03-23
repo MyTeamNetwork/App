@@ -68,12 +68,12 @@ describe("embeddings", () => {
   });
 
   describe("getEmbeddingModel", () => {
-    it("defaults to text-embedding-004", async () => {
+    it("defaults to gemini-embedding-001", async () => {
       delete process.env.EMBEDDING_MODEL;
 
       const { getEmbeddingModel } = await import("../src/lib/ai/embeddings");
 
-      assert.equal(getEmbeddingModel(), "text-embedding-004");
+      assert.equal(getEmbeddingModel(), "gemini-embedding-001");
     });
 
     it("respects EMBEDDING_MODEL env var", async () => {
