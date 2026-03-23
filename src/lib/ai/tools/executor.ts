@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ToolName } from "./definitions.ts";
-import { TOOL_NAMES } from "./definitions.ts";
+import type { ToolName } from "./definitions";
+import { TOOL_NAMES } from "./definitions";
 
 export interface ToolExecutionContext {
   orgId: string;
