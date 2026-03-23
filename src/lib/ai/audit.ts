@@ -8,6 +8,7 @@ interface AuditEntry {
   userId: string;
   orgId: string;
   intent?: string;
+  intentType?: string;
   toolCalls?: Array<{ name: string; args: Record<string, unknown> }>;
   latencyMs?: number;
   model?: string;
@@ -55,6 +56,7 @@ export async function logAiRequest(
       user_id: entry.userId,
       org_id: entry.orgId,
       intent: entry.intent ?? null,
+      intent_type: entry.intentType ?? null,
       tool_calls: toolCallsJson,
       latency_ms: entry.latencyMs ?? null,
       model: entry.model ?? null,

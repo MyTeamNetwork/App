@@ -98,6 +98,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   const routing = resolveSurfaceRouting(message, surface);
   const effectiveSurface = routing.effectiveSurface;
   const resolvedIntent = routing.intent;
+  const resolvedIntentType = routing.intentType;
   const skipRetrieval = routing.skipRetrieval;
 
   // Cache state — declared here so both the cache check block and the finally block can access them
@@ -216,6 +217,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
       p_thread_id: threadId ?? null,
       p_intent: resolvedIntent,
       p_context_surface: effectiveSurface,
+      p_intent_type: resolvedIntentType,
     }
   );
 
@@ -241,6 +243,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         user_id: ctx.userId,
         role: "assistant",
         intent: resolvedIntent,
+        intent_type: resolvedIntentType,
         context_surface: effectiveSurface,
         status: input.status,
         content: input.content,
@@ -295,6 +298,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
           userId: ctx.userId,
           orgId: ctx.orgId,
           intent: resolvedIntent,
+          intentType: resolvedIntentType,
           latencyMs: Date.now() - startTime,
           cacheStatus: "hit_exact",
           cacheEntryId: cacheResult.hit.id,
@@ -398,7 +402,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
       // Mark assistant message as streaming
       await ctx.supabase
         .from("ai_messages")
-        .update({ intent: resolvedIntent, context_surface: effectiveSurface, status: "streaming" })
+        .update({ intent: resolvedIntent, intent_type: resolvedIntentType, context_surface: effectiveSurface, status: "streaming" })
         .eq("id", assistantMessageId);
 
       // Build context and fetch history in parallel
@@ -600,6 +604,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         userId: ctx.userId,
         orgId: ctx.orgId,
         intent: resolvedIntent,
+        intentType: resolvedIntentType,
         toolCalls: auditToolCalls.length > 0 ? auditToolCalls : undefined,
         latencyMs: Date.now() - startTime,
         model: process.env.ZAI_API_KEY ? getZaiModelFn() : undefined,

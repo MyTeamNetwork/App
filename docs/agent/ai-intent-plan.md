@@ -128,5 +128,6 @@ Count word-boundary regex matches (`(?<!\w)keyword(?!\w)`) per surface:
 
 ## Related Docs
 
+- **[intent-type-taxonomy.md](intent-type-taxonomy.md)** — Second classification axis: intent *type* (`knowledge_query`, `action_request`, `navigation`, `casual`) — what the user wants, orthogonal to the surface routing documented here
 - **[chat-pipeline-codemap.md](chat-pipeline-codemap.md)** — Full pipeline orchestration, token budget, section priorities
 - **[semantic-cache-codemap.md](semantic-cache-codemap.md)** — Cache eligibility rules, surface TTLs, per-surface gating

@@ -7,8 +7,15 @@ export type AiIntent =
   | "events_query"
   | "ambiguous_query";
 
+export type AiIntentType =
+  | "knowledge_query"
+  | "action_request"
+  | "navigation"
+  | "casual";
+
 export interface SurfaceRoutingDecision {
   intent: AiIntent;
+  intentType: AiIntentType;
   effectiveSurface: AiSurface;
   inferredSurface: AiSurface | null;
   confidence: "high" | "low";
@@ -37,6 +44,27 @@ const CASUAL_MESSAGE_PATTERNS = [
   /^(?:bye|goodbye|see you|see ya|talk soon)$/i,
 ];
 
+// Imperative verbs that signal the user wants something done
+const ACTION_KEYWORDS: readonly string[] = [
+  "create", "add", "delete", "remove", "update", "send", "invite",
+  "schedule", "change", "set", "assign", "cancel", "approve", "reject",
+  "make", "edit", "move", "rename", "archive", "unarchive", "restore",
+  "enable", "disable", "reset", "upload", "post", "publish",
+];
+
+// Phrases that signal the user wants to navigate somewhere
+const NAVIGATION_PATTERNS = [
+  /(?<!\w)go\s+to(?!\w)/i,
+  /(?<!\w)show\s+me(?!\w)/i,
+  /(?<!\w)take\s+me\s+to(?!\w)/i,
+  /(?<!\w)navigate\s+to(?!\w)/i,
+  /(?<!\w)open(?!\w)/i,
+  /(?<!\w)where\s+is(?!\w)/i,
+  /(?<!\w)where\s+(?:can|do)\s+i\s+find(?!\w)/i,
+  /(?<!\w)find\s+the\s+page(?!\w)/i,
+  /(?<!\w)link\s+to(?!\w)/i,
+];
+
 function normalizeMessage(message: string): string {
   return message
     .normalize("NFC")
@@ -59,6 +87,31 @@ function isCasualMessage(message: string): boolean {
   return CASUAL_MESSAGE_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+function hasActionKeywords(normalized: string): boolean {
+  return ACTION_KEYWORDS.some((keyword) => {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(?<![\\w])${escaped}(?![\\w])`, "i");
+    return pattern.test(normalized);
+  });
+}
+
+function hasNavigationPattern(normalized: string): boolean {
+  return NAVIGATION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function classifyIntentType(message: string, normalized: string): AiIntentType {
+  if (isCasualMessage(message)) {
+    return "casual";
+  }
+  if (hasActionKeywords(normalized)) {
+    return "action_request";
+  }
+  if (hasNavigationPattern(normalized)) {
+    return "navigation";
+  }
+  return "knowledge_query";
+}
+
 function countMatches(message: string, keywords: readonly string[]): number {
   return keywords.reduce((count, keyword) => {
     const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -72,7 +125,8 @@ export function resolveSurfaceRouting(
   requestedSurface: AiSurface
 ): SurfaceRoutingDecision {
   const normalized = normalizeMessage(message);
-  const skipRetrieval = isCasualMessage(message);
+  const intentType = classifyIntentType(message, normalized);
+  const skipRetrieval = intentType === "casual";
   const scores = {
     members: countMatches(normalized, SURFACE_KEYWORDS.members),
     analytics: countMatches(normalized, SURFACE_KEYWORDS.analytics),
@@ -86,6 +140,7 @@ export function resolveSurfaceRouting(
   if (ranked.length === 0) {
     return {
       intent: SURFACE_TO_INTENT.general,
+      intentType,
       effectiveSurface: requestedSurface,
       inferredSurface: null,
       confidence: "low",
@@ -100,6 +155,7 @@ export function resolveSurfaceRouting(
   if (isAmbiguous) {
     return {
       intent: "ambiguous_query",
+      intentType,
       effectiveSurface: requestedSurface,
       inferredSurface: null,
       confidence: "low",
@@ -110,6 +166,7 @@ export function resolveSurfaceRouting(
 
   return {
     intent: SURFACE_TO_INTENT[winner],
+    intentType,
     effectiveSurface: winner,
     inferredSurface: winner,
     confidence: "high",

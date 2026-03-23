@@ -203,6 +203,7 @@ beforeEach(() => {
             role: "user",
             content: params.p_message,
             intent: params.p_intent ?? null,
+            intent_type: params.p_intent_type ?? null,
             context_surface: params.p_context_surface ?? params.p_surface,
             status: "complete",
             idempotency_key: params.p_idempotency_key,
@@ -295,6 +296,7 @@ test("POST /api/ai/[orgId]/chat reroutes members questions per message without m
   assert.equal(initChatCalls[0].p_surface, "general");
   assert.equal(initChatCalls[0].p_context_surface, "members");
   assert.equal(initChatCalls[0].p_intent, "members_query");
+  assert.equal(initChatCalls[0].p_intent_type, "knowledge_query");
 
   assert.equal(buildPromptContextCalls.length, 1);
   assert.equal(buildPromptContextCalls[0].surface, "members");
@@ -306,13 +308,16 @@ test("POST /api/ai/[orgId]/chat reroutes members questions per message without m
   const assistantMessage = supabaseStub.state.messages.find((message) => message.role === "assistant");
 
   assert.equal(userMessage?.intent, "members_query");
+  assert.equal(userMessage?.intent_type, "knowledge_query");
   assert.equal(userMessage?.context_surface, "members");
   assert.equal(assistantMessage?.intent, "members_query");
+  assert.equal(assistantMessage?.intent_type, "knowledge_query");
   assert.equal(assistantMessage?.context_surface, "members");
 
   assert.equal(auditEntries.length, 1);
   assert.equal(auditEntries[0].orgId, ORG_ID);
   assert.equal(auditEntries[0].intent, "members_query");
+  assert.equal(auditEntries[0].intentType, "knowledge_query");
   assert.equal(auditEntries[0].contextSurface, "members");
   assert.equal(auditEntries[0].inputTokens, 12);
   assert.equal(auditEntries[0].outputTokens, 7);
@@ -339,11 +344,14 @@ test("POST /api/ai/[orgId]/chat falls back to the current surface when intent is
   assert.equal(initChatCalls[0].p_surface, "general");
   assert.equal(initChatCalls[0].p_context_surface, "general");
   assert.equal(initChatCalls[0].p_intent, "ambiguous_query");
+  assert.equal(initChatCalls[0].p_intent_type, "knowledge_query");
   assert.equal(buildPromptContextCalls[0].surface, "general");
 
   const userMessage = supabaseStub.state.messages.find((message) => message.role === "user");
   assert.equal(userMessage?.context_surface, "general");
+  assert.equal(userMessage?.intent_type, "knowledge_query");
   assert.equal(auditEntries[0].intent, "ambiguous_query");
+  assert.equal(auditEntries[0].intentType, "knowledge_query");
   assert.equal(auditEntries[0].contextSurface, "general");
 });
 
@@ -371,6 +379,7 @@ test("POST /api/ai/[orgId]/chat skips RAG retrieval for casual messages regardle
   assert.equal(buildPromptContextCalls.length, 1);
   assert.equal(buildPromptContextCalls[0].surface, "members");
   assert.equal(buildPromptContextCalls[0].ragChunks, undefined);
+  assert.equal(auditEntries[0].intentType, "casual");
   assert.equal(auditEntries[0].ragChunkCount, undefined);
   assert.equal(auditEntries[0].ragTopSimilarity, undefined);
   assert.equal(auditEntries[0].ragError, undefined);

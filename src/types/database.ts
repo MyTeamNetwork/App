@@ -96,6 +96,7 @@ export type Database = {
           id: string
           input_tokens: number | null
           intent: string | null
+          intent_type: string | null
           latency_ms: number | null
           message_id: string | null
           model: string | null
@@ -120,6 +121,7 @@ export type Database = {
           id?: string
           input_tokens?: number | null
           intent?: string | null
+          intent_type?: string | null
           latency_ms?: number | null
           message_id?: string | null
           model?: string | null
@@ -144,6 +146,7 @@ export type Database = {
           id?: string
           input_tokens?: number | null
           intent?: string | null
+          intent_type?: string | null
           latency_ms?: number | null
           message_id?: string | null
           model?: string | null
@@ -313,6 +316,7 @@ export type Database = {
           id: string
           idempotency_key: string | null
           intent: string | null
+          intent_type: string | null
           org_id: string
           role: string
           status: string
@@ -327,6 +331,7 @@ export type Database = {
           id?: string
           idempotency_key?: string | null
           intent?: string | null
+          intent_type?: string | null
           org_id: string
           role: string
           status?: string
@@ -341,6 +346,7 @@ export type Database = {
           id?: string
           idempotency_key?: string | null
           intent?: string | null
+          intent_type?: string | null
           org_id?: string
           role?: string
           status?: string
