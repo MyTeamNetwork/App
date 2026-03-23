@@ -1,8 +1,9 @@
-import type { z } from "zod";
-import type { sendMessageSchema } from "@/lib/schemas/ai-assistant";
+import type { AiSurface } from "@/lib/schemas/ai-assistant";
 
-type AiSurface = z.infer<typeof sendMessageSchema>["surface"];
-
+// Each prefix includes the leading slash to match the regex capture group.
+// Unmapped routes (jobs, discussions, forms, chat, announcements, media,
+// competition, records, workouts, feed) intentionally fall through to
+// "general" — no dedicated surface exists for them yet.
 const SURFACE_PREFIXES: ReadonlyArray<readonly [string, AiSurface]> = [
   ["/members", "members"],
   ["/alumni", "members"],
@@ -21,6 +22,8 @@ const SURFACE_PREFIXES: ReadonlyArray<readonly [string, AiSurface]> = [
  * (the feature segment after /{orgSlug}/) and maps it to a surface.
  */
 export function routeToSurface(pathname: string): AiSurface {
+  // Capture group 1: the feature segment including its leading slash
+  // e.g. "/my-org/members/abc" → "/members"
   const match = pathname.match(/^\/[^/]+(\/[^/?#]*)/);
   const segment = match?.[1] ?? "";
   for (const [prefix, surface] of SURFACE_PREFIXES) {

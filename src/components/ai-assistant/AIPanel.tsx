@@ -101,8 +101,9 @@ export function AIPanel({ orgId }: AIPanelProps) {
       setActiveThreadId(null);
       setMessages([]);
       setPendingAssistantContent(null);
+      void loadThreads();
     }
-  }, [surface]);
+  }, [surface, loadThreads]);
 
   // Skip the activeThreadId effect's redundant load after handleSend already
   // refreshed messages silently.
