@@ -7,9 +7,11 @@ import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limi
 import { validateJson, validationErrorResponse, ValidationError } from "@/lib/security/validation";
 import { createZaiClient, getZaiModel } from "@/lib/ai/client";
 import { buildPromptContext } from "@/lib/ai/context-builder";
-import { composeResponse, type UsageAccumulator } from "@/lib/ai/response-composer";
+import { composeResponse, type UsageAccumulator, type ToolCallRequestedEvent } from "@/lib/ai/response-composer";
 import { logAiRequest } from "@/lib/ai/audit";
 import { createSSEStream, SSE_HEADERS, type CacheStatus } from "@/lib/ai/sse";
+import { AI_TOOLS } from "@/lib/ai/tools/definitions";
+import { executeToolCall } from "@/lib/ai/tools/executor";
 import { resolveOwnThread } from "@/lib/ai/thread-resolver";
 import {
   normalizePrompt,
@@ -32,6 +34,7 @@ export interface ChatRouteDeps {
   logAiRequest?: typeof logAiRequest;
   resolveOwnThread?: typeof resolveOwnThread;
   retrieveRelevantChunks?: typeof retrieveRelevantChunks;
+  executeToolCall?: typeof executeToolCall;
 }
 
 export function createChatPostHandler(deps: ChatRouteDeps = {}) {
@@ -44,6 +47,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   const logAiRequestFn = deps.logAiRequest ?? logAiRequest;
   const resolveOwnThreadFn = deps.resolveOwnThread ?? resolveOwnThread;
   const retrieveRelevantChunksFn = deps.retrieveRelevantChunks ?? retrieveRelevantChunks;
+  const executeToolCallFn = deps.executeToolCall ?? executeToolCall;
 
   return async function POST(
     request: NextRequest,
@@ -355,6 +359,8 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
     let streamCompletedSuccessfully = false;
     let auditErrorMessage: string | undefined;
     let contextMetadata: { surface: string; estimatedTokens: number } | undefined;
+    let toolCallMade = false;
+    const auditToolCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
     try {
       // Guard: ZAI_API_KEY required
@@ -425,19 +431,87 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         ? [{ role: "user" as const, content: orgContextMessage }, ...historyMessages]
         : historyMessages;
 
+      // --- Tool loop (two-pass) ---
+      let toolResult: Array<{ name: string; data: unknown }> | undefined;
+      let pass1Buffer: string[] = []; // Amendment #4: buffer pass 1 text
+
+      // Pass 1: LLM call with tools — may produce text OR a tool call
       for await (const event of composeResponseFn({
         client,
         systemPrompt,
         messages: contextMessages,
+        tools: [...AI_TOOLS],
         onUsage: (u) => { usageRef.current = u; },
       })) {
         if (event.type === "chunk") {
-          fullContent += event.content;
-          enqueue(event);
+          pass1Buffer.push(event.content);
+        } else if ((event as ToolCallRequestedEvent).type === "tool_call_requested") {
+          const toolEvent = event as ToolCallRequestedEvent;
+          // Amendment #4: Discard buffered pass 1 text
+          pass1Buffer = [];
+
+          enqueue({ type: "tool_status", toolName: toolEvent.name, status: "calling" });
+
+          // Amendment #5: Fail on malformed args — no {} fallback
+          let parsedArgs: Record<string, unknown>;
+          try {
+            parsedArgs = JSON.parse(toolEvent.argsJson);
+          } catch {
+            enqueue({ type: "tool_status", toolName: toolEvent.name, status: "error" });
+            toolResult = [{ name: toolEvent.name, data: { error: "Malformed tool arguments" } }];
+            toolCallMade = true;
+            auditToolCalls.push({ name: toolEvent.name, args: {} });
+            break;
+          }
+
+          const result = await executeToolCallFn(
+            { orgId: ctx.orgId, serviceSupabase: ctx.serviceSupabase },
+            { name: toolEvent.name, args: parsedArgs }
+          );
+
+          toolCallMade = true;
+          auditToolCalls.push({ name: toolEvent.name, args: parsedArgs });
+
+          if (result.ok) {
+            enqueue({ type: "tool_status", toolName: toolEvent.name, status: "done" });
+            toolResult = [{ name: toolEvent.name, data: result.data }];
+          } else {
+            enqueue({ type: "tool_status", toolName: toolEvent.name, status: "error" });
+            toolResult = [{ name: toolEvent.name, data: { error: result.error } }];
+          }
         } else if (event.type === "error") {
           auditErrorMessage = event.message;
           enqueue(event);
           return;
+        }
+      }
+
+      // If no tool call was made, flush buffered pass 1 text
+      if (!toolCallMade) {
+        for (const text of pass1Buffer) {
+          fullContent += text;
+          enqueue({ type: "chunk", content: text });
+        }
+      }
+
+      // Pass 2: only if a tool was called — feed result back, no tools (prevents chaining)
+      if (toolCallMade && toolResult) {
+        for await (const event of composeResponseFn({
+          client,
+          systemPrompt,
+          messages: contextMessages,
+          toolResults: toolResult,
+          onUsage: (u) => { usageRef.current = u; },
+        })) {
+          if (event.type === "chunk") {
+            fullContent += event.content;
+            enqueue(event);
+          } else if (event.type === "error") {
+            auditErrorMessage = event.message;
+            enqueue(event);
+            return;
+          }
+          // Silently ignore tool_call_requested on pass 2
         }
       }
 
@@ -476,11 +550,17 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         auditErrorMessage ??= "assistant_finalize_failed";
       }
 
+      // Tool calls bypass cache — response depends on live data
+      if (toolCallMade && !cacheBypassReason) {
+        cacheBypassReason = "tool_call_made";
+      }
+
       const canWriteCache =
         streamCompletedSuccessfully &&
         !finalizeError &&
         eligibility.eligible &&
-        cacheStatus === "miss";
+        cacheStatus === "miss" &&
+        !toolCallMade;
 
       if (canWriteCache) {
         const normalized = normalizePrompt(message);
@@ -505,6 +585,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         userId: ctx.userId,
         orgId: ctx.orgId,
         intent: resolvedIntent,
+        toolCalls: auditToolCalls.length > 0 ? auditToolCalls : undefined,
         latencyMs: Date.now() - startTime,
         model: process.env.ZAI_API_KEY ? getZaiModelFn() : undefined,
         inputTokens: usageRef.current?.inputTokens,
