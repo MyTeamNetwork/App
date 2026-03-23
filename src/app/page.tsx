@@ -6,8 +6,18 @@ import { createClient } from "@/lib/supabase/server";
 import { ButtonLink } from "@/components/ui";
 import { FEATURES, FAQ_ITEMS } from "@/lib/pricing";
 import { PricingSection } from "@/components/marketing/PricingSection";
-import { FeatureIcon, FeatureCardIcon, TermsIcon } from "@/components/marketing/icons";
+import { FeatureIcon, TermsIcon } from "@/components/marketing/icons";
 import "./landing-styles.css";
+
+const FAQAccordion = dynamic(
+  () => import("@/components/marketing/FAQAccordion").then((mod) => mod.FAQAccordion),
+  { ssr: false }
+);
+
+const HeroOrgCard = dynamic(
+  () => import("@/components/marketing/HeroOrgCard").then((mod) => mod.HeroOrgCard),
+  { ssr: false }
+);
 
 // Lazy-load animation components - only needed on landing page
 const LandingAnimations = dynamic(
@@ -105,56 +115,7 @@ export default async function LandingPage() {
             </div>
 
             {/* Right - Example Organization (Scoreboard Preview) */}
-            <div className="hero-animate relative">
-              {/* Mock organization card with scoreboard styling */}
-              <div className="bg-landing-navy-light/80 rounded-2xl border border-landing-cream/10 overflow-hidden">
-                {/* Org header */}
-                <div className="bg-landing-cream/5 border-b border-landing-cream/10 p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-xl bg-landing-cream/20 flex items-center justify-center border border-landing-cream/20">
-                      <span className="font-display font-bold text-landing-cream text-lg">SR</span>
-                    </div>
-                    <div>
-                      <h3 className="font-display font-bold text-xl text-landing-cream">South Rock Ridge High School</h3>
-                      <p className="text-sm text-landing-cream/50">Central Pennsylvania</p>
-                    </div>
-                  </div>
-                </div>
-                {/* Quick stats - Scoreboard style */}
-                <div className="grid grid-cols-3 divide-x divide-landing-cream/10 border-b border-landing-cream/10 bg-[#0a0a0a]">
-                  <div className="p-4 text-center">
-                    <p className="text-2xl font-bold font-mono text-landing-green" style={{ textShadow: "0 0 10px rgba(34,197,94,0.5)" }}>127</p>
-                    <p className="text-xs text-landing-cream/50 uppercase tracking-wider">Members</p>
-                  </div>
-                  <div className="p-4 text-center">
-                    <p className="text-2xl font-bold font-mono text-landing-green" style={{ textShadow: "0 0 10px rgba(34,197,94,0.5)" }}>24</p>
-                    <p className="text-xs text-landing-cream/50 uppercase tracking-wider">Events</p>
-                  </div>
-                  <div className="p-4 text-center">
-                    <p className="text-2xl font-bold font-mono text-landing-green" style={{ textShadow: "0 0 10px rgba(34,197,94,0.5)" }}>$8.2k</p>
-                    <p className="text-xs text-landing-cream/50 uppercase tracking-wider">Donations</p>
-                  </div>
-                </div>
-                {/* Feature preview */}
-                <div className="p-5 space-y-3">
-                  {[
-                    { icon: "users", label: "Member Directory", value: "48 active \u2022 79 alumni" },
-                    { icon: "calendar", label: "Upcoming", value: "Spring Regatta - Mar 15" },
-                    { icon: "trophy", label: "Recent Award", value: "Conference Champions 2025" },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center gap-3 p-3 rounded-lg bg-landing-navy/50">
-                      <div className="w-8 h-8 rounded-lg bg-landing-cream/10 flex items-center justify-center">
-                        <FeatureCardIcon type={item.icon} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-landing-cream/50">{item.label}</p>
-                        <p className="text-sm text-landing-cream truncate">{item.value}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <HeroOrgCard />
           </div>
         </div>
 
@@ -169,19 +130,23 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      {/* Organization types ribbon - Championship Banners */}
+      {/* Organization types ribbon — infinite scrolling marquee */}
       <section className="relative z-10 py-12 overflow-hidden border-y border-landing-cream/10 bg-landing-navy-light/50">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="flex flex-wrap items-stretch justify-center gap-4 md:gap-6">
-            {["Sports Teams", "Greek Life", "Clubs", "Volunteer Orgs", "Alumni Groups"].map((type, i) => (
-              <div
-                key={type}
-                className="banner px-6 py-4 text-center min-w-[140px]"
-                style={{ animationDelay: `${i * 100}ms` }}
-              >
-                <span className="text-landing-cream/70 text-sm uppercase tracking-[0.15em] font-medium whitespace-nowrap">
-                  {type}
-                </span>
+        <div className="marquee-container overflow-hidden">
+          <div className="marquee-track" aria-label="Organization types we serve">
+            {/* Duplicate list for seamless loop */}
+            {[...Array(2)].map((_, setIndex) => (
+              <div key={setIndex} className="flex items-stretch gap-4 md:gap-6 px-2 md:px-3" aria-hidden={setIndex > 0}>
+                {["Sports Teams", "Greek Life", "Clubs", "Volunteer Orgs", "Alumni Groups", "Honor Societies", "Booster Clubs", "Student Government"].map((type) => (
+                  <div
+                    key={`${setIndex}-${type}`}
+                    className="banner px-6 py-4 text-center min-w-[140px] flex-shrink-0"
+                  >
+                    <span className="text-landing-cream/70 text-sm uppercase tracking-[0.15em] font-medium whitespace-nowrap">
+                      {type}
+                    </span>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -256,7 +221,7 @@ export default async function LandingPage() {
             </p>
           </div>
 
-          <div className="features-grid grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="features-grid bento-grid">
             {FEATURES.map((feature, i) => (
               <div
                 key={feature.title}
@@ -281,9 +246,9 @@ export default async function LandingPage() {
       {/* Pricing */}
       <PricingSection />
 
-      {/* Our Commitment (formerly Terms Summary) — reassurance after price */}
+      {/* Our Commitment — compact inline terms */}
       <section id="terms-summary" className="relative z-10 py-24 px-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="scroll-reveal font-display text-3xl sm:text-4xl font-bold mb-4">Our Commitment</h2>
             <p className="scroll-reveal text-landing-cream/60">
@@ -291,21 +256,23 @@ export default async function LandingPage() {
             </p>
           </div>
 
-          <div className="terms-grid grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+          <div className="scroll-reveal grid sm:grid-cols-2 gap-x-8 mb-10">
             {[
-              { title: "Eligibility", text: "Must be 16+ to use the service." },
-              { title: "Security", text: "You\u2019re responsible for your credentials." },
-              { title: "Conduct", text: "No illegal, harmful, or infringing content." },
-              { title: "Payments", text: "Fees are non-refundable unless required by law." },
-              { title: "Data & IP", text: "We retain software rights; you retain content rights." },
-              { title: "Disputes", text: "Resolved via binding arbitration in New York." },
-            ].map((item, i) => (
-              <div key={item.title} className="terms-card bg-landing-navy-light/50 rounded-xl p-5 border border-landing-cream/10">
-                <div className="w-10 h-10 rounded-lg bg-landing-cream/10 flex items-center justify-center mb-3">
-                  <TermsIcon index={i} />
+              { title: "Eligibility", text: "Must be 16+ to use the service.", index: 0 },
+              { title: "Security", text: "You\u2019re responsible for your credentials.", index: 1 },
+              { title: "Conduct", text: "No illegal, harmful, or infringing content.", index: 2 },
+              { title: "Payments", text: "Fees are non-refundable unless required by law.", index: 3 },
+              { title: "Data & IP", text: "We retain software rights; you retain content rights.", index: 4 },
+              { title: "Disputes", text: "Resolved via binding arbitration in New York.", index: 5 },
+            ].map((item) => (
+              <div key={item.title} className="flex items-start gap-3 py-4 border-b border-landing-cream/10">
+                <div className="w-8 h-8 rounded-lg bg-landing-cream/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <TermsIcon index={item.index} />
                 </div>
-                <h4 className="font-display font-semibold text-landing-cream mb-1">{item.title}</h4>
-                <p className="text-sm text-landing-cream/50">{item.text}</p>
+                <div className="min-w-0">
+                  <span className="font-display font-semibold text-landing-cream text-sm">{item.title}</span>
+                  <span className="text-landing-cream/50 text-sm"> — {item.text}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -331,32 +298,7 @@ export default async function LandingPage() {
             <p className="scroll-reveal text-landing-cream/50 mt-4">Your questions, answered</p>
           </div>
 
-          <div className="space-y-4">
-            {FAQ_ITEMS.map((item) => (
-              <details
-                key={item.question}
-                className="scroll-reveal group bg-landing-navy-light/50 rounded-xl border border-landing-cream/10 overflow-hidden"
-              >
-                <summary className="px-6 py-5 cursor-pointer list-none flex items-center gap-3 text-landing-cream font-medium hover:bg-landing-cream/5 transition-colors">
-                  {/* Microphone icon */}
-                  <svg className="mic-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-                  </svg>
-                  <span className="flex-1">{item.question}</span>
-                  <svg
-                    className="w-5 h-5 text-landing-cream/60 group-open:rotate-180 transition-transform duration-300 flex-shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </summary>
-                <div className="px-6 pb-5 text-landing-cream/60 leading-relaxed pl-12">{item.answer}</div>
-              </details>
-            ))}
-          </div>
+          <FAQAccordion items={FAQ_ITEMS} />
         </div>
       </section>
 
@@ -406,20 +348,51 @@ export default async function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-landing-cream/10 py-12 bg-landing-navy">
+      <footer className="relative z-10 border-t border-landing-cream/10 py-16 bg-landing-navy">
         <div className="max-w-6xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center">
-              <Image src="/TeamNetwor.png" alt="TeamNetwork" width={541} height={303} sizes="32px" className="h-8 w-auto object-contain" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-8">
+            {/* Left — Brand */}
+            <div>
+              <div className="flex items-center gap-2.5 mb-3">
+                <Image src="/TeamNetwor.png" alt="TeamNetwork" width={541} height={303} sizes="32px" className="h-8 w-auto object-contain" />
+              </div>
+              <p className="text-sm text-landing-cream/40 leading-relaxed">
+                The platform that keeps your organization connected, past and present.
+              </p>
             </div>
 
-            <div className="flex items-center gap-8 text-sm text-landing-cream/50">
-              <Link href="/terms" className="hover:text-landing-cream transition-colors">Terms</Link>
-              <Link href="/privacy" className="hover:text-landing-cream transition-colors">Privacy</Link>
-              <Link href="#pricing" className="hover:text-landing-cream transition-colors">Pricing</Link>
-              <a href="mailto:support@myteamnetwork.com" className="hover:text-landing-cream transition-colors">Contact</a>
+            {/* Center — Links */}
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <p className="text-xs uppercase tracking-[0.15em] text-landing-cream/30 font-medium mb-3">Product</p>
+                <nav className="flex flex-col gap-2 text-sm">
+                  <Link href="#features" className="text-landing-cream/50 hover:text-landing-cream transition-colors">Features</Link>
+                  <Link href="#pricing" className="text-landing-cream/50 hover:text-landing-cream transition-colors">Pricing</Link>
+                  <Link href="/demos" className="text-landing-cream/50 hover:text-landing-cream transition-colors">Demos</Link>
+                </nav>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-[0.15em] text-landing-cream/30 font-medium mb-3">Legal</p>
+                <nav className="flex flex-col gap-2 text-sm">
+                  <Link href="/terms" className="text-landing-cream/50 hover:text-landing-cream transition-colors">Terms</Link>
+                  <Link href="/privacy" className="text-landing-cream/50 hover:text-landing-cream transition-colors">Privacy</Link>
+                </nav>
+              </div>
             </div>
 
+            {/* Right — Contact */}
+            <div className="md:text-right">
+              <p className="text-xs uppercase tracking-[0.15em] text-landing-cream/30 font-medium mb-3">Contact</p>
+              <a href="mailto:support@myteamnetwork.com" className="text-sm text-landing-cream/50 hover:text-landing-cream transition-colors">
+                support@myteamnetwork.com
+              </a>
+              <p className="mt-6 text-sm text-landing-cream/30 italic">
+                Built for teams that go the distance.
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-landing-cream/10 mt-10 pt-6 text-center">
             <p className="text-sm text-landing-cream/30">
               &copy; {new Date().getFullYear()} TeamNetwork
             </p>

@@ -13,9 +13,44 @@ const NAV_LINKS = [
   { href: "/terms", label: "Terms" },
 ] as const;
 
+function useActiveSection(): string | null {
+  const [active, setActive] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sectionIds = NAV_LINKS
+      .filter((link) => link.href.startsWith("#"))
+      .map((link) => link.href.slice(1));
+
+    const sections = sectionIds
+      .map((id) => document.getElementById(id))
+      .filter(Boolean) as HTMLElement[];
+
+    if (!sections.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+
+        if (visible.length > 0) {
+          setActive(`#${visible[0].target.id}`);
+        }
+      },
+      { rootMargin: "-20% 0px -60% 0px", threshold: 0 }
+    );
+
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, []);
+
+  return active;
+}
+
 export function LandingHeader() {
   const [open, setOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const activeSection = useActiveSection();
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -82,7 +117,11 @@ export function LandingHeader() {
             <Link
               key={link.href}
               href={link.href}
-              className="text-landing-cream/70 hover:text-landing-cream transition-colors"
+              className={`transition-colors ${
+                activeSection === link.href
+                  ? "nav-link-active"
+                  : "text-landing-cream/70 hover:text-landing-cream"
+              }`}
             >
               {link.label}
             </Link>
