@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CacheStatus } from "./sse";
+import type { CacheSurface } from "./semantic-cache-utils";
 
 interface AuditEntry {
   threadId: string | null;
@@ -16,7 +17,7 @@ interface AuditEntry {
   cacheStatus?: CacheStatus;
   cacheEntryId?: string; // UUID of the cache entry that was hit
   cacheBypassReason?: string; // why cache was bypassed (eligibility reason)
-  contextSurface?: string; // which surface was used for context selection
+  contextSurface?: CacheSurface; // which surface was used for context selection
   contextTokenEstimate?: number; // estimated token count of the context message
 }
 

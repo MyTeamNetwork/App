@@ -364,7 +364,6 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
             serviceSupabase: ctx.serviceSupabase,
             contextMode: usesSharedStaticContext ? "shared_static" : "full",
             surface,
-            userMessage: message,
           }),
           ctx.supabase
             .from("ai_messages")

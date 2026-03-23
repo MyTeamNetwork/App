@@ -264,7 +264,6 @@ describe("AI prompt context builder", () => {
     assert.match(contextMessage!, /Active Members: 0/);
     assert.match(contextMessage!, /Alumni: 0/);
     assert.match(contextMessage!, /Parents: 0/);
-    assert.match(contextMessage!, /Upcoming Events: 0/);
   });
 
   it("handles nullable announcement dates without invalid fallback text", async () => {
@@ -526,43 +525,6 @@ describe("AI prompt context builder", () => {
     assert.ok(result.metadata.estimatedTokens > 0);
     assert.equal(result.metadata.budgetTokens, 4000);
     assert.deepEqual(result.metadata.sectionsExcluded, []);
-  });
-
-  // --- Phase 3: Relevance filtering ---
-
-  it("deprioritizes irrelevant sections when userMessage is provided and budget is tight", async () => {
-    // This test uses a mock that produces very verbose content to exceed budget.
-    // With a tight budget, irrelevant sections should be excluded first.
-    const { buildPromptContext } = await import("../src/lib/ai/context-builder.ts");
-
-    // Generate a long announcement list to push total tokens above a reasonable budget
-    const longAnnouncements = Array.from({ length: 50 }, (_, i) => ({
-      title: `Very long announcement title number ${i + 1} with extra description text padding here`,
-      published_at: "2026-03-15T12:00:00Z",
-    }));
-
-    const result = await buildPromptContext({
-      orgId: "o1",
-      userId: "u1",
-      role: "admin",
-      userMessage: "tell me about upcoming events",
-      serviceSupabase: createMockServiceSupabase({
-        org: { name: "Test Org", slug: "test" },
-        userName: "Admin",
-        memberCount: 10,
-        alumniCount: 5,
-        parentCount: 2,
-        upcomingEvents: [{ title: "Gala", start_date: "2026-04-01T18:00:00Z", location: "Hall" }],
-        announcements: longAnnouncements,
-        donationStats: { total_amount_cents: 5000, donation_count: 3, last_donation_at: "2026-03-10T00:00:00Z" },
-      }) as any,
-    });
-
-    assert.ok(result.metadata);
-    // Events section should be included since the message mentions "events"
-    assert.ok(result.metadata.sectionsIncluded.includes("Upcoming Events"));
-    // Org Overview is always included (highest priority)
-    assert.ok(result.metadata.sectionsIncluded.includes("Organization Overview"));
   });
 
   it("shared_static context mode takes precedence over surface", async () => {

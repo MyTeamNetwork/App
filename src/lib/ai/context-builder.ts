@@ -9,7 +9,6 @@ interface BuildPromptInput {
   serviceSupabase: SupabaseClient;
   contextMode?: "full" | "shared_static";
   surface?: CacheSurface;
-  userMessage?: string;
 }
 
 interface OrgInfo {
@@ -73,23 +72,10 @@ const NARROW_PANEL_POLICY = [
 
 // --- Surface-based context selection ---
 
-type DataSourceKey =
-  | "org"
-  | "userName"
-  | "memberCount"
-  | "alumniCount"
-  | "parentCount"
-  | "upcomingEvents"
-  | "recentAnnouncements"
-  | "donationStats";
-
-const ALL_SOURCES = new Set<DataSourceKey>([
-  "org", "userName", "memberCount", "alumniCount", "parentCount",
-  "upcomingEvents", "recentAnnouncements", "donationStats",
-]);
+type DataSourceKey = keyof PromptContextData;
 
 const SURFACE_DATA_SOURCES: Record<CacheSurface, Set<DataSourceKey>> = {
-  general:   ALL_SOURCES,
+  general:   new Set<DataSourceKey>(["org", "userName", "memberCount", "alumniCount", "parentCount", "upcomingEvents", "recentAnnouncements", "donationStats"]),
   members:   new Set<DataSourceKey>(["org", "userName", "memberCount", "alumniCount", "parentCount"]),
   analytics: new Set<DataSourceKey>(["org", "userName", "memberCount", "alumniCount", "parentCount", "donationStats"]),
   events:    new Set<DataSourceKey>(["org", "userName", "upcomingEvents"]),
@@ -97,10 +83,18 @@ const SURFACE_DATA_SOURCES: Record<CacheSurface, Set<DataSourceKey>> = {
 
 // --- Token budget ---
 
+type SectionName =
+  | "Organization Overview"
+  | "Current User"
+  | "Counts"
+  | "Upcoming Events"
+  | "Recent Announcements"
+  | "Donation Summary";
+
 const CHARS_PER_TOKEN = 4;
 const DEFAULT_CONTEXT_BUDGET_TOKENS = 4000;
 
-const SECTION_PRIORITY: Record<string, number> = {
+const SECTION_PRIORITY: Record<SectionName, number> = {
   "Organization Overview": 1,
   "Current User": 2,
   "Counts": 3,
@@ -109,26 +103,17 @@ const SECTION_PRIORITY: Record<string, number> = {
   "Donation Summary": 6,
 };
 
-// --- Relevance filtering ---
-
-const SECTION_KEYWORDS: Record<string, string[]> = {
-  "Upcoming Events": ["event", "events", "calendar", "schedule", "gala", "meeting", "happening"],
-  "Recent Announcements": ["announcement", "announcements", "news", "update", "post", "posted"],
-  "Donation Summary": ["donation", "donations", "fundrais", "giving", "raised", "money", "revenue"],
-  "Counts": ["member", "members", "alumni", "parent", "parents", "count", "how many", "total", "size"],
-};
-
 interface ContextSection {
-  name: string;
+  name: SectionName;
   priority: number;
   lines: string[];
   estimatedTokens: number;
 }
 
 export interface ContextMetadata {
-  surface: string;
-  sectionsIncluded: string[];
-  sectionsExcluded: string[];
+  surface: CacheSurface;
+  sectionsIncluded: SectionName[];
+  sectionsExcluded: SectionName[];
   estimatedTokens: number;
   budgetTokens: number;
 }
@@ -137,32 +122,17 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
-function scoreSectionRelevance(sectionName: string, userMessage: string): number {
-  const keywords = SECTION_KEYWORDS[sectionName];
-  if (!keywords) return 1; // Org Overview and Current User are always relevant
-  const normalized = userMessage.toLowerCase();
-  return keywords.some(kw => normalized.includes(kw)) ? 1 : 0.3;
-}
-
 function applyContextBudget(
   sections: ContextSection[],
   budgetTokens: number,
-  userMessage?: string,
 ): { included: ContextSection[]; excluded: ContextSection[] } {
-  const scored = sections.map(s => {
-    const relevance = userMessage ? scoreSectionRelevance(s.name, userMessage) : 1;
-    // Deprioritize irrelevant sections by inflating their priority value
-    const adjustedPriority = relevance < 1 ? s.priority + 100 : s.priority;
-    return { ...s, adjustedPriority };
-  });
-
-  scored.sort((a, b) => a.adjustedPriority - b.adjustedPriority);
+  const sorted = [...sections].sort((a, b) => a.priority - b.priority);
 
   const included: ContextSection[] = [];
   const excluded: ContextSection[] = [];
   let remaining = budgetTokens;
 
-  for (const section of scored) {
+  for (const section of sorted) {
     if (section.estimatedTokens <= remaining) {
       included.push(section);
       remaining -= section.estimatedTokens;
@@ -233,7 +203,7 @@ async function loadPromptContextData(input: BuildPromptInput): Promise<PromptCon
   const { orgId, userId, serviceSupabase, contextMode = "full", surface = "general" } = input;
   const now = new Date().toISOString();
   const useSharedStaticContext = contextMode === "shared_static";
-  const activeSources = SURFACE_DATA_SOURCES[surface] ?? ALL_SOURCES;
+  const activeSources = SURFACE_DATA_SOURCES[surface] ?? SURFACE_DATA_SOURCES.general;
   const shouldLoad = (key: DataSourceKey) => activeSources.has(key) && !useSharedStaticContext;
 
   const [
@@ -427,15 +397,13 @@ export async function buildPromptContext(
   const hasCountSection =
     context.memberCount.ok ||
     context.alumniCount.ok ||
-    context.parentCount.ok ||
-    context.upcomingEvents.ok;
+    context.parentCount.ok;
 
   if (hasCountSection) {
     const lines: string[] = ["## Counts"];
     if (context.memberCount.ok) lines.push(`- Active Members: ${context.memberCount.data}`);
     if (context.alumniCount.ok) lines.push(`- Alumni: ${context.alumniCount.data}`);
     if (context.parentCount.ok) lines.push(`- Parents: ${context.parentCount.data}`);
-    if (context.upcomingEvents.ok) lines.push(`- Upcoming Events: ${context.upcomingEvents.data.totalCount}`);
     const text = lines.join("\n");
     contextSections.push({
       name: "Counts",
@@ -446,7 +414,7 @@ export async function buildPromptContext(
   }
 
   if (context.upcomingEvents.ok && context.upcomingEvents.data.events.length > 0) {
-    const lines: string[] = ["## Upcoming Events"];
+    const lines: string[] = [`## Upcoming Events (${context.upcomingEvents.data.totalCount} total)`];
     for (const event of context.upcomingEvents.data.events) {
       const location = event.location ? ` (${event.location})` : "";
       lines.push(`- ${event.title} - ${formatDate(event.start_date)}${location}`);
@@ -499,13 +467,9 @@ export async function buildPromptContext(
     });
   }
 
-  // Apply token budget with optional relevance filtering
+  // Apply token budget (sorts by priority, drops lowest-priority sections first)
   const budgetTokens = DEFAULT_CONTEXT_BUDGET_TOKENS;
-  const { included, excluded } = applyContextBudget(
-    contextSections,
-    budgetTokens,
-    input.userMessage,
-  );
+  const { included, excluded } = applyContextBudget(contextSections, budgetTokens);
 
   // Assemble final context message from included sections
   const preamble = [
