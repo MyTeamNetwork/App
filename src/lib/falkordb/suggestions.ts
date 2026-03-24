@@ -22,6 +22,7 @@ import {
   falkorClient,
   type FalkorQueryClient,
 } from "@/lib/falkordb/client";
+import { MAX_GRAPH_SYNC_ATTEMPTS, readOptionalString } from "@/lib/falkordb/utils";
 
 export interface SuggestConnectionsArgs {
   person_type: "member" | "alumni";
@@ -49,6 +50,8 @@ interface GraphSuggestionRow extends Record<string, unknown> {
   mentorshipDistance: number | null;
 }
 
+type GraphSuggestionRowWithoutDistance = Omit<GraphSuggestionRow, "mentorshipDistance">;
+
 export class SuggestConnectionsLookupError extends Error {
   constructor(message: string) {
     super(message);
@@ -61,10 +64,6 @@ function buildFreshnessFromNow(): SuggestConnectionsFreshness {
     state: "fresh",
     as_of: new Date().toISOString(),
   };
-}
-
-function normalizePayloadDate(value: unknown) {
-  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 async function loadProjectedPeople(
@@ -236,7 +235,7 @@ async function fetchGraphFreshness(
       .select("created_at")
       .eq("org_id", orgId)
       .is("processed_at", null)
-      .lt("attempts", 3)
+      .lt("attempts", MAX_GRAPH_SYNC_ATTEMPTS)
       .order("created_at", { ascending: true })
       .limit(1);
 
@@ -244,7 +243,7 @@ async function fetchGraphFreshness(
       return buildFreshnessFromNow();
     }
 
-    const oldestPending = normalizePayloadDate((data as Array<{ created_at?: unknown }> | null)?.[0]?.created_at);
+    const oldestPending = readOptionalString((data as Array<{ created_at?: unknown }> | null)?.[0]?.created_at);
     if (!oldestPending) {
       return buildFreshnessFromNow();
     }
@@ -292,13 +291,16 @@ function scoreProjectedCandidates(input: {
   return sortSuggestedConnections(suggestions).slice(0, input.limit);
 }
 
-function graphRowToProjectedPerson(row: GraphSuggestionRow): ProjectedPerson | null {
+function graphRowToProjectedPerson(
+  row: GraphSuggestionRow,
+  orgId: string
+): ProjectedPerson | null {
   if (!row.personKey || !row.personType || !row.personId || !row.name) {
     return null;
   }
 
   return {
-    orgId: "",
+    orgId,
     personKey: row.personKey,
     personType: row.personType,
     personId: row.personId,
@@ -321,22 +323,12 @@ async function fetchGraphSuggestions(input: {
   limit: number;
   graphClient: FalkorQueryClient;
 }) {
-  const sourceRows = await input.graphClient.query<{ personKey: string }>(
-    input.orgId,
-    "MATCH (source:Person {personKey: $sourceKey}) RETURN source.personKey AS personKey LIMIT 1",
-    { sourceKey: input.source.personKey }
-  );
-
-  if (sourceRows.length === 0) {
-    throw new FalkorQueryError("Source person is not present in Falkor");
-  }
-
   // FalkorDB has partial shortestPath support, and the SQL fallback treats
   // mentorship edges as undirected up to depth 2. Query the direct and
   // second-degree shapes explicitly so Falkor mode preserves the same
   // semantics without relying on unsupported Cypher forms.
   const [candidateRows, distanceRows] = await Promise.all([
-    input.graphClient.query<Omit<GraphSuggestionRow, "mentorshipDistance">>(
+    input.graphClient.query<GraphSuggestionRow>(
       input.orgId,
       `
         MATCH (source:Person {personKey: $sourceKey})
@@ -430,7 +422,7 @@ async function fetchGraphSuggestions(input: {
 
   const candidatesWithDistance = candidateRows
     .map((row) => ({
-      candidate: graphRowToProjectedPerson({ ...row, mentorshipDistance: null }),
+      candidate: graphRowToProjectedPerson(row, input.orgId),
       mentorshipDistance: distanceMap.get(row.personKey) ?? null,
     }))
     .filter(
@@ -471,6 +463,7 @@ export async function suggestConnections(input: {
   if (!source) {
     throw new SuggestConnectionsLookupError("Person not found");
   }
+
   const resolvedSource: ProjectedPerson = source;
 
   async function computeSqlFallback(): Promise<SuggestConnectionsResult> {
