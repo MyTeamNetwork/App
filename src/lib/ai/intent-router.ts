@@ -1,4 +1,8 @@
 import type { AiSurface } from "@/lib/schemas/ai-assistant";
+import {
+  normalizeAiMessage,
+  normalizeAiMessageForExactMatch,
+} from "@/lib/ai/message-normalization";
 
 export type AiIntent =
   | "general_query"
@@ -65,26 +69,22 @@ const NAVIGATION_PATTERNS = [
   /(?<!\w)link\s+to(?!\w)/i,
 ];
 
-function normalizeMessage(message: string): string {
-  return message
-    .normalize("NFC")
-    .toLowerCase()
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+export function normalizeMessage(message: string): string {
+  return normalizeAiMessage(message);
 }
 
 function isCasualMessage(message: string): boolean {
-  const normalized = normalizeMessage(message)
-    .replace(/[^\w\s']/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const normalized = normalizeAiMessageForExactMatch(message);
 
   if (normalized.length === 0) {
     return false;
   }
 
   return CASUAL_MESSAGE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export function isExactCasualMessage(message: string): boolean {
+  return isCasualMessage(message);
 }
 
 function hasActionKeywords(normalized: string): boolean {

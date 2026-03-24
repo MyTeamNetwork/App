@@ -30,6 +30,15 @@ import { lookupSemanticCache, writeCacheEntry } from "@/lib/ai/semantic-cache";
 import { retrieveRelevantChunks } from "@/lib/ai/rag-retriever";
 import type { RagChunkInput } from "@/lib/ai/context-builder";
 import { resolveSurfaceRouting } from "@/lib/ai/intent-router";
+import {
+  buildTurnExecutionPolicy,
+  type TurnExecutionPolicy,
+} from "@/lib/ai/turn-execution-policy";
+import {
+  verifyToolBackedResponse,
+  type SuccessfulToolSummary,
+} from "@/lib/ai/tool-grounding";
+import { trackOpsEventServer } from "@/lib/analytics/events-server";
 
 export interface ChatRouteDeps {
   createClient?: typeof createClient;
@@ -42,6 +51,9 @@ export interface ChatRouteDeps {
   resolveOwnThread?: typeof resolveOwnThread;
   retrieveRelevantChunks?: typeof retrieveRelevantChunks;
   executeToolCall?: typeof executeToolCall;
+  buildTurnExecutionPolicy?: typeof buildTurnExecutionPolicy;
+  verifyToolBackedResponse?: typeof verifyToolBackedResponse;
+  trackOpsEventServer?: typeof trackOpsEventServer;
 }
 
 const PASS1_TOOL_NAMES: Record<CacheSurface, ToolName[]> = {
@@ -53,9 +65,9 @@ const PASS1_TOOL_NAMES: Record<CacheSurface, ToolName[]> = {
 
 function getPass1Tools(
   effectiveSurface: CacheSurface,
-  skipRetrieval: boolean
+  toolPolicy: TurnExecutionPolicy["toolPolicy"]
 ) {
-  if (skipRetrieval) {
+  if (toolPolicy !== "surface_read_tools") {
     return undefined;
   }
 
@@ -73,6 +85,11 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   const resolveOwnThreadFn = deps.resolveOwnThread ?? resolveOwnThread;
   const retrieveRelevantChunksFn = deps.retrieveRelevantChunks ?? retrieveRelevantChunks;
   const executeToolCallFn = deps.executeToolCall ?? executeToolCall;
+  const buildTurnExecutionPolicyFn =
+    deps.buildTurnExecutionPolicy ?? buildTurnExecutionPolicy;
+  const verifyToolBackedResponseFn =
+    deps.verifyToolBackedResponse ?? verifyToolBackedResponse;
+  const trackOpsEventServerFn = deps.trackOpsEventServer ?? trackOpsEventServer;
 
   return async function POST(
     request: NextRequest,
@@ -136,15 +153,36 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
     surface: effectiveSurface,
     bypassCache: validatedBody.bypassCache,
   });
-  let usesSharedStaticContext = false;
+  const executionPolicy = buildTurnExecutionPolicyFn({
+    message,
+    threadId: existingThreadId,
+    requestedSurface: surface,
+    routing,
+    cacheEligibility: eligibility,
+  });
+  const usesSharedStaticContext =
+    executionPolicy.contextPolicy === "shared_static";
 
-  if (cacheDisabled) {
+  if (cacheDisabled && executionPolicy.cachePolicy === "lookup_exact") {
+    cacheStatus = "disabled";
     cacheBypassReason = "disabled_via_env";
+  } else if (executionPolicy.cachePolicy === "skip") {
+    cacheBypassReason =
+      executionPolicy.profile === "casual"
+        ? "casual_turn"
+        : executionPolicy.profile === "out_of_scope"
+          ? "out_of_scope_request"
+          : eligibility.eligible
+            ? executionPolicy.reasons[0]
+            : eligibility.reason;
   } else if (!eligibility.eligible) {
     cacheBypassReason = eligibility.reason;
   }
-  const skipRagRetrieval = routing.skipRetrieval || eligibility.eligible;
-  const pass1Tools = getPass1Tools(effectiveSurface, routing.skipRetrieval);
+  const skipRagRetrieval = executionPolicy.retrievalPolicy === "skip";
+  const pass1Tools = getPass1Tools(
+    effectiveSurface,
+    executionPolicy.toolPolicy
+  );
 
   // 4. Validate provided thread ownership before any cleanup or writes
   let threadId = existingThreadId;
@@ -275,7 +313,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
       .single();
 
   // 8.5 Semantic cache check
-  if (!cacheDisabled && eligibility.eligible) {
+  if (!cacheDisabled && executionPolicy.cachePolicy === "lookup_exact") {
     const cacheKey = buildSemanticCacheKeyParts({
       message,
       orgId: ctx.orgId,
@@ -333,7 +371,6 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
       }
     } else {
       cacheStatus = cacheResult.reason === "miss" ? "miss" : "error";
-      usesSharedStaticContext = cacheResult.reason === "miss";
       if (cacheResult.reason === "error") {
         cacheBypassReason = "cache_lookup_failed";
       }
@@ -393,7 +430,10 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
     let auditErrorMessage: string | undefined;
     let contextMetadata: { surface: string; estimatedTokens: number } | undefined;
     let toolCallMade = false;
+    let toolCallSucceeded = false;
+    let ranSecondPass = false;
     const auditToolCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+    const successfulToolResults: SuccessfulToolSummary[] = [];
     const recordUsage = (usage: UsageAccumulator) => {
       usageRef.current = {
         inputTokens: (usageRef.current?.inputTokens ?? 0) + usage.inputTokens,
@@ -517,10 +557,15 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
 
           if (result.ok) {
             enqueue({ type: "tool_status", toolName: toolEvent.name, status: "done" });
+            toolCallSucceeded = true;
             toolResults.push({
               toolCallId: toolEvent.id,
               name: toolEvent.name,
               args: parsedArgs,
+              data: result.data,
+            });
+            successfulToolResults.push({
+              name: toolEvent.name as ToolName,
               data: result.data,
             });
           } else {
@@ -541,6 +586,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
 
       // Pass 2: only if a tool was called — feed result back, no tools (prevents chaining)
       if (toolCallMade && toolResults.length > 0) {
+        ranSecondPass = true;
         for await (const event of composeResponseFn({
           client,
           systemPrompt,
@@ -595,15 +641,47 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         auditErrorMessage ??= "assistant_finalize_failed";
       }
 
+      if (
+        streamCompletedSuccessfully &&
+        executionPolicy.groundingPolicy === "verify_tool_summary" &&
+        toolCallSucceeded &&
+        ranSecondPass &&
+        successfulToolResults.length > 0
+      ) {
+        const groundingResult = verifyToolBackedResponseFn({
+          content: finalContent,
+          toolResults: successfulToolResults,
+        });
+        if (!groundingResult.grounded) {
+          console.warn("[ai-grounding] verification failed:", {
+            orgId: ctx.orgId,
+            threadId,
+            messageId: assistantMessageId,
+            tools: successfulToolResults.map((result) => result.name),
+            failures: groundingResult.failures,
+          });
+          void trackOpsEventServerFn(
+            "api_error",
+            {
+              endpoint_group: "ai-grounding",
+              http_status: 200,
+              error_code: "tool_grounding_failed",
+              retryable: false,
+            },
+            ctx.orgId
+          );
+        }
+      }
+
       // Tool calls bypass cache — response depends on live data
-      if (toolCallMade && !cacheBypassReason) {
+      if (toolCallMade && !cacheBypassReason && executionPolicy.cachePolicy === "lookup_exact") {
         cacheBypassReason = "tool_call_made";
       }
 
       const canWriteCache =
         streamCompletedSuccessfully &&
         !finalizeError &&
-        eligibility.eligible &&
+        executionPolicy.cachePolicy === "lookup_exact" &&
         cacheStatus === "miss" &&
         !toolCallMade;
 

@@ -23,7 +23,7 @@ The two axes compose freely. Example classifications:
 ## Intent Type Definitions
 
 ### `casual`
-Greetings, acknowledgements, farewells, and thanks. These messages don't carry an information need or action request. RAG retrieval is skipped (`skipRetrieval: true`).
+Greetings, acknowledgements, farewells, and thanks. These messages don't carry an information need or action request. The execution policy skips RAG, disables pass-1 tools, and intentionally skips cache lookup/write for these low-value turns.
 
 Detected via exact-match regex against the full normalized message (same `isCasualMessage()` that existed before, now promoted to a labeled type).
 
@@ -32,7 +32,7 @@ The user wants something *done* — create, delete, send, invite, schedule, etc.
 
 Keywords: `create`, `add`, `delete`, `remove`, `update`, `send`, `invite`, `schedule`, `change`, `set`, `assign`, `cancel`, `approve`, `reject`, `make`, `edit`, `move`, `rename`, `archive`, `unarchive`, `restore`, `enable`, `disable`, `reset`, `upload`, `post`, `publish`.
 
-**Note**: `action_request` is classified and logged but not yet acted upon differently at runtime. Tool selection in the current system is still driven by `effectiveSurface`, with the only `intent_type`-driven runtime behavior being the casual optimization (`intentType = casual` → skip RAG + skip pass-1 tools). `action_request` produces labeled data for when the Action Executor (`src/lib/ai/tools/executor.ts`) gains intent-aware routing.
+**Note**: `action_request` is classified and logged but not yet executed differently at the product level. Runtime behavior still flows through the internal execution-policy layer, which currently treats `action_request` and `navigation` as `live_lookup` turns unless future write/navigation features are added.
 
 ### `navigation`
 The user wants to go somewhere or find a page. Detected by phrase-level regex patterns.
@@ -76,7 +76,7 @@ Casual is checked first because it's a full-message match (e.g., "ok" is casual,
 | File | Coverage |
 |------|----------|
 | `tests/ai-intent-router.test.ts` | All four intent types, priority ordering, hybrid messages (greeting + action, greeting + nav) |
-| `tests/routes/ai/chat-handler.test.ts` | Pipeline integration: `intent_type` passed through RPC, stored on messages, logged to audit |
+| `tests/routes/ai/chat-handler.test.ts` | Pipeline integration: `intent_type` passed through RPC, stored on messages, logged to audit, and influences execution policy |
 
 ## Data Flow
 
@@ -99,6 +99,11 @@ resolveSurfaceRouting(message, surface)
        └─ confidence, rerouted, inferredSurface (unchanged)
             │
             ▼
+  buildTurnExecutionPolicy(...)
+    → uses intentType + threadId + cache eligibility to choose
+      cache/tool/retrieval/context/grounding behavior
+            │
+            ▼
   init_ai_chat RPC
     p_intent = "members_query"
     p_intent_type = "action_request"
@@ -119,7 +124,7 @@ Every message now has both `intent` and `intent_type` stored. This enables:
 1. **Analytics**: Dashboard queries like `SELECT intent_type, COUNT(*) FROM ai_messages GROUP BY intent_type` to understand what users are trying to do.
 2. **Action Executor routing**: When `action_request` messages should trigger tool calls proactively (rather than relying on the LLM to decide), the `intent_type` label is already present.
 3. **Navigation features**: When deep-linking from AI responses is implemented, `navigation` labels identify the training data.
-4. **Casual optimization**: Confirms which messages can skip expensive operations such as RAG retrieval and pass-1 tool attachment.
+4. **Execution-policy hardening**: `intent_type` now contributes to deterministic runtime behavior without changing the persisted taxonomy or adding new schema fields.
 
 ## Related Docs
 

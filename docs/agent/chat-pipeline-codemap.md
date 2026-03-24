@@ -2,7 +2,7 @@
 
 ## Overview
 
-The chat pipeline handles the full lifecycle of an AI chat request: rate limiting, admin auth, input validation, thread management, semantic cache check, prompt construction, conditional tool attachment, LLM streaming via SSE, message persistence, cache write-back, and audit logging. The cache is intentionally conservative in v1: only standalone first-turn `general` prompts are eligible, cache-eligible turns use `shared_static` context, and those turns skip RAG retrieval entirely. All orchestration lives in a single route handler with dependency injection for testability.
+The chat pipeline handles the full lifecycle of an AI chat request: rate limiting, admin auth, input validation, thread management, semantic cache check, prompt construction, conditional tool attachment, LLM streaming via SSE, message persistence, cache write-back, audit logging, and audit-only grounding verification for tool-backed summaries. A small internal `TurnExecutionPolicy` layer now centralizes cache, RAG, context, and tool decisions from existing routing signals instead of spreading them across handler branches.
 
 ## File Map
 
@@ -16,6 +16,8 @@ The chat pipeline handles the full lifecycle of an AI chat request: rate limitin
 | `src/lib/ai/response-composer.ts` | Async generator streaming LLM response as SSE chunk/error events | `composeResponse` (L22), `UsageAccumulator` type (L5) |
 | `src/lib/ai/sse.ts` | SSE encoding, stream factory, event types | `CacheStatus` type (L1), `SSEEvent` type (L10), `encodeSSE` (L32), `createSSEStream` (L36), `SSE_HEADERS` (L25) |
 | `src/lib/ai/audit.ts` | Audit logging with cache + context metadata columns, secret redaction | `logAiRequest` (L37) |
+| `src/lib/ai/turn-execution-policy.ts` | Internal execution-policy builder | `buildTurnExecutionPolicy` |
+| `src/lib/ai/tool-grounding.ts` | Deterministic verifier for current read-tool summaries | `verifyToolBackedResponse` |
 | `src/lib/ai/thread-resolver.ts` | Thread ownership validation (normalizes all failures to 404) | `resolveOwnThread` (L11), `ThreadResolution` type (L7) |
 | `src/lib/schemas/ai-assistant.ts` | Zod schemas for request validation and cache eligibility | `sendMessageSchema` (L25), `listThreadsSchema` (L34), `cacheEligibilitySchema` (L54) |
 | `src/app/api/ai/[orgId]/chat/route.ts` | POST handler — orchestrates the full pipeline | `POST` (L491), `createChatPostHandler` (L36), `ChatRouteDeps` type (L25) |
@@ -66,15 +68,21 @@ Client POST /api/ai/{orgId}/chat
   ├─ 7.  Upsert thread (insert new if no threadId, title = first 100 chars)
   ├─ 8.  Insert user message (status: complete) + touch thread updated_at
   │
-  ├─ 8.5 CACHE CHECK (if enabled + eligible)
+  ├─ 8.5 Build TurnExecutionPolicy
+  │       ├─ casual            → no cache, no tools, no RAG
+  │       ├─ static_general    → exact cache lookup, shared_static, no tools, no RAG
+  │       ├─ live_lookup       → full context, tools allowed, RAG allowed
+  │       ├─ follow_up         → full context, tools allowed, no shared cache
+  │       └─ out_of_scope      → no cache, no tools, no RAG
+  │
+  ├─ 8.6 CACHE CHECK (if policy allows lookup_exact)
   │       ├─ HIT → insert assistant message (complete), stream cached content, audit, return
   │       ├─ MISS → continue to live path with contextMode = "shared_static"
   │       └─ ERROR → continue to live path with full context
   │
-  ├─ 8.6 RAG retrieval
-  │       ├─ Casual turns skip retrieval
-  │       ├─ Cache-eligible turns also skip retrieval
-  │       └─ All other turns may retrieve additive chunks
+  ├─ 8.7 RAG retrieval
+  │       ├─ casual / static_general / out_of_scope skip retrieval
+  │       └─ follow_up / live_lookup may retrieve additive chunks
   │
   ├─ 9.  Insert assistant placeholder (status: pending)
   ├─ 10. Build prompt context + fetch history (parallel)
@@ -85,16 +93,15 @@ Client POST /api/ai/{orgId}/chat
   │       │   ├─ Returns { systemPrompt, orgContextMessage, metadata }
   │       │   └─ "shared_static" mode: org overview only (overrides surface)
   │       └─ Last 20 complete messages from thread
-  ├─ 11. Resolve pass-1 tools from effectiveSurface
-  │       ├─ Exact casual turns attach no tools
-  │       ├─ members → list_members + get_org_stats
-  │       ├─ events → list_events + get_org_stats
-  │       ├─ analytics → get_org_stats
-  │       └─ general → all tools
+  ├─ 11. Resolve pass-1 tools from execution policy
+  │       ├─ `none` for casual / static_general / out_of_scope
+  │       └─ surface-gated read tools for follow_up / live_lookup
   ├─ 12. Stream LLM response via SSE (composeResponse async generator)
   │       ├─ Pass 1 may call tools depending on the resolved tool set
   │       └─ Each chunk: { type: "chunk", content: "..." }
   ├─ 13. Finalize — update assistant message to complete/error
+  ├─ 13.2 If pass-2 used successful read tools: verifyToolBackedResponse()
+  │       └─ log warning + ops telemetry on unsupported summaries, never fail request
   │
   └─ 13.5 CACHE WRITE (if miss + stream succeeded + finalize succeeded)
           ├─ Invalidate expired conflicting rows
@@ -139,7 +146,7 @@ Queries are gated by the `surface` parameter. Each surface only loads the data s
 | `analytics` | org, userName, memberCount, alumniCount, parentCount, donationStats |
 | `events` | org, userName, upcomingEvents |
 
-`shared_static` mode overrides surface — only loads org overview regardless.
+`shared_static` mode overrides surface — only loads org overview regardless. It is now entered via the execution policy’s `static_general` profile rather than ad hoc branching in the handler.
 
 #### Sections (priority order, highest first)
 

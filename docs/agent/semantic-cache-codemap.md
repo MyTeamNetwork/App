@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AI semantic cache is a conservative v1 exact-match cache for **standalone first-turn `general` prompts only**. It normalizes the prompt, builds a centralized cache-key contract (normalized prompt, salted prompt hash, permission scope key, cache version), and stores the assistant response keyed by `(org_id, surface, permission_scope_key, cache_version, prompt_hash)`. Cache-eligible requests deliberately skip RAG retrieval and use `shared_static` context so cached responses are derived only from stable org overview data. Entries use a 12-hour active TTL on the only live cached surface (`general`), soft-invalidate expired conflicts at write time, and are later hard-deleted by an hourly cron route that drains multiple 500-row purge batches up to 5,000 rows per run.
+The AI semantic cache is a conservative v1 exact-match cache for a narrow subset of **standalone first-turn `general` prompts only**. Pure cache eligibility still evaluates prompt safety, but the chat handler now applies an internal execution-policy layer before lookup/write. That means some prompts that are technically safe to hash, such as casual acknowledgements, are intentionally treated as non-cacheable low-value turns. Cache lookups that remain eligible use `shared_static` context and skip RAG retrieval entirely so cached responses stay derived from stable org overview data. Entries use a 12-hour active TTL on the only live cached surface (`general`), soft-invalidate expired conflicts at write time, and are later hard-deleted by an hourly cron route that drains multiple 500-row purge batches up to 5,000 rows per run.
 
 ## File Map
 
@@ -11,6 +11,7 @@ The AI semantic cache is a conservative v1 exact-match cache for **standalone fi
 | File | Purpose | Key Exports (line) |
 |---|---|---|
 | `src/lib/ai/semantic-cache-utils.ts` | Pure functions + centralized cache-key contract | `normalizePrompt`, `hashPrompt`, `buildPermissionScopeKey`, `buildSemanticCacheKeyParts`, `checkCacheEligibility`, `getCacheExpiresAt`, `CACHE_CONTRACT_VERSION`, `CACHE_KEY_SALT`, `CACHE_TTL_HOURS` |
+| `src/lib/ai/turn-execution-policy.ts` | Internal policy gate deciding whether cache lookup/write is allowed at all | `buildTurnExecutionPolicy`, `TurnExecutionPolicy` |
 | `src/lib/ai/semantic-cache.ts` | DB lookup/write via Supabase service client | `lookupSemanticCache`, `writeCacheEntry`, `CacheHit`, `CacheLookupResult`, `CacheWriteResult` |
 | `src/lib/ai/sse.ts` | SSE encoding, stream factory, `CacheStatus` type | `CacheStatus` type (L1), `SSEEvent` type (L10), `encodeSSE` (L32), `createSSEStream` (L36), `SSE_HEADERS` (L25) |
 | `src/lib/ai/audit.ts` | Audit logging with cache columns | `logAiRequest` (L34) — writes `cache_status`, `cache_entry_id`, `cache_bypass_reason` to `ai_audit_log` |
@@ -34,7 +35,7 @@ The AI semantic cache is a conservative v1 exact-match cache for **standalone fi
 | `tests/ai-cache-migration-contract.test.ts` | expanded | Contract tests: migration DDL assertions, audit columns, vector extension, hourly cron schedule |
 | `tests/ai-context-builder.test.ts` | 9 | Context tests: `shared_static` excludes user and mutable org data while preserving organization overview |
 | `tests/routes/ai/chat.test.ts` | 11 (cache) | Route simulation: cache hit/miss/bypass flow, `DISABLE_AI_CACHE`, schema alias validation |
-| `tests/routes/ai/chat-handler.test.ts` | targeted cache coverage | Cache-eligible requests skip RAG, miss-path writes record `cache_entry_id`, oversized miss-path writes surface skip reasons |
+| `tests/routes/ai/chat-handler.test.ts` | targeted cache coverage | Casual turns skip cache entirely, cacheable static explainers still use `shared_static`, governance-document asks bypass cache as out-of-scope, miss-path writes record `cache_entry_id`, oversized miss-path writes surface skip reasons |
 
 ## Dependency Graph
 
@@ -70,7 +71,15 @@ Client POST /api/ai/{orgId}/chat
   ├─ 7. Upsert thread (if new conversation)
   ├─ 8. Insert user message
   │
-  ├─ 8.5  CACHE CHECK (if enabled + eligible)
+  ├─ 8.5  BUILD EXECUTION POLICY
+  │    │
+  │    ├─ `static_general`  ─→ allow exact cache lookup
+  │    ├─ `casual`          ─→ skip cache entirely (`casual_turn`)
+  │    ├─ `follow_up`       ─→ skip cache entirely (`has_thread_context`)
+  │    ├─ `live_lookup`     ─→ skip cache entirely (live-context reasons)
+  │    └─ `out_of_scope`    ─→ skip cache entirely (`out_of_scope_request`)
+  │
+  ├─ 8.6  CACHE CHECK (if enabled + policy allows lookup_exact)
   │    │
   │    ├─ a. buildSemanticCacheKeyParts({ message, orgId, role })
   │    ├─ b. lookupSemanticCache({ cacheKey, orgId, surface })
@@ -86,11 +95,10 @@ Client POST /api/ai/{orgId}/chat
   │    └─ ERROR ─→ Set cacheStatus = "error", bypassReason = "cache_lookup_failed"
   │                Continue to live path with full context
   │
-  ├─ 8.6  RAG RETRIEVAL
+  ├─ 8.7  RAG RETRIEVAL
   │    │
-  │    ├─ Casual turns skip retrieval
-  │    ├─ Cache-eligible turns also skip retrieval by design
-  │    └─ All other turns may retrieve additive chunks (non-blocking)
+  │    ├─ casual / static_general / out_of_scope skip retrieval
+  │    └─ follow_up / live_lookup may retrieve additive chunks (non-blocking)
   │
   ├─ 9. Insert assistant placeholder (status: pending)
   ├─ 10. Build prompt context + fetch history (parallel)
@@ -203,11 +211,13 @@ Prompts containing these word-boundary patterns are excluded from caching:
 - **Live org context**: member(s), alumni, parent(s), event(s), announcement(s), donation(s), stat(s), count(s), total(s), roster, attendance
 - **Write/tool**: create, delete, remove, update, edit, change, add, send, post, submit, pay, donate, schedule, cancel
 
-Additional ineligibility: non-`general` surfaces, messages with `threadId`, messages < 5 or > 2000 chars, explicit `bypassCache: true` or `bypass_cache: true`.
+Additional ineligibility from the pure helper: non-`general` surfaces, messages with `threadId`, messages < 5 or > 2000 chars, explicit `bypassCache: true` or `bypass_cache: true`.
 
 ## Freshness Rules
 
-- Only `general` first-turn prompts are cache-eligible in v1.
+- Only a subset of `general` first-turn prompts are cache-looked-up in v1.
+- Casual acknowledgements are intentionally non-cacheable via the execution policy even if they pass pure cache-safety checks.
+- Narrow governance-document requests are intentionally non-cacheable via the execution policy (`out_of_scope_request`).
 - Cache-eligible prompts **skip RAG retrieval entirely** to avoid caching responses derived from mutable retrieved chunks.
 - Cache misses that remain eligible use `shared_static` context only: organization overview without current user or mutable org data.
 - Write results do not change request-level `cache_status`; they enrich audit metadata via `cache_entry_id` on insert or `cache_bypass_reason` on duplicate / skip / error.

@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { normalizeAiMessage } from "@/lib/ai/message-normalization";
 
 // ---------------------------------------------------------------------------
 // Surface constants and TTLs
@@ -152,14 +153,7 @@ function containsWordBoundary(text: string, markers: string[]): boolean {
  * Does NOT apply stemming, lemmatization, stopword removal, or synonym collapsing.
  */
 export function normalizePrompt(message: string): string {
-  return message
-    .normalize("NFC")
-    .toLowerCase()
-    // Strip zero-width characters
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    // Collapse multiple whitespace to single space
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeAiMessage(message);
 }
 
 /** SHA-256 hex hash of a normalized prompt string, salted by cache contract. */
