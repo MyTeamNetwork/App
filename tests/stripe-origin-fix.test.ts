@@ -96,6 +96,7 @@ describe("Stripe route files — no longer reference headers.get(\"origin\")", (
     "src/app/api/stripe/connect-onboarding/route.ts",
     "src/app/api/stripe/billing-portal/route.ts",
     "src/app/api/stripe/create-org-checkout/route.ts",
+    "src/app/api/stripe/create-enterprise-checkout/route.ts",
   ];
 
   const repoRoot = path.resolve(import.meta.dirname ?? __dirname, "..");
@@ -110,12 +111,12 @@ describe("Stripe route files — no longer reference headers.get(\"origin\")", (
       );
     });
 
-    it(`${relPath} uses NEXT_PUBLIC_SITE_URL for origin`, () => {
+    it(`${relPath} uses getStripeOrigin for safe origin resolution`, () => {
       const absPath = path.join(repoRoot, relPath);
       const content = fs.readFileSync(absPath, "utf-8");
       assert.ok(
-        content.includes("process.env.NEXT_PUBLIC_SITE_URL"),
-        `Expected NEXT_PUBLIC_SITE_URL in ${relPath}`
+        content.includes("getStripeOrigin"),
+        `Expected getStripeOrigin in ${relPath}`
       );
     });
   }

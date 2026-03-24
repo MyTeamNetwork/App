@@ -27,6 +27,7 @@ import {
   getOrgTrialMetadataValue,
   ORG_TRIAL_DAYS,
 } from "@/lib/subscription/org-trial";
+import { getStripeOrigin } from "@/lib/stripe-origin";
 import { z } from "zod";
 import type { AlumniBucket, SubscriptionInterval } from "@/types/database";
 
@@ -216,7 +217,7 @@ export async function POST(req: Request) {
       }
 
       const { basePrice, alumniPrice } = getPriceIds(interval, bucket);
-      const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;
+      const origin = getStripeOrigin(req.url);
       const pendingOrgIdSeed = randomUUID();
       const fingerprint = hashFingerprint(
         buildOrgCheckoutFingerprintPayload({

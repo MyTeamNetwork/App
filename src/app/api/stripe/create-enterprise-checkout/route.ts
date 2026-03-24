@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { stripe } from "@/lib/stripe";
+import { getStripeOrigin } from "@/lib/stripe-origin";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
@@ -107,7 +108,7 @@ export async function POST(req: Request) {
     }
 
     try {
-      const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+      const origin = getStripeOrigin(req.url);
 
       // Calculate billable orgs (defaults to 3 if not provided = free tier)
       const totalOrgs = subOrgQuantity ?? 3;

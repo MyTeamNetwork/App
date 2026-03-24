@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { stripe, getConnectAccountStatus } from "@/lib/stripe";
+import { getStripeOrigin } from "@/lib/stripe-origin";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import {
@@ -153,7 +154,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(req.url).origin;
+  const origin = getStripeOrigin(req.url);
   const donorName = body.donorName?.trim();
   const donorEmail = body.donorEmail?.trim();
   const purpose = body.purpose?.trim();
