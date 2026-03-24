@@ -19,7 +19,14 @@ interface RouteParams {
 }
 
 export async function POST(req: Request, { params }: RouteParams) {
-  const { organizationId } = await params;
+  const { organizationId: rawOrgId } = await params;
+
+  // Validate organizationId path param
+  const orgIdResult = baseSchemas.uuid.safeParse(rawOrgId);
+  if (!orgIdResult.success) {
+    return NextResponse.json({ error: "Invalid organization ID" }, { status: 400 });
+  }
+  const organizationId = orgIdResult.data;
 
   // Auth
   const supabase = await createClient();
@@ -97,12 +104,13 @@ export async function POST(req: Request, { params }: RouteParams) {
   if (deleteError) {
     console.error("[alumni/bulk-delete] Soft delete failed:", deleteError);
     return NextResponse.json(
-      { error: deleteError.message },
-      { status: 400, headers: rateLimit.headers }
+      { error: "Failed to delete alumni records" },
+      { status: 500, headers: rateLimit.headers }
     );
   }
 
-  const deleted = data?.length ?? 0;
+  const deletedIds = (data ?? []).map((r) => r.id as string);
+  const deleted = deletedIds.length;
 
   // Cache invalidation
   if (deleted > 0) {
@@ -122,5 +130,5 @@ export async function POST(req: Request, { params }: RouteParams) {
     }
   }
 
-  return NextResponse.json({ deleted }, { headers: rateLimit.headers });
+  return NextResponse.json({ deleted, deletedIds }, { headers: rateLimit.headers });
 }

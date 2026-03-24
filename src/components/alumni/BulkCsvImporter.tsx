@@ -103,6 +103,7 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
   const [postImportSelected, setPostImportSelected] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteCount, setDeleteCount] = useState(0);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // ─── Derived state (filters out excluded rows) ────────────────────────────
 
@@ -350,6 +351,7 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
     if (!window.confirm(`Delete ${count} alumni record${count !== 1 ? "s" : ""}? This action can be undone by an admin.`)) return;
 
     setIsDeleting(true);
+    setDeleteError(null);
     try {
       const response = await fetch(
         `/api/organizations/${organizationId}/alumni/bulk-delete`,
@@ -360,25 +362,29 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
         },
       );
 
+      const data = await response.json();
+
       if (response.ok) {
-        const data = await response.json();
+        const deletedIdSet = new Set<string>(data.deletedIds ?? []);
         setDeleteCount((prev) => prev + data.deleted);
-        // Remove deleted records from the result
+        // Only remove IDs the server actually deleted
         setResult((prev) =>
           prev
             ? {
                 ...prev,
                 createdRecords: prev.createdRecords?.filter(
-                  (r) => !postImportSelected.has(r.id)
+                  (r) => !deletedIdSet.has(r.id)
                 ),
               }
             : null
         );
         setPostImportSelected(new Set());
         router.refresh();
+      } else {
+        setDeleteError(data.error ?? "Failed to delete records");
       }
     } catch {
-      // Network error — selection preserved so user can retry
+      setDeleteError("Network error. Please try again.");
     } finally {
       setIsDeleting(false);
     }
@@ -395,6 +401,7 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
     setExcludedIndices(new Set());
     setPostImportSelected(new Set());
     setDeleteCount(0);
+    setDeleteError(null);
     fileDrop.resetFileInput();
   }, [fileDrop]);
 
@@ -650,6 +657,12 @@ export function BulkCsvImporter({ organizationId, onClose }: BulkCsvImporterProp
             {/* Post-import: created records with bulk delete */}
             {createdRecords.length > 0 && (
               <div className="space-y-3">
+                {deleteError && (
+                  <p className="text-xs text-red-400 bg-red-500/10 rounded px-3 py-2">
+                    {deleteError}
+                  </p>
+                )}
+
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-medium text-muted-foreground">
                     Created Records ({createdRecords.length})
