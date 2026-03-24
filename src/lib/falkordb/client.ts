@@ -1,4 +1,5 @@
 import { existsSync } from "fs";
+import { toErrorMessage } from "@/lib/falkordb/utils";
 
 export interface FalkorQueryClient {
   isAvailable(): boolean;
@@ -110,21 +111,6 @@ function graphNameForOrg(orgId: string, graphPrefix: string) {
   return `${graphPrefix}_${orgId.replace(/[^a-zA-Z0-9]/g, "_")}`;
 }
 
-function toErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (error && typeof error === "object" && "message" in error) {
-    const message = error.message;
-    if (typeof message === "string" && message.length > 0) {
-      return message;
-    }
-  }
-
-  return "unknown_falkor_error";
-}
-
 export class FalkorUnavailableError extends Error {
   constructor(message: string) {
     super(message);
@@ -166,7 +152,7 @@ class FalkorClientImpl implements FalkorQueryClient {
       const result = await graph.query<T>(cypher, params ? { params } : undefined);
       return result.data ?? [];
     } catch (error) {
-      throw new FalkorQueryError(`Falkor query failed: ${toErrorMessage(error)}`, error);
+      throw new FalkorQueryError(`Falkor query failed: ${toErrorMessage(error, "unknown_falkor_error")}`, error);
     }
   }
 
@@ -227,7 +213,7 @@ class FalkorClientImpl implements FalkorQueryClient {
         },
       })) as FalkorDatabaseHandle;
     } catch (error) {
-      throw new FalkorUnavailableError(`Failed to connect to Falkor: ${toErrorMessage(error)}`);
+      throw new FalkorUnavailableError(`Failed to connect to Falkor: ${toErrorMessage(error, "unknown_falkor_error")}`);
     }
   }
 }

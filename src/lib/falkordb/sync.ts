@@ -13,6 +13,7 @@ import {
   type ProjectedPerson,
 } from "@/lib/falkordb/people";
 import { falkorClient, type FalkorQueryClient } from "@/lib/falkordb/client";
+import { toErrorMessage } from "@/lib/falkordb/utils";
 
 export interface GraphQueueStats {
   processed: number;
@@ -32,21 +33,6 @@ interface GraphQueueItem {
 interface ProcessOptions {
   batchSize?: number;
   graphClient?: FalkorQueryClient;
-}
-
-function toErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (error && typeof error === "object" && "message" in error) {
-    const message = error.message;
-    if (typeof message === "string" && message.length > 0) {
-      return message;
-    }
-  }
-
-  return "unknown_graph_sync_error";
 }
 
 function readOptionalString(value: unknown) {
@@ -492,7 +478,7 @@ export async function processGraphSyncQueue(
       }
     } catch (error) {
       stats.failed++;
-      await incrementAttempts(serviceSupabase, item.id, toErrorMessage(error));
+      await incrementAttempts(serviceSupabase, item.id, toErrorMessage(error, "unknown_graph_sync_error"));
     }
   }
 
