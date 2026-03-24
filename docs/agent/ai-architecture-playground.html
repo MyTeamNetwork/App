@@ -611,11 +611,15 @@ const COMPONENTS = [
     files: [
       'src/app/api/ai/[orgId]/chat/route.ts',
       'src/app/api/ai/[orgId]/chat/handler.ts',
-      'src/lib/schemas/ai-assistant.ts'
+      'src/lib/schemas/ai-assistant.ts',
+      'src/lib/ai/message-safety.ts'
     ],
     built: [
       'POST endpoint with streaming SSE response',
       'Zod request validation (message, threadId, surface, idempotencyKey)',
+      'Transport-noise cleanup before any model-facing use (Unicode normalization, zero-width/control-char stripping)',
+      'Message safety assessment returns none / suspicious / blocked with stable reasons',
+      'Prompt-injection and prompt-exfiltration attempts short-circuit before model, tools, RAG, or cache write',
       'Rate limiting: 30 req/min IP, 20 req/min user',
       'Idempotency via idempotency_key + localStorage',
       'Duplicate detection with 409 recovery for in-flight requests',
@@ -697,6 +701,7 @@ const COMPONENTS = [
     x: 310, y: 170,
     files: [
       'src/lib/ai/intent-router.ts',
+      'src/lib/ai/message-safety.ts',
       'supabase/migrations/20260319000000_ai_assistant_tables.sql',
       'src/lib/schemas/ai-assistant.ts'
     ],
@@ -711,6 +716,7 @@ const COMPONENTS = [
       'Returns rerouted flag when inferred surface differs from requested',
       'Maps surface → intent: members_query, analytics_query, events_query, general_query, ambiguous_query',
       'Routing based on classified intent — effectiveSurface drives context selection',
+      'Routing/classification now consumes promptSafeMessage rather than raw user text',
       'Exact casual turns omit pass-1 tools; non-casual turns gate tools by effectiveSurface'
     ],
     missing: [
@@ -722,19 +728,27 @@ const COMPONENTS = [
     id: 'validator',
     label: 'Output Validator',
     shortLabel: 'Validator',
-    pct: 0,
-    status: 'missing',
+    pct: 35,
+    status: 'stub',
     layer: 'routing',
     x: 500, y: 170,
-    files: [],
-    built: [],
+    files: [
+      'src/lib/ai/tool-grounding.ts',
+      'src/app/api/ai/[orgId]/chat/handler.ts'
+    ],
+    built: [
+      'Deterministic verification for current read-tool summaries (members, events, org stats)',
+      'Tool-backed pass-2 content buffered server-side before release',
+      'Ungrounded tool-backed responses replaced with a safe fallback instead of being streamed to the user',
+      'Grounding failures emit ops telemetry (tool_grounding_failed)'
+    ],
     missing: [
       'No schema validation for structured LLM output',
       'No safety check (toxicity, PII leakage, off-topic detection)',
-      'No hallucination check (claim verification against RAG sources)',
+      'No validation for non-tool responses or RAG-backed freeform claims',
       'No confidence scoring or fallback to "I don\'t know"',
       'No retry loop for failed validation (re-prompt with corrections)',
-      'Would gate all execution paths before actions branch out'
+      'Does not yet gate all execution paths before actions branch out'
     ]
   },
   {
@@ -748,6 +762,7 @@ const COMPONENTS = [
     files: [
       'src/lib/ai/context.ts',
       'src/lib/ai/thread-resolver.ts',
+      'src/lib/ai/message-safety.ts',
       'src/middleware.ts'
     ],
     built: [
@@ -757,7 +772,9 @@ const COMPONENTS = [
       'Never leaks thread existence to non-owners',
       'Rate limiting at IP and user level',
       'RLS policies on ai_threads and ai_messages',
-      'Abandoned stream detection (5-min timeout, prevents stuck threads)'
+      'Abandoned stream detection (5-min timeout, prevents stuck threads)',
+      'Distinct suspicious vs blocked safety outcomes with identical fail-closed execution behavior in v1',
+      'Risky prior user messages sanitized before prompt replay so blocked turns do not poison later turns'
     ],
     missing: [
       'No per-action permission checks for write tools (read-only tools execute freely)'
@@ -836,7 +853,8 @@ const COMPONENTS = [
       'Malformed args fail closed — no {} fallback, error pushed to tool results',
       'Cache bypass when toolCallMade = true (tool responses are dynamic)',
       'Usage accumulated across both passes via usageRef',
-      'Tool calls recorded in audit log (toolCalls array)'
+      'Tool calls recorded in audit log (toolCalls array)',
+      'Tool-backed pass-2 text is withheld until grounding verification succeeds'
     ],
     missing: [
       'No write actions (create events, send announcements, manage members)',
@@ -886,7 +904,8 @@ const COMPONENTS = [
       'streaming → complete status transitions on ai_messages',
       'Tool call detection: streams OpenAI deltas, assembles multi-chunk argsJson by index',
       'Yields tool_call_requested events with assembled tool call data',
-      'Pass 2 mode: reconstructs assistant + tool role messages per OpenAI function-calling protocol'
+      'Pass 2 mode: reconstructs assistant + tool role messages per OpenAI function-calling protocol',
+      'Tool-backed pass-2 content now buffers until the route verifies it before emitting chunk text'
     ],
     missing: [
       'No structured output parsing',
@@ -919,7 +938,9 @@ const COMPONENTS = [
       'SSE delivery to client with replayed flag',
       'RAG telemetry (rag_chunk_count, rag_top_similarity, rag_error)',
       'toolCalls array in audit entries (names + args of all executed tools)',
-      'cacheBypassReason: tool_call_made recorded when tools used'
+      'cacheBypassReason: tool_call_made recorded when tools used',
+      'Safety short-circuit reasons recorded via bypassReason/message_safety_* paths',
+      'tool_grounding_failed emitted to ops telemetry when buffered verification rejects a tool-backed answer'
     ],
     missing: [
       'No real-time monitoring dashboard',
