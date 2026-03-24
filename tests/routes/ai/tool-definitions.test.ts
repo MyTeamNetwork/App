@@ -6,8 +6,8 @@ import type { ToolName } from "../../../src/lib/ai/tools/definitions.ts";
 type ToolProperties = Record<string, { type?: string; maximum?: number }>;
 type ToolParameters = { properties?: ToolProperties; additionalProperties?: boolean; required?: string[] };
 
-test("AI_TOOLS exports 3 tool definitions", () => {
-  assert.equal(AI_TOOLS.length, 3);
+test("AI_TOOLS exports 4 tool definitions", () => {
+  assert.equal(AI_TOOLS.length, 4);
 });
 
 test("every tool has type function and additionalProperties false", () => {
@@ -20,8 +20,13 @@ test("every tool has type function and additionalProperties false", () => {
   }
 });
 
-test("TOOL_NAMES contains all 3 names", () => {
-  const expected: ToolName[] = ["list_members", "list_events", "get_org_stats"];
+test("TOOL_NAMES contains all 4 names", () => {
+  const expected: ToolName[] = [
+    "list_members",
+    "list_events",
+    "get_org_stats",
+    "suggest_connections",
+  ];
   assert.deepEqual([...TOOL_NAMES].sort(), [...expected].sort());
 });
 
@@ -59,4 +64,15 @@ test("get_org_stats has no required parameters", () => {
   const tool = AI_TOOLS.find((t) => t.function.name === "get_org_stats")!;
   const params = tool.function.parameters as ToolParameters;
   assert.equal(params.required, undefined);
+});
+
+test("suggest_connections requires person_type and person_id", () => {
+  const tool = AI_TOOLS.find((t) => t.function.name === "suggest_connections")!;
+  const params = tool.function.parameters as ToolParameters;
+  const props = params.properties as ToolProperties;
+
+  assert.ok(props.person_type);
+  assert.ok(props.person_id);
+  assert.equal(props.limit.maximum, 25);
+  assert.deepEqual(params.required, ["person_type", "person_id"]);
 });

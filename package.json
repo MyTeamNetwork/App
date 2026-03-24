@@ -35,6 +35,8 @@
     "@supabase/supabase-js": "^2.86.2",
     "animejs": "^4.2.2",
     "cheerio": "^1.2.0",
+    "falkordb": "^6.6.2",
+    "falkordblite": "^0.2.0",
     "googleapis": "^170.0.0",
     "lucide-react": "^0.474.0",
     "next": "^14.2.35",

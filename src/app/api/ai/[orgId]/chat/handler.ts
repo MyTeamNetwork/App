@@ -67,8 +67,8 @@ export interface ChatRouteDeps {
 }
 
 const PASS1_TOOL_NAMES: Record<CacheSurface, ToolName[]> = {
-  general: ["list_members", "list_events", "get_org_stats"],
-  members: ["list_members", "get_org_stats"],
+  general: ["list_members", "list_events", "get_org_stats", "suggest_connections"],
+  members: ["list_members", "get_org_stats", "suggest_connections"],
   analytics: ["get_org_stats"],
   events: ["list_events", "get_org_stats"],
 };

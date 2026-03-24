@@ -67,3 +67,27 @@ test("verifyToolBackedResponse flags event dates absent from tool rows", () => {
   assert.equal(result.grounded, false);
   assert.match(result.failures.join("\n"), /2026-05-01/i);
 });
+
+test("verifyToolBackedResponse flags unsupported suggest_connections reasons", () => {
+  const result = verifyToolBackedResponse({
+    content: "- Dina Direct — direct mentorship and shared city",
+    toolResults: [
+      {
+        name: "suggest_connections",
+        data: {
+          mode: "sql_fallback",
+          freshness: { state: "fresh", as_of: "2026-03-24T00:00:00.000Z" },
+          results: [
+            {
+              name: "Dina Direct",
+              reasons: [{ code: "direct_mentorship", weight: 100 }],
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.equal(result.grounded, false);
+  assert.match(result.failures.join("\n"), /shared_city/i);
+});

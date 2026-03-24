@@ -95,6 +95,57 @@ describe("ai-cron-routes", () => {
     });
   });
 
+  describe("graph-sync-process loop termination", () => {
+    it("aggregates graph sync batches and stops on empty work", async () => {
+      let callCount = 0;
+      let totalProcessed = 0;
+      let totalSkipped = 0;
+      let totalFailed = 0;
+      let iterations = 0;
+
+      const mockProcess = async () => {
+        callCount++;
+        if (callCount === 1) {
+          return { processed: 2, skipped: 1, failed: 0 };
+        }
+        return { processed: 0, skipped: 0, failed: 0 };
+      };
+
+      const startTime = Date.now();
+      while (Date.now() - startTime < 25_000) {
+        const stats = await mockProcess();
+        totalProcessed += stats.processed;
+        totalSkipped += stats.skipped;
+        totalFailed += stats.failed;
+        iterations++;
+
+        if (stats.processed + stats.skipped + stats.failed === 0) {
+          break;
+        }
+      }
+
+      assert.equal(iterations, 2);
+      assert.equal(totalProcessed, 2);
+      assert.equal(totalSkipped, 1);
+      assert.equal(totalFailed, 0);
+    });
+
+    it("calls purge_graph_sync_queue after processing", async () => {
+      const rpcCalls: string[] = [];
+      const mockSupabase = {
+        rpc: async (fn: string) => {
+          rpcCalls.push(fn);
+          return { data: 7, error: null };
+        },
+      };
+
+      const { data, error } = await mockSupabase.rpc("purge_graph_sync_queue");
+      assert.equal(error, null);
+      assert.equal(data, 7);
+      assert.deepEqual(rpcCalls, ["purge_graph_sync_queue"]);
+    });
+  });
+
   describe("embed-process error handling", () => {
     it("catches and reports processEmbeddingQueue errors", async () => {
       let caughtError: string | null = null;

@@ -210,6 +210,7 @@ function buildDefaultDeps(overrides: Record<string, any> = {}) {
       executeToolCallCalls.push({ ctx, call });
       return okToolResult([{ id: "m1", name: "Alice" }]);
     },
+    verifyToolBackedResponse: () => ({ grounded: true, failures: [] }),
     ...overrides,
   };
 }
@@ -279,7 +280,11 @@ test("tool call: pass 2 receives toolResults without tools param", async () => {
   ).text();
 
   assert.equal(composeResponseCalls.length, 2);
-  assert.deepEqual(toolNamesForCall(0), ["list_members", "get_org_stats"]);
+  assert.deepEqual(toolNamesForCall(0), [
+    "list_members",
+    "get_org_stats",
+    "suggest_connections",
+  ]);
   assert.equal(
     composeResponseCalls[1].tools,
     undefined,
@@ -326,6 +331,7 @@ test("ambiguous queries keep fallback surface tool set", async () => {
     "list_members",
     "list_events",
     "get_org_stats",
+    "suggest_connections",
   ]);
 });
 
@@ -430,7 +436,7 @@ test("no tool call: first pass chunks stream before completion", async () => {
   assert.match(remaining.join(""), /"type":"done"/);
 });
 
-test("tool call: pass 1 text may stream before tool execution, but pass 2 still completes", async () => {
+test("tool call: pass 1 text before tool execution is buffered while pass 2 completes", async () => {
   POST = createChatPostHandler(
     buildDefaultDeps({
       composeResponse: async function* (options: any) {
@@ -457,7 +463,7 @@ test("tool call: pass 1 text may stream before tool execution, but pass 2 still 
   });
   const body = await response.text();
 
-  assert.match(body, /Let me check/);
+  assert.doesNotMatch(body, /Let me check/);
   assert.match(body, /You have 42 active members/);
   assert.match(body, /"type":"tool_status".*"status":"calling"/);
   assert.match(body, /"type":"tool_status".*"status":"done"/);
@@ -542,7 +548,7 @@ test("timeout opens the breaker, skips later tools, and still runs pass 2", asyn
   assert.match(JSON.stringify(composeResponseCalls[1].toolResults[0].data), /Tool timed out/);
 });
 
-test("forbidden tool result is turn-fatal and skips pass 2", async () => {
+test("forbidden tool result is turn-fatal and suppresses buffered pass 1 text", async () => {
   POST = createChatPostHandler(
     buildDefaultDeps({
       composeResponse: async function* (options: any) {
@@ -569,7 +575,7 @@ test("forbidden tool result is turn-fatal and skips pass 2", async () => {
   });
   const body = await response.text();
 
-  assert.match(body, /Checking access/);
+  assert.doesNotMatch(body, /Checking access/);
   assert.match(body, /Your access to AI tools for this organization has changed/);
   assert.doesNotMatch(body, /should not run/);
   assert.doesNotMatch(body, /"type":"done"/);
@@ -629,7 +635,7 @@ test("pass 1 timeout preserves partial text and ends without done", async () => 
   assert.doesNotMatch(body, /"type":"done"/);
 });
 
-test("pass 2 timeout preserves earlier text and ends without done", async () => {
+test("pass 2 timeout suppresses buffered text and ends without done", async () => {
   POST = createChatPostHandler(
     buildDefaultDeps({
       composeResponse: async function* (options: any) {
@@ -654,7 +660,7 @@ test("pass 2 timeout preserves earlier text and ends without done", async () => 
   });
   const body = await response.text();
 
-  assert.match(body, /Fallback summary/);
+  assert.doesNotMatch(body, /Fallback summary/);
   assert.match(body, /The response timed out\. Please try again/);
   assert.doesNotMatch(body, /"type":"done"/);
 });

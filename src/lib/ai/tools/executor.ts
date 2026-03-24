@@ -7,6 +7,10 @@ import {
   TOOL_EXECUTION_TIMEOUT_MS,
   withStageTimeout,
 } from "@/lib/ai/timeout";
+import {
+  suggestConnections,
+  SuggestConnectionsLookupError,
+} from "@/lib/falkordb/suggestions";
 
 export interface ToolExecutionContext {
   orgId: string;
@@ -39,11 +43,19 @@ const listEventsSchema = z
   .strict();
 
 const getOrgStatsSchema = z.object({}).strict();
+const suggestConnectionsSchema = z
+  .object({
+    person_type: z.enum(["member", "alumni"]),
+    person_id: z.string().uuid(),
+    limit: z.number().int().min(1).max(25).optional(),
+  })
+  .strict();
 
 const ARG_SCHEMAS: Record<ToolName, z.ZodSchema> = {
   list_members: listMembersSchema,
   list_events: listEventsSchema,
   get_org_stats: getOrgStatsSchema,
+  suggest_connections: suggestConnectionsSchema,
 };
 
 function validateArgs(
@@ -323,6 +335,36 @@ async function getOrgStats(sb: SB, orgId: string): Promise<ToolExecutionResult> 
   };
 }
 
+async function runSuggestConnections(
+  sb: SB,
+  orgId: string,
+  args: z.infer<typeof suggestConnectionsSchema>
+): Promise<ToolExecutionResult> {
+  try {
+    const data = await suggestConnections({
+      orgId,
+      serviceSupabase: sb,
+      args,
+    });
+
+    return {
+      kind: "ok",
+      data,
+    };
+  } catch (error) {
+    if (error instanceof SuggestConnectionsLookupError) {
+      return toolError(error.message);
+    }
+
+    if (isStageTimeoutError(error)) {
+      throw error;
+    }
+
+    console.warn("[ai-tools] suggest_connections failed:", getSafeErrorMessage(error));
+    return toolError("Unexpected error");
+  }
+}
+
 async function verifyExecutorAccess(
   ctx: ToolExecutionContext
 ): Promise<{ kind: "allowed" } | Extract<ToolExecutionResult, { kind: "forbidden" | "auth_error" }>> {
@@ -384,6 +426,12 @@ export async function executeToolCall(
           return listEvents(sb, ctx.orgId, args as z.infer<typeof listEventsSchema>);
         case "get_org_stats":
           return getOrgStats(sb, ctx.orgId);
+        case "suggest_connections":
+          return runSuggestConnections(
+            sb,
+            ctx.orgId,
+            args as z.infer<typeof suggestConnectionsSchema>
+          );
       }
     });
   } catch (err) {

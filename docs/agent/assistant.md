@@ -2,7 +2,7 @@
 
 ## Summary
 
-The AI assistant is an admin-only, org-scoped chat feature. Admins open a slide-out panel, ask questions about their organization, and receive streaming LLM responses grounded in live org data. Conversations are persisted as threads and messages, with full audit logging and a conservative exact-hash semantic cache for deduplication. In v1, the cache only applies to standalone first-turn `general` prompts, uses `shared_static` context, and skips RAG retrieval entirely for cache-eligible requests so cached responses stay tied to stable org overview data. Tool attachment is routed by inferred surface, while exact casual turns skip both RAG and pass-1 tools for lower latency. A deterministic message-safety stage now strips transport noise, blocks prompt-injection style turns before any model/tool path, sanitizes replayed user history before prompt assembly, and buffers tool-backed pass-2 prose until grounding verification passes. For member lookups, the assistant now prefers real human names, falls back to `public.users.name` when linked `members` rows still have placeholder identity, and treats remaining no-name records as email-only accounts instead of rendering `Member(email)`.
+The AI assistant is an admin-only, org-scoped chat feature. Admins open a slide-out panel, ask questions about their organization, and receive streaming LLM responses grounded in live org data. Conversations are persisted as threads and messages, with full audit logging and a conservative exact-hash semantic cache for deduplication. In v1, the cache only applies to standalone first-turn `general` prompts, uses `shared_static` context, and skips RAG retrieval entirely for cache-eligible requests so cached responses stay tied to stable org overview data. Tool attachment is routed by inferred surface, while exact casual turns skip both RAG and pass-1 tools for lower latency. A deterministic message-safety stage now strips transport noise, blocks prompt-injection style turns before any model/tool path, sanitizes replayed user history before prompt assembly, and buffers tool-backed pass-2 prose until grounding verification passes. For member lookups, the assistant now prefers real human names, falls back to `public.users.name` when linked `members` rows still have placeholder identity, and treats remaining no-name records as email-only accounts instead of rendering `Member(email)`. The current tool set also includes `suggest_connections`, an admin-only member/alumni outreach recommender backed by a single-org Falkor people graph with a SQL-equivalent fallback.
 
 ## Tech Stack
 
@@ -101,6 +101,10 @@ The contract test and semantic cache codemap previously referenced `202603211000
 ## v2 Roadmap — Research-Backed Enhancements
 
 The following features are deferred from v1 tool calling. Each is mapped to the relevant research paper for implementation guidance.
+
+### People Connection Graph + Learned Ranking
+- **What:** Extend the shipped `suggest_connections` feature from deterministic graph-based ranking to post-launch learned ranking once admin interaction data exists.
+- **Design:** V1 already ships a single-org Falkor people graph for members + alumni, deterministic weighting, graph freshness metadata, and SQL fallback parity. Future work should instrument accept / dismiss / acted-on outcomes, evaluate `node2vec` as the first learned-ranking baseline, and then evaluate `GraphSAGE` for inductive embeddings once unseen-person cold start matters.
 
 ### Write Actions + Safety Gates
 - **Paper:** ILION — Deterministic Pre-Execution Safety Gates (`2603.13247`)

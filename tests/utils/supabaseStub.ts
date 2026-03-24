@@ -19,6 +19,8 @@ type TableName =
   | "google_tokens"
   | "alumni"
   | "members"
+  | "mentorship_pairs"
+  | "graph_sync_queue"
   | "donations"
   | "philanthropy_events"
   | "users"
@@ -77,6 +79,8 @@ const uniqueKeys: Record<TableName, UniqueConstraint[]> = {
   google_tokens: ["user_id"],
   alumni: [],
   members: [],
+  mentorship_pairs: [],
+  graph_sync_queue: [],
   donations: [],
   philanthropy_events: [],
   users: [],
@@ -127,6 +131,8 @@ export function createSupabaseStub() {
     google_tokens: [],
     alumni: [],
     members: [],
+    mentorship_pairs: [],
+    graph_sync_queue: [],
     donations: [],
     philanthropy_events: [],
     users: [],

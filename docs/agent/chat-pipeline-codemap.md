@@ -2,7 +2,7 @@
 
 ## Overview
 
-The chat pipeline handles the full lifecycle of an AI chat request: rate limiting, active-admin auth, input validation, message-safety assessment, thread management, semantic cache check, prompt construction, conditional tool attachment, LLM streaming via SSE, message persistence, cache write-back, audit logging, and deterministic grounding enforcement for tool-backed summaries. A small internal `TurnExecutionPolicy` layer now centralizes cache, RAG, context, and tool decisions from existing routing signals instead of spreading them across handler branches. Tool execution is now defense-in-depth hardened in the executor itself, and each turn stage is bounded so pass 1, each tool call, and pass 2 cannot hang indefinitely.
+The chat pipeline handles the full lifecycle of an AI chat request: rate limiting, active-admin auth, input validation, message-safety assessment, thread management, semantic cache check, prompt construction, conditional tool attachment, LLM streaming via SSE, message persistence, cache write-back, audit logging, and deterministic grounding enforcement for tool-backed summaries. A small internal `TurnExecutionPolicy` layer now centralizes cache, RAG, context, and tool decisions from existing routing signals instead of spreading them across handler branches. Tool execution is now defense-in-depth hardened in the executor itself, and each turn stage is bounded so pass 1, each tool call, and pass 2 cannot hang indefinitely. The current read-tool set now includes `suggest_connections`, which can answer member/alumni outreach questions through a Falkor people graph with a functionally equivalent SQL fallback.
 
 ## File Map
 
@@ -19,8 +19,11 @@ The chat pipeline handles the full lifecycle of an AI chat request: rate limitin
 | `src/lib/ai/audit.ts` | Audit logging with cache + context metadata columns, secret redaction | `logAiRequest` (L37) |
 | `src/lib/ai/message-safety.ts` | Transport-noise cleanup, prompt-injection assessment, history sanitization | `assessAiMessageSafety`, `sanitizeHistoryMessageForPrompt` |
 | `src/lib/ai/turn-execution-policy.ts` | Internal execution-policy builder | `buildTurnExecutionPolicy` |
-| `src/lib/ai/tool-grounding.ts` | Deterministic verifier for current read-tool summaries | `verifyToolBackedResponse` |
+| `src/lib/ai/tool-grounding.ts` | Deterministic verifier for current read-tool summaries, including `suggest_connections` names and reason codes | `verifyToolBackedResponse` |
 | `src/lib/ai/tools/executor.ts` | Read-tool executor with executor-side active-admin recheck and discriminated result union | `executeToolCall`, `ToolExecutionResult`, `ToolExecutionContext` |
+| `src/lib/falkordb/suggestions.ts` | `suggest_connections` implementation: unified person projection, SQL fallback parity, graph freshness metadata | `suggestConnections` |
+| `src/lib/falkordb/client.ts` | Falkor client wrapper with env-gated availability and graph-scoped query helper | `falkorClient`, `FalkorUnavailableError`, `FalkorQueryError` |
+| `src/lib/falkordb/sync.ts` | Graph sync worker for members, alumni, and mentorship pairs | `processGraphSyncQueue` |
 | `src/lib/ai/thread-resolver.ts` | Thread ownership validation (normalizes all failures to 404) | `resolveOwnThread` (L11), `ThreadResolution` type (L7) |
 | `src/lib/schemas/ai-assistant.ts` | Zod schemas for request validation and cache eligibility | `sendMessageSchema` (L25), `listThreadsSchema` (L34), `cacheEligibilitySchema` (L54) |
 | `src/app/api/ai/[orgId]/chat/route.ts` | POST handler — orchestrates the full pipeline | `POST` (L491), `createChatPostHandler` (L36), `ChatRouteDeps` type (L25) |
@@ -112,6 +115,7 @@ Client POST /api/ai/{orgId}/chat
   │       ├─ Pass 1 runs with a 15s timeout budget
   │       ├─ Each requested tool is re-authorized in the executor (`role = admin`, `status = active`) and runs with a 5s timeout budget
   │       ├─ Tool executor returns one of `ok`, `tool_error`, `timeout`, `forbidden`, `auth_error`
+  │       ├─ `suggest_connections` may return either `mode: "falkor"` or `mode: "sql_fallback"` plus `freshness` metadata
   │       ├─ Tool `timeout` opens a per-pass breaker, skips later tools in that pass, then still allows a single fallback pass 2
   │       ├─ Tool `forbidden` / `auth_error` fail the turn closed, emit SSE error, and skip pass 2
   │       ├─ When tools are available, pass-1 text is buffered until the route knows whether the turn stayed text-only or switched into tool mode
@@ -232,6 +236,18 @@ type ToolExecutionResult =
 - `timeout`: emit `tool_status:error`, append timeout payload, open the current-pass breaker, skip later tools in that pass, then run one fallback pass 2.
 - `forbidden`: emit `tool_status:error`, emit a non-retryable SSE error, finalize the turn as `error`, and skip pass 2.
 - `auth_error`: same user-visible behavior as `forbidden`, but logged separately as executor auth infrastructure failure.
+
+## Tool Catalog
+
+### `suggest_connections`
+
+- **Inputs:** `person_type`, `person_id`, optional `limit` (default 10, max 25)
+- **Outputs:** `{ mode, freshness, results }`
+- `mode`: `"falkor"` when the graph path succeeds, `"sql_fallback"` when Falkor is disabled or query execution fails
+- `freshness`: `{ state: "fresh" | "stale", as_of, lag_seconds? }`
+- `results[]`: ranked same-org member/alumni suggestions with deterministic `score`, compact `preview`, and machine-readable `reasons[]`
+- **Ranking contract:** direct mentorship `100`, second-degree mentorship `50`, shared company `20`, shared industry `12`, shared major `10`, shared graduation year `8`, shared city `5`
+- **Grounding contract:** pass-2 prose may name only returned suggestions and may claim only returned reason codes for those people
 
 ## Test Coverage
 
