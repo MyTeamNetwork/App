@@ -3935,6 +3935,7 @@ export type Database = {
           feed_post_roles: string[]
           id: string
           job_post_roles: string[]
+          linkedin_resync_enabled: boolean
           logo_url: string | null
           media_upload_roles: string[]
           name: string
@@ -3959,6 +3960,7 @@ export type Database = {
           feed_post_roles?: string[]
           id?: string
           job_post_roles?: string[]
+          linkedin_resync_enabled?: boolean
           logo_url?: string | null
           media_upload_roles?: string[]
           name: string
@@ -3983,6 +3985,7 @@ export type Database = {
           feed_post_roles?: string[]
           id?: string
           job_post_roles?: string[]
+          linkedin_resync_enabled?: boolean
           logo_url?: string | null
           media_upload_roles?: string[]
           name?: string
@@ -4906,6 +4909,8 @@ export type Database = {
           linkedin_profile_url: string | null
           linkedin_sub: string
           refresh_token_encrypted: string | null
+          resync_count: number
+          resync_month: string | null
           status: string
           sync_error: string | null
           token_expires_at: string | null
@@ -4926,6 +4931,8 @@ export type Database = {
           linkedin_profile_url?: string | null
           linkedin_sub: string
           refresh_token_encrypted?: string | null
+          resync_count?: number
+          resync_month?: string | null
           status?: string
           sync_error?: string | null
           token_expires_at?: string | null
@@ -4946,6 +4953,8 @@ export type Database = {
           linkedin_profile_url?: string | null
           linkedin_sub?: string
           refresh_token_encrypted?: string | null
+          resync_count?: number
+          resync_month?: string | null
           status?: string
           sync_error?: string | null
           token_expires_at?: string | null
