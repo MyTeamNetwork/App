@@ -36,7 +36,7 @@ export interface LinkedInSettingsPanelProps {
   isConnected: boolean;
   connectionLoading: boolean;
   oauthAvailable: boolean;
-  brightDataAvailable: boolean;
+  brightDataConfigured: boolean;
   resyncEnabled: boolean;
   resyncIsAdmin: boolean;
   resyncRemaining: number;
@@ -59,7 +59,7 @@ export function LinkedInSettingsPanel({
   isConnected,
   connectionLoading,
   oauthAvailable,
-  brightDataAvailable,
+  brightDataConfigured,
   resyncEnabled,
   resyncIsAdmin,
   resyncRemaining,
@@ -143,7 +143,7 @@ export function LinkedInSettingsPanel({
   const canRetrySync = connection?.source === LINKEDIN_OAUTH_SOURCE && connection?.status === "error";
   const manualSyncState = getManualLinkedInSyncState({
     linkedInUrl,
-    brightDataAvailable,
+    brightDataConfigured,
     resyncEnabled,
     resyncIsAdmin,
     resyncRemaining,

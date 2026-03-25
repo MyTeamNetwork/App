@@ -564,7 +564,15 @@ export async function runBrightDataEnrichment(
 ): Promise<{
   enriched: boolean;
   error?: string;
-  failureKind?: "not_configured" | "invalid_url" | "upstream_error" | "malformed_payload" | "network_error" | "rpc_error";
+  failureKind?:
+    | "not_configured"
+    | "invalid_url"
+    | "unauthorized"
+    | "provider_unavailable"
+    | "upstream_error"
+    | "malformed_payload"
+    | "network_error"
+    | "rpc_error";
   upstreamStatus?: number;
 }> {
   if (!linkedinUrl) {

@@ -216,6 +216,25 @@ describe("Bright Data LinkedIn client", () => {
       });
     });
 
+    it("classifies provider 404 responses as account or endpoint availability failures", async () => {
+      process.env.BRIGHT_DATA_API_KEY = "test-key-123";
+      const mockFetch = mock.fn(async () => {
+        return new Response("Not found", { status: 404 });
+      });
+
+      const result = await fetchBrightDataProfile(
+        "https://www.linkedin.com/in/satyanadella",
+        { fetchFn: mockFetch as unknown as typeof fetch },
+      );
+
+      assert.deepEqual(result, {
+        ok: false,
+        kind: "provider_unavailable",
+        error: "Bright Data LinkedIn Profiles API is unavailable for the configured account.",
+        upstreamStatus: 404,
+      });
+    });
+
     it("classifies malformed payloads instead of pretending no data was returned", async () => {
       process.env.BRIGHT_DATA_API_KEY = "test-key-123";
       const mockFetch = mock.fn(async () => {

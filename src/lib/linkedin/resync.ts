@@ -21,6 +21,10 @@ export type ClaimLinkedInResyncResult =
   | { ok: true; remaining: number | null }
   | { ok: false; status: number; error: string; remaining_syncs?: number };
 
+type LinkedInManualSyncReservationResult =
+  | { ok: true; attemptId: string; remaining: number | null }
+  | { ok: false; status: number; error: string; remaining_syncs?: number };
+
 export type PerformBrightDataSyncResult = {
   status: number;
   body: {
@@ -39,32 +43,54 @@ interface PerformBrightDataSyncDependencies {
   ) => Promise<{
     enriched: boolean;
     error?: string;
-    failureKind?: "not_configured" | "invalid_url" | "upstream_error" | "malformed_payload" | "network_error" | "rpc_error";
+    failureKind?:
+      | "not_configured"
+      | "invalid_url"
+      | "unauthorized"
+      | "provider_unavailable"
+      | "upstream_error"
+      | "malformed_payload"
+      | "network_error"
+      | "rpc_error";
     upstreamStatus?: number;
   }>;
+}
+
+async function getManualSyncQuotaStatus(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<{ remaining: number; maxPerMonth: number }> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc(
+    "get_linkedin_manual_sync_status",
+    { p_user_id: userId },
+  );
+
+  if (error) {
+    console.error("[linkedin-resync] Failed to fetch manual sync status:", error);
+    return {
+      remaining: MAX_LINKEDIN_RESYNCS_PER_MONTH,
+      maxPerMonth: MAX_LINKEDIN_RESYNCS_PER_MONTH,
+    };
+  }
+
+  const status = data as { remaining?: number; max_per_month?: number } | null;
+  return {
+    remaining:
+      typeof status?.remaining === "number"
+        ? status.remaining
+        : MAX_LINKEDIN_RESYNCS_PER_MONTH,
+    maxPerMonth:
+      typeof status?.max_per_month === "number"
+        ? status.max_per_month
+        : MAX_LINKEDIN_RESYNCS_PER_MONTH,
+  };
 }
 
 async function getLinkedInResyncAccessContext(
   supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<LinkedInResyncAccessContext> {
-  const currentMonth = new Date().toISOString().slice(0, 7);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: connectionRow } = await (supabase as any)
-    .from("user_linkedin_connections")
-    .select("resync_count, resync_month")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  let remaining = MAX_LINKEDIN_RESYNCS_PER_MONTH;
-  if (connectionRow && connectionRow.resync_month === currentMonth) {
-    remaining = Math.max(
-      0,
-      MAX_LINKEDIN_RESYNCS_PER_MONTH - (connectionRow.resync_count ?? 0),
-    );
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: membership } = await (supabase as any)
     .from("user_organization_roles")
@@ -88,11 +114,13 @@ async function getLinkedInResyncAccessContext(
     enabled = organization?.linkedin_resync_enabled === true;
   }
 
+  const quotaStatus = await getManualSyncQuotaStatus(supabase, userId);
+
   return {
     enabled,
     isAdmin,
-    remaining,
-    maxPerMonth: MAX_LINKEDIN_RESYNCS_PER_MONTH,
+    remaining: quotaStatus.remaining,
+    maxPerMonth: quotaStatus.maxPerMonth,
     hasActiveMembership: Boolean(membership),
   };
 }
@@ -115,6 +143,22 @@ export async function claimLinkedInResync(
   supabase: SupabaseClient<Database>,
   userId: string,
 ): Promise<ClaimLinkedInResyncResult> {
+  const reservation = await reserveLinkedInManualSync(supabase, userId);
+
+  if (!reservation.ok) {
+    return reservation;
+  }
+
+  return {
+    ok: true,
+    remaining: reservation.remaining,
+  };
+}
+
+async function reserveLinkedInManualSync(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<LinkedInManualSyncReservationResult> {
   const context = await getLinkedInResyncAccessContext(supabase, userId);
 
   if (!context.hasActiveMembership) {
@@ -134,13 +178,13 @@ export async function claimLinkedInResync(
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: claimResult, error: claimError } = await (supabase as any).rpc(
-    "claim_linkedin_resync",
+  const { data: reservationResult, error: reservationError } = await (supabase as any).rpc(
+    "reserve_linkedin_manual_sync",
     { p_user_id: userId },
   );
 
-  if (claimError) {
-    console.error("[linkedin-resync] Rate limit check error:", claimError);
+  if (reservationError) {
+    console.error("[linkedin-resync] Rate limit check error:", reservationError);
     return {
       ok: false,
       status: 503,
@@ -148,24 +192,70 @@ export async function claimLinkedInResync(
     };
   }
 
-  const claim = claimResult as { allowed: boolean; remaining?: number; reason?: string } | null;
-  if (!claim || !claim.allowed) {
-    const reason = claim?.reason;
+  const reservation = reservationResult as {
+    allowed: boolean;
+    attempt_id?: string;
+    remaining?: number;
+    reason?: string;
+  } | null;
+
+  if (!reservation || !reservation.allowed) {
+    const reason = reservation?.reason;
     return {
       ok: false,
       status: 429,
       error:
         reason === "rate_limited"
           ? "You've reached your sync limit for this month (2 per month). Resets next month."
-          : "LinkedIn connection not found. Please connect LinkedIn first.",
+          : "Unable to verify sync eligibility. Please try again later.",
       remaining_syncs: 0,
+    };
+  }
+
+  if (!reservation.attempt_id) {
+    console.error("[linkedin-resync] reserve_linkedin_manual_sync returned no attempt_id");
+    return {
+      ok: false,
+      status: 503,
+      error: "Unable to verify sync eligibility. Please try again later.",
     };
   }
 
   return {
     ok: true,
-    remaining: claim.remaining ?? null,
+    attemptId: reservation.attempt_id,
+    remaining: reservation.remaining ?? null,
   };
+}
+
+async function completeLinkedInManualSync(
+  supabase: SupabaseClient<Database>,
+  attemptId: string,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc(
+    "complete_linkedin_manual_sync",
+    { p_attempt_id: attemptId },
+  );
+
+  if (error) {
+    console.error("[linkedin-resync] Failed to complete manual sync reservation:", error);
+  }
+}
+
+async function releaseLinkedInManualSync(
+  supabase: SupabaseClient<Database>,
+  attemptId: string,
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any).rpc(
+    "release_linkedin_manual_sync",
+    { p_attempt_id: attemptId },
+  );
+
+  if (error) {
+    console.error("[linkedin-resync] Failed to release manual sync reservation:", error);
+  }
 }
 
 export async function performBrightDataSync(
@@ -195,40 +285,56 @@ export async function performBrightDataSync(
     };
   }
 
-  const claim = await claimLinkedInResync(supabase, userId);
-  if (!claim.ok) {
+  const reservation = await reserveLinkedInManualSync(supabase, userId);
+  if (!reservation.ok) {
     return {
-      status: claim.status,
+      status: reservation.status,
       body: {
-        error: claim.error,
-        remaining_syncs: claim.remaining_syncs,
+        error: reservation.error,
+        remaining_syncs: reservation.remaining_syncs,
       },
     };
   }
 
-  const enrichment = await runEnrichment(supabase, userId, linkedinUrl);
-  if (!enrichment.enriched) {
-    const status =
-      enrichment.failureKind === "invalid_url"
-        ? 400
-        : enrichment.failureKind === "not_configured"
-          ? 503
-          : 502;
+  try {
+    const enrichment = await runEnrichment(supabase, userId, linkedinUrl);
+    if (!enrichment.enriched) {
+      await releaseLinkedInManualSync(supabase, reservation.attemptId);
+      const status =
+        enrichment.failureKind === "invalid_url"
+          ? 400
+          : enrichment.failureKind === "not_configured" ||
+              enrichment.failureKind === "unauthorized" ||
+              enrichment.failureKind === "provider_unavailable"
+            ? 503
+            : 502;
 
+      return {
+        status,
+        body: {
+          error: enrichment.error || "Unable to sync LinkedIn data right now.",
+          remaining_syncs: reservation.remaining ?? undefined,
+        },
+      };
+    }
+
+    await completeLinkedInManualSync(supabase, reservation.attemptId);
     return {
-      status,
+      status: 200,
       body: {
-        error: enrichment.error || "Unable to sync LinkedIn data right now.",
-        remaining_syncs: claim.remaining ?? undefined,
+        message: "LinkedIn data synced",
+        remaining_syncs: reservation.remaining ?? undefined,
+      },
+    };
+  } catch (error) {
+    await releaseLinkedInManualSync(supabase, reservation.attemptId);
+    console.error("[linkedin-resync] Unexpected manual sync error:", error);
+    return {
+      status: 500,
+      body: {
+        error: "An error occurred while syncing LinkedIn data.",
+        remaining_syncs: reservation.remaining ?? undefined,
       },
     };
   }
-
-  return {
-    status: 200,
-    body: {
-      message: "LinkedIn data synced",
-      remaining_syncs: claim.remaining ?? undefined,
-    },
-  };
 }

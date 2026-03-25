@@ -48,7 +48,7 @@ function ConnectedAccountsContent() {
         isConnected={linkedIn.isConnected}
         connectionLoading={linkedIn.connectionLoading}
         oauthAvailable={linkedIn.oauthAvailable}
-        brightDataAvailable={linkedIn.brightDataAvailable}
+        brightDataConfigured={linkedIn.brightDataConfigured}
         resyncEnabled={linkedIn.resyncEnabled}
         resyncIsAdmin={linkedIn.resyncIsAdmin}
         resyncRemaining={linkedIn.resyncRemaining}

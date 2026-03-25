@@ -2,7 +2,7 @@ import { isLinkedInProfileUrl } from "@/lib/alumni/linkedin-url";
 
 interface ManualLinkedInSyncStateInput {
   linkedInUrl: string;
-  brightDataAvailable: boolean;
+  brightDataConfigured: boolean;
   resyncEnabled: boolean;
   resyncIsAdmin: boolean;
   resyncRemaining: number;
@@ -17,7 +17,7 @@ export interface ManualLinkedInSyncState {
 
 export function getManualLinkedInSyncState({
   linkedInUrl,
-  brightDataAvailable,
+  brightDataConfigured,
   resyncEnabled,
   resyncIsAdmin,
   resyncRemaining,
@@ -31,7 +31,7 @@ export function getManualLinkedInSyncState({
     };
   }
 
-  if (!brightDataAvailable) {
+  if (!brightDataConfigured) {
     return {
       visible: true,
       disabled: true,

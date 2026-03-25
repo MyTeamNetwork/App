@@ -14,7 +14,7 @@ interface LinkedInStatusResponse {
   connection: LinkedInConnection | null;
   integration?: {
     oauthAvailable: boolean;
-    brightDataAvailable?: boolean;
+    brightDataConfigured?: boolean;
     reason: "not_configured" | null;
   };
   resync?: {
@@ -30,7 +30,7 @@ export interface UseLinkedInReturn {
   connection: LinkedInConnection | null;
   connectionLoading: boolean;
   oauthAvailable: boolean;
-  brightDataAvailable: boolean;
+  brightDataConfigured: boolean;
   isConnected: boolean;
   resyncEnabled: boolean;
   resyncIsAdmin: boolean;
@@ -52,7 +52,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
   const [connection, setConnection] = useState<LinkedInConnection | null>(null);
   const [connectionLoading, setConnectionLoading] = useState(true);
   const [oauthAvailable, setOauthAvailable] = useState(true);
-  const [brightDataAvailable, setBrightDataAvailable] = useState(false);
+  const [brightDataConfigured, setBrightDataConfigured] = useState(false);
   const [resyncEnabled, setResyncEnabled] = useState(false);
   const [resyncIsAdmin, setResyncIsAdmin] = useState(false);
   const [resyncRemaining, setResyncRemaining] = useState(2);
@@ -111,7 +111,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
       setLinkedInUrl(data.linkedin_url ?? "");
       setConnection(data.connection ?? null);
       setOauthAvailable(data.integration?.oauthAvailable ?? true);
-      setBrightDataAvailable(data.integration?.brightDataAvailable ?? false);
+      setBrightDataConfigured(data.integration?.brightDataConfigured ?? false);
       if (data.resync) {
         setResyncEnabled(data.resync.enabled);
         setResyncIsAdmin(data.resync.is_admin ?? false);
@@ -259,7 +259,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
     connection,
     connectionLoading,
     oauthAvailable,
-    brightDataAvailable,
+    brightDataConfigured,
     isConnected,
     resyncEnabled,
     resyncIsAdmin,

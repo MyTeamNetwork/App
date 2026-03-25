@@ -36,7 +36,7 @@ export async function GET() {
       connection: status.connection,
       integration: {
         oauthAvailable: integration.oauthAvailable,
-        brightDataAvailable: isBrightDataConfigured(),
+        brightDataConfigured: isBrightDataConfigured(),
         reason: integration.reason,
       },
       resync: {

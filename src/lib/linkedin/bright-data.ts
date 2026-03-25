@@ -44,6 +44,8 @@ export interface BrightDataProfileResult {
 export type BrightDataFetchFailureKind =
   | "not_configured"
   | "invalid_url"
+  | "unauthorized"
+  | "provider_unavailable"
   | "upstream_error"
   | "malformed_payload"
   | "network_error";
@@ -79,8 +81,8 @@ const BRIGHT_DATA_PROFILES_URL = "https://api.brightdata.com/linkedin/profiles/c
 /**
  * Fetches a LinkedIn profile via Bright Data's Profiles API.
  *
- * Returns null (rather than throwing) when the API key is missing,
- * the URL is invalid, or Bright Data returns a non-success response.
+ * Returns a typed success/failure result instead of throwing for
+ * expected provider, validation, or configuration failures.
  */
 export async function fetchBrightDataProfile(
   linkedinUrl: string,
@@ -120,6 +122,25 @@ export async function fetchBrightDataProfile(
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       console.error("[bright-data] API error:", res.status, body.substring(0, 200));
+
+      if (res.status === 401 || res.status === 403) {
+        return {
+          ok: false,
+          kind: "unauthorized",
+          error: "Bright Data LinkedIn Profiles API is unavailable for the configured account.",
+          upstreamStatus: res.status,
+        };
+      }
+
+      if (res.status === 404) {
+        return {
+          ok: false,
+          kind: "provider_unavailable",
+          error: "Bright Data LinkedIn Profiles API is unavailable for the configured account.",
+          upstreamStatus: res.status,
+        };
+      }
+
       return {
         ok: false,
         kind: "upstream_error",
