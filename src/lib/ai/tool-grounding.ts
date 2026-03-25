@@ -215,6 +215,95 @@ function verifyListEvents(content: string, data: unknown): string[] {
   return failures;
 }
 
+interface SuggestConnectionGroundingRow {
+  name?: unknown;
+  reasons?: Array<{ code?: unknown }>;
+}
+
+function extractSuggestConnectionReasonCodes(line: string): string[] {
+  const matches = new Set<string>();
+  const normalized = line.toLowerCase();
+
+  if (/direct mentorship/.test(normalized)) {
+    matches.add("direct_mentorship");
+  }
+  if (/(second[- ]degree mentorship|second degree|two[- ]hop mentorship|two hop)/.test(normalized)) {
+    matches.add("second_degree_mentorship");
+  }
+  if (/(shared company|same company)/.test(normalized)) {
+    matches.add("shared_company");
+  }
+  if (/(shared industry|same industry)/.test(normalized)) {
+    matches.add("shared_industry");
+  }
+  if (/(shared major|same major|both studied)/.test(normalized)) {
+    matches.add("shared_major");
+  }
+  if (/(shared graduation year|same graduation year|class of)/.test(normalized)) {
+    matches.add("shared_graduation_year");
+  }
+  if (/(shared city|same city|both in)/.test(normalized)) {
+    matches.add("shared_city");
+  }
+
+  return [...matches];
+}
+
+function verifySuggestConnections(content: string, data: unknown): string[] {
+  if (!data || typeof data !== "object") {
+    return ["suggest_connections returned non-object data"];
+  }
+
+  const results = (data as { results?: unknown }).results;
+  if (!Array.isArray(results)) {
+    return ["suggest_connections returned non-array results"];
+  }
+
+  const rows = results as SuggestConnectionGroundingRow[];
+  const rowByName = new Map(
+    rows
+      .map((row) => {
+        const name = typeof row.name === "string" ? normalizeIdentifier(row.name) : null;
+        return name ? [name, row] : null;
+      })
+      .filter((entry): entry is [string, SuggestConnectionGroundingRow] => Boolean(entry))
+  );
+
+  const failures: string[] = [];
+
+  for (const candidate of extractListEntryHeads(content)) {
+    const normalizedCandidate = normalizeIdentifier(candidate);
+    if (!rowByName.has(normalizedCandidate)) {
+      failures.push(`suggested connection ${candidate} was not present in tool rows`);
+    }
+  }
+
+  for (const rawLine of content.split("\n")) {
+    const line = stripMarkdown(rawLine).trim();
+    if (!line) continue;
+
+    for (const [normalizedName, row] of rowByName) {
+      if (!normalizeIdentifier(line).includes(normalizedName)) {
+        continue;
+      }
+
+      const availableCodes = new Set(
+        (row.reasons ?? [])
+          .map((reason) => (typeof reason?.code === "string" ? reason.code : null))
+          .filter((code): code is string => Boolean(code))
+      );
+
+      for (const code of extractSuggestConnectionReasonCodes(line)) {
+        if (!availableCodes.has(code)) {
+          failures.push(`suggested connection ${line} claimed unsupported reason ${code}`);
+        }
+      }
+    }
+  }
+
+  return failures;
+}
+
 export function verifyToolBackedResponse(input: {
   content: string;
   toolResults: SuccessfulToolSummary[];
@@ -231,6 +320,9 @@ export function verifyToolBackedResponse(input: {
         break;
       case "list_events":
         failures.push(...verifyListEvents(input.content, result.data));
+        break;
+      case "suggest_connections":
+        failures.push(...verifySuggestConnections(input.content, result.data));
         break;
     }
   }

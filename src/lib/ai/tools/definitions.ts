@@ -11,6 +11,12 @@ export interface ListEventsArgs {
 
 export type GetOrgStatsArgs = Record<string, never>;
 
+export interface SuggestConnectionsArgs {
+  person_type: "member" | "alumni";
+  person_id: string;
+  limit?: number;
+}
+
 const TOOL_BY_NAME = {
   list_members: {
     type: "function" as const,
@@ -70,12 +76,43 @@ const TOOL_BY_NAME = {
       },
     },
   },
+  suggest_connections: {
+    type: "function" as const,
+    function: {
+      name: "suggest_connections" as const,
+      description:
+        "Suggest same-organization members or alumni that a person should reach out to. Use this for introduction, alumni matching, networking, or outreach questions like who someone should meet next. Returns ranked suggestions with deterministic reasons such as direct or second-degree mentorship, shared company, shared industry, shared major, shared graduation year, and shared city.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          person_type: {
+            type: "string" as const,
+            enum: ["member", "alumni"],
+            description: "Whether the source person is a member or an alumni record.",
+          },
+          person_id: {
+            type: "string" as const,
+            description: "UUID of the source member or alumni record.",
+          },
+          limit: {
+            type: "integer" as const,
+            minimum: 1,
+            maximum: 25,
+            description: "Max ranked suggestions to return (default 10)",
+          },
+        },
+        required: ["person_type", "person_id"],
+        additionalProperties: false as const,
+      },
+    },
+  },
 } as const;
 
 export const AI_TOOLS = [
   TOOL_BY_NAME.list_members,
   TOOL_BY_NAME.list_events,
   TOOL_BY_NAME.get_org_stats,
+  TOOL_BY_NAME.suggest_connections,
 ] as const satisfies readonly OpenAI.Chat.ChatCompletionTool[];
 
 // Derived from AI_TOOLS — no manual union to maintain

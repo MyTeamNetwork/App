@@ -2,6 +2,8 @@
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { executeToolCall } from "../../../src/lib/ai/tools/executor.ts";
+import { getSuggestionObservabilityByOrg } from "../../../src/lib/falkordb/suggestions.ts";
+import { resetFalkorTelemetryForTests } from "../../../src/lib/falkordb/telemetry.ts";
 import type {
   ToolExecutionContext,
   ToolExecutionResult,
@@ -10,6 +12,7 @@ import { StageTimeoutError } from "../../../src/lib/ai/timeout.ts";
 
 const ORG_ID = "org-uuid-1";
 const USER_ID = "org-admin-user";
+const SOURCE_ALUMNI_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 
 function createToolSupabaseStub(overrides: Record<string, any> = {}) {
   const queries: Array<{
@@ -87,7 +90,26 @@ function createToolSupabaseStub(overrides: Record<string, any> = {}) {
     return builder;
   }
 
-  return { from, queries };
+  const rpc = async (name: string, params: Record<string, unknown> = {}) => {
+    const handlers = overrides.rpc ?? {};
+    const handler = handlers[name];
+    if (!handler) {
+      return { data: null, error: { message: `missing rpc ${name}` } };
+    }
+
+    if (typeof handler === "function") {
+      try {
+        return { data: await handler(params), error: null };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { data: null, error: { message } };
+      }
+    }
+
+    return { data: handler, error: null };
+  };
+
+  return { from, rpc, queries };
 }
 
 function expectOk(result: ToolExecutionResult): Extract<ToolExecutionResult, { kind: "ok" }> {
@@ -99,6 +121,7 @@ let ctx: ToolExecutionContext;
 let stub: ReturnType<typeof createToolSupabaseStub>;
 
 beforeEach(() => {
+  resetFalkorTelemetryForTests();
   stub = createToolSupabaseStub({
     members: {
       select: {
@@ -244,6 +267,113 @@ test("get_org_stats returns counts object", async () => {
   assert.equal(stats.alumni, 10);
   assert.equal(stats.parents, 5);
   assert.equal(stats.upcoming_events, 3);
+});
+
+test("suggest_connections returns ranked SQL fallback suggestions", async () => {
+  stub = createToolSupabaseStub({
+    members: {
+      select: {
+        data: [],
+        error: null,
+      },
+    },
+    alumni: {
+      select: {
+        data: [
+          {
+            id: SOURCE_ALUMNI_ID,
+            organization_id: ORG_ID,
+            user_id: "00000000-0000-4000-8000-000000000001",
+            deleted_at: null,
+            first_name: "Alex",
+            last_name: "Source",
+            email: "alex@example.com",
+            major: "Computer Science",
+            current_company: "Acme",
+            industry: "Technology",
+            current_city: "Austin",
+            graduation_year: 2018,
+            position_title: "Engineer",
+            job_title: null,
+            created_at: "2026-03-01T00:00:00.000Z",
+          },
+          {
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+            organization_id: ORG_ID,
+            user_id: "00000000-0000-4000-8000-000000000002",
+            deleted_at: null,
+            first_name: "Dina",
+            last_name: "Direct",
+            email: "dina@example.com",
+            major: null,
+            current_company: "Acme",
+            industry: null,
+            current_city: null,
+            graduation_year: 2018,
+            position_title: "VP Product",
+            job_title: null,
+            created_at: "2026-03-01T00:00:00.000Z",
+          },
+        ],
+        error: null,
+      },
+      maybeSingle: {
+        data: {
+          id: SOURCE_ALUMNI_ID,
+          organization_id: ORG_ID,
+          user_id: "00000000-0000-4000-8000-000000000001",
+          deleted_at: null,
+          first_name: "Alex",
+          last_name: "Source",
+          email: "alex@example.com",
+          major: "Computer Science",
+          current_company: "Acme",
+          industry: "Technology",
+          current_city: "Austin",
+          graduation_year: 2018,
+          position_title: "Engineer",
+          job_title: null,
+          created_at: "2026-03-01T00:00:00.000Z",
+        },
+        error: null,
+      },
+    },
+    rpc: {
+      get_mentorship_distances: [
+        {
+          user_id: "00000000-0000-4000-8000-000000000002",
+          distance: 1,
+        },
+      ],
+    },
+  });
+  ctx = { orgId: ORG_ID, userId: USER_ID, serviceSupabase: stub as any };
+
+  const result = expectOk(
+    await executeToolCall(ctx, {
+      name: "suggest_connections",
+      args: {
+        person_type: "alumni",
+        person_id: SOURCE_ALUMNI_ID,
+      },
+    })
+  );
+
+  const payload = result.data as any;
+  assert.equal(payload.mode, "sql_fallback");
+  assert.equal(payload.fallback_reason, "disabled");
+  assert.equal(payload.freshness.state, "unknown");
+  assert.equal(payload.results.length, 1);
+  assert.equal(payload.results[0].name, "Dina Direct");
+  assert.equal(payload.results[0].score, 128);
+  assert.deepEqual(
+    payload.results[0].reasons.map((reason: any) => reason.code),
+    ["direct_mentorship", "shared_company", "shared_graduation_year"]
+  );
+
+  const telemetry = getSuggestionObservabilityByOrg(ORG_ID);
+  assert.equal(telemetry.sqlFallbackCount, 1);
+  assert.equal(telemetry.fallbackReasonCounts.disabled, 1);
 });
 
 test("invalid args return tool_error", async () => {
