@@ -597,6 +597,14 @@ export async function runBrightDataEnrichment(
     const profile = fetchResult.profile;
     const fields = mapBrightDataToFields(profile);
 
+    console.log("[bright-data-enrichment] Profile fetched:", {
+      experienceCount: profile.experience?.length ?? 0,
+      educationCount: profile.education?.length ?? 0,
+      hasAbout: !!profile.about,
+      hasPosition: !!profile.position,
+      currentCompany: profile.current_company || profile.current_company_name || null,
+    });
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).rpc("sync_user_linkedin_enrichment", {
       p_user_id: userId,
@@ -611,6 +619,7 @@ export async function runBrightDataEnrichment(
       p_summary: profile.about || null,
       p_work_history: profile.experience ?? null,
       p_education_history: profile.education ?? null,
+      p_overwrite: true, // Manual sync: user expects fresh data to replace stale values
     });
 
     if (error) {
