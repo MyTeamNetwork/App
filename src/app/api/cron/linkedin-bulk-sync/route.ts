@@ -3,7 +3,6 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { validateCronAuth } from "@/lib/security/cron-auth";
 import {
   fetchBrightDataProfile,
-  searchBrightDataProfile,
   mapBrightDataToFields,
   isBrightDataConfigured,
 } from "@/lib/linkedin/bright-data";
@@ -12,25 +11,13 @@ export const dynamic = "force-dynamic";
 
 const MAX_CONCURRENCY = 5;
 
-interface SyncResult {
-  userId: string;
-  orgId: string;
-  status: "ok" | "not_found" | "skipped" | "error";
-  source: "url" | "search" | "none";
-  error?: string;
-}
-
 /**
  * GET /api/cron/linkedin-bulk-sync
  *
  * Quarterly cron job that re-syncs LinkedIn employment data for all members
  * in orgs that have linkedin_resync_enabled = true.
  *
- * For each member:
- * - If they have a linkedin_url → fetch profile by URL via Bright Data
- * - If not → search by first_name + last_name via Bright Data discover
- * - Map fields → call sync_user_linkedin_enrichment RPC
- *
+ * Only processes members who have a linkedin_url on file.
  * Does NOT count against the user's 2/month manual rate limit.
  */
 export async function GET(request: Request) {
@@ -46,7 +33,6 @@ export async function GET(request: Request) {
 
   const supabase = createServiceClient();
 
-  // Find orgs with the feature enabled
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: orgs, error: orgError } = await (supabase as any)
     .from("organizations")
@@ -63,17 +49,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ processed: 0, message: "No orgs with linkedin_resync_enabled" });
   }
 
-  const allResults: SyncResult[] = [];
+  let ok = 0;
+  let notFound = 0;
+  let errors = 0;
+  let skipped = 0;
+  let processed = 0;
 
   for (const org of orgs) {
-    // Get all members/alumni with their user IDs and LinkedIn info
-    // Join through user_organization_roles to get user_id, then join members/alumni for names
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: members, error: memberError } = await (supabase as any)
       .from("user_organization_roles")
       .select(`
         user_id,
-        members!inner(first_name, last_name, email, linkedin_url)
+        members!inner(linkedin_url)
       `)
       .eq("organization_id", org.id)
       .is("revoked_at", null);
@@ -85,39 +73,26 @@ export async function GET(request: Request) {
 
     if (!members || members.length === 0) continue;
 
-    // Process in batches
-    for (let i = 0; i < members.length; i += MAX_CONCURRENCY) {
-      const batch = members.slice(i, i + MAX_CONCURRENCY);
+    // Filter to only members with a LinkedIn URL
+    const eligible = members.filter((m: Record<string, unknown>) => {
+      const memberData = m.members as Record<string, string | null> | null;
+      return memberData?.linkedin_url;
+    });
 
-      const batchResults = await Promise.all(
-        batch.map(async (member: Record<string, unknown>): Promise<SyncResult> => {
+    for (let i = 0; i < eligible.length; i += MAX_CONCURRENCY) {
+      const batch = eligible.slice(i, i + MAX_CONCURRENCY);
+
+      const results = await Promise.all(
+        batch.map(async (member: Record<string, unknown>) => {
           const userId = member.user_id as string;
-          const memberData = member.members as Record<string, string | null> | null;
-
-          if (!memberData) {
-            return { userId, orgId: org.id, status: "skipped", source: "none" };
-          }
-
-          const linkedinUrl = memberData.linkedin_url;
-          const firstName = memberData.first_name;
-          const lastName = memberData.last_name;
-          const email = memberData.email;
+          const memberData = member.members as Record<string, string | null>;
+          const linkedinUrl = memberData.linkedin_url!;
 
           try {
-            let profile;
-            let source: "url" | "search" = "url";
-
-            if (linkedinUrl) {
-              profile = await fetchBrightDataProfile(linkedinUrl);
-            }
-
-            if (!profile && firstName && lastName) {
-              source = "search";
-              profile = await searchBrightDataProfile(firstName, lastName, email ?? undefined);
-            }
+            const profile = await fetchBrightDataProfile(linkedinUrl);
 
             if (!profile) {
-              return { userId, orgId: org.id, status: "not_found", source };
+              return "not_found" as const;
             }
 
             const fields = mapBrightDataToFields(profile);
@@ -138,36 +113,31 @@ export async function GET(request: Request) {
             );
 
             if (rpcError) {
-              return { userId, orgId: org.id, status: "error", source, error: rpcError.message };
+              console.error(`[linkedin-bulk-sync] RPC error for ${userId}:`, rpcError.message);
+              return "error" as const;
             }
 
-            return { userId, orgId: org.id, status: "ok", source };
+            return "ok" as const;
           } catch (err) {
-            return {
-              userId,
-              orgId: org.id,
-              status: "error",
-              source: "none",
-              error: err instanceof Error ? err.message : String(err),
-            };
+            console.error(`[linkedin-bulk-sync] Error for ${userId}:`, err);
+            return "error" as const;
           }
         }),
       );
 
-      allResults.push(...batchResults);
+      for (const r of results) {
+        if (r === "ok") ok++;
+        else if (r === "not_found") notFound++;
+        else errors++;
+      }
+      processed += results.length;
     }
+
+    skipped += members.length - eligible.length;
   }
 
-  const summary = {
-    processed: allResults.length,
-    orgs: orgs.length,
-    ok: allResults.filter((r) => r.status === "ok").length,
-    not_found: allResults.filter((r) => r.status === "not_found").length,
-    errors: allResults.filter((r) => r.status === "error").length,
-    skipped: allResults.filter((r) => r.status === "skipped").length,
-  };
-
+  const summary = { processed, orgs: orgs.length, ok, not_found: notFound, errors, skipped };
   console.log("[linkedin-bulk-sync] Complete:", JSON.stringify(summary));
 
-  return NextResponse.json({ ...summary, results: allResults });
+  return NextResponse.json(summary);
 }
