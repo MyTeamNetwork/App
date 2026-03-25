@@ -9,6 +9,13 @@ import { MediaUploadPanel } from "./MediaUploadPanel";
 import { CoverPickerModal } from "./CoverPickerModal";
 import type { MediaAlbum } from "./AlbumCard";
 import type { UploadFileEntry } from "@/hooks/useGalleryUpload";
+import {
+  canDeleteMediaFromAlbumView,
+  canUploadDirectlyToAlbum,
+  getAlbumBulkDeleteEligibleIds,
+  getAlbumCoverPickerItems,
+  getAlbumUpdatesAfterMediaDelete,
+} from "@/lib/media/albums";
 
 interface AlbumViewProps {
   album: MediaAlbum;
@@ -40,6 +47,10 @@ export function AlbumView({
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   // Upload to album
   const [showUpload, setShowUpload] = useState(false);
@@ -56,6 +67,10 @@ export function AlbumView({
   const nameErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canEdit = isAdmin || album.created_by === currentUserId;
+  const canDirectUpload = canUploadDirectlyToAlbum(canUpload, canEdit);
+  const deleteActor = { isAdmin, currentUserId };
+  const eligibleDeleteIds = getAlbumBulkDeleteEligibleIds(items, deleteActor);
+  const coverPickerItems = getAlbumCoverPickerItems(items, isAdmin);
 
   const fetchItems = useCallback(
     async (cursor?: string) => {
@@ -93,6 +108,21 @@ export function AlbumView({
     return () => { cancelled = true; };
   }, [fetchItems]);
 
+  useEffect(() => {
+    setBulkDeleteConfirm(false);
+  }, [selectedIds]);
+
+  useEffect(() => {
+    if (!selectMode) return;
+
+    const eligibleSet = new Set(eligibleDeleteIds);
+    setSelectedIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => eligibleSet.has(id)));
+      if (next.size === prev.size) return prev;
+      return next;
+    });
+  }, [eligibleDeleteIds, selectMode]);
+
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
@@ -108,6 +138,24 @@ export function AlbumView({
     }
   };
 
+  const toggleItem = useCallback((mediaId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(mediaId)) {
+        next.delete(mediaId);
+      } else {
+        next.add(mediaId);
+      }
+      return next;
+    });
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setBulkDeleteConfirm(false);
+  }, []);
+
   const handleRemoveFromAlbum = async (mediaId: string) => {
     try {
       const res = await fetch(
@@ -122,6 +170,51 @@ export function AlbumView({
       setSelectedItem(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Remove failed");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!bulkDeleteConfirm) {
+      setBulkDeleteConfirm(true);
+      return;
+    }
+
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/media/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, mediaIds: Array.from(selectedIds) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to delete");
+      }
+
+      const { deletedIds } = await res.json();
+      const deletedSet = new Set((deletedIds as string[]) || []);
+      setItems((prev) => prev.filter((item) => !deletedSet.has(item.id)));
+      if (selectedItem && deletedSet.has(selectedItem.id)) {
+        setSelectedItem(null);
+      }
+
+      const albumUpdates = getAlbumUpdatesAfterMediaDelete(album, deletedSet, deletedSet.size);
+      if (Object.keys(albumUpdates).length > 0) {
+        onAlbumUpdated?.(albumUpdates);
+      }
+
+      exitSelectMode();
+      showFeedback(
+        `Deleted ${deletedSet.size} item${deletedSet.size === 1 ? "" : "s"}`,
+        "success",
+        { duration: 3000 },
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bulk delete failed");
+    } finally {
+      setBulkDeleting(false);
+      setBulkDeleteConfirm(false);
     }
   };
 
@@ -355,7 +448,42 @@ export function AlbumView({
                 Set cover
               </Button>
             )}
-            {canUpload && (
+            {items.length > 0 && eligibleDeleteIds.length > 0 && (
+              <Button
+                variant={selectMode ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => {
+                  if (selectMode) {
+                    exitSelectMode();
+                  } else {
+                    setSelectMode(true);
+                  }
+                }}
+              >
+                {selectMode ? "Done" : "Select"}
+              </Button>
+            )}
+            {selectMode && (
+              <>
+                <button
+                  onClick={() => setSelectedIds(new Set(eligibleDeleteIds))}
+                  className="px-2.5 py-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] rounded-lg hover:bg-[var(--muted)] transition-colors"
+                >
+                  All
+                </button>
+                {selectedIds.size > 0 && (
+                  <Button
+                    variant={bulkDeleteConfirm ? "danger" : "ghost"}
+                    size="sm"
+                    isLoading={bulkDeleting}
+                    onClick={handleBulkDelete}
+                  >
+                    {bulkDeleteConfirm ? "Confirm delete" : `Delete ${selectedIds.size}`}
+                  </Button>
+                )}
+              </>
+            )}
+            {canDirectUpload && (
               <Button size="sm" onClick={() => setShowUpload(true)}>
                 Upload
               </Button>
@@ -389,6 +517,12 @@ export function AlbumView({
         </div>
       )}
 
+      {selectMode && !isAdmin && eligibleDeleteIds.length < items.length && (
+        <div className="mb-4 text-xs text-muted-foreground">
+          Only your uploads can be selected for delete.
+        </div>
+      )}
+
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -408,9 +542,9 @@ export function AlbumView({
             </svg>
           }
           title="No photos in this album"
-          description={canUpload ? "Upload photos directly to this album." : "Add photos to this album from the All Photos view."}
+          description={canDirectUpload ? "Upload photos directly to this album." : "Add photos to this album from the All Photos view."}
           action={
-            canUpload ? (
+            canDirectUpload ? (
               <Button onClick={() => setShowUpload(true)}>Upload Photos</Button>
             ) : undefined
           }
@@ -423,6 +557,13 @@ export function AlbumView({
                 key={item.id}
                 item={item}
                 onClick={() => setSelectedItem(item)}
+                selectable={selectMode}
+                selected={selectedIds.has(item.id)}
+                selectionDisabled={selectMode && !canDeleteMediaFromAlbumView(item, deleteActor)}
+                onToggle={() => {
+                  if (!canDeleteMediaFromAlbumView(item, deleteActor)) return;
+                  toggleItem(item.id);
+                }}
               />
             ))}
           </div>
@@ -436,7 +577,7 @@ export function AlbumView({
         </>
       )}
 
-      {selectedItem && (
+      {selectedItem && !selectMode && (
         <MediaDetailModal
           item={selectedItem}
           isAdmin={isAdmin}
@@ -462,7 +603,7 @@ export function AlbumView({
       {/* Cover picker modal */}
       {showCoverPicker && (
         <CoverPickerModal
-          items={items.filter((i) => i.media_type === "image")}
+          items={coverPickerItems}
           currentCoverId={album.cover_media_id ?? null}
           onSelect={handleSetCover}
           onClose={() => setShowCoverPicker(false)}

@@ -6,6 +6,7 @@ import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limi
 import { getOrgMembership } from "@/lib/auth/api-helpers";
 import { validateJson, ValidationError, validationErrorResponse, baseSchemas, safeString } from "@/lib/security/validation";
 import { batchGetMediaUrls } from "@/lib/media/urls";
+import { getAlbumCoverValidationError } from "@/lib/media/albums";
 import { decodeCursor } from "@/lib/pagination/cursor";
 import { z } from "zod";
 
@@ -216,7 +217,31 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (name !== undefined) updates.name = name;
-    if (cover_media_id !== undefined) updates.cover_media_id = cover_media_id;
+    if (cover_media_id !== undefined) {
+      if (cover_media_id === null) {
+        updates.cover_media_id = null;
+      } else {
+        const { data: coverCandidate, error: coverError } = await serviceClient
+          .from("media_album_items")
+          .select("media_items!inner(media_type, status)")
+          .eq("album_id", albumId)
+          .eq("media_item_id", cover_media_id)
+          .maybeSingle();
+
+        if (coverError) {
+          console.error("[media/albums/[albumId]] Cover validation failed:", coverError);
+          return NextResponse.json({ error: "Failed to validate album cover" }, { status: 500 });
+        }
+
+        const media = coverCandidate?.media_items as { media_type: string | null; status: string | null } | undefined;
+        const coverValidationError = getAlbumCoverValidationError(media ?? null);
+        if (coverValidationError) {
+          return NextResponse.json({ error: coverValidationError }, { status: 400 });
+        }
+
+        updates.cover_media_id = cover_media_id;
+      }
+    }
 
     const { data: updated, error: updateError } = await (serviceClient as any)
       .from("media_albums")

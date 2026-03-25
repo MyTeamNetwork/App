@@ -28,9 +28,17 @@ interface MediaCardProps {
   selectable?: boolean;
   selected?: boolean;
   onToggle?: () => void;
+  selectionDisabled?: boolean;
 }
 
-export function MediaCard({ item, onClick, selectable, selected, onToggle }: MediaCardProps) {
+export function MediaCard({
+  item,
+  onClick,
+  selectable,
+  selected,
+  onToggle,
+  selectionDisabled = false,
+}: MediaCardProps) {
   const displayUrl = getCardDisplayUrl(item);
   const uploaderName = item.users?.name || "Unknown";
   const displayDate = item.taken_at
@@ -39,6 +47,7 @@ export function MediaCard({ item, onClick, selectable, selected, onToggle }: Med
 
   const handleClick = () => {
     if (selectable) {
+      if (selectionDisabled) return;
       onToggle?.();
     } else {
       onClick();
@@ -52,7 +61,9 @@ export function MediaCard({ item, onClick, selectable, selected, onToggle }: Med
       className={`group overflow-hidden transition-all duration-150 ${
         selected
           ? "ring-2 ring-[var(--color-org-secondary)] ring-offset-1 scale-[0.97]"
-          : ""
+          : selectionDisabled
+            ? "opacity-60"
+            : ""
       }`}
       onClick={handleClick}
     >
@@ -82,10 +93,13 @@ export function MediaCard({ item, onClick, selectable, selected, onToggle }: Med
             className={`absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
               selected
                 ? "bg-[var(--color-org-secondary)] border-[var(--color-org-secondary)]"
+                : selectionDisabled
+                  ? "bg-white/60 border-[var(--border)] opacity-100"
                 : "bg-white/80 border-[var(--border)] backdrop-blur-sm opacity-0 group-hover:opacity-100"
             }`}
             onClick={(e) => {
               e.stopPropagation();
+              if (selectionDisabled) return;
               onToggle?.();
             }}
           >

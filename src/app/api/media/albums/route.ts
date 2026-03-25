@@ -7,6 +7,7 @@ import { getOrgMembership } from "@/lib/auth/api-helpers";
 import { validateJson, ValidationError, validationErrorResponse, baseSchemas } from "@/lib/security/validation";
 import { createAlbumSchema } from "@/lib/schemas/media";
 import { batchGetMediaUrls } from "@/lib/media/urls";
+import { shouldExposeAlbumCover } from "@/lib/media/albums";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
     if (coversToFetch.length > 0) {
       const { data: coverItems } = await serviceClient
         .from("media_items")
-        .select("id, storage_path, mime_type")
+        .select("id, storage_path, mime_type, status")
         .in("id", coversToFetch)
         .is("deleted_at", null);
 
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest) {
         const urlMap = await batchGetMediaUrls(
           serviceClient,
           coverItems
+            .filter((ci) => shouldExposeAlbumCover(ci))
             .filter((ci) => ci.storage_path)
             .map((ci) => ({
               id: ci.id,

@@ -8,6 +8,10 @@ import {
   resolveGalleryMimeType,
   checkBatchLimit,
 } from "@/lib/media/gallery-validation";
+import {
+  getGalleryRetryProgress,
+  getGalleryUploadMode,
+} from "@/lib/media/gallery-upload-flow";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,6 +22,7 @@ export type FileUploadStatus =
   | "requesting"
   | "uploading"
   | "finalizing"
+  | "associating"
   | "done"
   | "error";
 
@@ -37,6 +42,7 @@ export interface UploadFileEntry {
   error: string | null;
   retryCount: number;
   mediaId: string | null; // from upload intent response
+  uploadFinalized: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,6 +56,7 @@ type Action =
   | { type: "SET_STATUS"; id: string; status: FileUploadStatus; error?: string }
   | { type: "SET_PROGRESS"; id: string; progress: number }
   | { type: "SET_MEDIA_ID"; id: string; mediaId: string }
+  | { type: "MARK_FINALIZED"; id: string }
   | { type: "MARK_DONE"; id: string; mediaId: string }
   | { type: "REMOVE_FILE"; id: string }
   | { type: "CLEAR_ALL" }
@@ -114,12 +121,27 @@ function reducer(state: State, action: Action): State {
         ),
       };
 
+    case "MARK_FINALIZED":
+      return {
+        ...state,
+        files: state.files.map((f) =>
+          f.id === action.id ? { ...f, uploadFinalized: true } : f,
+        ),
+      };
+
     case "MARK_DONE":
       return {
         ...state,
         files: state.files.map((f) =>
           f.id === action.id
-            ? { ...f, status: "done", progress: 100, file: null, error: null }
+            ? {
+                ...f,
+                status: "done",
+                progress: 100,
+                file: null,
+                error: null,
+                uploadFinalized: true,
+              }
             : f,
         ),
         completedMediaIds: [...state.completedMediaIds, action.mediaId],
@@ -219,6 +241,7 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
           error: null,
           retryCount: 0,
           mediaId: null,
+          uploadFinalized: false,
         };
 
         entries.push(entry);
@@ -246,7 +269,49 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
   // ------- Process a single file -------
   const processFile = useCallback(
     async (entry: UploadFileEntry) => {
-      if (!entry.file) return;
+      const mode = getGalleryUploadMode({
+        mediaId: entry.mediaId,
+        targetAlbumId,
+        uploadFinalized: entry.uploadFinalized,
+      });
+
+      if (mode === "upload" && !entry.file) return;
+
+      const associateWithAlbum = async (mediaId: string) => {
+        if (!targetAlbumId) return;
+
+        dispatch({ type: "SET_STATUS", id: entry.id, status: "associating" });
+
+        const albumRes = await fetch(`/api/media/albums/${targetAlbumId}/items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgId, mediaIds: [mediaId] }),
+        });
+
+        if (!albumRes.ok) {
+          const data = await albumRes.json().catch(() => null);
+          throw new Error(data?.error || "Failed to add upload to album");
+        }
+      };
+
+      if (mode === "associate-only" && entry.mediaId) {
+        try {
+          await associateWithAlbum(entry.mediaId);
+          dispatch({ type: "MARK_DONE", id: entry.id, mediaId: entry.mediaId });
+          onFileCompleteRef.current?.(entry, entry.mediaId);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Upload failed";
+          dispatch({
+            type: "SET_STATUS",
+            id: entry.id,
+            status: "error",
+            error: message,
+          });
+        } finally {
+          processingRef.current.delete(entry.id);
+        }
+        return;
+      }
 
       dispatch({ type: "SET_STATUS", id: entry.id, status: "requesting" });
 
@@ -325,17 +390,14 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
           throw new Error(data?.error || "Failed to finalize upload");
         }
 
+        dispatch({ type: "MARK_FINALIZED", id: entry.id });
+
+        if (targetAlbumId) {
+          await associateWithAlbum(mediaId);
+        }
+
         dispatch({ type: "MARK_DONE", id: entry.id, mediaId });
         onFileCompleteRef.current?.(entry, mediaId);
-
-        // Auto-add to target album if uploading from album view
-        if (targetAlbumId) {
-          fetch(`/api/media/albums/${targetAlbumId}/items`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ orgId, mediaIds: [mediaId] }),
-          }).catch(() => {});
-        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Upload failed";
         if (message === "Upload cancelled") {
@@ -357,7 +419,11 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
   // ------- Concurrency dispatcher -------
   useEffect(() => {
     const activeCount = state.files.filter(
-      (f) => f.status === "requesting" || f.status === "uploading" || f.status === "finalizing",
+      (f) =>
+        f.status === "requesting" ||
+        f.status === "uploading" ||
+        f.status === "finalizing" ||
+        f.status === "associating",
     ).length;
 
     if (activeCount >= MAX_CONCURRENT) return;
@@ -398,7 +464,7 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
       dispatch({
         type: "SET_PROGRESS",
         id,
-        progress: 0,
+        progress: getGalleryRetryProgress(entry.uploadFinalized),
       });
     },
     [state.files],
@@ -452,7 +518,11 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
   // ------- beforeunload -------
   useEffect(() => {
     const hasActive = state.files.some(
-      (f) => f.status === "requesting" || f.status === "uploading" || f.status === "finalizing",
+      (f) =>
+        f.status === "requesting" ||
+        f.status === "uploading" ||
+        f.status === "finalizing" ||
+        f.status === "associating",
     );
 
     if (!hasActive) return;
@@ -483,7 +553,11 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
     total: state.files.length,
     queued: state.files.filter((f) => f.status === "queued").length,
     active: state.files.filter(
-      (f) => f.status === "requesting" || f.status === "uploading" || f.status === "finalizing",
+      (f) =>
+        f.status === "requesting" ||
+        f.status === "uploading" ||
+        f.status === "finalizing" ||
+        f.status === "associating",
     ).length,
     done: state.files.filter((f) => f.status === "done").length,
     errored: state.files.filter((f) => f.status === "error").length,
@@ -494,7 +568,11 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
           )
         : 0,
     isUploading: state.files.some(
-      (f) => f.status === "requesting" || f.status === "uploading" || f.status === "finalizing",
+      (f) =>
+        f.status === "requesting" ||
+        f.status === "uploading" ||
+        f.status === "finalizing" ||
+        f.status === "associating",
     ),
     allDone:
       state.files.length > 0 &&

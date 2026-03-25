@@ -65,6 +65,7 @@ export async function POST(req: Request) {
   }
 
   const serviceClient = createServiceClient();
+  const now = new Date().toISOString();
 
   // If not admin, verify user uploaded ALL requested items
   if (!isAdmin) {
@@ -90,10 +91,25 @@ export async function POST(req: Request) {
     }
   }
 
+  const { error: clearCoverError } = await serviceClient
+    .from("media_albums")
+    .update({ cover_media_id: null, updated_at: now })
+    .eq("organization_id", orgId)
+    .in("cover_media_id", mediaIds)
+    .is("deleted_at", null);
+
+  if (clearCoverError) {
+    console.error("[media/bulk-delete] Failed to clear album covers:", clearCoverError);
+    return NextResponse.json(
+      { error: "Failed to clear album covers" },
+      { status: 500, headers: rateLimit.headers },
+    );
+  }
+
   // Soft delete
   const { data, error: deleteError } = await serviceClient
     .from("media_items")
-    .update({ deleted_at: new Date().toISOString() })
+    .update({ deleted_at: now })
     .eq("organization_id", orgId)
     .in("id", mediaIds)
     .is("deleted_at", null)
