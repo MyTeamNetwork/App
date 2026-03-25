@@ -3,11 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import {
   syncLinkedInProfile,
-  runProxycurlEnrichment,
   runBrightDataEnrichment,
   getLinkedInUrlForUser,
 } from "@/lib/linkedin/oauth";
-import { isBrightDataConfigured } from "@/lib/linkedin/bright-data";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +14,7 @@ export const dynamic = "force-dynamic";
  *
  * Re-fetches the user's LinkedIn profile data using the stored access token
  * and updates the connection record. Triggers enrichment via Bright Data
- * (preferred) or Proxycurl (fallback) if a LinkedIn URL is available.
+ * if a LinkedIn URL is available.
  *
  * Enforces a per-user monthly rate limit (2/month) via the
  * claim_linkedin_resync RPC when the org has the feature enabled.
@@ -71,18 +69,13 @@ export async function POST() {
       );
     }
 
-    // Best-effort enrichment — prefer Bright Data, fall back to Proxycurl
+    // Best-effort enrichment via Bright Data
     const linkedinUrl = await getLinkedInUrlForUser(serviceClient, user.id);
     let enriched = false;
 
     if (linkedinUrl) {
-      if (isBrightDataConfigured()) {
-        const enrichResult = await runBrightDataEnrichment(serviceClient, user.id, linkedinUrl);
-        enriched = enrichResult.enriched;
-      } else {
-        const enrichResult = await runProxycurlEnrichment(serviceClient, user.id, linkedinUrl);
-        enriched = enrichResult.enriched;
-      }
+      const enrichResult = await runBrightDataEnrichment(serviceClient, user.id, linkedinUrl);
+      enriched = enrichResult.enriched;
     }
 
     const remaining = claim?.remaining ?? null;

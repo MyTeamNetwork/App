@@ -8,7 +8,7 @@ import {
   storeLinkedInConnection,
   syncLinkedInProfileFields,
   getLinkedInOAuthErrorMessage,
-  runProxycurlEnrichment,
+  runBrightDataEnrichment,
   getLinkedInUrlForUser,
 } from "@/lib/linkedin/oauth";
 import {
@@ -171,10 +171,10 @@ export async function handleLinkedInOAuthCallback(
       });
     }
 
-    // Best-effort Proxycurl enrichment after successful OAuth connect
+    // Best-effort Bright Data enrichment after successful OAuth connect
     const linkedinUrl = await getLinkedInUrlForUser(serviceClient, user.id);
     if (linkedinUrl) {
-      const enrichResult = await runProxycurlEnrichment(serviceClient, user.id, linkedinUrl);
+      const enrichResult = await runBrightDataEnrichment(serviceClient, user.id, linkedinUrl);
       if (!enrichResult.enriched && enrichResult.error) {
         console.warn("[linkedin-callback] Enrichment skipped:", enrichResult.error);
       }

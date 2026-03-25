@@ -11,11 +11,6 @@ import {
   decryptToken as sharedDecrypt,
 } from "@/lib/crypto/token-encryption";
 import {
-  fetchLinkedInEnrichment,
-  mapEnrichmentToFields,
-  isProxycurlConfigured,
-} from "@/lib/linkedin/proxycurl";
-import {
   fetchBrightDataProfile,
   mapBrightDataToFields,
   isBrightDataConfigured,
@@ -553,64 +548,6 @@ export async function syncLinkedInProfile(
 }
 
 // ---------------------------------------------------------------------------
-// Proxycurl enrichment
-// ---------------------------------------------------------------------------
-
-/**
- * Runs Proxycurl enrichment for a user and writes the results to
- * members/alumni records via the sync_user_linkedin_enrichment RPC.
- *
- * This is best-effort: it never throws. If Proxycurl is not configured or
- * the enrichment fails, it logs and returns gracefully.
- *
- * @param linkedinUrl The user's LinkedIn profile URL (e.g. https://linkedin.com/in/user)
- */
-export async function runProxycurlEnrichment(
-  supabase: SupabaseClient<Database>,
-  userId: string,
-  linkedinUrl: string | null | undefined,
-): Promise<{ enriched: boolean; error?: string }> {
-  if (!linkedinUrl) {
-    return { enriched: false };
-  }
-
-  if (!isProxycurlConfigured()) {
-    return { enriched: false };
-  }
-
-  try {
-    const enrichment = await fetchLinkedInEnrichment(linkedinUrl);
-    if (!enrichment) {
-      return { enriched: false, error: "Proxycurl returned no data" };
-    }
-
-    const fields = mapEnrichmentToFields(enrichment);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any).rpc("sync_user_linkedin_enrichment", {
-      p_user_id: userId,
-      p_job_title: fields.job_title,
-      p_current_company: fields.current_company,
-      p_current_city: fields.current_city,
-      p_school: fields.school,
-      p_major: fields.major,
-      p_position_title: fields.position_title,
-      p_enrichment_json: enrichment as unknown,
-    });
-
-    if (error) {
-      console.error("[linkedin-enrichment] RPC error:", error);
-      return { enriched: false, error: error.message };
-    }
-
-    return { enriched: true };
-  } catch (err) {
-    console.error("[linkedin-enrichment] Unexpected error:", err);
-    return { enriched: false, error: err instanceof Error ? err.message : "Unknown error" };
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Bright Data enrichment
 // ---------------------------------------------------------------------------
 
@@ -618,7 +555,7 @@ export async function runProxycurlEnrichment(
  * Runs Bright Data enrichment for a user and writes the results to
  * members/alumni records via the sync_user_linkedin_enrichment RPC.
  *
- * Same contract as runProxycurlEnrichment — best-effort, never throws.
+ * Best-effort enrichment — never throws.
  */
 export async function runBrightDataEnrichment(
   supabase: SupabaseClient<Database>,

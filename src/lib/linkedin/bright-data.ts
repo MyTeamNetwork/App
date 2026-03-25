@@ -4,7 +4,17 @@
 // ---------------------------------------------------------------------------
 
 import { isLinkedInProfileUrl } from "@/lib/alumni/linkedin-url";
-import type { EnrichmentFields } from "./proxycurl";
+
+/** Mapped fields ready to be written to member/alumni records. */
+export interface EnrichmentFields {
+  job_title: string | null;
+  current_company: string | null;
+  industry: string | null;
+  current_city: string | null;
+  school: string | null;
+  major: string | null;
+  position_title: string | null;
+}
 
 /** A work experience entry from Bright Data LinkedIn profile. */
 export interface BrightDataExperience {
@@ -216,8 +226,8 @@ function normalizeBrightDataResponse(data: Record<string, unknown>): BrightDataP
  * Current job = the most recent experience with no `end_date`.
  * School = the most recent education entry.
  *
- * Returns the same `EnrichmentFields` shape used by Proxycurl so both
- * providers feed the same `sync_user_linkedin_enrichment` RPC.
+ * Returns the `EnrichmentFields` shape that feeds the
+ * `sync_user_linkedin_enrichment` RPC.
  */
 export function mapBrightDataToFields(
   profile: BrightDataProfileResult,

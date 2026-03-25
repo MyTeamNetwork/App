@@ -6,9 +6,9 @@ import {
   type LinkedInConnectionSource,
 } from "@/lib/linkedin/connection-source";
 import {
-  mapEnrichmentToFields,
-  type ProxycurlEnrichmentResult,
-} from "@/lib/linkedin/proxycurl";
+  mapBrightDataToFields,
+  type BrightDataProfileResult,
+} from "@/lib/linkedin/bright-data";
 
 type LinkedInProfileTable = "members" | "alumni" | "parents";
 
@@ -97,14 +97,28 @@ export async function getLinkedInStatusForUser(
   // Extract enrichment data from linkedin_data JSONB if present
   let enrichment: LinkedInEnrichmentInfo | null = null;
   if (connectionRow?.linkedin_data?.enrichment) {
-    const fields = mapEnrichmentToFields(
-      connectionRow.linkedin_data.enrichment as ProxycurlEnrichmentResult,
-    );
-    enrichment = {
-      jobTitle: fields.job_title,
-      currentCompany: fields.current_company,
-      school: fields.school,
-    };
+    const raw = connectionRow.linkedin_data.enrichment;
+
+    // Detect legacy ProxyCurl format (uses `experiences` plural) vs Bright Data (`experience` singular)
+    const isLegacyFormat = Array.isArray(raw.experiences);
+
+    if (isLegacyFormat) {
+      const currentJob = (raw.experiences as Array<{ ends_at: unknown; title: string | null; company: string | null }>)
+        ?.find((e) => !e.ends_at) ?? raw.experiences?.[0];
+      const latestEdu = (raw.education as Array<{ school: string | null }>)?.[0];
+      enrichment = {
+        jobTitle: currentJob?.title || raw.occupation || null,
+        currentCompany: currentJob?.company || null,
+        school: latestEdu?.school || null,
+      };
+    } else {
+      const fields = mapBrightDataToFields(raw as BrightDataProfileResult);
+      enrichment = {
+        jobTitle: fields.job_title,
+        currentCompany: fields.current_company,
+        school: fields.school,
+      };
+    }
   }
 
   const connection = connectionRow
