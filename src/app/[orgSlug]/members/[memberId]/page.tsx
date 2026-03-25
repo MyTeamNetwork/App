@@ -20,7 +20,6 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
   const { data: { user } } = await supabase.auth.getUser();
   const dataClient = resolveDataClient(user, supabase, "view_members");
 
-  // Fetch organization
   const { data: orgs, error: orgError } = await dataClient
     .from("organizations")
     .select("id, name")
@@ -28,10 +27,8 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
     .limit(1);
 
   const org = orgs?.[0];
-
   if (!org || orgError) return notFound();
 
-  // Fetch member
   const { data: memberData } = await dataClient
     .from("members")
     .select("*")
@@ -45,7 +42,6 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
   const member = memberData as Member;
   const memberUserId = (memberData as Member & { user_id?: string | null }).user_id || null;
 
-  // Fetch the member's organization role if they have a linked user
   let userOrgRole: string | null = null;
   if (memberUserId) {
     const { data: roleData } = await dataClient
@@ -54,7 +50,6 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
       .eq("organization_id", org.id)
       .eq("user_id", memberUserId)
       .maybeSingle();
-
     userOrgRole = roleData?.role || null;
   }
 
@@ -62,6 +57,15 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
   const currentUserId = user?.id ?? null;
   const canEdit = isAdmin || (currentUserId && memberUserId === currentUserId);
   const isOwnProfile = currentUserId !== null && currentUserId === memberUserId;
+
+  // Cast for enrichment fields that may exist on the record
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const m = member as Member & Record<string, any>;
+  const headline = m.role || null;
+  const currentCompany = m.current_company || null;
+  const school = m.school || null;
+
+  const statusVariant = member.status === "active" ? "success" : member.status === "pending" ? "warning" : "muted";
 
   return (
     <div className="animate-fade-in" data-testid="member-detail">
@@ -95,106 +99,190 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Profile Card */}
-        <Card className="p-6 lg:col-span-1">
-          <div className="text-center">
-            <Avatar
-              src={member.photo_url}
-              name={`${member.first_name} ${member.last_name}`}
-              size="xl"
-              className="mx-auto mb-4"
-            />
-            <h2 className="text-xl font-bold text-foreground">
-              {member.first_name} {member.last_name}
-            </h2>
-            {member.role && (
-              <p className="text-muted-foreground">{member.role}</p>
-            )}
-            <div className="flex justify-center gap-2 mt-3">
-              <Badge variant={member.status === "active" ? "success" : "muted"}>
+      <div className="space-y-6 max-w-4xl">
+
+        {/* ─── Hero Card ─── */}
+        <Card padding="none" className="overflow-hidden">
+          <div
+            className="h-24 sm:h-28"
+            style={{
+              background: "linear-gradient(135deg, var(--color-org-primary) 0%, var(--color-org-secondary, var(--color-org-primary)) 100%)",
+            }}
+          />
+
+          <div className="px-6 pb-6 -mt-12 sm:-mt-14">
+            <div className="flex items-end gap-4 mb-4">
+              <div className="ring-4 ring-[var(--card)] rounded-full shrink-0">
+                <Avatar
+                  src={member.photo_url}
+                  name={`${member.first_name} ${member.last_name}`}
+                  size="xl"
+                />
+              </div>
+              <div className="pt-14 sm:pt-16 min-w-0">
+                <h2 className="font-display text-2xl font-bold text-foreground truncate">
+                  {member.first_name} {member.last_name}
+                </h2>
+                {headline && (
+                  <p className="text-muted-foreground text-sm mt-0.5 line-clamp-2">{headline}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Company + status row */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mb-3">
+              {currentCompany && (
+                <span className="flex items-center gap-1.5">
+                  <svg className="h-4 w-4 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+                  </svg>
+                  {currentCompany}
+                </span>
+              )}
+              {school && (
+                <span className="flex items-center gap-1.5">
+                  <svg className="h-4 w-4 shrink-0 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5" />
+                  </svg>
+                  {school}
+                </span>
+              )}
+            </div>
+
+            {/* Badges */}
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Badge variant={statusVariant}>
                 {member.status}
               </Badge>
               {member.graduation_year && (
-                <Badge variant="muted">Class of {member.graduation_year}</Badge>
+                <Badge variant="primary">Class of {member.graduation_year}</Badge>
+              )}
+            </div>
+
+            {/* Contact actions */}
+            <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
+              {member.email && (
+                <a
+                  href={`mailto:${member.email}`}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-[var(--muted)]/50 text-foreground hover:bg-[var(--muted)] transition-colors"
+                >
+                  <svg className="h-4 w-4 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                  </svg>
+                  {member.email}
+                </a>
+              )}
+              {member.linkedin_url && (
+                <LinkedInProfileLink linkedinUrl={member.linkedin_url} />
               )}
             </div>
           </div>
-
-          {member.email && (
-            <div className="mt-6 pt-6 border-t border-border">
-              <a
-                href={`mailto:${member.email}`}
-                className="flex items-center gap-3 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                </svg>
-                {member.email}
-              </a>
-            </div>
-          )}
         </Card>
 
-        {/* Details Card */}
-        <Card className="p-6 lg:col-span-2">
-          <h3 className="font-semibold text-foreground mb-4">Member Details</h3>
-          
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <dt className="text-sm text-muted-foreground">First Name</dt>
-              <dd className="text-foreground font-medium">{member.first_name}</dd>
+        {/* ─── Experience ─── */}
+        {(headline || currentCompany) && (
+          <Card className="p-6">
+            <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+              <svg className="h-5 w-5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 14.15v4.25c0 1.094-.787 2.036-1.872 2.18-2.087.277-4.216.42-6.378.42s-4.291-.143-6.378-.42c-1.085-.144-1.872-1.086-1.872-2.18v-4.25m16.5 0a2.18 2.18 0 00.75-1.661V8.706c0-1.081-.768-2.015-1.837-2.175a48.114 48.114 0 00-3.413-.387m4.5 8.006c-.194.165-.42.295-.673.38A23.978 23.978 0 0112 15.75c-2.648 0-5.195-.429-7.577-1.22a2.016 2.016 0 01-.673-.38m0 0A2.18 2.18 0 013 12.489V8.706c0-1.081.768-2.015 1.837-2.175a48.111 48.111 0 013.413-.387m7.5 0V5.25A2.25 2.25 0 0013.5 3h-3a2.25 2.25 0 00-2.25 2.25v.894m7.5 0a48.667 48.667 0 00-7.5 0M12 12.75h.008v.008H12v-.008z" />
+              </svg>
+              Current Role
+            </h3>
+            <div className="flex gap-4">
+              <div className="shrink-0 w-12 h-12 rounded-lg bg-[var(--muted)]/60 flex items-center justify-center">
+                <svg className="h-6 w-6 text-muted-foreground opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="font-medium text-foreground text-sm">{headline}</p>
+                {currentCompany && (
+                  <p className="text-muted-foreground text-sm">{currentCompany}</p>
+                )}
+              </div>
             </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">Last Name</dt>
-              <dd className="text-foreground font-medium">{member.last_name}</dd>
+          </Card>
+        )}
+
+        {/* ─── Education ─── */}
+        {(school || member.graduation_year) && (
+          <Card className="p-6">
+            <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+              <svg className="h-5 w-5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5" />
+              </svg>
+              Education
+            </h3>
+            <div className="flex gap-4">
+              <div className="shrink-0 w-12 h-12 rounded-lg bg-[var(--muted)]/60 flex items-center justify-center">
+                <svg className="h-6 w-6 text-muted-foreground opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.436 60.436 0 00-.491 6.347A48.627 48.627 0 0112 20.904a48.627 48.627 0 018.232-4.41 60.46 60.46 0 00-.491-6.347m-15.482 0a50.57 50.57 0 00-2.658-.813A59.905 59.905 0 0112 3.493a59.902 59.902 0 0110.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.697 50.697 0 0112 13.489a50.702 50.702 0 017.74-3.342M6.75 15a.75.75 0 100-1.5.75.75 0 000 1.5zm0 0v-3.675A55.378 55.378 0 0112 8.443m-7.007 11.55A5.981 5.981 0 006.75 15.75v-1.5" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                {school && <p className="font-medium text-foreground text-sm">{school}</p>}
+                {member.graduation_year && (
+                  <p className="text-muted-foreground text-sm">Class of {member.graduation_year}</p>
+                )}
+              </div>
             </div>
+          </Card>
+        )}
+
+        {/* ─── Details ─── */}
+        <Card className="p-6">
+          <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+            <svg className="h-5 w-5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+            </svg>
+            Details
+          </h3>
+
+          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
+            {member.email && (
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</dt>
+                <dd className="text-foreground text-sm mt-0.5">
+                  <a href={`mailto:${member.email}`} className="hover:underline">{member.email}</a>
+                </dd>
+              </div>
+            )}
+            {member.linkedin_url && (
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider">LinkedIn</dt>
+                <dd className="text-sm mt-0.5">
+                  <LinkedInProfileLink linkedinUrl={member.linkedin_url} />
+                </dd>
+              </div>
+            )}
             <div>
-              <dt className="text-sm text-muted-foreground">Role/Position</dt>
-              <dd className="text-foreground font-medium">{member.role || "—"}</dd>
+              <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</dt>
+              <dd className="text-foreground text-sm mt-0.5 capitalize">{member.status}</dd>
             </div>
+            {member.graduation_year && (
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Graduation Year</dt>
+                <dd className="text-foreground text-sm mt-0.5">{member.graduation_year}</dd>
+              </div>
+            )}
+            {member.expected_graduation_date && (
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Expected Graduation</dt>
+                <dd className="text-foreground text-sm mt-0.5">
+                  {new Date(member.expected_graduation_date).toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                </dd>
+              </div>
+            )}
             <div>
-              <dt className="text-sm text-muted-foreground">Status</dt>
-              <dd className="text-foreground font-medium capitalize">{member.status}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">Graduation Year</dt>
-              <dd className="text-foreground font-medium">{member.graduation_year || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">Email</dt>
-              <dd className="text-foreground font-medium">{member.email || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">Current Company</dt>
-              <dd className="text-foreground font-medium">{(member as Member & { current_company?: string }).current_company || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">School</dt>
-              <dd className="text-foreground font-medium">{(member as Member & { school?: string }).school || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">LinkedIn</dt>
-              <dd className="text-foreground font-medium">
-                <LinkedInProfileLink linkedinUrl={member.linkedin_url} />
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">Added</dt>
-              <dd className="text-foreground font-medium">
-                {member.created_at ? new Date(member.created_at).toLocaleDateString() : "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-sm text-muted-foreground">Last Updated</dt>
-              <dd className="text-foreground font-medium">
-                {member.updated_at ? new Date(member.updated_at).toLocaleDateString() : "—"}
+              <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Member Since</dt>
+              <dd className="text-foreground text-sm mt-0.5">
+                {member.created_at ? new Date(member.created_at).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "Unknown"}
               </dd>
             </div>
           </dl>
         </Card>
 
-        {/* Reinstate Banner - for admins viewing alumni members */}
+        {/* ─── Reinstate Banner ─── */}
         {isAdmin && userOrgRole === "alumni" && (
           <ReinstateCard
             orgId={org.id}
@@ -204,8 +292,11 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
         )}
       </div>
 
+      {/* Connected Accounts (own profile only) */}
       {isOwnProfile && (
-        <ConnectedAccountsSection orgSlug={orgSlug} orgId={org.id} orgName={org.name} />
+        <div className="max-w-4xl mt-6">
+          <ConnectedAccountsSection orgSlug={orgSlug} orgId={org.id} orgName={org.name} />
+        </div>
       )}
     </div>
   );
