@@ -41,6 +41,9 @@ export default function EditMemberPage() {
       linkedin_url: "",
       current_company: "",
       school: "",
+      bio: "",
+      current_city: "",
+      major: "",
     },
   });
 
@@ -93,6 +96,9 @@ export default function EditMemberPage() {
         graduated_at?: string;
         current_company?: string;
         school?: string;
+        bio?: string;
+        current_city?: string;
+        major?: string;
       };
       reset({
         first_name: m.first_name || "",
@@ -106,6 +112,9 @@ export default function EditMemberPage() {
         linkedin_url: m.linkedin_url || "",
         current_company: m.current_company || "",
         school: m.school || "",
+        bio: m.bio || "",
+        current_city: m.current_city || "",
+        major: m.major || "",
       });
 
       // Fetch system access role
@@ -211,6 +220,9 @@ export default function EditMemberPage() {
         linkedin_url: data.linkedin_url || null,
         current_company: data.current_company || null,
         school: data.school || null,
+        bio: data.bio || null,
+        current_city: data.current_city || null,
+        major: data.major || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", memberId)
@@ -347,11 +359,38 @@ export default function EditMemberPage() {
                   {...register("current_company")}
                 />
                 <Input
+                  label="Current City"
+                  placeholder="e.g., San Francisco, CA"
+                  error={errors.current_city?.message}
+                  {...register("current_city")}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <Input
                   label="School"
                   placeholder="e.g., State University"
                   error={errors.school?.message}
                   {...register("school")}
                 />
+                <Input
+                  label="Major / Field of Study"
+                  placeholder="e.g., Computer Science"
+                  error={errors.major?.message}
+                  {...register("major")}
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-foreground mb-1.5">Bio</label>
+                <textarea
+                  className="w-full rounded-xl border border-border bg-[var(--card)] px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)] min-h-[100px] resize-y"
+                  placeholder="A short bio or about section"
+                  {...register("bio")}
+                />
+                {errors.bio?.message && (
+                  <p className="mt-1 text-xs text-red-500">{errors.bio.message}</p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">

@@ -50,6 +50,7 @@ describe("Bright Data LinkedIn client", () => {
         name: "Jane Doe",
         city: "San Francisco",
         position: null,
+        about: null,
         current_company: null,
         current_company_name: "Acme Corp",
         experience: [
@@ -57,7 +58,7 @@ describe("Bright Data LinkedIn client", () => {
           { title: "CTO", company: "Old Co", location: "NY", end_date: "2022-12" },
         ],
         education: [
-          { school: "MIT", field_of_study: "Computer Science" },
+          { title: "MIT", field_of_study: "Computer Science" },
         ],
       };
 
@@ -77,6 +78,7 @@ describe("Bright Data LinkedIn client", () => {
         name: "Bob",
         city: null,
         position: null,
+        about: null,
         current_company: null,
         current_company_name: null,
         experience: [
@@ -99,6 +101,7 @@ describe("Bright Data LinkedIn client", () => {
         name: null,
         city: null,
         position: null,
+        about: null,
         current_company: null,
         current_company_name: null,
         experience: [],
@@ -120,6 +123,7 @@ describe("Bright Data LinkedIn client", () => {
         name: null,
         city: null,
         position: null,
+        about: null,
         current_company: null,
         current_company_name: "Top-Level Company",
         experience: [
@@ -153,6 +157,7 @@ describe("Bright Data LinkedIn client", () => {
         name: "Satya Nadella",
         city: "Redmond, Washington, United States",
         position: "Chairman and CEO at Microsoft",
+        about: null,
         current_company: "Microsoft",
         current_company_name: null,
         experience: [],
@@ -190,6 +195,7 @@ describe("Bright Data LinkedIn client", () => {
         name: "Satya Nadella",
         city: "Redmond, Washington, United States",
         position: "Chairman and CEO at Microsoft",
+        about: null,
         current_company: "Microsoft",
         current_company_name: null,
         experience: [],

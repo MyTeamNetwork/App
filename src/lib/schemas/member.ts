@@ -23,6 +23,9 @@ export const newMemberSchema = z.object({
   linkedin_url: optionalLinkedInProfileUrlSchema,
   current_company: optionalSafeString(200),
   school: optionalSafeString(200),
+  bio: optionalSafeString(2000),
+  current_city: optionalSafeString(200),
+  major: optionalSafeString(200),
 });
 export type NewMemberForm = z.infer<typeof newMemberSchema>;
 

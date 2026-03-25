@@ -112,8 +112,8 @@ export async function GET(request: Request) {
           p_school: fields.school,
           p_major: fields.major,
           p_position_title: fields.position_title,
-          p_headline: null,
-          p_summary: null,
+          p_headline: profile.position || null,
+          p_summary: profile.about || null,
           p_work_history: profile.experience ?? null,
           p_education_history: profile.education ?? null,
         });

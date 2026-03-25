@@ -607,6 +607,10 @@ export async function runBrightDataEnrichment(
       p_major: fields.major,
       p_position_title: fields.position_title,
       p_enrichment_json: profile as unknown,
+      p_headline: profile.position || null,
+      p_summary: profile.about || null,
+      p_work_history: profile.experience ?? null,
+      p_education_history: profile.education ?? null,
     });
 
     if (error) {

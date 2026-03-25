@@ -106,6 +106,9 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
   const jobTitle = m.role || null;
   const currentCompany = m.current_company || null;
   const school = m.school || null;
+  const memberBio = m.bio || null;
+  const currentCity = m.current_city || null;
+  const major = m.major || null;
 
   // Determine what to show: prefer enrichment data, fall back to flat fields
   const hasEnrichmentExperience = enrichmentExperience.length > 0;
@@ -241,7 +244,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
         </Card>
 
         {/* ─── Bio / About ─── */}
-        {linkedinBio && (
+        {(linkedinBio || memberBio) && (
           <Card className="p-6">
             <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
               <svg className="h-5 w-5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -249,7 +252,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
               </svg>
               About
             </h3>
-            <p className="text-foreground/80 text-sm leading-relaxed whitespace-pre-wrap">{linkedinBio}</p>
+            <p className="text-foreground/80 text-sm leading-relaxed whitespace-pre-wrap">{linkedinBio || memberBio}</p>
           </Card>
         )}
 
@@ -287,6 +290,12 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
                         <p className="text-muted-foreground/60 text-xs mt-0.5">
                           {job.start_date || "?"} &ndash; {job.end_date || "Present"}
                         </p>
+                      )}
+                      {job.description_html && (
+                        <div
+                          className="text-foreground/70 text-sm mt-2 leading-relaxed prose prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5"
+                          dangerouslySetInnerHTML={{ __html: job.description_html }}
+                        />
                       )}
                     </div>
                   </div>
@@ -344,6 +353,11 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
                           {edu.start_year || "?"} &ndash; {edu.end_year || "Present"}
                         </p>
                       )}
+                      {edu.description && (
+                        <p className="text-foreground/70 text-sm mt-2 leading-relaxed whitespace-pre-wrap">
+                          {edu.description}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))
@@ -390,6 +404,18 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
                 <dd className="text-sm mt-0.5">
                   <LinkedInProfileLink linkedinUrl={member.linkedin_url} />
                 </dd>
+              </div>
+            )}
+            {currentCity && (
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Location</dt>
+                <dd className="text-foreground text-sm mt-0.5">{currentCity}</dd>
+              </div>
+            )}
+            {major && (
+              <div>
+                <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Major</dt>
+                <dd className="text-foreground text-sm mt-0.5">{major}</dd>
               </div>
             )}
             <div>
