@@ -5,102 +5,144 @@ const { mapBrightDataToFields, isBrightDataConfigured } = await import(
   "@/lib/linkedin/bright-data"
 );
 
-test("mapBrightDataToFields extracts current job and school", () => {
+test("mapBrightDataToFields extracts current job and school from real API shape", () => {
+  // Matches actual Bright Data API response structure
   const result = mapBrightDataToFields({
-    linkedin_id: "john-doe-123",
-    name: "John Doe",
-    city: "San Francisco",
-    country_code: "US",
-    current_company_name: "Acme Corp",
-    about: "Building things",
+    name: "Bill Gates",
+    city: "Seattle, Washington, United States",
+    position: "Chair, Gates Foundation and Founder, Breakthrough Energy",
+    about: "Chair of the Gates Foundation. Founder of Breakthrough Energy.",
+    current_company: "Gates Foundation",
+    current_company_name: "Gates Foundation",
     experience: [
       {
-        title: "Senior Engineer",
-        company: "Acme Corp",
-        company_url: null,
-        location: "San Francisco, CA",
-        start_date: "2024-03",
-        end_date: null,
-        description: "Building scalable systems",
+        title: "Co-chair",
+        company: "Gates Foundation",
+        company_id: "gates-foundation",
+        location: null,
+        start_date: "2000",
+        end_date: "Present", // Bright Data uses "Present" not null
+        description_html: null,
+        url: null,
+        company_logo_url: null,
       },
       {
-        title: "Engineer",
-        company: "OldCo",
-        company_url: null,
+        title: "Co-founder",
+        company: "Microsoft",
+        company_id: "microsoft",
         location: null,
-        start_date: "2020-01",
-        end_date: "2024-02",
-        description: null,
+        start_date: "1975",
+        end_date: "Present",
+        description_html: null,
+        url: null,
+        company_logo_url: null,
       },
     ],
     education: [
       {
-        school: "State University",
-        degree: "BS",
-        field_of_study: "Computer Science",
-        start_date: "2016",
-        end_date: "2020",
+        title: "Harvard University", // school name is in "title", not "school"
+        degree: null,
+        field_of_study: null,
+        url: null,
+        start_year: "1973",
+        end_year: "1975",
+        description: null,
+        description_html: null,
+        institute_logo_url: null,
       },
     ],
-    avatar: null,
-    followers: 500,
-    connections: 300,
   });
 
-  assert.equal(result.job_title, "Senior Engineer");
+  assert.equal(result.job_title, "Co-chair"); // first "Present" experience
+  assert.equal(result.current_company, "Gates Foundation");
+  assert.equal(result.current_city, "Seattle, Washington, United States");
+  assert.equal(result.school, "Harvard University"); // from education[0].title
+  assert.equal(result.major, null); // no degree or field_of_study for Bill Gates
+  assert.equal(result.position_title, "Co-chair");
+});
+
+test("mapBrightDataToFields handles education with degree and field_of_study", () => {
+  const result = mapBrightDataToFields({
+    name: "Jane Doe",
+    city: "New York",
+    position: "Software Engineer at Acme",
+    about: null,
+    current_company: null,
+    current_company_name: "Acme Corp",
+    experience: [
+      {
+        title: "Software Engineer",
+        company: "Acme Corp",
+        company_id: null,
+        location: "New York, NY",
+        start_date: "2022-01",
+        end_date: "Present",
+        description_html: null,
+        url: null,
+        company_logo_url: null,
+      },
+    ],
+    education: [
+      {
+        title: "MIT",
+        degree: "BS",
+        field_of_study: "Computer Science",
+        url: null,
+        start_year: "2018",
+        end_year: "2022",
+        description: null,
+        description_html: null,
+        institute_logo_url: null,
+      },
+    ],
+  });
+
+  assert.equal(result.job_title, "Software Engineer");
   assert.equal(result.current_company, "Acme Corp");
-  assert.equal(result.current_city, "San Francisco");
-  assert.equal(result.school, "State University");
-  assert.equal(result.major, "Computer Science");
-  assert.equal(result.position_title, "Senior Engineer");
-  assert.equal(result.industry, null);
+  assert.equal(result.school, "MIT");
+  assert.equal(result.major, "BS"); // degree takes precedence over field_of_study
 });
 
 test("mapBrightDataToFields falls back when no experiences", () => {
   const result = mapBrightDataToFields({
-    linkedin_id: null,
     name: "Jane Doe",
     city: null,
-    country_code: null,
-    current_company_name: null,
+    position: null,
     about: null,
+    current_company: null,
+    current_company_name: null,
     experience: [],
     education: [],
-    avatar: null,
-    followers: null,
-    connections: null,
   });
 
   assert.equal(result.job_title, null);
   assert.equal(result.current_company, null);
-  assert.equal(result.current_city, null);
   assert.equal(result.school, null);
   assert.equal(result.major, null);
 });
 
-test("mapBrightDataToFields uses first experience when all have end dates", () => {
+test("mapBrightDataToFields uses first experience when all have past end dates", () => {
   const result = mapBrightDataToFields({
-    linkedin_id: null,
     name: null,
     city: "Austin",
-    country_code: null,
-    current_company_name: null,
+    position: null,
     about: null,
+    current_company: null,
+    current_company_name: null,
     experience: [
       {
         title: "Consultant",
         company: "MostRecent Inc",
-        company_url: null,
+        company_id: null,
         location: null,
         start_date: "2023-01",
         end_date: "2023-12",
-        description: null,
+        description_html: null,
+        url: null,
+        company_logo_url: null,
       },
     ],
     education: [],
-    avatar: null,
-    followers: null,
-    connections: null,
   });
 
   assert.equal(result.job_title, "Consultant");

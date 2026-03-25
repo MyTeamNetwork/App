@@ -20,22 +20,35 @@ export interface EnrichmentFields {
 export interface BrightDataExperience {
   title: string | null;
   company: string | null;
+  company_id: string | null;
   location: string | null;
-  end_date: string | null;
+  start_date: string | null;
+  end_date: string | null; // "Present" for current jobs, date string for past, null if missing
+  description_html: string | null;
+  url: string | null;
+  company_logo_url: string | null;
 }
 
 /** An education entry from Bright Data LinkedIn profile. */
 export interface BrightDataEducation {
-  school: string | null;
+  title: string | null; // school name (NOT "school" — Bright Data uses "title")
+  degree: string | null;
   field_of_study: string | null;
+  url: string | null;
+  start_year: string | null;
+  end_year: string | null;
+  description: string | null;
+  description_html: string | null;
+  institute_logo_url: string | null;
 }
 
 /** The profile fields we consume from Bright Data LinkedIn Profiles API. */
 export interface BrightDataProfileResult {
   name: string | null;
   city: string | null;
-  position: string | null;
-  current_company: string | null;
+  position: string | null; // headline/title
+  about: string | null; // bio/summary
+  current_company: string | null; // can be string or {name, title, ...} object
   current_company_name: string | null;
   experience: BrightDataExperience[];
   education: BrightDataEducation[];
@@ -205,6 +218,7 @@ function normalizeBrightDataProfile(data: unknown): BrightDataProfileResult | nu
     name: typeof raw.name === "string" ? raw.name : null,
     city: typeof raw.city === "string" ? raw.city : null,
     position: typeof raw.position === "string" ? raw.position : null,
+    about: typeof raw.about === "string" ? raw.about : null,
     current_company: normalizeCurrentCompany(raw.current_company),
     current_company_name:
       typeof raw.current_company_name === "string" ? raw.current_company_name : null,
@@ -241,7 +255,8 @@ export function mapBrightDataToFields(
   const experiences = Array.isArray(profile.experience) ? profile.experience : [];
   const education = Array.isArray(profile.education) ? profile.education : [];
 
-  const currentJob = experiences.find((e) => !e.end_date) ?? experiences[0] ?? null;
+  // Current job: end_date is null, undefined, or "Present" for active roles
+  const currentJob = experiences.find((e) => !e.end_date || e.end_date === "Present") ?? experiences[0] ?? null;
   const latestEdu = education[0] ?? null;
   const derivedCompany = profile.current_company || profile.current_company_name || currentJob?.company || null;
   const derivedTitle = currentJob?.title || profile.position || null;
@@ -251,8 +266,10 @@ export function mapBrightDataToFields(
     current_company: derivedCompany,
     industry: null,
     current_city: profile.city || currentJob?.location || null,
-    school: latestEdu?.school || null,
-    major: latestEdu?.field_of_study || null,
+    // Bright Data uses "title" for school name (not "school")
+    school: latestEdu?.title || null,
+    // Try degree, then field_of_study (Bright Data may have either or neither)
+    major: latestEdu?.degree || latestEdu?.field_of_study || null,
     position_title: derivedTitle,
   };
 }
