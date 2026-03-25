@@ -13,6 +13,8 @@ interface MediaUploadPanelProps {
   open: boolean;
   onClose: () => void;
   availableTags: string[];
+  targetAlbumId?: string;
+  targetAlbumName?: string;
   onFileComplete?: (entry: UploadFileEntry, mediaId: string) => void;
   onAlbumCreated?: (album: MediaAlbum) => void;
 }
@@ -22,6 +24,8 @@ export function MediaUploadPanel({
   open,
   onClose,
   availableTags,
+  targetAlbumId,
+  targetAlbumName,
   onFileComplete,
   onAlbumCreated,
 }: MediaUploadPanelProps) {
@@ -44,15 +48,17 @@ export function MediaUploadPanel({
     updateTags,
     setPendingAlbumName,
     clearPendingAlbum,
-  } = useGalleryUpload({ orgId, onFileComplete });
+  } = useGalleryUpload({ orgId, targetAlbumId, onFileComplete });
 
   // Combine gallery tags + tags from the current batch for suggestions
   const batchTags = files.flatMap((f) => f.tags);
   const allSuggestions = [...new Set([...availableTags, ...batchTags])].sort();
 
   // Auto-create album when all files are done and we have a pending album name
+  // Skip when uploading directly to a target album
   useEffect(() => {
     if (
+      targetAlbumId ||
       !stats.allDone ||
       !pendingAlbumName ||
       completedMediaIds.length === 0 ||
@@ -101,6 +107,7 @@ export function MediaUploadPanel({
 
     createAlbum();
   }, [
+    targetAlbumId,
     stats.allDone,
     pendingAlbumName,
     completedMediaIds,
@@ -120,14 +127,16 @@ export function MediaUploadPanel({
     }
   }, [open]);
 
-  // Handle folder upload: add files + set pending album name
+  // Handle folder upload: add files + set pending album name (unless targeting an album)
   const handleFolder = useCallback(
     (folderFiles: File[], folderName: string) => {
       addFiles(folderFiles);
-      setPendingAlbumName(folderName);
-      setAlbumCreated(false);
+      if (!targetAlbumId) {
+        setPendingAlbumName(folderName);
+        setAlbumCreated(false);
+      }
     },
-    [addFiles, setPendingAlbumName],
+    [addFiles, setPendingAlbumName, targetAlbumId],
   );
 
   // Escape to close (only when not uploading)
@@ -183,9 +192,13 @@ export function MediaUploadPanel({
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] shrink-0">
           <div>
             <h2 className="text-base font-semibold text-[var(--foreground)]">
-              {pendingAlbumName !== null && !albumCreated ? "New Album" : "Upload Media"}
+              {targetAlbumName ? "Upload to Album" : pendingAlbumName !== null && !albumCreated ? "New Album" : "Upload Media"}
             </h2>
-            {pendingAlbumName !== null && !albumCreated ? (
+            {targetAlbumName ? (
+              <p className="text-xs text-[var(--color-org-secondary)] mt-0.5 font-medium truncate max-w-[260px]">
+                {targetAlbumName}
+              </p>
+            ) : pendingAlbumName !== null && !albumCreated ? (
               <p className="text-xs text-[var(--color-org-secondary)] mt-0.5 font-medium truncate max-w-[260px]">
                 {pendingAlbumName}
               </p>

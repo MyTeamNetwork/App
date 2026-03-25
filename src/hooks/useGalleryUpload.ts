@@ -156,10 +156,11 @@ const MAX_RETRIES = 3;
 
 interface UseGalleryUploadOptions {
   orgId: string;
+  targetAlbumId?: string;
   onFileComplete?: (entry: UploadFileEntry, mediaId: string) => void;
 }
 
-export function useGalleryUpload({ orgId, onFileComplete }: UseGalleryUploadOptions) {
+export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGalleryUploadOptions) {
   const [state, dispatch] = useReducer(reducer, {
     files: [],
     completedMediaIds: [],
@@ -326,6 +327,15 @@ export function useGalleryUpload({ orgId, onFileComplete }: UseGalleryUploadOpti
 
         dispatch({ type: "MARK_DONE", id: entry.id, mediaId });
         onFileCompleteRef.current?.(entry, mediaId);
+
+        // Auto-add to target album if uploading from album view
+        if (targetAlbumId) {
+          fetch(`/api/media/albums/${targetAlbumId}/items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ orgId, mediaIds: [mediaId] }),
+          }).catch(() => {});
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Upload failed";
         if (message === "Upload cancelled") {
@@ -341,7 +351,7 @@ export function useGalleryUpload({ orgId, onFileComplete }: UseGalleryUploadOpti
         processingRef.current.delete(entry.id);
       }
     },
-    [orgId],
+    [orgId, targetAlbumId],
   );
 
   // ------- Concurrency dispatcher -------

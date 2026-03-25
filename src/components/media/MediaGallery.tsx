@@ -54,6 +54,10 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showAlbumPicker, setShowAlbumPicker] = useState(false);
 
+  // Bulk delete
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+
   const fetchMedia = useCallback(
     async (cursor?: string) => {
       const params = new URLSearchParams({ orgId, limit: "24" });
@@ -147,6 +151,40 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
       setError(err instanceof Error ? err.message : "Delete failed");
     }
   };
+
+  const handleBulkDelete = async () => {
+    if (!bulkDeleteConfirm) {
+      setBulkDeleteConfirm(true);
+      return;
+    }
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/media/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, mediaIds: Array.from(selectedIds) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to delete");
+      }
+      const { deletedIds } = await res.json();
+      const deletedSet = new Set(deletedIds as string[]);
+      setItems((prev) => prev.filter((i) => !deletedSet.has(i.id)));
+      exitSelectMode();
+      showFeedback(`Deleted ${deletedIds.length} item${deletedIds.length === 1 ? "" : "s"}`, "success", { duration: 3000 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bulk delete failed");
+    } finally {
+      setBulkDeleting(false);
+      setBulkDeleteConfirm(false);
+    }
+  };
+
+  // Reset bulk delete confirm when selection changes
+  useEffect(() => {
+    setBulkDeleteConfirm(false);
+  }, [selectedIds]);
 
   const handleUpdate = async (mediaId: string, data: { description?: string; tags?: string[] }) => {
     try {
@@ -498,6 +536,17 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
               <Button size="sm" onClick={() => setShowAlbumPicker(true)}>
                 Add to album
               </Button>
+              {/* Bulk delete: show if admin or uploader of all selected */}
+              {(isAdmin || (currentUserId && items.filter((i) => selectedIds.has(i.id)).every((i) => i.uploaded_by === currentUserId))) && (
+                <Button
+                  size="sm"
+                  variant={bulkDeleteConfirm ? "danger" : "secondary"}
+                  isLoading={bulkDeleting}
+                  onClick={handleBulkDelete}
+                >
+                  {bulkDeleteConfirm ? `Confirm delete (${selectedIds.size})` : "Delete"}
+                </Button>
+              )}
               <button
                 onClick={exitSelectMode}
                 className="w-7 h-7 rounded-full hover:bg-[var(--muted)] flex items-center justify-center transition-colors text-[var(--muted-foreground)] hover:text-[var(--foreground)]"

@@ -1,10 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { showFeedback } from "@/lib/feedback/show-feedback";
 import { Button, EmptyState } from "@/components/ui";
 import { MediaCard, type MediaItem } from "./MediaCard";
 import { MediaDetailModal } from "./MediaDetailModal";
+import { MediaUploadPanel } from "./MediaUploadPanel";
+import { CoverPickerModal } from "./CoverPickerModal";
 import type { MediaAlbum } from "./AlbumCard";
+import type { UploadFileEntry } from "@/hooks/useGalleryUpload";
 
 interface AlbumViewProps {
   album: MediaAlbum;
@@ -21,6 +25,7 @@ export function AlbumView({
   album,
   orgId,
   isAdmin,
+  canUpload,
   currentUserId,
   onBack,
   onAlbumDeleted,
@@ -35,6 +40,13 @@ export function AlbumView({
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Upload to album
+  const [showUpload, setShowUpload] = useState(false);
+
+  // Cover picker
+  const [showCoverPicker, setShowCoverPicker] = useState(false);
+  const [coverSaving, setCoverSaving] = useState(false);
 
   // Inline name editing
   const [editingName, setEditingName] = useState(false);
@@ -197,6 +209,60 @@ export function AlbumView({
     setNameValue(album.name);
   };
 
+  // Handle upload completion — add to album item list optimistically
+  const handleFileComplete = useCallback(
+    (entry: UploadFileEntry, mediaId: string) => {
+      const isVideo = entry.mimeType.startsWith("video/");
+      const optimisticItem: MediaItem = {
+        id: mediaId,
+        title: entry.title || entry.fileName,
+        description: entry.description || null,
+        media_type: isVideo ? "video" : "image",
+        url: entry.previewUrl,
+        thumbnail_url: isVideo ? null : entry.previewUrl,
+        tags: entry.tags,
+        taken_at: entry.takenAt ? new Date(entry.takenAt).toISOString() : null,
+        created_at: new Date().toISOString(),
+        uploaded_by: currentUserId || "",
+        status: isAdmin ? "approved" : "pending",
+      };
+      setItems((prev) => [optimisticItem, ...prev]);
+
+      // Fetch real data
+      fetch(`/api/media/${mediaId}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((real: MediaItem | null) => {
+          if (!real) return;
+          setItems((prev) => prev.map((i) => (i.id === mediaId ? { ...i, ...real } : i)));
+        })
+        .catch(() => {});
+    },
+    [currentUserId, isAdmin],
+  );
+
+  // Set album cover
+  const handleSetCover = async (mediaId: string, coverUrl: string) => {
+    setCoverSaving(true);
+    try {
+      const res = await fetch(`/api/media/albums/${album.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, cover_media_id: mediaId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to set cover");
+      }
+      onAlbumUpdated?.({ cover_media_id: mediaId, cover_url: coverUrl });
+      setShowCoverPicker(false);
+      showFeedback("Album cover updated", "success", { duration: 3000 });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to set cover");
+    } finally {
+      setCoverSaving(false);
+    }
+  };
+
   return (
     <div>
       {/* Header */}
@@ -281,18 +347,30 @@ export function AlbumView({
           <h2 className="text-base font-semibold text-foreground truncate">{nameValue}</h2>
         )}
 
-        {/* Admin/creator actions */}
-        {canEdit && !editingName && (
+        {/* Actions */}
+        {!editingName && (
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            <Button
-              variant={confirmDelete ? "danger" : "ghost"}
-              size="sm"
-              isLoading={deleting}
-              onClick={handleDeleteAlbum}
-              onBlur={() => setConfirmDelete(false)}
-            >
-              {confirmDelete ? "Confirm delete" : "Delete album"}
-            </Button>
+            {canEdit && items.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setShowCoverPicker(true)}>
+                Set cover
+              </Button>
+            )}
+            {canUpload && (
+              <Button size="sm" onClick={() => setShowUpload(true)}>
+                Upload
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                variant={confirmDelete ? "danger" : "ghost"}
+                size="sm"
+                isLoading={deleting}
+                onClick={handleDeleteAlbum}
+                onBlur={() => setConfirmDelete(false)}
+              >
+                {confirmDelete ? "Confirm delete" : "Delete album"}
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -330,7 +408,12 @@ export function AlbumView({
             </svg>
           }
           title="No photos in this album"
-          description="Add photos to this album from the All Photos view."
+          description={canUpload ? "Upload photos directly to this album." : "Add photos to this album from the All Photos view."}
+          action={
+            canUpload ? (
+              <Button onClick={() => setShowUpload(true)}>Upload Photos</Button>
+            ) : undefined
+          }
         />
       ) : (
         <>
@@ -362,6 +445,28 @@ export function AlbumView({
           onClose={() => setSelectedItem(null)}
           onDelete={handleRemoveFromAlbum}
           onUpdate={handleUpdate}
+        />
+      )}
+
+      {/* Upload panel — uploads directly into this album */}
+      <MediaUploadPanel
+        orgId={orgId}
+        open={showUpload}
+        onClose={() => setShowUpload(false)}
+        availableTags={[]}
+        targetAlbumId={album.id}
+        targetAlbumName={album.name}
+        onFileComplete={handleFileComplete}
+      />
+
+      {/* Cover picker modal */}
+      {showCoverPicker && (
+        <CoverPickerModal
+          items={items.filter((i) => i.media_type === "image")}
+          currentCoverId={album.cover_media_id ?? null}
+          onSelect={handleSetCover}
+          onClose={() => setShowCoverPicker(false)}
+          saving={coverSaving}
         />
       )}
     </div>
