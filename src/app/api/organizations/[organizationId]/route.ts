@@ -210,7 +210,9 @@ export async function PATCH(req: Request, { params }: RouteParams) {
       return respond({ error: "No valid fields to update" }, 400);
     }
 
-    const { data: updatedOrg, error: updateError } = await serviceSupabase
+    // Cast needed: linkedin_resync_enabled exists in DB but not yet in generated types
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: updatedOrg, error: updateError } = await (serviceSupabase as any)
       .from("organizations")
       .update(updatePayload)
       .eq("id", organizationId)
