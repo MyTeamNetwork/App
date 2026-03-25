@@ -3,19 +3,20 @@ import "./globals.css";
 import { ErrorBoundaryProvider } from "@/components/errors/ErrorBoundaryProvider";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { Toaster } from "sonner";
-
-const ICON_VERSION = "tn-20260325";
+import { SITE_DESCRIPTION, SITE_ICON_PATHS, SITE_NAME, SITE_URL } from "@/lib/site-metadata";
 
 export const metadata: Metadata = {
-  title: "TeamNetwork",
-  description: "Multi-organization hub for members, events, donations, and more",
+  metadataBase: new URL(SITE_URL),
+  applicationName: SITE_NAME,
+  title: SITE_NAME,
+  description: SITE_DESCRIPTION,
   icons: {
     icon: [
-      { url: `/favicon.ico?v=${ICON_VERSION}`, sizes: "any" },
-      { url: `/icon.png?v=${ICON_VERSION}`, type: "image/png", sizes: "192x192" },
+      { url: SITE_ICON_PATHS.favicon, sizes: "any" },
+      { url: SITE_ICON_PATHS.icon192, type: "image/png", sizes: "192x192" },
     ],
-    shortcut: [`/favicon.ico?v=${ICON_VERSION}`],
-    apple: [{ url: `/apple-icon.png?v=${ICON_VERSION}`, sizes: "180x180", type: "image/png" }],
+    shortcut: [SITE_ICON_PATHS.favicon],
+    apple: [{ url: SITE_ICON_PATHS.appleTouch, sizes: "180x180", type: "image/png" }],
   },
   verification: {
     google: "ABHMicqF2aoLD1T2krG0zYWL9PJXgaQZkMtfxsY46ug",
