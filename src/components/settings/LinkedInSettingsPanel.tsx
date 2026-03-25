@@ -36,6 +36,7 @@ export interface LinkedInSettingsPanelProps {
   connectionLoading: boolean;
   oauthAvailable: boolean;
   resyncEnabled: boolean;
+  resyncIsAdmin: boolean;
   resyncRemaining: number;
   resyncMaxPerMonth: number;
   onConnect: () => void;
@@ -56,6 +57,7 @@ export function LinkedInSettingsPanel({
   connectionLoading,
   oauthAvailable,
   resyncEnabled,
+  resyncIsAdmin,
   resyncRemaining,
   resyncMaxPerMonth,
   onConnect,
@@ -351,7 +353,7 @@ export function LinkedInSettingsPanel({
           {/* Sync button + rate limit + disconnect */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {resyncEnabled && (
+              {(resyncEnabled || resyncIsAdmin) && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -362,14 +364,14 @@ export function LinkedInSettingsPanel({
                   Sync Now
                 </Button>
               )}
-              {resyncEnabled && (
+              {(resyncEnabled || resyncIsAdmin) && (
                 <span className={`text-xs ${resyncRemaining <= 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
                   {resyncRemaining <= 0
                     ? "Limit reached \u2014 resets next month"
                     : `${resyncRemaining} of ${resyncMaxPerMonth} syncs remaining`}
                 </span>
               )}
-              {!resyncEnabled && oauthAvailable && (
+              {!resyncEnabled && !resyncIsAdmin && oauthAvailable && (
                 <span className="text-xs text-muted-foreground">
                   Re-sync is managed by your organization
                 </span>

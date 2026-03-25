@@ -16,10 +16,9 @@ export const dynamic = "force-dynamic";
  * and updates the connection record. Triggers enrichment via Bright Data
  * if a LinkedIn URL is available.
  *
- * Enforces:
- * - Org must have linkedin_resync_enabled = true
- * - Per-user monthly rate limit (2/month) via claim_linkedin_resync RPC
- * - Fail-closed: if rate limit check errors, sync is denied
+ * Admins can always sync their own profile regardless of the org toggle.
+ * Non-admins require linkedin_resync_enabled = true on their org.
+ * Rate limit (2/month) applies to all users.
  */
 export async function POST() {
   try {
@@ -35,18 +34,28 @@ export async function POST() {
 
     const serviceClient = createServiceClient();
 
-    // Check org toggle — user must belong to an org with resync enabled
+    // Check org membership, role, and toggle in one query
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: orgRole } = await (serviceClient as any)
+    const { data: membership } = await (serviceClient as any)
       .from("user_organization_roles")
-      .select("organization_id, organizations!inner(linkedin_resync_enabled)")
+      .select("role, organization_id, organizations!inner(linkedin_resync_enabled)")
       .eq("user_id", user.id)
       .is("revoked_at", null)
-      .eq("organizations.linkedin_resync_enabled", true)
       .limit(1)
       .maybeSingle();
 
-    if (!orgRole) {
+    if (!membership) {
+      return NextResponse.json(
+        { error: "You are not a member of any organization." },
+        { status: 403 },
+      );
+    }
+
+    const isAdmin = membership.role === "admin";
+    const resyncEnabled = membership.organizations?.linkedin_resync_enabled === true;
+
+    // Admins can always sync; non-admins need the org toggle on
+    if (!isAdmin && !resyncEnabled) {
       return NextResponse.json(
         { error: "LinkedIn re-sync is not enabled for your organization." },
         { status: 403 },

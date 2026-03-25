@@ -44,27 +44,27 @@ export async function GET() {
       resyncRemaining = Math.max(0, MAX_SYNCS_PER_MONTH - (connectionRow.resync_count ?? 0));
     }
 
-    // Check if ANY of the user's orgs has resync enabled (filter for enabled ones)
+    // Check user's org membership — role + resync toggle
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: enabledOrg } = await (serviceClient as any)
+    const { data: membership } = await (serviceClient as any)
       .from("user_organization_roles")
-      .select("organization_id")
+      .select("role, organization_id")
       .eq("user_id", user.id)
       .is("revoked_at", null)
       .limit(1)
       .maybeSingle();
 
-    // Check via a separate query to avoid PostgREST join issues
     let resyncEnabled = false;
-    if (enabledOrg) {
+    const isAdmin = membership?.role === "admin";
+
+    if (membership) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: orgData } = await (serviceClient as any)
         .from("organizations")
         .select("linkedin_resync_enabled")
-        .eq("id", enabledOrg.organization_id)
-        .eq("linkedin_resync_enabled", true)
+        .eq("id", membership.organization_id)
         .maybeSingle();
-      resyncEnabled = !!orgData;
+      resyncEnabled = orgData?.linkedin_resync_enabled === true;
     }
 
     return NextResponse.json({
@@ -76,6 +76,7 @@ export async function GET() {
       },
       resync: {
         enabled: resyncEnabled,
+        is_admin: isAdmin,
         remaining: resyncRemaining,
         max_per_month: MAX_SYNCS_PER_MONTH,
       },

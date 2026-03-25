@@ -18,6 +18,7 @@ interface LinkedInStatusResponse {
   };
   resync?: {
     enabled: boolean;
+    is_admin: boolean;
     remaining: number;
     max_per_month: number;
   };
@@ -30,6 +31,7 @@ export interface UseLinkedInReturn {
   oauthAvailable: boolean;
   isConnected: boolean;
   resyncEnabled: boolean;
+  resyncIsAdmin: boolean;
   resyncRemaining: number;
   resyncMaxPerMonth: number;
   onLinkedInUrlSave: (url: string) => Promise<void>;
@@ -48,6 +50,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
   const [connectionLoading, setConnectionLoading] = useState(true);
   const [oauthAvailable, setOauthAvailable] = useState(true);
   const [resyncEnabled, setResyncEnabled] = useState(false);
+  const [resyncIsAdmin, setResyncIsAdmin] = useState(false);
   const [resyncRemaining, setResyncRemaining] = useState(2);
   const [resyncMaxPerMonth, setResyncMaxPerMonth] = useState(2);
 
@@ -106,6 +109,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
       setOauthAvailable(data.integration?.oauthAvailable ?? true);
       if (data.resync) {
         setResyncEnabled(data.resync.enabled);
+        setResyncIsAdmin(data.resync.is_admin ?? false);
         setResyncRemaining(data.resync.remaining);
         setResyncMaxPerMonth(data.resync.max_per_month);
       }
@@ -243,6 +247,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
     oauthAvailable,
     isConnected,
     resyncEnabled,
+    resyncIsAdmin,
     resyncRemaining,
     resyncMaxPerMonth,
     onLinkedInUrlSave,
