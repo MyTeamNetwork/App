@@ -50,7 +50,7 @@ export async function GET() {
       .from("user_organization_roles")
       .select("role, organization_id")
       .eq("user_id", user.id)
-      .is("revoked_at", null)
+      .eq("status", "active")
       .limit(1)
       .maybeSingle();
 

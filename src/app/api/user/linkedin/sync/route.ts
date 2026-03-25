@@ -40,7 +40,7 @@ export async function POST() {
       .from("user_organization_roles")
       .select("role, organization_id, organizations!inner(linkedin_resync_enabled)")
       .eq("user_id", user.id)
-      .is("revoked_at", null)
+      .eq("status", "active")
       .limit(1)
       .maybeSingle();
 

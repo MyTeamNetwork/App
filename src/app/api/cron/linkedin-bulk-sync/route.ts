@@ -67,7 +67,7 @@ export async function GET(request: Request) {
         members!inner(linkedin_url)
       `)
       .eq("organization_id", org.id)
-      .is("revoked_at", null);
+      .eq("status", "active");
 
     if (memberError) {
       console.error(`[linkedin-bulk-sync] Error fetching members for org ${org.id}:`, memberError);
