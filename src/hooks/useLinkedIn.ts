@@ -14,6 +14,7 @@ interface LinkedInStatusResponse {
   connection: LinkedInConnection | null;
   integration?: {
     oauthAvailable: boolean;
+    brightDataAvailable?: boolean;
     reason: "not_configured" | null;
   };
   resync?: {
@@ -29,6 +30,7 @@ export interface UseLinkedInReturn {
   connection: LinkedInConnection | null;
   connectionLoading: boolean;
   oauthAvailable: boolean;
+  brightDataAvailable: boolean;
   isConnected: boolean;
   resyncEnabled: boolean;
   resyncIsAdmin: boolean;
@@ -36,7 +38,8 @@ export interface UseLinkedInReturn {
   resyncMaxPerMonth: number;
   onLinkedInUrlSave: (url: string) => Promise<void>;
   onConnect: () => void;
-  onSync: () => Promise<{ message: string }>;
+  onOauthSync: () => Promise<{ message: string }>;
+  onBrightDataSync: () => Promise<{ message: string }>;
   onDisconnect: () => Promise<void>;
 }
 
@@ -49,6 +52,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
   const [connection, setConnection] = useState<LinkedInConnection | null>(null);
   const [connectionLoading, setConnectionLoading] = useState(true);
   const [oauthAvailable, setOauthAvailable] = useState(true);
+  const [brightDataAvailable, setBrightDataAvailable] = useState(false);
   const [resyncEnabled, setResyncEnabled] = useState(false);
   const [resyncIsAdmin, setResyncIsAdmin] = useState(false);
   const [resyncRemaining, setResyncRemaining] = useState(2);
@@ -107,6 +111,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
       setLinkedInUrl(data.linkedin_url ?? "");
       setConnection(data.connection ?? null);
       setOauthAvailable(data.integration?.oauthAvailable ?? true);
+      setBrightDataAvailable(data.integration?.brightDataAvailable ?? false);
       if (data.resync) {
         setResyncEnabled(data.resync.enabled);
         setResyncIsAdmin(data.resync.is_admin ?? false);
@@ -146,7 +151,8 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
     }
 
     setLinkedInUrl(url);
-  }, []);
+    await refreshLinkedInStatus();
+  }, [refreshLinkedInStatus]);
 
   const onConnect = useCallback(async () => {
     try {
@@ -195,9 +201,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
     }
   }, [options?.redirectPath]);
 
-  const onSync = useCallback(async () => {
-    const res = await fetch("/api/user/linkedin/sync", { method: "POST" });
-
+  const handleSyncResponse = useCallback(async (res: Response) => {
     if (res.status === 404) {
       throw new Error("This feature is not yet available");
     }
@@ -219,6 +223,16 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
 
     return { message: syncData.message ?? "LinkedIn profile synced" };
   }, [refreshLinkedInStatus]);
+
+  const onOauthSync = useCallback(async () => {
+    const res = await fetch("/api/user/linkedin/sync", { method: "POST" });
+    return handleSyncResponse(res);
+  }, [handleSyncResponse]);
+
+  const onBrightDataSync = useCallback(async () => {
+    const res = await fetch("/api/user/linkedin/bright-data-sync", { method: "POST" });
+    return handleSyncResponse(res);
+  }, [handleSyncResponse]);
 
   const onDisconnect = useCallback(async () => {
     const res = await fetch("/api/user/linkedin/disconnect", { method: "POST" });
@@ -245,6 +259,7 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
     connection,
     connectionLoading,
     oauthAvailable,
+    brightDataAvailable,
     isConnected,
     resyncEnabled,
     resyncIsAdmin,
@@ -252,7 +267,8 @@ export function useLinkedIn(options?: UseLinkedInOptions): UseLinkedInReturn {
     resyncMaxPerMonth,
     onLinkedInUrlSave,
     onConnect,
-    onSync,
+    onOauthSync,
+    onBrightDataSync,
     onDisconnect,
   };
 }

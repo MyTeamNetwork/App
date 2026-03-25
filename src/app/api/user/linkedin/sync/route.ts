@@ -4,8 +4,9 @@ import { createServiceClient } from "@/lib/supabase/service";
 import {
   syncLinkedInProfile,
   runBrightDataEnrichment,
-  getLinkedInUrlForUser,
 } from "@/lib/linkedin/oauth";
+import { claimLinkedInResync } from "@/lib/linkedin/resync";
+import { getLinkedInProfileUrlForUser } from "@/lib/linkedin/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -34,61 +35,14 @@ export async function POST() {
 
     const serviceClient = createServiceClient();
 
-    // Check org membership, role, and toggle in one query
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: membership } = await (serviceClient as any)
-      .from("user_organization_roles")
-      .select("role, organization_id, organizations!inner(linkedin_resync_enabled)")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .limit(1)
-      .maybeSingle();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: "You are not a member of any organization." },
-        { status: 403 },
-      );
-    }
-
-    const isAdmin = membership.role === "admin";
-    const resyncEnabled = membership.organizations?.linkedin_resync_enabled === true;
-
-    // Admins can always sync; non-admins need the org toggle on
-    if (!isAdmin && !resyncEnabled) {
-      return NextResponse.json(
-        { error: "LinkedIn re-sync is not enabled for your organization." },
-        { status: 403 },
-      );
-    }
-
-    // Check rate limit — fail closed on error
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: claimResult, error: claimError } = await (serviceClient as any).rpc(
-      "claim_linkedin_resync",
-      { p_user_id: user.id },
-    );
-
-    if (claimError) {
-      console.error("[linkedin-sync] Rate limit check error:", claimError);
-      return NextResponse.json(
-        { error: "Unable to verify sync eligibility. Please try again later." },
-        { status: 503 },
-      );
-    }
-
-    const claim = claimResult as { allowed: boolean; remaining?: number; reason?: string } | null;
-
-    if (!claim || !claim.allowed) {
-      const reason = claim?.reason;
+    const claim = await claimLinkedInResync(serviceClient, user.id);
+    if (!claim.ok) {
       return NextResponse.json(
         {
-          error: reason === "rate_limited"
-            ? "You've reached your sync limit for this month (2 per month). Resets next month."
-            : "LinkedIn connection not found. Please connect LinkedIn first.",
-          remaining_syncs: 0,
+          error: claim.error,
+          remaining_syncs: claim.remaining_syncs,
         },
-        { status: 429 },
+        { status: claim.status },
       );
     }
 
@@ -103,7 +57,7 @@ export async function POST() {
     }
 
     // Best-effort enrichment via Bright Data
-    const linkedinUrl = await getLinkedInUrlForUser(serviceClient, user.id);
+    const linkedinUrl = await getLinkedInProfileUrlForUser(serviceClient, user.id);
     let enriched = false;
 
     if (linkedinUrl) {

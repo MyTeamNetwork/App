@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getLinkedInIntegrationStatus } from "@/lib/linkedin/config.server";
+import { isBrightDataConfigured } from "@/lib/linkedin/bright-data";
+import { getLinkedInResyncStatus } from "@/lib/linkedin/resync";
 import { getLinkedInStatusForUser } from "@/lib/linkedin/settings";
 
 export const dynamic = "force-dynamic";
-
-const MAX_SYNCS_PER_MONTH = 2;
 
 /**
  * GET /api/user/linkedin/status
@@ -29,56 +29,21 @@ export async function GET() {
     const serviceClient = createServiceClient();
     const status = await getLinkedInStatusForUser(serviceClient, user.id);
     const integration = getLinkedInIntegrationStatus();
-
-    // Fetch resync rate limit info
-    const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: connectionRow } = await (serviceClient as any)
-      .from("user_linkedin_connections")
-      .select("resync_count, resync_month")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    let resyncRemaining = MAX_SYNCS_PER_MONTH;
-    if (connectionRow && connectionRow.resync_month === currentMonth) {
-      resyncRemaining = Math.max(0, MAX_SYNCS_PER_MONTH - (connectionRow.resync_count ?? 0));
-    }
-
-    // Check user's org membership — role + resync toggle
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: membership } = await (serviceClient as any)
-      .from("user_organization_roles")
-      .select("role, organization_id")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .limit(1)
-      .maybeSingle();
-
-    let resyncEnabled = false;
-    const isAdmin = membership?.role === "admin";
-
-    if (membership) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: orgData } = await (serviceClient as any)
-        .from("organizations")
-        .select("linkedin_resync_enabled")
-        .eq("id", membership.organization_id)
-        .maybeSingle();
-      resyncEnabled = orgData?.linkedin_resync_enabled === true;
-    }
+    const resync = await getLinkedInResyncStatus(serviceClient, user.id);
 
     return NextResponse.json({
       linkedin_url: status.linkedin_url,
       connection: status.connection,
       integration: {
         oauthAvailable: integration.oauthAvailable,
+        brightDataAvailable: isBrightDataConfigured(),
         reason: integration.reason,
       },
       resync: {
-        enabled: resyncEnabled,
-        is_admin: isAdmin,
-        remaining: resyncRemaining,
-        max_per_month: MAX_SYNCS_PER_MONTH,
+        enabled: resync.enabled,
+        is_admin: resync.isAdmin,
+        remaining: resync.remaining,
+        max_per_month: resync.maxPerMonth,
       },
     });
   } catch (error) {

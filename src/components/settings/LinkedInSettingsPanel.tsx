@@ -10,6 +10,7 @@ import {
   LINKEDIN_OIDC_SOURCE,
   type LinkedInConnectionSource,
 } from "@/lib/linkedin/connection-source";
+import { getManualLinkedInSyncState } from "@/lib/linkedin/manual-sync-state";
 
 export interface LinkedInEnrichment {
   jobTitle: string | null;
@@ -35,12 +36,14 @@ export interface LinkedInSettingsPanelProps {
   isConnected: boolean;
   connectionLoading: boolean;
   oauthAvailable: boolean;
+  brightDataAvailable: boolean;
   resyncEnabled: boolean;
   resyncIsAdmin: boolean;
   resyncRemaining: number;
   resyncMaxPerMonth: number;
   onConnect: () => void;
-  onSync: () => Promise<{ message: string }>;
+  onOauthSync: () => Promise<{ message: string }>;
+  onBrightDataSync: () => Promise<{ message: string }>;
   onDisconnect: () => Promise<void>;
 }
 
@@ -56,19 +59,22 @@ export function LinkedInSettingsPanel({
   isConnected,
   connectionLoading,
   oauthAvailable,
+  brightDataAvailable,
   resyncEnabled,
   resyncIsAdmin,
   resyncRemaining,
   resyncMaxPerMonth,
   onConnect,
-  onSync,
+  onOauthSync,
+  onBrightDataSync,
   onDisconnect,
 }: LinkedInSettingsPanelProps) {
   const [urlValue, setUrlValue] = useState(linkedInUrl);
   const [urlSaving, setUrlSaving] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
 
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [isOauthSyncing, setIsOauthSyncing] = useState(false);
+  const [isBrightDataSyncing, setIsBrightDataSyncing] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   // Keep URL in sync with prop changes
@@ -97,15 +103,27 @@ export function LinkedInSettingsPanel({
     }
   };
 
-  const handleSync = async () => {
-    setIsSyncing(true);
+  const handleOauthSync = async () => {
+    setIsOauthSyncing(true);
     try {
-      const result = await onSync();
+      const result = await onOauthSync();
       showFeedback(result.message, "success", { duration: 5000 });
     } catch (err) {
       showFeedback(err instanceof Error ? err.message : "Failed to sync", "error", { duration: 5000 });
     } finally {
-      setIsSyncing(false);
+      setIsOauthSyncing(false);
+    }
+  };
+
+  const handleBrightDataSync = async () => {
+    setIsBrightDataSyncing(true);
+    try {
+      const result = await onBrightDataSync();
+      showFeedback(result.message, "success", { duration: 5000 });
+    } catch (err) {
+      showFeedback(err instanceof Error ? err.message : "Failed to sync LinkedIn data", "error", { duration: 5000 });
+    } finally {
+      setIsBrightDataSyncing(false);
     }
   };
 
@@ -123,6 +141,14 @@ export function LinkedInSettingsPanel({
 
   const isOidcLoginOnly = connection?.source === LINKEDIN_OIDC_SOURCE;
   const canRetrySync = connection?.source === LINKEDIN_OAUTH_SOURCE && connection?.status === "error";
+  const manualSyncState = getManualLinkedInSyncState({
+    linkedInUrl,
+    brightDataAvailable,
+    resyncEnabled,
+    resyncIsAdmin,
+    resyncRemaining,
+    resyncMaxPerMonth,
+  });
 
   // --- Loading skeleton ---
   if (connectionLoading) {
@@ -172,10 +198,31 @@ export function LinkedInSettingsPanel({
             size="sm"
             onClick={handleUrlSave}
             isLoading={urlSaving}
-            disabled={urlSaving}
+            disabled={urlSaving || isBrightDataSyncing}
           >
             Save
           </Button>
+          {manualSyncState.visible && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleBrightDataSync}
+                  isLoading={isBrightDataSyncing}
+                  disabled={manualSyncState.disabled || urlSaving || isDisconnecting || isOauthSyncing}
+                >
+                  Sync LinkedIn Data
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {manualSyncState.helperText}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Refresh your headline, company, and school from the public LinkedIn URL above.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -251,7 +298,7 @@ export function LinkedInSettingsPanel({
             <>
               <p className="text-sm text-muted-foreground">
                 Connect your LinkedIn account to automatically sync your profile
-                photo, name, and headline to your organization profile.
+                photo and name to your organization profile.
               </p>
 
               {connection?.status === "error" && !isOidcLoginOnly && (
@@ -264,16 +311,16 @@ export function LinkedInSettingsPanel({
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={handleSync}
-                      isLoading={isSyncing}
-                      disabled={isDisconnecting}
+                      onClick={handleOauthSync}
+                      isLoading={isOauthSyncing}
+                      disabled={isDisconnecting || isBrightDataSyncing}
                     >
                       Sync Now
                     </Button>
                     <Button
                       size="sm"
                       onClick={onConnect}
-                      disabled={isSyncing}
+                      disabled={isOauthSyncing || isBrightDataSyncing}
                     >
                       Reconnect LinkedIn
                     </Button>
@@ -357,9 +404,9 @@ export function LinkedInSettingsPanel({
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={handleSync}
-                  isLoading={isSyncing}
-                  disabled={!oauthAvailable || isDisconnecting || resyncRemaining <= 0}
+                  onClick={handleOauthSync}
+                  isLoading={isOauthSyncing}
+                  disabled={!oauthAvailable || isDisconnecting || isBrightDataSyncing || resyncRemaining <= 0}
                 >
                   Sync Now
                 </Button>
@@ -380,7 +427,7 @@ export function LinkedInSettingsPanel({
             <button
               type="button"
               onClick={handleDisconnect}
-              disabled={isSyncing || isDisconnecting}
+              disabled={isOauthSyncing || isBrightDataSyncing || isDisconnecting}
               className="text-sm text-muted-foreground hover:text-red-600 dark:hover:text-red-400 transition-colors disabled:opacity-50"
             >
               {isDisconnecting ? "Disconnecting..." : "Disconnect"}

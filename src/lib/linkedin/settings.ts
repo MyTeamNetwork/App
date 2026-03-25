@@ -66,6 +66,29 @@ async function getLatestLinkedInUrl(
   return data?.[0]?.linkedin_url ?? null;
 }
 
+export async function getLinkedInProfileUrlForUser(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<string | null> {
+  const [membersResult, alumniResult, parentsResult] =
+    await Promise.allSettled([
+      getLatestLinkedInUrl(supabase, "members", userId),
+      getLatestLinkedInUrl(supabase, "alumni", userId),
+      getLatestLinkedInUrl(supabase, "parents", userId),
+    ]);
+
+  if (membersResult.status === "rejected") throw membersResult.reason;
+  const membersUrl = membersResult.value;
+  if (membersUrl) return membersUrl;
+
+  if (alumniResult.status === "rejected") throw alumniResult.reason;
+  const alumniUrl = alumniResult.value;
+  if (alumniUrl) return alumniUrl;
+
+  if (parentsResult.status === "rejected") throw parentsResult.reason;
+  return parentsResult.value || null;
+}
+
 export async function getLinkedInStatusForUser(
   supabase: SupabaseClient<Database>,
   userId: string,
@@ -74,7 +97,7 @@ export async function getLinkedInStatusForUser(
   // semantics: members -> alumni -> parents. A higher-priority table failure
   // must still fail closed if we would have needed to consult that table in the
   // original sequential flow.
-  const [connectionResult, membersResult, alumniResult, parentsResult] =
+  const [connectionResult, linkedinUrlResult] =
     await Promise.allSettled([
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any)
@@ -82,9 +105,7 @@ export async function getLinkedInStatusForUser(
         .select("*")
         .eq("user_id", userId)
         .maybeSingle(),
-      getLatestLinkedInUrl(supabase, "members", userId),
-      getLatestLinkedInUrl(supabase, "alumni", userId),
-      getLatestLinkedInUrl(supabase, "parents", userId),
+      getLinkedInProfileUrlForUser(supabase, userId),
     ]);
 
   // Connection row is required — rethrow if it failed
@@ -134,32 +155,10 @@ export async function getLinkedInStatusForUser(
       }
     : null;
 
-  if (membersResult.status === "rejected") throw membersResult.reason;
-  const membersUrl = membersResult.value;
-
-  // Use truthiness (not ??) to match current falsy-check behavior: legacy
-  // empty-string rows should continue falling through to lower-priority tables.
-  if (membersUrl) {
-    return {
-      linkedin_url: membersUrl,
-      connection,
-    };
-  }
-
-  if (alumniResult.status === "rejected") throw alumniResult.reason;
-  const alumniUrl = alumniResult.value;
-  if (alumniUrl) {
-    return {
-      linkedin_url: alumniUrl,
-      connection,
-    };
-  }
-
-  if (parentsResult.status === "rejected") throw parentsResult.reason;
-  const parentsUrl = parentsResult.value;
+  if (linkedinUrlResult.status === "rejected") throw linkedinUrlResult.reason;
 
   return {
-    linkedin_url: parentsUrl || null,
+    linkedin_url: linkedinUrlResult.value || null,
     connection,
   };
 }

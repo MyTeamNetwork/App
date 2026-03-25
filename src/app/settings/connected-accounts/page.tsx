@@ -48,12 +48,14 @@ function ConnectedAccountsContent() {
         isConnected={linkedIn.isConnected}
         connectionLoading={linkedIn.connectionLoading}
         oauthAvailable={linkedIn.oauthAvailable}
+        brightDataAvailable={linkedIn.brightDataAvailable}
         resyncEnabled={linkedIn.resyncEnabled}
         resyncIsAdmin={linkedIn.resyncIsAdmin}
         resyncRemaining={linkedIn.resyncRemaining}
         resyncMaxPerMonth={linkedIn.resyncMaxPerMonth}
         onConnect={linkedIn.onConnect}
-        onSync={linkedIn.onSync}
+        onOauthSync={linkedIn.onOauthSync}
+        onBrightDataSync={linkedIn.onBrightDataSync}
         onDisconnect={linkedIn.onDisconnect}
       />
 
