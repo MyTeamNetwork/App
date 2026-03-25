@@ -7,6 +7,7 @@ import { getOrgContext } from "@/lib/auth/roles";
 import { EventRsvp, AttendanceList, EventDeleteButton, RecurringEventDeleteButton } from "@/components/events";
 import type { RsvpStatus } from "@/types/database";
 import { EventOpenTracker } from "@/components/analytics/EventsViewTracker";
+import { LocalDate, LocalTime } from "@/components/ui";
 
 interface EventDetailPageProps {
   params: Promise<{ orgSlug: string; eventId: string }>;
@@ -159,12 +160,12 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                 Date
               </dt>
               <dd className="text-foreground font-medium mt-1">
-                {new Date(event.start_date).toLocaleDateString("en-US", {
+                <LocalDate iso={event.start_date} options={{
                   weekday: "long",
                   year: "numeric",
                   month: "long",
                   day: "numeric",
-                })}
+                }} />
               </dd>
             </div>
 
@@ -176,17 +177,11 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                 Time
               </dt>
               <dd className="text-foreground font-medium mt-1">
-                {new Date(event.start_date).toLocaleTimeString("en-US", {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
+                <LocalTime iso={event.start_date} />
                 {event.end_date && (
                   <>
                     {" — "}
-                    {new Date(event.end_date).toLocaleTimeString("en-US", {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+                    <LocalTime iso={event.end_date} />
                   </>
                 )}
               </dd>
@@ -225,7 +220,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
           <div className="pt-4 mt-4 border-t border-border">
             <p className="text-sm text-muted-foreground">
-              Created {new Date(event.created_at).toLocaleDateString()}
+              Created <LocalDate iso={event.created_at} />
             </p>
           </div>
         </Card>

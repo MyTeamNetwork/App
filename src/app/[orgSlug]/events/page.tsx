@@ -8,6 +8,7 @@ import { resolveLabel, resolveActionLabel } from "@/lib/navigation/label-resolve
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import { EventsViewTracker } from "@/components/analytics/EventsViewTracker";
 import { GoogleCalendarBanner } from "@/components/events";
+import { LocalDateMonth, LocalDateDay, LocalTime } from "@/components/ui";
 
 interface EventsPageProps {
   params: Promise<{ orgSlug: string }>;
@@ -132,10 +133,10 @@ export default async function EventsPage({ params, searchParams }: EventsPagePro
                   {/* Date Block */}
                   <div className="h-16 w-16 rounded-xl bg-muted flex flex-col items-center justify-center text-center flex-shrink-0">
                     <span className="text-xs font-medium text-muted-foreground uppercase">
-                      {new Date(event.start_date).toLocaleDateString("en-US", { month: "short" })}
+                      <LocalDateMonth iso={event.start_date} />
                     </span>
                     <span className="text-2xl font-bold text-foreground leading-none">
-                      {new Date(event.start_date).getDate()}
+                      <LocalDateDay iso={event.start_date} />
                     </span>
                   </div>
 
@@ -167,10 +168,7 @@ export default async function EventsPage({ params, searchParams }: EventsPagePro
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        {new Date(event.start_date).toLocaleTimeString("en-US", { 
-                          hour: "numeric", 
-                          minute: "2-digit" 
-                        })}
+                        <LocalTime iso={event.start_date} />
                       </div>
                       {event.location && (
                         <div className="flex items-center gap-1.5">

@@ -98,12 +98,16 @@ export default function EditEventPage() {
       const startDate = new Date(e.start_date);
       const endDate = e.end_date ? new Date(e.end_date) : null;
 
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const toLocalDateString = (d: Date) =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
       reset({
         title: e.title || "",
         description: e.description || "",
-        start_date: startDate.toISOString().split("T")[0],
+        start_date: toLocalDateString(startDate),
         start_time: startDate.toTimeString().slice(0, 5),
-        end_date: endDate ? endDate.toISOString().split("T")[0] : "",
+        end_date: endDate ? toLocalDateString(endDate) : "",
         end_time: endDate ? endDate.toTimeString().slice(0, 5) : "",
         location: e.location || "",
         event_type: e.event_type || "general",
