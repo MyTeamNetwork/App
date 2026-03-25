@@ -2,6 +2,8 @@
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { executeToolCall } from "../../../src/lib/ai/tools/executor.ts";
+import { getSuggestionObservabilityByOrg } from "../../../src/lib/falkordb/suggestions.ts";
+import { resetFalkorTelemetryForTests } from "../../../src/lib/falkordb/telemetry.ts";
 import type {
   ToolExecutionContext,
   ToolExecutionResult,
@@ -119,6 +121,7 @@ let ctx: ToolExecutionContext;
 let stub: ReturnType<typeof createToolSupabaseStub>;
 
 beforeEach(() => {
+  resetFalkorTelemetryForTests();
   stub = createToolSupabaseStub({
     members: {
       select: {
@@ -358,6 +361,8 @@ test("suggest_connections returns ranked SQL fallback suggestions", async () => 
 
   const payload = result.data as any;
   assert.equal(payload.mode, "sql_fallback");
+  assert.equal(payload.fallback_reason, "disabled");
+  assert.equal(payload.freshness.state, "unknown");
   assert.equal(payload.results.length, 1);
   assert.equal(payload.results[0].name, "Dina Direct");
   assert.equal(payload.results[0].score, 128);
@@ -365,6 +370,10 @@ test("suggest_connections returns ranked SQL fallback suggestions", async () => 
     payload.results[0].reasons.map((reason: any) => reason.code),
     ["direct_mentorship", "shared_company", "shared_graduation_year"]
   );
+
+  const telemetry = getSuggestionObservabilityByOrg(ORG_ID);
+  assert.equal(telemetry.sqlFallbackCount, 1);
+  assert.equal(telemetry.fallbackReasonCounts.disabled, 1);
 });
 
 test("invalid args return tool_error", async () => {

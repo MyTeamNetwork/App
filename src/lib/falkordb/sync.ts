@@ -12,12 +12,22 @@ import {
   type ProjectedPerson,
 } from "@/lib/falkordb/people";
 import { falkorClient, type FalkorQueryClient } from "@/lib/falkordb/client";
-import { readOptionalString, toErrorMessage } from "@/lib/falkordb/utils";
+import {
+  getGraphFailureTelemetry,
+  getLastGraphDrainResult,
+  recordGraphDrainResult,
+  recordGraphFailure,
+  recordGraphSuccess,
+  type GraphQueueDrainState,
+} from "@/lib/falkordb/telemetry";
+import { MAX_GRAPH_SYNC_ATTEMPTS, readOptionalString, toErrorMessage } from "@/lib/falkordb/utils";
 
 export interface GraphQueueStats {
   processed: number;
   skipped: number;
   failed: number;
+  drainState: GraphQueueDrainState;
+  reason?: string | null;
 }
 
 interface GraphQueueItem {
@@ -27,11 +37,55 @@ interface GraphQueueItem {
   source_id: string;
   action: string;
   payload: Record<string, unknown> | null;
+  attempts?: number;
 }
 
 interface ProcessOptions {
   batchSize?: number;
   graphClient?: FalkorQueryClient;
+}
+
+interface GraphSyncQueueRow extends Record<string, unknown> {
+  id?: string;
+  org_id?: string;
+  source_table?: "members" | "alumni" | "mentorship_pairs";
+  source_id?: string;
+  created_at?: string | null;
+  processed_at?: string | null;
+  attempts?: number | null;
+  last_error?: string | null;
+}
+
+export interface GraphHealthSurface {
+  orgId: string;
+  freshness: {
+    state: "fresh" | "stale" | "degraded";
+    asOf: string | null;
+    lagSeconds: number | null;
+    reason: string | null;
+  };
+  queue: {
+    pendingCount: number;
+    retriedPendingCount: number;
+    deadLetterCount: number;
+    maxRetryDepth: number;
+    oldestPendingAt: string | null;
+  };
+  failures: {
+    totalFailures: number;
+    deadLetterCount: number;
+    lastFailureAt: string | null;
+    lastSuccessAt: string | null;
+    lastError: string | null;
+  };
+  drain: {
+    state: GraphQueueDrainState;
+    reason: string | null;
+    processed: number;
+    skipped: number;
+    failed: number;
+    at: string | null;
+  };
 }
 
 function compactGraphProperties(person: ProjectedPerson) {
@@ -364,6 +418,16 @@ async function reconcilePersonByKey(
   }
 
   await upsertPersonNode(graphClient, orgId, projected);
+
+  if (personKey.startsWith("user:")) {
+    for (const member of members) {
+      await deletePersonNode(graphClient, orgId, buildPersonKey("members", member.id, null));
+    }
+    for (const alumniRow of alumni) {
+      await deletePersonNode(graphClient, orgId, buildPersonKey("alumni", alumniRow.id, null));
+    }
+  }
+
   await reconcileAdjacentPairsForUser(serviceSupabase, graphClient, projected);
 }
 
@@ -443,9 +507,24 @@ export async function processGraphSyncQueue(
 ): Promise<GraphQueueStats> {
   const graphClient = options?.graphClient ?? falkorClient;
   const batchSize = options?.batchSize ?? 50;
-  const stats: GraphQueueStats = { processed: 0, skipped: 0, failed: 0 };
+  const stats: GraphQueueStats = {
+    processed: 0,
+    skipped: 0,
+    failed: 0,
+    drainState: "empty",
+    reason: null,
+  };
 
   if (!graphClient.isAvailable()) {
+    stats.drainState = "unavailable";
+    stats.reason = graphClient.getUnavailableReason?.() ?? "unavailable";
+    recordGraphDrainResult({
+      state: stats.drainState,
+      reason: stats.reason,
+      processed: stats.processed,
+      skipped: stats.skipped,
+      failed: stats.failed,
+    });
     return stats;
   }
 
@@ -458,7 +537,18 @@ export async function processGraphSyncQueue(
   if (dequeueError || !queueItems || queueItems.length === 0) {
     if (dequeueError) {
       console.error("[graph-sync] dequeue failed:", dequeueError);
+      stats.drainState = "degraded";
+      stats.reason = toErrorMessage(dequeueError, "dequeue_failed");
+    } else {
+      stats.drainState = "empty";
     }
+    recordGraphDrainResult({
+      state: stats.drainState,
+      reason: stats.reason,
+      processed: stats.processed,
+      skipped: stats.skipped,
+      failed: stats.failed,
+    });
     return stats;
   }
 
@@ -481,11 +571,162 @@ export async function processGraphSyncQueue(
           stats.skipped++;
           break;
       }
+      recordGraphSuccess(item.org_id);
     } catch (error) {
       stats.failed++;
-      await incrementAttempts(serviceSupabase, item.id, toErrorMessage(error, "unknown_graph_sync_error"));
+      const errorMessage = toErrorMessage(error, "unknown_graph_sync_error");
+      const nextAttempts = (item.attempts ?? 0) + 1;
+      recordGraphFailure({
+        orgId: item.org_id,
+        sourceTable: item.source_table,
+        sourceId: item.source_id,
+        message: errorMessage,
+        attempts: nextAttempts,
+        deadLetter: nextAttempts >= MAX_GRAPH_SYNC_ATTEMPTS,
+      });
+      await incrementAttempts(serviceSupabase, item.id, errorMessage);
     }
   }
 
+  stats.drainState =
+    stats.processed > 0 || stats.skipped > 0 ? "processed" : stats.failed > 0 ? "degraded" : "empty";
+  recordGraphDrainResult({
+    state: stats.drainState,
+    reason: stats.reason,
+    processed: stats.processed,
+    skipped: stats.skipped,
+    failed: stats.failed,
+  });
   return stats;
+}
+
+function readAttempts(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function readOptionalTimestamp(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+export async function getGraphHealthSurface(
+  serviceSupabase: SupabaseClient,
+  orgId: string
+): Promise<GraphHealthSurface> {
+  const failureTelemetry = getGraphFailureTelemetry(orgId);
+  const lastDrain = getLastGraphDrainResult();
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (serviceSupabase as any)
+      .from("graph_sync_queue")
+      .select("*")
+      .eq("org_id", orgId);
+
+    if (error) {
+      return {
+        orgId,
+        freshness: {
+          state: "degraded",
+          asOf: new Date().toISOString(),
+          lagSeconds: null,
+          reason: "queue_lookup_failed",
+        },
+        queue: {
+          pendingCount: 0,
+          retriedPendingCount: 0,
+          deadLetterCount: failureTelemetry.deadLetterCount,
+          maxRetryDepth: 0,
+          oldestPendingAt: null,
+        },
+        failures: {
+          totalFailures: failureTelemetry.totalFailures,
+          deadLetterCount: failureTelemetry.deadLetterCount,
+          lastFailureAt: failureTelemetry.lastFailureAt,
+          lastSuccessAt: failureTelemetry.lastSuccessAt,
+          lastError: failureTelemetry.lastError,
+        },
+        drain: lastDrain,
+      };
+    }
+
+    const rows = ((data ?? []) as GraphSyncQueueRow[]).filter((row) => row.org_id === orgId);
+    const pendingRows = rows.filter(
+      (row) => readOptionalTimestamp(row.processed_at) === null && readAttempts(row.attempts) < MAX_GRAPH_SYNC_ATTEMPTS
+    );
+    const deadLetterRows = rows.filter((row) => readAttempts(row.attempts) >= MAX_GRAPH_SYNC_ATTEMPTS);
+    const retriedPendingRows = pendingRows.filter((row) => readAttempts(row.attempts) > 0);
+    const oldestPendingAt = pendingRows
+      .map((row) => readOptionalTimestamp(row.created_at))
+      .filter((value): value is string => value !== null)
+      .sort()[0] ?? null;
+    const lagSeconds =
+      oldestPendingAt === null
+        ? null
+        : Math.max(0, Math.floor((Date.now() - new Date(oldestPendingAt).getTime()) / 1_000));
+
+    return {
+      orgId,
+      freshness: oldestPendingAt
+        ? {
+            state: lagSeconds !== null && lagSeconds > 120 ? "stale" : "fresh",
+            asOf: oldestPendingAt,
+            lagSeconds,
+            reason: lagSeconds !== null && lagSeconds > 120 ? "pending_queue" : null,
+          }
+        : {
+            state: "fresh",
+            asOf: new Date().toISOString(),
+            lagSeconds: 0,
+            reason: null,
+          },
+      queue: {
+        pendingCount: pendingRows.length,
+        retriedPendingCount: retriedPendingRows.length,
+        deadLetterCount: Math.max(deadLetterRows.length, failureTelemetry.deadLetterCount),
+        maxRetryDepth: rows.reduce((max, row) => Math.max(max, readAttempts(row.attempts)), 0),
+        oldestPendingAt,
+      },
+      failures: {
+        totalFailures: Math.max(
+          failureTelemetry.totalFailures,
+          rows.filter((row) => readAttempts(row.attempts) > 0).length
+        ),
+        deadLetterCount: Math.max(deadLetterRows.length, failureTelemetry.deadLetterCount),
+        lastFailureAt: failureTelemetry.lastFailureAt,
+        lastSuccessAt: failureTelemetry.lastSuccessAt,
+        lastError:
+          failureTelemetry.lastError ??
+          rows
+            .map((row) => readOptionalString(row.last_error))
+            .find((message): message is string => message !== null) ??
+          null,
+      },
+      drain: lastDrain,
+    };
+  } catch {
+    return {
+      orgId,
+      freshness: {
+        state: "degraded",
+        asOf: new Date().toISOString(),
+        lagSeconds: null,
+        reason: "queue_lookup_failed",
+      },
+      queue: {
+        pendingCount: 0,
+        retriedPendingCount: 0,
+        deadLetterCount: failureTelemetry.deadLetterCount,
+        maxRetryDepth: 0,
+        oldestPendingAt: null,
+      },
+      failures: {
+        totalFailures: failureTelemetry.totalFailures,
+        deadLetterCount: failureTelemetry.deadLetterCount,
+        lastFailureAt: failureTelemetry.lastFailureAt,
+        lastSuccessAt: failureTelemetry.lastSuccessAt,
+        lastError: failureTelemetry.lastError,
+      },
+      drain: lastDrain,
+    };
+  }
 }

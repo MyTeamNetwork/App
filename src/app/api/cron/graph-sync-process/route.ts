@@ -8,11 +8,6 @@ export const runtime = "nodejs";
 
 const MAX_RUNTIME_MS = 25_000;
 
-type RpcInvoker = (
-  fn: string,
-  args?: Record<string, unknown>
-) => Promise<{ data: number | null; error: unknown }>;
-
 export async function GET(request: Request) {
   const authError = validateCronAuth(request);
   if (authError) return authError;
@@ -22,6 +17,8 @@ export async function GET(request: Request) {
   let totalSkipped = 0;
   let totalFailed = 0;
   let iterations = 0;
+  let drainState: "processed" | "empty" | "unavailable" | "degraded" = "empty";
+  let drainReason: string | null = null;
 
   try {
     const supabase = createServiceClient();
@@ -32,15 +29,16 @@ export async function GET(request: Request) {
       totalSkipped += stats.skipped;
       totalFailed += stats.failed;
       iterations++;
+      drainState = stats.drainState;
+      drainReason = stats.reason ?? null;
 
-      if (stats.processed + stats.skipped + stats.failed === 0) {
+      if (stats.drainState !== "processed") {
         break;
       }
     }
 
-    const { data: purgedCount, error: purgeError } = await (
-      supabase.rpc.bind(supabase) as unknown as RpcInvoker
-    )("purge_graph_sync_queue");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: purgedCount, error: purgeError } = await (supabase as any).rpc("purge_graph_sync_queue");
 
     if (purgeError) {
       console.error("[graph-sync-process] queue purge failed:", purgeError);
@@ -52,6 +50,8 @@ export async function GET(request: Request) {
       skipped: totalSkipped,
       failed: totalFailed,
       iterations,
+      drainState,
+      drainReason,
       purgedQueueRows: purgedCount ?? 0,
       durationMs: Date.now() - startTime,
     });

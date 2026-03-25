@@ -22,6 +22,11 @@ import {
   falkorClient,
   type FalkorQueryClient,
 } from "@/lib/falkordb/client";
+import {
+  getSuggestionObservabilitySnapshot,
+  recordSuggestionExecution,
+  type GraphFallbackReason,
+} from "@/lib/falkordb/telemetry";
 import { MAX_GRAPH_SYNC_ATTEMPTS, readOptionalString } from "@/lib/falkordb/utils";
 
 export interface SuggestConnectionsArgs {
@@ -39,6 +44,8 @@ interface GraphSuggestionRow extends Record<string, unknown> {
   personKey: string;
   personType: "member" | "alumni";
   personId: string;
+  memberId: string | null;
+  alumniId: string | null;
   name: string;
   userId: string | null;
   role: string | null;
@@ -61,6 +68,19 @@ function buildFreshnessFromNow(): SuggestConnectionsFreshness {
   return {
     state: "fresh",
     as_of: new Date().toISOString(),
+  };
+}
+
+function buildFreshnessFromReason(
+  state: SuggestConnectionsFreshness["state"],
+  reason: string,
+  existing?: SuggestConnectionsFreshness
+): SuggestConnectionsFreshness {
+  return {
+    state,
+    as_of: existing?.as_of ?? new Date().toISOString(),
+    lag_seconds: existing?.lag_seconds,
+    reason,
   };
 }
 
@@ -238,7 +258,7 @@ async function fetchGraphFreshness(
       .limit(1);
 
     if (error) {
-      return buildFreshnessFromNow();
+      return buildFreshnessFromReason("degraded", "queue_lookup_failed");
     }
 
     const oldestPending = readOptionalString((data as Array<{ created_at?: unknown }> | null)?.[0]?.created_at);
@@ -256,12 +276,17 @@ async function fetchGraphFreshness(
         state: "stale",
         as_of: oldestPending,
         lag_seconds: lagSeconds,
+        reason: "pending_queue",
       };
     }
 
-    return buildFreshnessFromNow();
+    return {
+      state: "fresh",
+      as_of: oldestPending,
+      lag_seconds: lagSeconds,
+    };
   } catch {
-    return buildFreshnessFromNow();
+    return buildFreshnessFromReason("degraded", "queue_lookup_failed");
   }
 }
 
@@ -302,8 +327,8 @@ function graphRowToProjectedPerson(
     personKey: row.personKey,
     personType: row.personType,
     personId: row.personId,
-    memberId: row.personType === "member" ? row.personId : null,
-    alumniId: row.personType === "alumni" ? row.personId : null,
+    memberId: row.memberId ?? (row.personType === "member" ? row.personId : null),
+    alumniId: row.alumniId ?? (row.personType === "alumni" ? row.personId : null),
     userId: row.userId ?? null,
     name: row.name,
     role: row.role ?? null,
@@ -314,6 +339,126 @@ function graphRowToProjectedPerson(
     currentCity: row.currentCity ?? null,
   };
 }
+
+function candidateIdentityTokens(candidate: ProjectedPerson) {
+  const tokens = new Set<string>();
+
+  if (candidate.userId) {
+    tokens.add(`user:${candidate.userId}`);
+  }
+  if (candidate.memberId) {
+    tokens.add(`member:${candidate.memberId}`);
+  }
+  if (candidate.alumniId) {
+    tokens.add(`alumni:${candidate.alumniId}`);
+  }
+  tokens.add(`person:${candidate.personKey}`);
+
+  return tokens;
+}
+
+function isCanonicalCandidate(candidate: ProjectedPerson) {
+  return candidate.personKey.startsWith("user:");
+}
+
+function candidateStrength(candidate: ProjectedPerson) {
+  let score = 0;
+  if (candidate.userId) score += 4;
+  if (candidate.memberId) score += 2;
+  if (candidate.alumniId) score += 2;
+  if (isCanonicalCandidate(candidate)) score += 3;
+  return score;
+}
+
+function preferredCandidate(left: ProjectedPerson, right: ProjectedPerson) {
+  const leftScore = candidateStrength(left);
+  const rightScore = candidateStrength(right);
+
+  if (rightScore !== leftScore) {
+    return rightScore > leftScore ? right : left;
+  }
+
+  if (right.personKey !== left.personKey) {
+    return right.personKey.localeCompare(left.personKey) < 0 ? right : left;
+  }
+
+  return right.personId.localeCompare(left.personId) < 0 ? right : left;
+}
+
+function mergeMentorshipDistance(left: number | null, right: number | null) {
+  if (left === null) return right;
+  if (right === null) return left;
+  return Math.min(left, right);
+}
+
+function dedupeGraphCandidates(
+  entries: Array<{ candidate: ProjectedPerson; mentorshipDistance: number | null }>
+) {
+  const groups: Array<{
+    candidate: ProjectedPerson;
+    mentorshipDistance: number | null;
+    tokens: Set<string>;
+  }> = [];
+
+  for (const entry of entries) {
+    const entryTokens = candidateIdentityTokens(entry.candidate);
+    const matchingIndexes = groups
+      .map((group, index) => ({ group, index }))
+      .filter(({ group }) => [...entryTokens].some((token) => group.tokens.has(token)))
+      .map(({ index }) => index);
+
+    if (matchingIndexes.length === 0) {
+      groups.push({
+        candidate: entry.candidate,
+        mentorshipDistance: entry.mentorshipDistance,
+        tokens: entryTokens,
+      });
+      continue;
+    }
+
+    const baseIndex = matchingIndexes[0];
+    const baseGroup = groups[baseIndex];
+    baseGroup.candidate = preferredCandidate(baseGroup.candidate, entry.candidate);
+    baseGroup.mentorshipDistance = mergeMentorshipDistance(
+      baseGroup.mentorshipDistance,
+      entry.mentorshipDistance
+    );
+    for (const token of entryTokens) {
+      baseGroup.tokens.add(token);
+    }
+
+    for (const index of matchingIndexes.slice(1).reverse()) {
+      const group = groups[index];
+      baseGroup.candidate = preferredCandidate(baseGroup.candidate, group.candidate);
+      baseGroup.mentorshipDistance = mergeMentorshipDistance(
+        baseGroup.mentorshipDistance,
+        group.mentorshipDistance
+      );
+      for (const token of group.tokens) {
+        baseGroup.tokens.add(token);
+      }
+      groups.splice(index, 1);
+    }
+  }
+
+  return groups.map(({ candidate, mentorshipDistance }) => ({
+    candidate,
+    mentorshipDistance,
+  }));
+}
+
+function resolveUnavailableFallbackReason(graphClient: FalkorQueryClient): GraphFallbackReason {
+  return graphClient.getUnavailableReason?.() ?? "unavailable";
+}
+
+const MENTORSHIP_DISTANCE_PATTERNS: ReadonlyArray<{ matchClause: string; distance: number }> = [
+  { matchClause: "(source:Person {personKey: $sourceKey})-[:MENTORS]->(candidate:Person)", distance: 1 },
+  { matchClause: "(source:Person {personKey: $sourceKey})<-[:MENTORS]-(candidate:Person)", distance: 1 },
+  { matchClause: "(source:Person {personKey: $sourceKey})-[:MENTORS]->(:Person)-[:MENTORS]->(candidate:Person)", distance: 2 },
+  { matchClause: "(source:Person {personKey: $sourceKey})<-[:MENTORS]-(:Person)<-[:MENTORS]-(candidate:Person)", distance: 2 },
+  { matchClause: "(source:Person {personKey: $sourceKey})<-[:MENTORS]-(:Person)-[:MENTORS]->(candidate:Person)", distance: 2 },
+  { matchClause: "(source:Person {personKey: $sourceKey})-[:MENTORS]->(:Person)<-[:MENTORS]-(candidate:Person)", distance: 2 },
+];
 
 async function fetchGraphSuggestions(input: {
   orgId: string;
@@ -336,6 +481,8 @@ async function fetchGraphSuggestions(input: {
           candidate.personKey AS personKey,
           candidate.personType AS personType,
           candidate.personId AS personId,
+          candidate.memberId AS memberId,
+          candidate.alumniId AS alumniId,
           candidate.name AS name,
           candidate.userId AS userId,
           candidate.role AS role,
@@ -348,62 +495,19 @@ async function fetchGraphSuggestions(input: {
       { sourceKey: input.source.personKey }
     ),
     (async () => {
-      const distanceQueryResults = await Promise.all([
-        input.graphClient.query<{ personKey: string; distance: number }>(
-          input.orgId,
-          `
-            MATCH (source:Person {personKey: $sourceKey})-[:MENTORS]->(candidate:Person)
-            WHERE candidate.personKey <> $sourceKey
-            RETURN candidate.personKey AS personKey, 1 AS distance
-          `,
-          { sourceKey: input.source.personKey }
-        ),
-        input.graphClient.query<{ personKey: string; distance: number }>(
-          input.orgId,
-          `
-            MATCH (source:Person {personKey: $sourceKey})<-[:MENTORS]-(candidate:Person)
-            WHERE candidate.personKey <> $sourceKey
-            RETURN candidate.personKey AS personKey, 1 AS distance
-          `,
-          { sourceKey: input.source.personKey }
-        ),
-        input.graphClient.query<{ personKey: string; distance: number }>(
-          input.orgId,
-          `
-            MATCH (source:Person {personKey: $sourceKey})-[:MENTORS]->(:Person)-[:MENTORS]->(candidate:Person)
-            WHERE candidate.personKey <> $sourceKey
-            RETURN candidate.personKey AS personKey, 2 AS distance
-          `,
-          { sourceKey: input.source.personKey }
-        ),
-        input.graphClient.query<{ personKey: string; distance: number }>(
-          input.orgId,
-          `
-            MATCH (source:Person {personKey: $sourceKey})<-[:MENTORS]-(:Person)<-[:MENTORS]-(candidate:Person)
-            WHERE candidate.personKey <> $sourceKey
-            RETURN candidate.personKey AS personKey, 2 AS distance
-          `,
-          { sourceKey: input.source.personKey }
-        ),
-        input.graphClient.query<{ personKey: string; distance: number }>(
-          input.orgId,
-          `
-            MATCH (source:Person {personKey: $sourceKey})<-[:MENTORS]-(:Person)-[:MENTORS]->(candidate:Person)
-            WHERE candidate.personKey <> $sourceKey
-            RETURN candidate.personKey AS personKey, 2 AS distance
-          `,
-          { sourceKey: input.source.personKey }
-        ),
-        input.graphClient.query<{ personKey: string; distance: number }>(
-          input.orgId,
-          `
-            MATCH (source:Person {personKey: $sourceKey})-[:MENTORS]->(:Person)<-[:MENTORS]-(candidate:Person)
-            WHERE candidate.personKey <> $sourceKey
-            RETURN candidate.personKey AS personKey, 2 AS distance
-          `,
-          { sourceKey: input.source.personKey }
-        ),
-      ]);
+      const distanceQueryResults = await Promise.all(
+        MENTORSHIP_DISTANCE_PATTERNS.map(({ matchClause, distance }) =>
+          input.graphClient.query<{ personKey: string; distance: number }>(
+            input.orgId,
+            `
+              MATCH ${matchClause}
+              WHERE candidate.personKey <> $sourceKey
+              RETURN candidate.personKey AS personKey, ${distance} AS distance
+            `,
+            { sourceKey: input.source.personKey }
+          )
+        )
+      );
       return distanceQueryResults.flat();
     })(),
   ]);
@@ -428,7 +532,7 @@ async function fetchGraphSuggestions(input: {
         entry.candidate !== null
     );
 
-  const suggestions = candidatesWithDistance
+  const suggestions = dedupeGraphCandidates(candidatesWithDistance)
     .map(({ candidate, mentorshipDistance }) =>
       buildSuggestionForCandidate({
         source: input.source,
@@ -464,7 +568,10 @@ export async function suggestConnections(input: {
 
   const resolvedSource: ProjectedPerson = source;
 
-  async function computeSqlFallback(): Promise<SuggestConnectionsResult> {
+  async function computeSqlFallback(
+    fallbackReason: GraphFallbackReason,
+    freshness: SuggestConnectionsFreshness
+  ): Promise<SuggestConnectionsResult> {
     const [projectedPeople, mentorshipDistances] = await Promise.all([
       loadProjectedPeople(serviceSupabase, orgId),
       fetchMentorshipDistances(serviceSupabase, orgId, resolvedSource),
@@ -475,34 +582,71 @@ export async function suggestConnections(input: {
       mentorshipDistances,
       limit,
     });
-    return { mode: "sql_fallback", freshness: buildFreshnessFromNow(), results };
+    return {
+      mode: "sql_fallback",
+      fallback_reason: fallbackReason,
+      freshness,
+      results,
+    };
+  }
+
+  function finalizeResult(result: SuggestConnectionsResult) {
+    recordSuggestionExecution({
+      orgId,
+      mode: result.mode,
+      fallbackReason: result.fallback_reason,
+      freshnessState: result.freshness.state,
+    });
+    return result;
   }
 
   if (!graphClient.isAvailable()) {
-    return computeSqlFallback();
+    const fallbackReason = resolveUnavailableFallbackReason(graphClient);
+    return finalizeResult(
+      await computeSqlFallback(
+        fallbackReason,
+        buildFreshnessFromReason("unknown", fallbackReason)
+      )
+    );
   }
 
-  try {
-    const [freshness, graphResults] = await Promise.all([
-      fetchGraphFreshness(serviceSupabase, orgId),
-      fetchGraphSuggestions({
-        orgId,
-        source: resolvedSource,
-        limit,
-        graphClient,
-      }),
-    ]);
+  const freshness = await fetchGraphFreshness(serviceSupabase, orgId);
 
-    return {
+  try {
+    const graphResults = await fetchGraphSuggestions({
+      orgId,
+      source: resolvedSource,
+      limit,
+      graphClient,
+    });
+
+    return finalizeResult({
       mode: "falkor",
+      fallback_reason: null,
       freshness,
       results: graphResults,
-    };
+    });
   } catch (error) {
     if (!(error instanceof FalkorUnavailableError) && !(error instanceof FalkorQueryError)) {
       console.warn("[suggest-connections] graph path failed:", error);
     }
 
-    return computeSqlFallback();
+    const fallbackReason: GraphFallbackReason =
+      error instanceof FalkorUnavailableError ? "unavailable" : "query_failure";
+
+    return finalizeResult(
+      await computeSqlFallback(
+        fallbackReason,
+        buildFreshnessFromReason(
+          fallbackReason === "query_failure" ? "degraded" : "unknown",
+          fallbackReason,
+          freshness
+        )
+      )
+    );
   }
+}
+
+export function getSuggestionObservabilityByOrg(orgId: string) {
+  return getSuggestionObservabilitySnapshot(orgId);
 }

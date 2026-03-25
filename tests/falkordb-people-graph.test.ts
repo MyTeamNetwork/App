@@ -1,12 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import test from "node:test";
+import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createSupabaseStub } from "./utils/supabaseStub.ts";
 import { buildProjectedPeople, buildSourcePerson } from "../src/lib/falkordb/people.ts";
-import { suggestConnections } from "../src/lib/falkordb/suggestions.ts";
-import { processGraphSyncQueue } from "../src/lib/falkordb/sync.ts";
+import {
+  getSuggestionObservabilityByOrg,
+  suggestConnections,
+} from "../src/lib/falkordb/suggestions.ts";
+import { getGraphHealthSurface, processGraphSyncQueue } from "../src/lib/falkordb/sync.ts";
+import { resetFalkorTelemetryForTests } from "../src/lib/falkordb/telemetry.ts";
 
 const ORG_ID = "11111111-1111-1111-1111-111111111111";
+
+beforeEach(() => {
+  resetFalkorTelemetryForTests();
+});
 
 function seedSuggestionFixture(stub: ReturnType<typeof createSupabaseStub>) {
   stub.seed("alumni", [
@@ -102,6 +110,158 @@ function seedSuggestionFixture(stub: ReturnType<typeof createSupabaseStub>) {
       distance: 2,
     },
   ]);
+}
+
+function createInMemoryGraphClient() {
+  const graphs = new Map<
+    string,
+    {
+      nodes: Map<string, Record<string, unknown>>;
+      edges: Set<string>;
+    }
+  >();
+
+  function ensureGraph(orgId: string) {
+    const existing = graphs.get(orgId);
+    if (existing) {
+      return existing;
+    }
+
+    const created = {
+      nodes: new Map<string, Record<string, unknown>>(),
+      edges: new Set<string>(),
+    };
+    graphs.set(orgId, created);
+    return created;
+  }
+
+  function edgeKey(from: string, to: string) {
+    return `${from}->${to}`;
+  }
+
+  function incomingEdges(graph: ReturnType<typeof ensureGraph>, personKey: string) {
+    return [...graph.edges]
+      .filter((entry) => entry.endsWith(`->${personKey}`))
+      .map((entry) => entry.split("->")[0]);
+  }
+
+  function outgoingEdges(graph: ReturnType<typeof ensureGraph>, personKey: string) {
+    return [...graph.edges]
+      .filter((entry) => entry.startsWith(`${personKey}->`))
+      .map((entry) => entry.split("->")[1]);
+  }
+
+  function secondDegree(graph: ReturnType<typeof ensureGraph>, sourceKey: string, shape: string) {
+    const distances = new Set<string>();
+
+    if (shape === "out-out") {
+      for (const middle of outgoingEdges(graph, sourceKey)) {
+        for (const target of outgoingEdges(graph, middle)) {
+          if (target !== sourceKey) distances.add(target);
+        }
+      }
+    } else if (shape === "in-in") {
+      for (const middle of incomingEdges(graph, sourceKey)) {
+        for (const target of incomingEdges(graph, middle)) {
+          if (target !== sourceKey) distances.add(target);
+        }
+      }
+    } else if (shape === "in-out") {
+      for (const middle of incomingEdges(graph, sourceKey)) {
+        for (const target of outgoingEdges(graph, middle)) {
+          if (target !== sourceKey) distances.add(target);
+        }
+      }
+    } else if (shape === "out-in") {
+      for (const middle of outgoingEdges(graph, sourceKey)) {
+        for (const target of incomingEdges(graph, middle)) {
+          if (target !== sourceKey) distances.add(target);
+        }
+      }
+    }
+
+    return [...distances].map((personKey) => ({ personKey, distance: 2 }));
+  }
+
+  return {
+    isAvailable: () => true,
+    seedNode(orgId: string, node: Record<string, unknown>) {
+      ensureGraph(orgId).nodes.set(String(node.personKey), { ...node });
+    },
+    seedEdge(orgId: string, from: string, to: string) {
+      ensureGraph(orgId).edges.add(edgeKey(from, to));
+    },
+    snapshot(orgId: string) {
+      const graph = ensureGraph(orgId);
+      return {
+        nodes: [...graph.nodes.values()].map((node) => ({ ...node })),
+        edges: [...graph.edges.values()].sort(),
+      };
+    },
+    async query(orgId: string, cypher: string, params?: Record<string, unknown>) {
+      const graph = ensureGraph(orgId);
+
+      if (cypher.includes("DETACH DELETE person")) {
+        const personKey = String(params?.personKey);
+        graph.nodes.delete(personKey);
+        for (const edge of [...graph.edges]) {
+          if (edge.startsWith(`${personKey}->`) || edge.endsWith(`->${personKey}`)) {
+            graph.edges.delete(edge);
+          }
+        }
+        return [];
+      }
+
+      if (cypher.includes("SET person = $props")) {
+        graph.nodes.set(String(params?.personKey), { ...(params?.props as Record<string, unknown>) });
+        return [];
+      }
+
+      if (cypher.includes("MERGE (mentor)-[:MENTORS]->(mentee)")) {
+        const mentorKey = String(params?.mentorKey);
+        const menteeKey = String(params?.menteeKey);
+        if (graph.nodes.has(mentorKey) && graph.nodes.has(menteeKey)) {
+          graph.edges.add(edgeKey(mentorKey, menteeKey));
+        }
+        return [];
+      }
+
+      if (cypher.includes("DELETE edge")) {
+        graph.edges.delete(edgeKey(String(params?.mentorKey), String(params?.menteeKey)));
+        return [];
+      }
+
+      if (cypher.includes("candidate.personKey AS personKey") && !cypher.includes(" AS distance")) {
+        return [...graph.nodes.values()] as Array<Record<string, unknown>>;
+      }
+
+      const sourceKey = String(params?.sourceKey);
+      if (cypher.includes(")-[:MENTORS]->(candidate:Person)") && !cypher.includes("(:Person)-[:MENTORS]->")) {
+        return outgoingEdges(graph, sourceKey)
+          .filter((personKey) => personKey !== sourceKey)
+          .map((personKey) => ({ personKey, distance: 1 }));
+      }
+      if (cypher.includes(")<-[:MENTORS]-(candidate:Person)") && !cypher.includes("(:Person)<-[:MENTORS]-")) {
+        return incomingEdges(graph, sourceKey)
+          .filter((personKey) => personKey !== sourceKey)
+          .map((personKey) => ({ personKey, distance: 1 }));
+      }
+      if (cypher.includes(")-[:MENTORS]->(:Person)-[:MENTORS]->(candidate:Person)")) {
+        return secondDegree(graph, sourceKey, "out-out");
+      }
+      if (cypher.includes(")<-[:MENTORS]-(:Person)<-[:MENTORS]-(candidate:Person)")) {
+        return secondDegree(graph, sourceKey, "in-in");
+      }
+      if (cypher.includes(")<-[:MENTORS]-(:Person)-[:MENTORS]->(candidate:Person)")) {
+        return secondDegree(graph, sourceKey, "in-out");
+      }
+      if (cypher.includes(")-[:MENTORS]->(:Person)<-[:MENTORS]-(candidate:Person)")) {
+        return secondDegree(graph, sourceKey, "out-in");
+      }
+
+      return [];
+    },
+  };
 }
 
 test("buildProjectedPeople dedupes by user_id and preserves null-user rows", () => {
@@ -362,7 +522,8 @@ test("suggestConnections returns deterministic SQL fallback ranking", async () =
   });
 
   assert.equal(result.mode, "sql_fallback");
-  assert.equal(result.freshness.state, "fresh");
+  assert.equal(result.fallback_reason, "unavailable");
+  assert.equal(result.freshness.state, "unknown");
   assert.deepEqual(
     result.results.map((row) => ({
       name: row.name,
@@ -496,6 +657,7 @@ test("suggestConnections graph mode matches SQL fallback ordering and reasons", 
   });
 
   assert.equal(graphResult.mode, "falkor");
+  assert.equal(graphResult.fallback_reason, null);
   assert.deepEqual(graphResult.results, fallbackResult.results);
 });
 
@@ -600,6 +762,7 @@ test("suggestConnections graph mode matches SQL fallback for mixed-direction sec
   });
 
   assert.equal(graphResult.mode, "falkor");
+  assert.equal(graphResult.fallback_reason, null);
   assert.deepEqual(graphResult.results, fallbackResult.results);
 });
 
@@ -695,6 +858,7 @@ test("suggestConnections graph mode preserves merged source attributes with dupl
   });
 
   assert.equal(result.mode, "falkor");
+  assert.equal(result.fallback_reason, null);
   assert.deepEqual(result.results, [
     {
       person_type: "alumni",
@@ -840,7 +1004,13 @@ test("processGraphSyncQueue merges shared-user people and syncs mentorship edges
     graphClient,
   });
 
-  assert.deepEqual(stats, { processed: 4, skipped: 0, failed: 0 });
+  assert.deepEqual(stats, {
+    processed: 4,
+    skipped: 0,
+    failed: 0,
+    drainState: "processed",
+    reason: null,
+  });
   const mergedNodeCall = graphCalls.find(
     (call) =>
       call.cypher.includes("SET person = $props") &&
@@ -1140,4 +1310,883 @@ test("buildProjectedPeople org isolation: member and alumni from different orgs 
   assert.equal(personB?.orgId, ORG_B);
   assert.equal(personB?.alumniId, "al-b");
   assert.equal(personB?.memberId, null, "ORG_B person must not have memberId from a different org");
+});
+
+test("processGraphSyncQueue removes stale standalone nodes when linked identities reconcile to a canonical user node", async () => {
+  const stub = createSupabaseStub();
+  const graphClient = createInMemoryGraphClient();
+
+  stub.seed("members", [
+    {
+      id: "member-linked",
+      organization_id: ORG_ID,
+      user_id: "linked-user",
+      status: "active",
+      first_name: "Link",
+      last_name: "Member",
+      email: "link-member@example.com",
+      role: "President",
+      current_company: "Acme",
+      graduation_year: 2025,
+      deleted_at: null,
+    },
+  ]);
+  stub.seed("alumni", [
+    {
+      id: "alumni-linked",
+      organization_id: ORG_ID,
+      user_id: "linked-user",
+      first_name: "Link",
+      last_name: "Alumni",
+      email: "link-alumni@example.com",
+      major: "CS",
+      current_company: "Acme",
+      industry: "Technology",
+      current_city: "Austin",
+      graduation_year: 2021,
+      position_title: "Engineer",
+      job_title: null,
+      deleted_at: null,
+    },
+  ]);
+
+  graphClient.seedNode(ORG_ID, {
+    orgId: ORG_ID,
+    personKey: "member:member-linked",
+    personType: "member",
+    personId: "member-linked",
+    memberId: "member-linked",
+    alumniId: null,
+    userId: null,
+    name: "Link Member",
+  });
+  graphClient.seedNode(ORG_ID, {
+    orgId: ORG_ID,
+    personKey: "alumni:alumni-linked",
+    personType: "alumni",
+    personId: "alumni-linked",
+    memberId: null,
+    alumniId: "alumni-linked",
+    userId: null,
+    name: "Link Alumni",
+  });
+
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "queue-member",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "member-linked",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "queue-alumni",
+      org_id: ORG_ID,
+      source_table: "alumni",
+      source_id: "alumni-linked",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+  ]);
+  stub.registerRpc("increment_graph_sync_attempts", () => null);
+
+  const stats = await processGraphSyncQueue(stub as any, { graphClient });
+  const snapshot = graphClient.snapshot(ORG_ID);
+
+  assert.equal(stats.drainState, "processed");
+  assert.deepEqual(
+    snapshot.nodes.map((node) => node.personKey).sort(),
+    ["user:linked-user"]
+  );
+});
+
+test("processGraphSyncQueue reconciles unlink, relink, and org-move transitions without leaving stale keys", async () => {
+  const stub = createSupabaseStub();
+  const graphClient = createInMemoryGraphClient();
+  const ORG_NEW = "22222222-2222-2222-2222-222222222222";
+
+  stub.seed("members", [
+    {
+      id: "member-transition",
+      organization_id: ORG_ID,
+      user_id: "user-a",
+      status: "active",
+      first_name: "Terry",
+      last_name: "Transition",
+      email: "terry@example.com",
+      role: "Captain",
+      current_company: "Acme",
+      graduation_year: 2025,
+      deleted_at: null,
+    },
+  ]);
+  stub.seed("alumni", [
+    {
+      id: "alumni-transition",
+      organization_id: ORG_ID,
+      user_id: "user-a",
+      first_name: "Terry",
+      last_name: "Transition",
+      email: "terry@example.com",
+      major: "Business",
+      current_company: "Acme",
+      industry: "Technology",
+      current_city: "Austin",
+      graduation_year: 2021,
+      position_title: "Operator",
+      job_title: null,
+      deleted_at: null,
+    },
+  ]);
+  stub.registerRpc("increment_graph_sync_attempts", () => null);
+
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "initial",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "member-transition",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+  assert.deepEqual(
+    graphClient.snapshot(ORG_ID).nodes.map((node) => node.personKey).sort(),
+    ["user:user-a"]
+  );
+
+  await (stub as any).from("members").update({ user_id: null }).eq("id", "member-transition");
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "unlink",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "member-transition",
+      action: "upsert",
+      payload: { old_user_id: "user-a" },
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+  assert.deepEqual(
+    graphClient.snapshot(ORG_ID).nodes.map((node) => node.personKey).sort(),
+    ["member:member-transition", "user:user-a"]
+  );
+
+  await (stub as any).from("members").update({ user_id: "user-b" }).eq("id", "member-transition");
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "relink",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "member-transition",
+      action: "upsert",
+      payload: { old_user_id: null },
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+  assert.deepEqual(
+    graphClient.snapshot(ORG_ID).nodes.map((node) => node.personKey).sort(),
+    ["user:user-a", "user:user-b"]
+  );
+
+  await (stub as any)
+    .from("members")
+    .update({ organization_id: ORG_NEW })
+    .eq("id", "member-transition");
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "org-move",
+      org_id: ORG_NEW,
+      source_table: "members",
+      source_id: "member-transition",
+      action: "upsert",
+      payload: { old_user_id: "user-b", old_organization_id: ORG_ID },
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+
+  assert.deepEqual(
+    graphClient.snapshot(ORG_ID).nodes.map((node) => node.personKey).sort(),
+    ["user:user-a"]
+  );
+  assert.deepEqual(
+    graphClient.snapshot(ORG_NEW).nodes.map((node) => node.personKey).sort(),
+    ["user:user-b"]
+  );
+});
+
+test("processGraphSyncQueue reconciles old mentorship endpoints to one surviving edge", async () => {
+  const stub = createSupabaseStub();
+  const graphClient = createInMemoryGraphClient();
+
+  stub.seed("members", [
+    {
+      id: "mentor-old",
+      organization_id: ORG_ID,
+      user_id: "mentor-a",
+      status: "active",
+      first_name: "Morgan",
+      last_name: "Mentor",
+      email: "mentor-a@example.com",
+      role: "Mentor",
+      current_company: "Acme",
+      graduation_year: 2020,
+      deleted_at: null,
+    },
+    {
+      id: "mentor-new",
+      organization_id: ORG_ID,
+      user_id: "mentor-b",
+      status: "active",
+      first_name: "Mona",
+      last_name: "Mentor",
+      email: "mentor-b@example.com",
+      role: "Mentor",
+      current_company: "Acme",
+      graduation_year: 2021,
+      deleted_at: null,
+    },
+    {
+      id: "mentee",
+      organization_id: ORG_ID,
+      user_id: "mentee-a",
+      status: "active",
+      first_name: "Mentee",
+      last_name: "User",
+      email: "mentee@example.com",
+      role: "Member",
+      current_company: "Beta",
+      graduation_year: 2026,
+      deleted_at: null,
+    },
+  ]);
+  stub.seed("mentorship_pairs", [
+    {
+      id: "pair-1",
+      organization_id: ORG_ID,
+      mentor_user_id: "mentor-a",
+      mentee_user_id: "mentee-a",
+      status: "active",
+      deleted_at: null,
+    },
+  ]);
+  stub.registerRpc("increment_graph_sync_attempts", () => null);
+
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "seed-mentor-old",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "mentor-old",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "seed-mentor-new",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "mentor-new",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "seed-mentee",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "mentee",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "seed-pair",
+      org_id: ORG_ID,
+      source_table: "mentorship_pairs",
+      source_id: "pair-1",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+  assert.deepEqual(graphClient.snapshot(ORG_ID).edges, ["user:mentor-a->user:mentee-a"]);
+
+  await (stub as any).from("mentorship_pairs").update({ mentor_user_id: "mentor-b" }).eq("id", "pair-1");
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "pair-transition",
+      org_id: ORG_ID,
+      source_table: "mentorship_pairs",
+      source_id: "pair-1",
+      action: "upsert",
+      payload: { old_mentor_user_id: "mentor-a", old_mentee_user_id: "mentee-a" },
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+
+  assert.deepEqual(graphClient.snapshot(ORG_ID).edges, ["user:mentor-b->user:mentee-a"]);
+});
+
+test("processGraphSyncQueue reshapes people and mentorship edges for deactivation, deletes, and duplicate rows", async () => {
+  const stub = createSupabaseStub();
+  const graphClient = createInMemoryGraphClient();
+
+  stub.seed("members", [
+    {
+      id: "member-active",
+      organization_id: ORG_ID,
+      user_id: "shared-person",
+      status: "active",
+      first_name: "Shared",
+      last_name: "Member",
+      email: "shared-member@example.com",
+      role: "Member",
+      current_company: "Acme",
+      graduation_year: 2025,
+      deleted_at: null,
+    },
+    {
+      id: "other-user-row",
+      organization_id: ORG_ID,
+      user_id: "other-user",
+      status: "active",
+      first_name: "Other",
+      last_name: "User",
+      email: "other@example.com",
+      role: "Mentee",
+      current_company: "Beta",
+      graduation_year: 2026,
+      deleted_at: null,
+    },
+  ]);
+  stub.seed("alumni", [
+    {
+      id: "alumni-active",
+      organization_id: ORG_ID,
+      user_id: "shared-person",
+      first_name: "Shared",
+      last_name: "Alumni",
+      email: "shared-alumni@example.com",
+      major: "CS",
+      current_company: "Acme",
+      industry: "Technology",
+      current_city: "Austin",
+      graduation_year: 2022,
+      position_title: "Engineer",
+      job_title: null,
+      deleted_at: null,
+    },
+  ]);
+  stub.seed("mentorship_pairs", [
+    {
+      id: "pair-a",
+      organization_id: ORG_ID,
+      mentor_user_id: "shared-person",
+      mentee_user_id: "other-user",
+      status: "active",
+      deleted_at: null,
+    },
+    {
+      id: "pair-b",
+      organization_id: ORG_ID,
+      mentor_user_id: "shared-person",
+      mentee_user_id: "other-user",
+      status: "active",
+      deleted_at: null,
+    },
+  ]);
+  stub.registerRpc("increment_graph_sync_attempts", () => null);
+
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "seed-member",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "member-active",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "seed-alumni",
+      org_id: ORG_ID,
+      source_table: "alumni",
+      source_id: "alumni-active",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "seed-other",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "other-user-row",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "seed-pair-a",
+      org_id: ORG_ID,
+      source_table: "mentorship_pairs",
+      source_id: "pair-a",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+  assert.deepEqual(graphClient.snapshot(ORG_ID).edges, ["user:shared-person->user:other-user"]);
+
+  await (stub as any).from("members").update({ status: "inactive" }).eq("id", "member-active");
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "inactive-member",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "member-active",
+      action: "upsert",
+      payload: { old_user_id: "shared-person" },
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+
+  const alumniOnlyNode = graphClient.snapshot(ORG_ID).nodes.find((node) => node.personKey === "user:shared-person");
+  assert.equal(alumniOnlyNode?.memberId ?? null, null);
+  assert.equal(alumniOnlyNode?.alumniId, "alumni-active");
+
+  await (stub as any).from("mentorship_pairs").update({ status: "inactive" }).eq("id", "pair-a");
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "inactive-pair-a",
+      org_id: ORG_ID,
+      source_table: "mentorship_pairs",
+      source_id: "pair-a",
+      action: "upsert",
+      payload: { old_mentor_user_id: "shared-person", old_mentee_user_id: "other-user" },
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+  assert.deepEqual(graphClient.snapshot(ORG_ID).edges, ["user:shared-person->user:other-user"]);
+
+  await (stub as any).from("mentorship_pairs").update({ status: "inactive" }).eq("id", "pair-b");
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "inactive-pair-b",
+      org_id: ORG_ID,
+      source_table: "mentorship_pairs",
+      source_id: "pair-b",
+      action: "upsert",
+      payload: { old_mentor_user_id: "shared-person", old_mentee_user_id: "other-user" },
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+  assert.deepEqual(graphClient.snapshot(ORG_ID).edges, []);
+
+  await (stub as any).from("alumni").delete().eq("id", "alumni-active");
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "delete-alumni",
+      org_id: ORG_ID,
+      source_table: "alumni",
+      source_id: "alumni-active",
+      action: "delete",
+      payload: { old_user_id: "shared-person" },
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+
+  assert.ok(
+    !graphClient.snapshot(ORG_ID).nodes.some((node) => node.personKey === "user:shared-person")
+  );
+});
+
+test("processGraphSyncQueue converges for replay, out-of-order mentorship work, and stale items after newer transitions", async () => {
+  const stub = createSupabaseStub();
+  const graphClient = createInMemoryGraphClient();
+
+  stub.seed("members", [
+    {
+      id: "mentor-row",
+      organization_id: ORG_ID,
+      user_id: "mentor-user",
+      status: "active",
+      first_name: "Mentor",
+      last_name: "Replay",
+      email: "mentor@example.com",
+      role: "Mentor",
+      current_company: "Acme",
+      graduation_year: 2020,
+      deleted_at: null,
+    },
+    {
+      id: "mentee-row",
+      organization_id: ORG_ID,
+      user_id: "mentee-user",
+      status: "active",
+      first_name: "Mentee",
+      last_name: "Replay",
+      email: "mentee@example.com",
+      role: "Mentee",
+      current_company: "Beta",
+      graduation_year: 2026,
+      deleted_at: null,
+    },
+  ]);
+  stub.seed("mentorship_pairs", [
+    {
+      id: "pair-replay",
+      organization_id: ORG_ID,
+      mentor_user_id: "mentor-user",
+      mentee_user_id: "mentee-user",
+      status: "active",
+      deleted_at: null,
+    },
+  ]);
+  stub.registerRpc("increment_graph_sync_attempts", () => null);
+
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "pair-first",
+      org_id: ORG_ID,
+      source_table: "mentorship_pairs",
+      source_id: "pair-replay",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+  assert.deepEqual(graphClient.snapshot(ORG_ID).edges, []);
+
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "mentor-row",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "mentor-row",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "mentee-row",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "mentee-row",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "pair-replay",
+      org_id: ORG_ID,
+      source_table: "mentorship_pairs",
+      source_id: "pair-replay",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+    {
+      id: "pair-replay-duplicate",
+      org_id: ORG_ID,
+      source_table: "mentorship_pairs",
+      source_id: "pair-replay",
+      action: "upsert",
+      payload: {},
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+  await processGraphSyncQueue(stub as any, { graphClient });
+
+  assert.deepEqual(graphClient.snapshot(ORG_ID).edges, ["user:mentor-user->user:mentee-user"]);
+
+  await (stub as any).from("members").update({ user_id: "mentor-user-new" }).eq("id", "mentor-row");
+  stub.registerRpc("dequeue_graph_sync_queue", () => [
+    {
+      id: "current-transition",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "mentor-row",
+      action: "upsert",
+      payload: { old_user_id: "mentor-user" },
+      attempts: 0,
+    },
+    {
+      id: "stale-transition",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "mentor-row",
+      action: "upsert",
+      payload: { old_user_id: null },
+      attempts: 0,
+    },
+  ]);
+  await processGraphSyncQueue(stub as any, { graphClient });
+
+  assert.deepEqual(
+    graphClient.snapshot(ORG_ID).nodes.map((node) => node.personKey).sort(),
+    ["user:mentee-user", "user:mentor-user-new"]
+  );
+});
+
+test("suggestConnections stays recommendation-safe after graph transitions and records org-scoped fallback observability", async () => {
+  const stub = createSupabaseStub();
+  const graphClient = createInMemoryGraphClient();
+
+  seedSuggestionFixture(stub);
+  graphClient.seedNode(ORG_ID, {
+    orgId: ORG_ID,
+    personKey: "user:00000000-0000-0000-0000-000000000001",
+    personType: "alumni",
+    personId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+    memberId: null,
+    alumniId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1",
+    userId: "00000000-0000-0000-0000-000000000001",
+    name: "Alex Source",
+    role: "Engineer",
+    major: "Computer Science",
+    currentCompany: "Acme",
+    industry: "Technology",
+    graduationYear: 2018,
+    currentCity: "Austin",
+  });
+  graphClient.seedNode(ORG_ID, {
+    orgId: ORG_ID,
+    personKey: "user:00000000-0000-0000-0000-000000000002",
+    personType: "alumni",
+    personId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2",
+    memberId: null,
+    alumniId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2",
+    userId: "00000000-0000-0000-0000-000000000002",
+    name: "Dina Direct",
+    role: "VP Product",
+    major: null,
+    currentCompany: "Acme",
+    industry: null,
+    graduationYear: 2018,
+    currentCity: null,
+  });
+  graphClient.seedNode(ORG_ID, {
+    orgId: ORG_ID,
+    personKey: "alumni:stale-dina",
+    personType: "alumni",
+    personId: "stale-dina",
+    memberId: null,
+    alumniId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2",
+    userId: null,
+    name: "Dina Direct",
+    role: "VP Product",
+    major: null,
+    currentCompany: "Acme",
+    industry: null,
+    graduationYear: 2018,
+    currentCity: null,
+  });
+  graphClient.seedNode(ORG_ID, {
+    orgId: ORG_ID,
+    personKey: "user:00000000-0000-0000-0000-000000000003",
+    personType: "alumni",
+    personId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3",
+    memberId: null,
+    alumniId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3",
+    userId: "00000000-0000-0000-0000-000000000003",
+    name: "Sam Second",
+    role: "Founder",
+    major: "Computer Science",
+    currentCompany: null,
+    industry: "Technology",
+    graduationYear: null,
+    currentCity: "Austin",
+  });
+  graphClient.seedNode(ORG_ID, {
+    orgId: ORG_ID,
+    personKey: "user:00000000-0000-0000-0000-000000000004",
+    personType: "alumni",
+    personId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4",
+    memberId: null,
+    alumniId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4",
+    userId: "00000000-0000-0000-0000-000000000004",
+    name: "Ava Attribute",
+    role: "Investor",
+    major: "Computer Science",
+    currentCompany: "Acme",
+    industry: "Technology",
+    graduationYear: 2018,
+    currentCity: "Austin",
+  });
+  graphClient.seedEdge(
+    ORG_ID,
+    "user:00000000-0000-0000-0000-000000000001",
+    "user:00000000-0000-0000-0000-000000000002"
+  );
+  graphClient.seedEdge(
+    ORG_ID,
+    "user:00000000-0000-0000-0000-000000000002",
+    "user:00000000-0000-0000-0000-000000000003"
+  );
+
+  const graphResult = await suggestConnections({
+    orgId: ORG_ID,
+    serviceSupabase: stub as any,
+    args: { person_type: "alumni", person_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1" },
+    graphClient,
+  });
+  const sqlFallback = await suggestConnections({
+    orgId: ORG_ID,
+    serviceSupabase: stub as any,
+    args: { person_type: "alumni", person_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1" },
+    graphClient: {
+      isAvailable: () => false,
+      getUnavailableReason: () => "disabled",
+      query: async () => [],
+    },
+  });
+
+  assert.equal(graphResult.mode, "falkor");
+  assert.deepEqual(
+    graphResult.results.map((row) => row.person_id),
+    [
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2",
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3",
+      "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4",
+    ]
+  );
+  assert.deepEqual(graphResult.results, sqlFallback.results);
+
+  const telemetry = getSuggestionObservabilityByOrg(ORG_ID);
+  assert.equal(telemetry.falkorCount, 1);
+  assert.equal(telemetry.sqlFallbackCount, 1);
+  assert.equal(telemetry.fallbackReasonCounts.disabled, 1);
+});
+
+test("graph health surface exposes lag, retries, degraded freshness, dead letters, and preserves failure evidence after recovery", async () => {
+  const stub = createSupabaseStub();
+  const graphClient = createInMemoryGraphClient();
+  const oldTimestamp = new Date(Date.now() - 5 * 60_000).toISOString();
+
+  stub.seed("graph_sync_queue", [
+    {
+      id: "pending-old",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "member-health",
+      created_at: oldTimestamp,
+      processed_at: null,
+      attempts: 1,
+      last_error: "temporary failure",
+    },
+    {
+      id: "dead-letter",
+      org_id: ORG_ID,
+      source_table: "members",
+      source_id: "member-health",
+      created_at: oldTimestamp,
+      processed_at: null,
+      attempts: 3,
+      last_error: "permanent failure",
+    },
+  ]);
+  stub.seed("members", [
+    {
+      id: "member-health",
+      organization_id: ORG_ID,
+      user_id: "health-user",
+      status: "active",
+      first_name: "Health",
+      last_name: "User",
+      email: "health@example.com",
+      role: "Member",
+      current_company: "Acme",
+      graduation_year: 2025,
+      deleted_at: null,
+    },
+  ]);
+
+  let queueAttempts = 0;
+  stub.registerRpc("dequeue_graph_sync_queue", () => {
+    if (queueAttempts === 0) {
+      queueAttempts += 1;
+      return [
+        {
+          id: "dead-letter",
+          org_id: ORG_ID,
+          source_table: "members",
+          source_id: "member-health",
+          action: "upsert",
+          payload: {},
+          attempts: 2,
+        },
+      ];
+    }
+
+    return [
+      {
+        id: "recovery-item",
+        org_id: ORG_ID,
+        source_table: "members",
+        source_id: "member-health",
+        action: "upsert",
+        payload: {},
+        attempts: 0,
+      },
+    ];
+  });
+  stub.registerRpc("increment_graph_sync_attempts", ({ p_id, p_error }) => {
+    const rows = stub.getRows("graph_sync_queue");
+    const row = rows.find((entry) => entry.id === p_id);
+    if (row) {
+      row.attempts = Number(row.attempts ?? 0) + 1;
+      row.last_error = p_error;
+    }
+    return null;
+  });
+
+  const failingGraphClient = {
+    isAvailable: () => true,
+    query: async () => {
+      throw new Error("forced graph failure");
+    },
+  };
+
+  const failedStats = await processGraphSyncQueue(stub as any, {
+    graphClient: failingGraphClient,
+  });
+  assert.equal(failedStats.failed, 1);
+
+  const healthBeforeRecovery = await getGraphHealthSurface(stub as any, ORG_ID);
+  assert.equal(healthBeforeRecovery.freshness.state, "stale");
+  assert.equal(healthBeforeRecovery.queue.retriedPendingCount, 1);
+  assert.equal(healthBeforeRecovery.queue.deadLetterCount, 1);
+  assert.equal(healthBeforeRecovery.failures.deadLetterCount, 1);
+  assert.equal(healthBeforeRecovery.failures.lastError, "forced graph failure");
+
+  await processGraphSyncQueue(stub as any, { graphClient });
+  await (stub as any).from("graph_sync_queue").delete().eq("id", "pending-old");
+  await (stub as any).from("graph_sync_queue").delete().eq("id", "dead-letter");
+
+  const healthAfterRecovery = await getGraphHealthSurface(stub as any, ORG_ID);
+  assert.equal(healthAfterRecovery.queue.pendingCount, 0);
+  assert.equal(healthAfterRecovery.failures.deadLetterCount, 1);
+  assert.ok(healthAfterRecovery.failures.lastSuccessAt);
+
+  stub.simulateError("graph_sync_queue", { message: "queue read failed" });
+  const degradedHealth = await getGraphHealthSurface(stub as any, ORG_ID);
+  assert.equal(degradedHealth.freshness.state, "degraded");
 });

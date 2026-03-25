@@ -3,6 +3,7 @@ import { toErrorMessage } from "@/lib/falkordb/utils";
 
 export interface FalkorQueryClient {
   isAvailable(): boolean;
+  getUnavailableReason?(): "disabled" | "unavailable";
   query<T extends Record<string, unknown>>(
     orgId: string,
     cypher: string,
@@ -145,6 +146,10 @@ class FalkorClientImpl implements FalkorQueryClient {
 
   isAvailable() {
     return getFalkorConfig().enabled;
+  }
+
+  getUnavailableReason(): "disabled" | "unavailable" {
+    return getFalkorConfig().enabled ? "unavailable" : "disabled";
   }
 
   async query<T extends Record<string, unknown>>(

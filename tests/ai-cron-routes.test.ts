@@ -106,9 +106,9 @@ describe("ai-cron-routes", () => {
       const mockProcess = async () => {
         callCount++;
         if (callCount === 1) {
-          return { processed: 2, skipped: 1, failed: 0 };
+          return { processed: 2, skipped: 1, failed: 0, drainState: "processed", reason: null };
         }
-        return { processed: 0, skipped: 0, failed: 0 };
+        return { processed: 0, skipped: 0, failed: 0, drainState: "empty", reason: null };
       };
 
       const startTime = Date.now();
@@ -119,7 +119,7 @@ describe("ai-cron-routes", () => {
         totalFailed += stats.failed;
         iterations++;
 
-        if (stats.processed + stats.skipped + stats.failed === 0) {
+        if (stats.drainState !== "processed") {
           break;
         }
       }
@@ -128,6 +128,27 @@ describe("ai-cron-routes", () => {
       assert.equal(totalProcessed, 2);
       assert.equal(totalSkipped, 1);
       assert.equal(totalFailed, 0);
+    });
+
+    it("distinguishes unavailable drains from benign empty queue results", async () => {
+      const unavailable = {
+        processed: 0,
+        skipped: 0,
+        failed: 0,
+        drainState: "unavailable" as const,
+        reason: "disabled",
+      };
+      const empty = {
+        processed: 0,
+        skipped: 0,
+        failed: 0,
+        drainState: "empty" as const,
+        reason: null,
+      };
+
+      assert.notEqual(unavailable.drainState, empty.drainState);
+      assert.equal(unavailable.reason, "disabled");
+      assert.equal(empty.reason, null);
     });
 
     it("calls purge_graph_sync_queue after processing", async () => {

@@ -1,4 +1,5 @@
 import type { ProjectedPerson } from "@/lib/falkordb/people";
+import type { GraphFallbackReason } from "@/lib/falkordb/telemetry";
 
 export type ConnectionReasonCode =
   | "direct_mentorship"
@@ -32,13 +33,15 @@ export interface SuggestedConnection {
 }
 
 export interface SuggestConnectionsFreshness {
-  state: "fresh" | "stale";
+  state: "fresh" | "stale" | "degraded" | "unknown";
   as_of: string;
   lag_seconds?: number;
+  reason?: string;
 }
 
 export interface SuggestConnectionsResult {
   mode: "falkor" | "sql_fallback";
+  fallback_reason: GraphFallbackReason | null;
   freshness: SuggestConnectionsFreshness;
   results: SuggestedConnection[];
 }
