@@ -49,6 +49,9 @@ interface AcceptParentInviteOptions {
   code: string;
   orgInvite?: OrgParentInvite | null;
   legacyInvite?: LegacyParentInvite | null;
+  orgInviteInOtherOrg?: OrgParentInvite | null;
+  legacyInviteInOtherOrg?: LegacyParentInvite | null;
+  expireBeforeClaim?: boolean;
 }
 
 function simulateAcceptParentInvite(
@@ -56,6 +59,12 @@ function simulateAcceptParentInvite(
 ): { status: number; error?: string } {
   const orgInvite = opts.orgInvite ?? null;
   const legacyInvite = opts.legacyInvite ?? null;
+  const orgInviteInOtherOrg = opts.orgInviteInOtherOrg ?? null;
+  const legacyInviteInOtherOrg = opts.legacyInviteInOtherOrg ?? null;
+
+  // The real route scopes both lookups to the org in the URL, so unrelated rows are invisible.
+  void orgInviteInOtherOrg;
+  void legacyInviteInOtherOrg;
 
   if (orgInvite && legacyInvite) {
     return {
@@ -77,6 +86,12 @@ function simulateAcceptParentInvite(
     if (orgInvite.uses_remaining !== null) {
       if (orgInvite.uses_remaining <= 0) {
         return { status: 409, error: "Invite has no uses remaining" };
+      }
+      if (opts.expireBeforeClaim) {
+        orgInvite.expires_at = new Date(Date.now() - 1000).toISOString();
+      }
+      if (orgInvite.expires_at && new Date(orgInvite.expires_at) < new Date()) {
+        return { status: 410, error: "Invite has expired" };
       }
       orgInvite.uses_remaining -= 1;
     }
@@ -160,4 +175,36 @@ test("legacy parent invite remains single-use for backward compatibility", () =>
   assert.equal(first.status, 200);
   assert.equal(second.status, 409);
   assert.equal(second.error, "Invite already accepted");
+});
+
+test("same code in another org does not interfere with org-scoped parent invite redemption", () => {
+  const invite = makeOrgParentInvite({ organization_id: "org-1", code: "SHARED01" });
+  const otherOrgInvite = makeOrgParentInvite({ organization_id: "org-2", code: "SHARED01" });
+  const otherOrgLegacyInvite = makeLegacyParentInvite({ organization_id: "org-2", code: "SHARED01" });
+
+  const result = simulateAcceptParentInvite({
+    orgId: "org-1",
+    code: invite.code,
+    orgInvite: invite,
+    orgInviteInOtherOrg: otherOrgInvite,
+    legacyInviteInOtherOrg: otherOrgLegacyInvite,
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(invite.uses_remaining, null);
+});
+
+test("limited parent org invite that expires before claim is rejected and does not consume a use", () => {
+  const invite = makeOrgParentInvite({ uses_remaining: 1 });
+
+  const result = simulateAcceptParentInvite({
+    orgId: "org-1",
+    code: invite.code,
+    orgInvite: invite,
+    expireBeforeClaim: true,
+  });
+
+  assert.equal(result.status, 410);
+  assert.equal(result.error, "Invite has expired");
+  assert.equal(invite.uses_remaining, 1);
 });

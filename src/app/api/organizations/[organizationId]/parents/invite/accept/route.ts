@@ -39,17 +39,23 @@ interface OrgParentInviteRow {
   uses_remaining: number | null;
 }
 
-async function lookupParentInviteByCode(serviceSupabase: ServiceSupabase, code: string) {
+async function lookupParentInviteByCode(
+  serviceSupabase: ServiceSupabase,
+  organizationId: string,
+  code: string,
+) {
   const lookupCode = sanitizeIlikeInput(code);
   const [legacyResult, orgResult] = await Promise.all([
     serviceSupabase
       .from("parent_invites")
       .select("id,organization_id,status,expires_at")
+      .eq("organization_id", organizationId)
       .ilike("code", lookupCode)
       .maybeSingle(),
     serviceSupabase
       .from("organization_invites")
       .select("id,organization_id,role,expires_at,revoked_at,uses_remaining")
+      .eq("organization_id", organizationId)
       .ilike("code", lookupCode)
       .eq("role", "parent")
       .maybeSingle(),
@@ -173,15 +179,21 @@ async function claimOrgInviteUse(
       return { response: respond({ error: "Invite has no uses remaining" }, 409) };
     }
 
+    const claimNow = new Date().toISOString();
     const nextUsesRemaining = current.uses_remaining - 1;
-    const { data: claimedRows, error: claimError } = await serviceSupabase
+    let claimQuery = serviceSupabase
       .from("organization_invites")
       .update({ uses_remaining: nextUsesRemaining })
       .eq("id", current.id)
       .eq("role", "parent")
       .eq("uses_remaining", current.uses_remaining)
-      .is("revoked_at", null)
-      .select("id");
+      .is("revoked_at", null);
+
+    if (current.expires_at !== null) {
+      claimQuery = claimQuery.gt("expires_at", claimNow);
+    }
+
+    const { data: claimedRows, error: claimError } = await claimQuery.select("id");
 
     if (claimError) {
       console.error("[org/parents/invite/accept] Org invite claim error:", claimError);
@@ -335,7 +347,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   const { code, email, first_name, last_name, password } = body;
   const serviceSupabase = createServiceClient();
-  const lookupResult = await lookupParentInviteByCode(serviceSupabase, code);
+  const lookupResult = await lookupParentInviteByCode(serviceSupabase, organizationId, code);
   if ("error" in lookupResult) {
     return respond({ error: lookupResult.error }, 500);
   }
