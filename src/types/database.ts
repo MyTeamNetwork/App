@@ -2931,6 +2931,7 @@ export type Database = {
           item_count: number
           name: string
           organization_id: string
+          sort_order: number
           updated_at: string
         }
         Insert: {
@@ -2943,6 +2944,7 @@ export type Database = {
           item_count?: number
           name: string
           organization_id: string
+          sort_order?: number
           updated_at?: string
         }
         Update: {
@@ -2955,6 +2957,7 @@ export type Database = {
           item_count?: number
           name?: string
           organization_id?: string
+          sort_order?: number
           updated_at?: string
         }
         Relationships: [

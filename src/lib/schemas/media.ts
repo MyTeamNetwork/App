@@ -85,6 +85,13 @@ export const createAlbumSchema = z.object({
 });
 export type CreateAlbumForm = z.infer<typeof createAlbumSchema>;
 
+/** Full permutation of non-deleted album ids for an org (same length as server count). */
+export const reorderAlbumsSchema = z.object({
+  orgId: baseSchemas.uuid,
+  albumIds: z.array(baseSchemas.uuid),
+});
+export type ReorderAlbumsInput = z.infer<typeof reorderAlbumsSchema>;
+
 // --- Gallery (media_items) schemas with moderation ---
 
 // Status includes "uploading" for the upload-intent flow before finalization

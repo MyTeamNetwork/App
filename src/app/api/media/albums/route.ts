@@ -54,9 +54,10 @@ export async function GET(request: NextRequest) {
 
     let query = (serviceClient as any)
       .from("media_albums")
-      .select("id, name, description, cover_media_id, item_count, created_by, created_at, updated_at")
+      .select("id, name, description, cover_media_id, item_count, sort_order, created_by, created_at, updated_at")
       .eq("organization_id", orgId)
       .is("deleted_at", null)
+      .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false });
 
     if (containsItemId) {
@@ -166,6 +167,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "You do not have permission to create albums" }, { status: 403 });
     }
 
+    const { error: shiftError } = await (serviceClient as any).rpc("shift_media_album_sort_orders", {
+      p_org_id: orgId,
+    });
+    if (shiftError) {
+      console.error("[media/albums] shift sort orders failed:", shiftError);
+      return NextResponse.json({ error: "Failed to create album" }, { status: 500 });
+    }
+
     const { data: album, error } = await (serviceClient as any)
       .from("media_albums")
       .insert({
@@ -173,8 +182,9 @@ export async function POST(request: NextRequest) {
         name,
         description: description || null,
         created_by: user.id,
+        sort_order: 0,
       })
-      .select("id, name, description, cover_media_id, item_count, created_by, created_at, updated_at")
+      .select("id, name, description, cover_media_id, item_count, sort_order, created_by, created_at, updated_at")
       .single();
 
     if (error) {

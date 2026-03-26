@@ -429,7 +429,7 @@ function OrgSettingsContent() {
           {isAdmin && (
             <PermissionRoleCard
               title="Media upload permissions"
-              description="Control which roles can upload media to the Media Archive."
+              description="Control which roles can upload media to Media."
               featureVerb="upload media"
               roles={mediaUploadRoles}
               onToggleRole={toggleMediaRole}

@@ -27,7 +27,7 @@ export default async function MediaArchivePage({
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
       <PageHeader
-        title="Media Archive"
+        title="Media"
         description="Browse and share photos and videos with your organization"
       />
       <MediaGallery

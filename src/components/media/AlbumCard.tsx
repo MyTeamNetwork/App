@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { GripVertical } from "lucide-react";
 import { Card } from "@/components/ui";
 
 export interface MediaAlbum {
@@ -10,6 +11,7 @@ export interface MediaAlbum {
   cover_media_id?: string | null;
   cover_url?: string | null;
   item_count: number;
+  sort_order?: number;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -18,18 +20,33 @@ export interface MediaAlbum {
 interface AlbumCardProps {
   album: MediaAlbum;
   onClick: () => void;
+  /** When true, navigation is disabled and a drag handle is shown (listeners on the handle only). */
+  reorderMode?: boolean;
+  dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>;
+  isDragging?: boolean;
 }
 
-export function AlbumCard({ album, onClick }: AlbumCardProps) {
+export function AlbumCard({ album, onClick, reorderMode = false, dragHandleProps, isDragging = false }: AlbumCardProps) {
   return (
     <Card
-      interactive
+      interactive={!reorderMode}
       padding="none"
-      className="group overflow-hidden"
-      onClick={onClick}
+      className={`group overflow-hidden ${isDragging ? "ring-2 ring-[var(--color-org-secondary)] shadow-xl" : ""}`}
+      onClick={reorderMode ? undefined : onClick}
     >
       {/* Cover image */}
       <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+        {reorderMode && dragHandleProps && (
+          <button
+            type="button"
+            className="absolute left-2 top-2 z-10 p-2 rounded-lg bg-background/90 backdrop-blur-sm border border-border shadow-sm text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing touch-none"
+            aria-label={`Drag to reorder ${album.name}`}
+            onClick={(e) => e.stopPropagation()}
+            {...dragHandleProps}
+          >
+            <GripVertical className="w-5 h-5" aria-hidden />
+          </button>
+        )}
         {album.cover_url ? (
           <Image
             src={album.cover_url}
