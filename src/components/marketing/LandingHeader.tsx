@@ -102,13 +102,15 @@ export function LandingHeader() {
             width={541}
             height={303}
             sizes="28px"
-            className="h-7 w-auto shrink-0 object-contain"
+            className="h-8 w-auto shrink-0 object-contain sm:h-7"
             aria-hidden="true"
           />
-          <span className="font-display truncate text-base font-bold tracking-tight text-landing-cream sm:text-xl">
+          {/* Wordmark hidden on very narrow screens — avoids "TeamNe…" truncation; logo is enough */}
+          <span className="font-display hidden text-base font-bold tracking-tight text-landing-cream sm:inline sm:text-xl">
             <span className="text-landing-green">Team</span>
             <span className="text-landing-cream">Network</span>
           </span>
+          <span className="sr-only">TeamNetwork</span>
         </Link>
 
         {/* Desktop nav */}

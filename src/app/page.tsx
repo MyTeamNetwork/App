@@ -91,7 +91,7 @@ export default async function LandingPage() {
       <LandingHeader />
 
       {/* Hero - "The Emergence" */}
-      <section className="relative z-10 px-5 pb-20 pt-12 sm:px-8 lg:px-6 lg:pt-20">
+      <section className="relative z-10 px-6 pb-20 pt-12 sm:px-8 lg:px-6 lg:pt-20">
         {/* Stadium Light Beams */}
         <StadiumLightBeams />
 
@@ -182,8 +182,8 @@ export default async function LandingPage() {
       </section>
 
       {/* How It Works - "The Playbook" (moved before Features) */}
-      <section className="relative z-10 py-24 px-6">
-        <div className="chalkboard max-w-5xl mx-auto rounded-2xl p-8 sm:p-12">
+      <section className="relative z-10 px-5 py-20 sm:px-6 sm:py-24">
+        <div className="chalkboard mx-auto max-w-5xl rounded-2xl p-6 sm:p-10 md:p-12">
           <div className="text-center mb-16">
             <h2 className="scroll-reveal font-display text-4xl sm:text-5xl font-bold">
               The <span className="text-landing-cream">Playbook</span>
