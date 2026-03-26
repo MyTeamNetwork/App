@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useId, useState } from "react";
-import Link from "next/link";
 import {
   CalendarClock,
   ChevronDown,
@@ -12,6 +11,8 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { Card } from "@/components/ui/Card";
+import { StatRowLink } from "@/components/feed/StatRowLink";
 import type { MobileStatChip } from "@/components/feed/feed-mobile-stat-types";
 
 const STAT_ICONS: Record<MobileStatChip["iconKey"], LucideIcon> = {
@@ -28,7 +29,7 @@ interface OrgHomeMobileOverviewProps {
 }
 
 /**
- * Below-xl overview: stats grid always visible; events / announcements / members behind expand (default collapsed).
+ * Below-xl overview: same stat rows as desktop `CompactStatsWidget`; widgets behind expand (default collapsed).
  */
 export function OrgHomeMobileOverview({ statChips, children }: OrgHomeMobileOverviewProps) {
   const [widgetsOpen, setWidgetsOpen] = useState(false);
@@ -41,51 +42,27 @@ export function OrgHomeMobileOverview({ statChips, children }: OrgHomeMobileOver
       data-testid="org-home-mobile-overview"
       aria-label="Organization overview"
     >
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-b from-card/90 via-card/70 to-card/40 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]">
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/35 to-transparent"
-          aria-hidden
-        />
-
-        <div className="border-b border-border/40 px-4 py-3.5 sm:px-5">
-          <p className="text-[10px] font-mono font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+      <Card className="overflow-hidden">
+        <div className="border-b border-border px-4 py-3">
+          <h3 className="font-mono text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             At a glance
-          </p>
-          <p className="mt-1 text-sm leading-snug text-muted-foreground">Key stats for your organization</p>
+          </h3>
         </div>
 
         {statChips.length > 0 && (
-          <div className="px-3 pb-4 pt-4 sm:px-5">
-            <div className="grid grid-cols-2 gap-2 sm:gap-3" role="list">
-              {statChips.map((chip, index) => {
-                const Icon = STAT_ICONS[chip.iconKey];
-                const oddLast = statChips.length % 2 === 1 && index === statChips.length - 1;
-                return (
-                  <Link
-                    key={chip.label}
-                    href={chip.href}
-                    role="listitem"
-                    className={`flex min-h-[48px] flex-col justify-center gap-1.5 rounded-xl border border-border/50 bg-background/50 px-2.5 py-3 text-left shadow-sm transition-colors hover:border-primary/35 hover:bg-muted/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:min-h-[52px] sm:gap-2 sm:px-3.5 sm:py-3.5 ${
-                      oddLast
-                        ? "col-span-2 w-[calc(50%-0.25rem)] max-w-none justify-self-center sm:w-[calc(50%-0.375rem)]"
-                        : "min-w-0"
-                    }`}
-                  >
-                    <span className="flex items-start gap-1.5 sm:gap-2">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted/30 text-primary/80 ring-1 ring-border/40 sm:h-7 sm:w-7 sm:rounded-lg">
-                        <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden />
-                      </span>
-                      <span className="min-w-0 flex-1 hyphens-auto break-words pt-0.5 font-mono text-[clamp(9px,2.4vw,11px)] font-medium uppercase leading-[1.25] tracking-tight text-muted-foreground [overflow-wrap:anywhere]">
-                        {chip.label}
-                      </span>
-                    </span>
-                    <span className="break-words pl-8 font-mono text-[clamp(0.8125rem,3.2vw,1rem)] font-semibold tabular-nums leading-none tracking-tight text-foreground [overflow-wrap:anywhere] sm:pl-9">
-                      {chip.value}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
+          <div className="divide-y divide-border/50">
+            {statChips.map((chip) => {
+              const Icon = STAT_ICONS[chip.iconKey];
+              return (
+                <StatRowLink
+                  key={chip.label}
+                  href={chip.href}
+                  label={chip.label}
+                  value={chip.value}
+                  icon={Icon}
+                />
+              );
+            })}
           </div>
         )}
 
@@ -94,7 +71,7 @@ export function OrgHomeMobileOverview({ statChips, children }: OrgHomeMobileOver
           onClick={toggle}
           aria-expanded={widgetsOpen}
           aria-controls={panelId}
-          className="flex min-h-[48px] w-full items-center justify-center gap-2 border-t border-border/50 bg-muted/15 px-4 py-3.5 text-sm font-medium text-foreground shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:ring-offset-0"
+          className="flex min-h-[44px] w-full items-center justify-center gap-2 border-t border-border/50 bg-muted/10 px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset focus-visible:ring-offset-0"
         >
           <LayoutDashboard className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
           <span className="text-balance">{widgetsOpen ? "Hide events & announcements" : "Show events & announcements"}</span>
@@ -112,10 +89,10 @@ export function OrgHomeMobileOverview({ statChips, children }: OrgHomeMobileOver
           className={`grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${widgetsOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
         >
           <div className="min-h-0 overflow-hidden">
-            <div className="space-y-4 border-t border-border/40 bg-card/30 px-4 pb-5 pt-4 sm:px-5">{children}</div>
+            <div className="space-y-4 border-t border-border/50 bg-muted/5 px-4 pb-5 pt-4">{children}</div>
           </div>
         </div>
-      </div>
+      </Card>
     </section>
   );
 }
