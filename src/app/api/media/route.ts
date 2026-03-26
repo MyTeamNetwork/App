@@ -8,7 +8,11 @@ import { getOrgMembership } from "@/lib/auth/api-helpers";
 import { validateJson, ValidationError, validationErrorResponse } from "@/lib/security/validation";
 import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
 import { galleryUploadIntentSchema, mediaListQuerySchema, GALLERY_ALLOWED_MIME_TYPES } from "@/lib/schemas/media";
-import { decodeCursor, applyCursorFilter, buildCursorResponse } from "@/lib/pagination/cursor";
+import {
+  decodeGalleryCursor,
+  applyGalleryCursorFilter,
+  buildGalleryCursorResponse,
+} from "@/lib/pagination/cursor";
 import { batchGetMediaUrls } from "@/lib/media/urls";
 
 export const dynamic = "force-dynamic";
@@ -70,8 +74,8 @@ export async function GET(request: NextRequest) {
       .select("*, users!media_items_uploaded_by_users_fkey(name)")
       .eq("organization_id", orgId)
       .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
+      .order("gallery_sort_order", { ascending: true })
+      .order("id", { ascending: true })
       .limit(limit + 1);
 
     // Status filter: non-admins can only see approved + own items
@@ -103,13 +107,13 @@ export async function GET(request: NextRequest) {
       query = query.eq("uploaded_by", uploadedBy);
     }
 
-    // Apply cursor
+    // Apply cursor (gallery sort keyset)
     if (cursor) {
-      const decoded = decodeCursor(cursor);
+      const decoded = decodeGalleryCursor(cursor);
       if (!decoded) {
         return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
       }
-      query = applyCursorFilter(query, decoded);
+      query = applyGalleryCursorFilter(query, decoded);
     }
 
     const { data: items, error } = await query;
@@ -118,7 +122,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch media" }, { status: 500 });
     }
 
-    const { data, nextCursor, hasMore } = buildCursorResponse(items || [], limit);
+    const { data, nextCursor, hasMore } = buildGalleryCursorResponse(
+      (items || []) as { gallery_sort_order: number; id: string; created_at: string }[],
+      limit,
+    );
 
     // Generate signed URLs for items with storage paths
     const storageItems = data
@@ -222,6 +229,14 @@ export async function POST(request: NextRequest) {
     // Start in "uploading" state — finalize endpoint transitions to final status
     const initialStatus = "uploading";
 
+    const { error: shiftError } = await (serviceClient as any).rpc("shift_media_gallery_sort_orders", {
+      p_org_id: orgId,
+    });
+    if (shiftError) {
+      console.error("[media/gallery] shift gallery sort failed:", shiftError);
+      return NextResponse.json({ error: "Failed to create media item" }, { status: 500 });
+    }
+
     const { data: mediaItem, error: insertError } = await serviceClient
       .from("media_items")
       .insert({
@@ -237,6 +252,7 @@ export async function POST(request: NextRequest) {
         tags: tags || [],
         taken_at: takenAt || null,
         status: initialStatus,
+        gallery_sort_order: 0,
       })
       .select("id")
       .single();

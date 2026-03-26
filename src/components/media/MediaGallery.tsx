@@ -1,6 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { showFeedback } from "@/lib/feedback/show-feedback";
 import { Button, EmptyState } from "@/components/ui";
 import { MediaFilters } from "./MediaFilters";
@@ -23,6 +40,66 @@ interface MediaGalleryProps {
 type MediaType = "all" | "image" | "video";
 type StatusFilter = "all" | "pending" | "approved" | "rejected";
 type GalleryView = "albums" | "photos";
+
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mq.matches);
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return reduced;
+}
+
+function SortableMediaRow({
+  item,
+  reorderMode,
+  reducedMotion,
+  selectable,
+  selected,
+  onToggle,
+}: {
+  item: MediaItem;
+  reorderMode: boolean;
+  reducedMotion: boolean;
+  selectable: boolean;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id, disabled: !reorderMode });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: reducedMotion ? undefined : transition,
+    opacity: isDragging ? 0.85 : 1,
+    zIndex: isDragging ? 20 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="min-w-0">
+      <MediaCard
+        item={item}
+        onClick={() => {}}
+        selectable={selectable}
+        selected={selected}
+        onToggle={onToggle}
+        reorderMode={reorderMode}
+        dragHandleProps={reorderMode ? { ...attributes, ...listeners } : undefined}
+        isDragging={isDragging}
+      />
+    </div>
+  );
+}
 
 export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: MediaGalleryProps) {
   // View tab state
@@ -57,6 +134,26 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
   // Bulk delete
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+
+  // All Photos — manual order (same permission as upload)
+  const [photosReorderMode, setPhotosReorderMode] = useState(false);
+  const [photosReorderLoading, setPhotosReorderLoading] = useState(false);
+  const itemsRef = useRef<MediaItem[]>([]);
+  itemsRef.current = items;
+  const reducedMotion = usePrefersReducedMotion();
+
+  const galleryFiltersDefault =
+    mediaType === "all" && !year && !tag && (!isAdmin || statusFilter === "all");
+
+  /** Full-org order requires admin (non-admins only see approved items; RPC needs every row). */
+  const canReorderPhotos = canUpload && isAdmin && galleryFiltersDefault;
+
+  const mediaIds = useMemo(() => items.map((i) => i.id), [items]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const fetchMedia = useCallback(
     async (cursor?: string) => {
@@ -123,8 +220,27 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
     setSelectedIds(new Set());
   }, [view]);
 
+  useEffect(() => {
+    if (view !== "photos") {
+      setPhotosReorderMode(false);
+    }
+  }, [view]);
+
+  useEffect(() => {
+    if (!galleryFiltersDefault) {
+      setPhotosReorderMode(false);
+    }
+  }, [galleryFiltersDefault]);
+
+  useEffect(() => {
+    if (photosReorderMode) {
+      setSelectMode(false);
+      setSelectedIds(new Set());
+    }
+  }, [photosReorderMode]);
+
   const loadMore = async () => {
-    if (!nextCursor || loadingMore) return;
+    if (!nextCursor || loadingMore || photosReorderMode) return;
     setLoadingMore(true);
     try {
       const result = await fetchMedia(nextCursor);
@@ -296,6 +412,100 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
     setSelectedIds(new Set());
   }, []);
 
+  const persistPhotosReorder = useCallback(async (next: MediaItem[], previous: MediaItem[]) => {
+    try {
+      const res = await fetch("/api/media/reorder", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, mediaIds: next.map((i) => i.id) }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to save order");
+      }
+      showFeedback("Gallery order saved", "success", { duration: 2500 });
+    } catch (err) {
+      setItems(previous);
+      showFeedback(err instanceof Error ? err.message : "Could not save order", "error", { duration: 4000 });
+    }
+  }, [orgId]);
+
+  const handlePhotosDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const current = itemsRef.current;
+      const oldIndex = current.findIndex((a) => a.id === active.id);
+      const newIndex = current.findIndex((a) => a.id === over.id);
+      if (oldIndex < 0 || newIndex < 0) return;
+      const next = arrayMove(current, oldIndex, newIndex);
+      setItems(next);
+      void persistPhotosReorder(next, current);
+    },
+    [persistPhotosReorder],
+  );
+
+  const fetchEntireGalleryForReorder = useCallback(async () => {
+    const accumulated: MediaItem[] = [];
+    let cursor: string | undefined;
+    let hasNext = true;
+    let guard = 0;
+    while (hasNext && guard < 300) {
+      guard += 1;
+      const p = new URLSearchParams({ orgId, limit: "100" });
+      if (cursor) p.set("cursor", cursor);
+      const res = await fetch(`/api/media?${p.toString()}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to load gallery");
+      }
+      const j = await res.json();
+      const batch = (j.data || []) as MediaItem[];
+      accumulated.push(...batch);
+      cursor = j.nextCursor || undefined;
+      hasNext = Boolean(j.hasMore);
+    }
+    return accumulated;
+  }, [orgId]);
+
+  const beginPhotosReorder = useCallback(async () => {
+    if (!canReorderPhotos) return;
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setPhotosReorderLoading(true);
+    setError(null);
+    try {
+      const all = await fetchEntireGalleryForReorder();
+      if (all.length === 0) return;
+      setItems(all);
+      setNextCursor(null);
+      setHasMore(false);
+      setPhotosReorderMode(true);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to load gallery";
+      setError(msg);
+      showFeedback(msg, "error", { duration: 4000 });
+    } finally {
+      setPhotosReorderLoading(false);
+    }
+  }, [canReorderPhotos, fetchEntireGalleryForReorder]);
+
+  const exitPhotosReorder = useCallback(() => {
+    setPhotosReorderMode(false);
+    setLoading(true);
+    fetchMedia()
+      .then((result) => {
+        setItems(result.data || []);
+        setNextCursor(result.nextCursor || null);
+        setHasMore(result.hasMore || false);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to refresh");
+        setLoading(false);
+      });
+  }, [fetchMedia]);
+
   const handleAlbumPickerSuccess = useCallback((albumId: string, albumName: string) => {
     setShowAlbumPicker(false);
     exitSelectMode();
@@ -361,7 +571,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
               )}
 
               {/* Select mode toggle */}
-              {items.length > 0 && (
+              {items.length > 0 && !photosReorderMode && (
                 <button
                   onClick={() => {
                     if (selectMode) {
@@ -459,6 +669,40 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
             />
           </div>
 
+          {canReorderPhotos && !loading && items.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/30 px-3 py-2.5 mb-4">
+              <p className="text-sm text-muted-foreground">
+                {photosReorderMode
+                  ? "Drag items by the handle to change gallery order."
+                  : "Arrange how photos and videos appear in the gallery."}
+              </p>
+              <button
+                type="button"
+                disabled={photosReorderLoading}
+                onClick={() => {
+                  if (photosReorderMode) {
+                    exitPhotosReorder();
+                  } else {
+                    void beginPhotosReorder();
+                  }
+                }}
+                className={`shrink-0 px-3 py-1.5 text-sm font-medium rounded-full border transition-colors disabled:opacity-50 ${
+                  photosReorderMode
+                    ? "bg-[var(--color-org-secondary)] text-white border-[var(--color-org-secondary)]"
+                    : "border-border bg-card text-foreground hover:bg-muted"
+                }`}
+              >
+                {photosReorderLoading ? "Loading…" : photosReorderMode ? "Done" : "Edit order"}
+              </button>
+            </div>
+          )}
+
+          {canUpload && isAdmin && !loading && items.length > 0 && !galleryFiltersDefault && (
+            <p className="text-sm text-muted-foreground rounded-xl border border-dashed border-border/70 bg-muted/15 px-3 py-2.5 mb-4">
+              Clear filters (all types, all years, no tag, status All) to reorder the gallery.
+            </p>
+          )}
+
           {loading && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -492,19 +736,41 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
 
           {!loading && items.length > 0 && (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {items.map((item) => (
-                  <MediaCard
-                    key={item.id}
-                    item={item}
-                    onClick={() => setSelectedItem(item)}
-                    selectable={selectMode}
-                    selected={selectedIds.has(item.id)}
-                    onToggle={() => toggleItem(item.id)}
-                  />
-                ))}
-              </div>
-              {hasMore && (
+              {photosReorderMode ? (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhotosDragEnd}>
+                  <div
+                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 rounded-2xl border border-dashed border-[var(--color-org-secondary)]/40 bg-muted/20 p-3 sm:p-4"
+                  >
+                    <SortableContext items={mediaIds} strategy={rectSortingStrategy}>
+                      {items.map((item) => (
+                        <SortableMediaRow
+                          key={item.id}
+                          item={item}
+                          reorderMode
+                          reducedMotion={reducedMotion}
+                          selectable={false}
+                          selected={false}
+                          onToggle={() => {}}
+                        />
+                      ))}
+                    </SortableContext>
+                  </div>
+                </DndContext>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {items.map((item) => (
+                    <MediaCard
+                      key={item.id}
+                      item={item}
+                      onClick={() => setSelectedItem(item)}
+                      selectable={selectMode}
+                      selected={selectedIds.has(item.id)}
+                      onToggle={() => toggleItem(item.id)}
+                    />
+                  ))}
+                </div>
+              )}
+              {hasMore && !photosReorderMode && (
                 <div className="flex justify-center mt-8">
                   <Button variant="secondary" onClick={loadMore} isLoading={loadingMore}>
                     Load more
@@ -514,7 +780,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
             </>
           )}
 
-          {selectedItem && !selectMode && (
+          {selectedItem && !selectMode && !photosReorderMode && (
             <MediaDetailModal
               item={selectedItem}
               isAdmin={isAdmin}
@@ -528,7 +794,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
           )}
 
           {/* Floating action bar */}
-          {selectedIds.size > 0 && (
+          {selectedIds.size > 0 && !photosReorderMode && (
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-[var(--card)] border border-[var(--border)] shadow-2xl rounded-2xl px-4 py-3 animate-in slide-in-from-bottom-4 duration-200">
               <span className="text-sm font-medium text-[var(--foreground)] mr-1">
                 {selectedIds.size} selected

@@ -2986,6 +2986,7 @@ export type Database = {
           external_url: string | null
           file_name: string | null
           file_size_bytes: number | null
+          gallery_sort_order: number
           height: number | null
           id: string
           media_type: string
@@ -3013,6 +3014,7 @@ export type Database = {
           external_url?: string | null
           file_name?: string | null
           file_size_bytes?: number | null
+          gallery_sort_order?: number
           height?: number | null
           id?: string
           media_type: string
@@ -3040,6 +3042,7 @@ export type Database = {
           external_url?: string | null
           file_name?: string | null
           file_size_bytes?: number | null
+          gallery_sort_order?: number
           height?: number | null
           id?: string
           media_type?: string

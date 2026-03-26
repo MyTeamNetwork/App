@@ -92,6 +92,13 @@ export const reorderAlbumsSchema = z.object({
 });
 export type ReorderAlbumsInput = z.infer<typeof reorderAlbumsSchema>;
 
+/** Full permutation of non-deleted media item ids for an org gallery. */
+export const reorderMediaGallerySchema = z.object({
+  orgId: baseSchemas.uuid,
+  mediaIds: z.array(baseSchemas.uuid).max(10000),
+});
+export type ReorderMediaGalleryInput = z.infer<typeof reorderMediaGallerySchema>;
+
 // --- Gallery (media_items) schemas with moderation ---
 
 // Status includes "uploading" for the upload-intent flow before finalization
