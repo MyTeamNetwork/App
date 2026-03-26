@@ -221,6 +221,12 @@ export function LinkedInSettingsPanel({
               <p className="text-xs text-muted-foreground">
                 Refresh your headline, company, and school from the public LinkedIn URL above.
               </p>
+              <p className="text-xs text-muted-foreground/70">
+                <span className="font-medium text-muted-foreground">Tip:</span> Your LinkedIn experience, education, and about sections must be set to public for
+                the sync to capture them. Go to LinkedIn &gt; Settings &gt; Visibility &gt; Edit your public
+                profile and ensure all sections are toggled on. If you recently changed these settings,
+                allow 24–48 hours for changes to take effect.
+              </p>
             </div>
           )}
         </div>
@@ -379,6 +385,14 @@ export function LinkedInSettingsPanel({
                 </div>
               )}
             </div>
+          )}
+
+          {connection?.enrichment && !connection.enrichment.jobTitle && !connection.enrichment.school && connection.lastSyncAt && (
+            <InlineBanner variant="info">
+              We couldn&apos;t find your job title or education details. Make sure your LinkedIn experience
+              and education sections are set to public under LinkedIn Settings &gt; Visibility &gt; Edit
+              your public profile. If you recently updated these settings, wait 24–48 hours and sync again.
+            </InlineBanner>
           )}
 
           {connection?.lastSyncAt && (
