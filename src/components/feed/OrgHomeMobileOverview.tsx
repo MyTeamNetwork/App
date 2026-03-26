@@ -55,8 +55,8 @@ export function OrgHomeMobileOverview({ statChips, children }: OrgHomeMobileOver
         </div>
 
         {statChips.length > 0 && (
-          <div className="px-4 pb-4 pt-4 sm:px-5">
-            <div className="grid grid-cols-2 gap-3" role="list">
+          <div className="px-3 pb-4 pt-4 sm:px-5">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3" role="list">
               {statChips.map((chip, index) => {
                 const Icon = STAT_ICONS[chip.iconKey];
                 const oddLast = statChips.length % 2 === 1 && index === statChips.length - 1;
@@ -65,19 +65,21 @@ export function OrgHomeMobileOverview({ statChips, children }: OrgHomeMobileOver
                     key={chip.label}
                     href={chip.href}
                     role="listitem"
-                    className={`flex min-h-[52px] flex-col justify-center gap-2 rounded-xl border border-border/50 bg-background/50 px-4 py-3.5 text-left shadow-sm transition-colors hover:border-primary/35 hover:bg-muted/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card ${
+                    className={`flex min-h-[48px] flex-col justify-center gap-1.5 rounded-xl border border-border/50 bg-background/50 px-2.5 py-3 text-left shadow-sm transition-colors hover:border-primary/35 hover:bg-muted/35 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:min-h-[52px] sm:gap-2 sm:px-3.5 sm:py-3.5 ${
                       oddLast
-                        ? "col-span-2 w-[calc(50%-0.375rem)] max-w-none justify-self-center"
+                        ? "col-span-2 w-[calc(50%-0.25rem)] max-w-none justify-self-center sm:w-[calc(50%-0.375rem)]"
                         : "min-w-0"
                     }`}
                   >
-                    <span className="flex items-start gap-2 text-[11px] font-mono uppercase leading-relaxed tracking-wide text-muted-foreground">
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-muted/30 text-primary/80 ring-1 ring-border/40">
-                        <Icon className="h-4 w-4" aria-hidden />
+                    <span className="flex items-start gap-1.5 sm:gap-2">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-muted/30 text-primary/80 ring-1 ring-border/40 sm:h-7 sm:w-7 sm:rounded-lg">
+                        <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden />
                       </span>
-                      <span className="min-w-0 flex-1 break-words pt-0.5 [overflow-wrap:anywhere]">{chip.label}</span>
+                      <span className="min-w-0 flex-1 hyphens-auto break-words pt-0.5 font-mono text-[clamp(9px,2.4vw,11px)] font-medium uppercase leading-[1.25] tracking-tight text-muted-foreground [overflow-wrap:anywhere]">
+                        {chip.label}
+                      </span>
                     </span>
-                    <span className="break-words pl-9 text-base font-semibold font-mono tabular-nums leading-snug tracking-tight text-foreground [overflow-wrap:anywhere]">
+                    <span className="break-words pl-8 font-mono text-[clamp(0.8125rem,3.2vw,1rem)] font-semibold tabular-nums leading-none tracking-tight text-foreground [overflow-wrap:anywhere] sm:pl-9">
                       {chip.value}
                     </span>
                   </Link>
