@@ -16,6 +16,7 @@ import { ConsentModal } from "@/components/analytics/ConsentModal";
 import { LinkedInUrlPrompt } from "@/components/linkedin/LinkedInUrlPrompt";
 import { AnalyticsProvider } from "@/components/analytics/AnalyticsProvider";
 import { AIPanelProvider } from "@/components/ai-assistant";
+import { JoinOrgGate } from "@/components/join/JoinOrgGate";
 import dynamic from "next/dynamic";
 const AIPanel = dynamic(
   () => import("@/components/ai-assistant/AIPanel").then((m) => m.AIPanel),
@@ -67,14 +68,10 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
 
   if (!orgContext.role && !isDevAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-6">
-        <div className="max-w-lg text-center space-y-4">
-          <h1 className="text-2xl font-bold text-foreground">No membership found</h1>
-          <p className="text-muted-foreground">
-            You are signed in but do not have access to this organization. Please ask an admin to invite you.
-          </p>
-        </div>
-      </div>
+      <JoinOrgGate
+        orgName={orgContext.organization.name}
+        orgSlug={orgSlug}
+      />
     );
   }
 
