@@ -177,7 +177,8 @@ const nextConfig = {
     staleTimes: {
       dynamic: 0,
     },
-    serverComponentsExternalPackages: ["googleapis"],
+    // Load server-side; avoids flaky missing `./vendor-chunks/@supabase.js` after HMR / partial `.next` deletes
+    serverComponentsExternalPackages: ["googleapis", "@supabase/supabase-js", "@supabase/ssr"],
   },
   images: {
     formats: ["image/avif", "image/webp"],
