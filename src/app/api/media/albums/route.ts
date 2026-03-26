@@ -6,7 +6,7 @@ import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limi
 import { getOrgMembership } from "@/lib/auth/api-helpers";
 import { validateJson, ValidationError, validationErrorResponse, baseSchemas } from "@/lib/security/validation";
 import { createAlbumSchema } from "@/lib/schemas/media";
-import { batchGetMediaUrls } from "@/lib/media/urls";
+import { batchGetGridPreviewUrls } from "@/lib/media/urls";
 import { shouldExposeAlbumCover } from "@/lib/media/albums";
 import { z } from "zod";
 
@@ -88,12 +88,12 @@ export async function GET(request: NextRequest) {
     if (coversToFetch.length > 0) {
       const { data: coverItems } = await serviceClient
         .from("media_items")
-        .select("id, storage_path, mime_type, status")
+        .select("id, storage_path, mime_type, media_type, status")
         .in("id", coversToFetch)
         .is("deleted_at", null);
 
       if (coverItems && coverItems.length > 0) {
-        const urlMap = await batchGetMediaUrls(
+        const urlMap = await batchGetGridPreviewUrls(
           serviceClient,
           coverItems
             .filter((ci) => shouldExposeAlbumCover(ci))
@@ -102,11 +102,12 @@ export async function GET(request: NextRequest) {
               id: ci.id,
               storage_path: ci.storage_path as string,
               mime_type: (ci.mime_type as string) || "application/octet-stream",
+              media_type: ci.media_type as "image" | "video",
             })),
         );
         for (const [id, urls] of urlMap) {
-          if (urls.thumbnailUrl || urls.url) {
-            coverUrlMap.set(id, urls.thumbnailUrl || urls.url || "");
+          if (urls.thumbnailUrl) {
+            coverUrlMap.set(id, urls.thumbnailUrl);
           }
         }
       }

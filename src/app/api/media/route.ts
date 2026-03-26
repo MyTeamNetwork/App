@@ -13,7 +13,7 @@ import {
   applyGalleryCursorFilter,
   buildGalleryCursorResponse,
 } from "@/lib/pagination/cursor";
-import { batchGetMediaUrls } from "@/lib/media/urls";
+import { batchGetGridPreviewUrls } from "@/lib/media/urls";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -134,19 +134,21 @@ export async function GET(request: NextRequest) {
         id: item.id as string,
         storage_path: item.storage_path as string,
         mime_type: (item.mime_type as string) || "application/octet-stream",
+        media_type: item.media_type as "image" | "video",
       }));
 
     const urlMap = storageItems.length > 0
-      ? await batchGetMediaUrls(serviceClient, storageItems)
+      ? await batchGetGridPreviewUrls(serviceClient, storageItems)
       : new Map();
 
-    // Attach URLs to items
+    // Grid payload: thumbnail transform only; full URLs via GET /api/media/[id]
     const enrichedData = data.map((item: Record<string, unknown>) => {
       const urls = urlMap.get(item.id as string);
+      const hasStorage = Boolean(item.storage_path);
       return {
         ...item,
-        url: urls?.url || item.external_url || null,
-        thumbnail_url: urls?.thumbnailUrl || item.thumbnail_url || null,
+        url: hasStorage ? null : ((item.external_url as string | null) ?? null),
+        thumbnail_url: urls?.thumbnailUrl ?? (item.thumbnail_url as string | null) ?? null,
       };
     });
 
@@ -229,6 +231,7 @@ export async function POST(request: NextRequest) {
     // Start in "uploading" state — finalize endpoint transitions to final status
     const initialStatus = "uploading";
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated client surface
     const { error: shiftError } = await (serviceClient as any).rpc("shift_media_gallery_sort_orders", {
       p_org_id: orgId,
     });

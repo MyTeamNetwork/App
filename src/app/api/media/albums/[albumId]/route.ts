@@ -5,7 +5,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { getOrgMembership } from "@/lib/auth/api-helpers";
 import { validateJson, ValidationError, validationErrorResponse, baseSchemas, safeString } from "@/lib/security/validation";
-import { batchGetMediaUrls } from "@/lib/media/urls";
+import { batchGetGridPreviewUrls } from "@/lib/media/urls";
 import { getAlbumCoverValidationError } from "@/lib/media/albums";
 import { decodeCursor } from "@/lib/pagination/cursor";
 import { z } from "zod";
@@ -151,18 +151,20 @@ export async function GET(request: NextRequest, { params }: Params) {
         id: item.id as string,
         storage_path: item.storage_path as string,
         mime_type: (item.mime_type as string) || "application/octet-stream",
+        media_type: item.media_type as "image" | "video",
       }));
 
     const urlMap = storageItems.length > 0
-      ? await batchGetMediaUrls(serviceClient, storageItems)
+      ? await batchGetGridPreviewUrls(serviceClient, storageItems)
       : new Map();
 
     const enriched = cleanData.map((item: Record<string, unknown>) => {
       const urls = urlMap.get(item.id as string);
+      const hasStorage = Boolean(item.storage_path);
       return {
         ...item,
-        url: urls?.url || item.external_url || null,
-        thumbnail_url: urls?.thumbnailUrl || item.thumbnail_url || null,
+        url: hasStorage ? null : ((item.external_url as string | null) ?? null),
+        thumbnail_url: urls?.thumbnailUrl ?? (item.thumbnail_url as string | null) ?? null,
       };
     });
 
