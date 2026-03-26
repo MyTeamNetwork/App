@@ -1,9 +1,10 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { filterAnnouncementsForUser } from "@/lib/announcements";
+import { UpcomingEventsWidget } from "./UpcomingEventsWidget";
+import { RecentAnnouncementsWidget } from "./RecentAnnouncementsWidget";
+import { MemberHighlightsWidget } from "./MemberHighlightsWidget";
 import type { OrgRole } from "@/lib/auth/role-utils";
-import type { Announcement, Database, MembershipStatus } from "@/types/database";
-import { FeedSidebarWidgets, type FeedSidebarData } from "./FeedSidebarWidgets";
+import type { Announcement, MembershipStatus } from "@/types/database";
 
 interface FeedSidebarProps {
   orgSlug: string;
@@ -13,13 +14,9 @@ interface FeedSidebarProps {
   userId: string | null;
 }
 
-export async function loadFeedSidebarData(
-  supabase: SupabaseClient<Database>,
-  orgId: string,
-  role: OrgRole | null,
-  status: string | null,
-  userId: string | null,
-): Promise<FeedSidebarData> {
+export async function FeedSidebar({ orgSlug, orgId, role, status, userId }: FeedSidebarProps) {
+  const supabase = await createClient();
+
   const [
     { data: upcomingEvents, error: eventsError },
     { data: recentAnnouncements, error: announcementsError },
@@ -59,21 +56,11 @@ export async function loadFeedSidebarData(
     { role, status: status as MembershipStatus | null, userId },
   ).slice(0, 3);
 
-  return {
-    upcomingEvents: upcomingEvents || [],
-    visibleAnnouncements: visibleAnnouncements.map((a) => ({
-      id: a.id,
-      title: a.title,
-      body: a.body,
-      published_at: a.published_at,
-    })),
-    newMembers: newMembers || [],
-  };
-}
-
-/** Renders sidebar widgets only; prefer `loadFeedSidebarData` + `FeedSidebarWidgets` on the home page to avoid duplicate queries. */
-export async function FeedSidebar({ orgSlug, orgId, role, status, userId }: FeedSidebarProps) {
-  const supabase = await createClient();
-  const data = await loadFeedSidebarData(supabase, orgId, role, status, userId);
-  return <FeedSidebarWidgets orgSlug={orgSlug} data={data} />;
+  return (
+    <div className="space-y-4">
+      <UpcomingEventsWidget events={upcomingEvents || []} orgSlug={orgSlug} />
+      <RecentAnnouncementsWidget announcements={visibleAnnouncements} orgSlug={orgSlug} />
+      <MemberHighlightsWidget members={newMembers || []} orgSlug={orgSlug} />
+    </div>
+  );
 }

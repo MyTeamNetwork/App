@@ -32,10 +32,7 @@ describe("Feed rework integration", () => {
   it("home page has feed grid structure with sidebar", () => {
     const homePage = readFileSync("src/app/[orgSlug]/page.tsx", "utf-8");
     assert.ok(homePage.includes("xl:grid-cols-"), "home page should have grid columns");
-    assert.ok(
-      homePage.includes("loadFeedSidebarData") && homePage.includes("FeedSidebarWidgets"),
-      "home page should load feed sidebar data once and render widgets",
-    );
+    assert.ok(homePage.includes("FeedSidebar"), "home page should render FeedSidebar");
   });
 
   it("no database migration was needed", async () => {
