@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { OrgSidebar } from "./OrgSidebar";
@@ -18,13 +19,19 @@ interface MobileNavProps {
   currentMemberAvatar?: string | null;
 }
 
+const MOBILE_DRAWER_ID = "org-mobile-drawer";
+
 export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAccess = false, hasParentsAccess = false, currentMemberId, currentMemberName, currentMemberAvatar }: MobileNavProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [hasEverOpened, setHasEverOpened] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const basePath = `/${organization.slug}`;
-  // Prevent caching issues by forcing re-render of menu when open state changes
   const toggleMenu = () => setIsOpen(!isOpen);
   const closeMenu = () => setIsOpen(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -36,13 +43,62 @@ export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAcc
   }, [isOpen]);
 
   useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
     if (isOpen) setHasEverOpened(true);
   }, [isOpen]);
 
+  const drawerAndOverlay =
+    mounted ? (
+      <>
+        {isOpen && (
+          <button
+            type="button"
+            className="fixed inset-0 z-[55] cursor-pointer border-0 bg-background/85 p-0 backdrop-blur-sm lg:hidden"
+            aria-label="Close menu"
+            onClick={closeMenu}
+          />
+        )}
+        <div
+          id={MOBILE_DRAWER_ID}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Organization navigation"
+          className={`fixed bottom-0 left-0 top-0 z-[60] w-[min(18rem,88vw)] transform overscroll-contain border-r border-border bg-card transition-transform duration-300 ease-in-out lg:hidden ${
+            isOpen ? "translate-x-0 shadow-xl" : "-translate-x-full pointer-events-none"
+          }`}
+        >
+          {hasEverOpened && (
+            <OrgSidebar
+              organization={organization}
+              role={role}
+              isDevAdmin={isDevAdmin}
+              hasAlumniAccess={hasAlumniAccess}
+              hasParentsAccess={hasParentsAccess}
+              currentMemberId={currentMemberId}
+              currentMemberName={currentMemberName}
+              currentMemberAvatar={currentMemberAvatar}
+              className="h-full max-h-dvh border-0 pb-[env(safe-area-inset-bottom,0px)] pt-[env(safe-area-inset-top,0px)]"
+              onClose={closeMenu}
+            />
+          )}
+        </div>
+      </>
+    ) : null;
+
   return (
     <>
-      {/* Top Bar (Mobile Only) */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 h-16 bg-card border-b border-border z-30 flex items-center justify-between px-4">
+      {/* Top Bar (Mobile Only) — z above AI edge tab (z-44) */}
+      <header className="lg:hidden fixed left-0 right-0 top-0 z-[46] flex min-h-[calc(4rem+env(safe-area-inset-top,0px))] items-center justify-between border-b border-border bg-card px-4 pt-[env(safe-area-inset-top,0px)]">
         <Link href={basePath} className="flex items-center gap-3 min-w-0">
           {organization.logo_url ? (
             <div className="relative h-8 w-8 rounded-lg overflow-hidden">
@@ -72,53 +128,27 @@ export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAcc
 
         <div className="flex items-center gap-1">
           <button
+            type="button"
             onClick={toggleMenu}
-            className="p-2 -mr-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-lg"
-            aria-label="Toggle menu"
+            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+            aria-expanded={isOpen}
+            aria-controls={MOBILE_DRAWER_ID}
+            aria-label={isOpen ? "Close menu" : "Open menu"}
           >
-          {isOpen ? (
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          ) : (
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-            </svg>
-          )}
+            {isOpen ? (
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            )}
           </button>
         </div>
       </header>
 
-      {/* Drawer Overlay */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 lg:hidden"
-          onClick={closeMenu}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Slide-out Drawer */}
-      <div
-        className={`fixed top-0 bottom-0 left-0 w-64 bg-card z-50 transform transition-transform duration-300 ease-in-out lg:hidden overscroll-contain ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        {hasEverOpened && (
-          <OrgSidebar
-            organization={organization}
-            role={role}
-            isDevAdmin={isDevAdmin}
-            hasAlumniAccess={hasAlumniAccess}
-            hasParentsAccess={hasParentsAccess}
-            currentMemberId={currentMemberId}
-            currentMemberName={currentMemberName}
-            currentMemberAvatar={currentMemberAvatar}
-            className="h-full border-r border-border"
-            onClose={closeMenu}
-          />
-        )}
-      </div>
+      {drawerAndOverlay && createPortal(drawerAndOverlay, document.body)}
     </>
   );
 }

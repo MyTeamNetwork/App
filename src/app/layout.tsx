@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ErrorBoundaryProvider } from "@/components/errors/ErrorBoundaryProvider";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
@@ -21,6 +21,11 @@ export const metadata: Metadata = {
   verification: {
     google: "ABHMicqF2aoLD1T2krG0zYWL9PJXgaQZkMtfxsY46ug",
   },
+};
+
+/** Lets iOS expose env(safe-area-inset-*) for notches and home indicator. */
+export const viewport: Viewport = {
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

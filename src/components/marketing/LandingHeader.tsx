@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { ButtonLink } from "@/components/ui";
@@ -49,10 +50,40 @@ function useActiveSection(): string | null {
 
 export function LandingHeader() {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [overlayTop, setOverlayTop] = useState(0);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const headerBarRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const firstNavLinkRef = useRef<HTMLAnchorElement>(null);
+  const prevOpenRef = useRef(false);
   const activeSection = useActiveSection();
 
   const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useLayoutEffect(() => {
+    const bar = headerBarRef.current;
+    if (!bar) return;
+
+    function measure() {
+      const el = headerBarRef.current;
+      if (!el) return;
+      setOverlayTop(el.getBoundingClientRect().height);
+    }
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(bar);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
 
   // Close on Escape
   useEffect(() => {
@@ -64,20 +95,6 @@ export function LandingHeader() {
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, close]);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-
-    function handleClick(e: MouseEvent) {
-      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
-        close();
-      }
-    }
-
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
   }, [open, close]);
 
   // Lock body scroll when drawer is open
@@ -92,20 +109,86 @@ export function LandingHeader() {
     };
   }, [open]);
 
+  // Focus: open → first nav link; close → menu button
+  useEffect(() => {
+    if (open) {
+      const id = requestAnimationFrame(() => firstNavLinkRef.current?.focus());
+      return () => cancelAnimationFrame(id);
+    }
+    return undefined;
+  }, [open]);
+
+  useEffect(() => {
+    if (prevOpenRef.current && !open) {
+      menuButtonRef.current?.focus();
+    }
+    prevOpenRef.current = open;
+  }, [open]);
+
+  const mobileMenu =
+    mounted && open ? (
+      <div
+        className="fixed left-0 right-0 bottom-0 z-[100] md:hidden"
+        style={{ top: overlayTop }}
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-landing-navy/92 cursor-pointer border-0 p-0"
+          aria-label="Close menu"
+          onClick={close}
+        />
+        <div
+          id="landing-mobile-nav"
+          ref={drawerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Site navigation"
+          className="landing-mobile-nav-drawer absolute right-0 top-0 h-full w-72 max-w-[80vw] bg-landing-navy border-l border-landing-cream/10 shadow-2xl"
+        >
+          <nav className="flex flex-col p-6 gap-1">
+            {NAV_LINKS.map((link, index) => (
+              <Link
+                key={link.href}
+                ref={index === 0 ? firstNavLinkRef : undefined}
+                href={link.href}
+                onClick={close}
+                className="px-4 py-3.5 min-h-[44px] flex items-center rounded-lg text-landing-cream/70 hover:text-landing-cream hover:bg-landing-cream/5 transition-colors text-base font-medium"
+              >
+                {link.label}
+              </Link>
+            ))}
+
+            <div className="border-t border-landing-cream/10 mt-4 pt-4">
+              <ButtonLink
+                href="/auth/signup"
+                variant="custom"
+                className="w-full min-h-[44px] inline-flex items-center justify-center bg-landing-green-dark hover:bg-[#15803d] text-white font-semibold text-center"
+              >
+                Get Started
+              </ButtonLink>
+            </div>
+          </nav>
+        </div>
+      </div>
+    ) : null;
+
   return (
     <header className="relative z-20 sticky top-0 bg-landing-navy/95 backdrop-blur-md border-b border-landing-cream/10">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-        <Link href="#top" className="group flex items-center gap-2.5">
+      <div
+        ref={headerBarRef}
+        className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-2"
+      >
+        <Link href="#top" className="group flex items-center gap-2 sm:gap-2.5 min-w-0 shrink">
           <Image
             src="/TeamNetwor.png"
             alt=""
             width={541}
             height={303}
             sizes="28px"
-            className="h-7 w-auto object-contain"
+            className="h-7 w-auto object-contain shrink-0"
             aria-hidden="true"
           />
-          <span className="font-display text-base sm:text-xl font-bold tracking-tight text-landing-cream">
+          <span className="font-display text-[0.9375rem] sm:text-xl font-bold tracking-tight text-landing-cream truncate">
             <span className="text-landing-green">Team</span>
             <span className="text-landing-cream">Network</span>
           </span>
@@ -128,30 +211,31 @@ export function LandingHeader() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <ButtonLink
             href="/auth/login"
             variant="custom"
             size="sm"
-            className="sm:px-4 sm:py-2.5 text-landing-cream/80 hover:text-landing-cream hover:bg-landing-cream/10"
+            className="whitespace-nowrap shrink-0 sm:px-4 sm:py-2.5 text-landing-cream/80 hover:text-landing-cream hover:bg-landing-cream/10"
           >
             Sign In
           </ButtonLink>
           <ButtonLink
             href="/auth/signup"
             variant="custom"
-            className="bg-landing-green-dark hover:bg-[#15803d] text-white font-semibold px-3 sm:px-5"
+            className="max-sm:hidden bg-landing-green-dark hover:bg-[#15803d] text-white font-semibold px-3 sm:px-5"
           >
             Get Started
           </ButtonLink>
 
-          {/* Hamburger button — mobile only */}
           <button
+            ref={menuButtonRef}
             type="button"
             onClick={() => setOpen((prev) => !prev)}
             aria-expanded={open}
+            aria-controls="landing-mobile-nav"
             aria-label={open ? "Close menu" : "Open menu"}
-            className="md:hidden ml-1 p-2 rounded-lg text-landing-cream/70 hover:text-landing-cream hover:bg-landing-cream/10 transition-colors"
+            className="md:hidden min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-lg text-landing-cream/70 hover:text-landing-cream hover:bg-landing-cream/10 transition-colors"
           >
             <svg
               className="w-6 h-6"
@@ -170,53 +254,7 @@ export function LandingHeader() {
         </div>
       </div>
 
-      {/* Mobile drawer overlay */}
-      {open && (
-        <div className="fixed inset-0 top-[65px] z-40 bg-black/60 md:hidden">
-          <div
-            ref={drawerRef}
-            className="absolute right-0 top-0 h-full w-72 max-w-[80vw] bg-landing-navy border-l border-landing-cream/10 shadow-2xl animate-slide-in-right"
-          >
-            <nav className="flex flex-col p-6 gap-1">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={close}
-                  className="px-4 py-3 rounded-lg text-landing-cream/70 hover:text-landing-cream hover:bg-landing-cream/5 transition-colors text-base font-medium"
-                >
-                  {link.label}
-                </Link>
-              ))}
-
-              <div className="border-t border-landing-cream/10 mt-4 pt-4">
-                <ButtonLink
-                  href="/auth/signup"
-                  variant="custom"
-                  className="w-full bg-landing-green-dark hover:bg-[#15803d] text-white font-semibold text-center"
-                >
-                  Get Started
-                </ButtonLink>
-              </div>
-            </nav>
-          </div>
-
-          {/* Slide-in animation */}
-          <style jsx>{`
-            @keyframes slideInRight {
-              from {
-                transform: translateX(100%);
-              }
-              to {
-                transform: translateX(0);
-              }
-            }
-            .animate-slide-in-right {
-              animation: slideInRight 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-            }
-          `}</style>
-        </div>
-      )}
+      {mobileMenu && createPortal(mobileMenu, document.body)}
     </header>
   );
 }

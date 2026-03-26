@@ -9,9 +9,12 @@ import { getCachedDonationStats } from "@/lib/cached-queries";
 
 import { FeedComposer } from "@/components/feed/FeedComposer";
 import { FeedList } from "@/components/feed/FeedList";
-import { FeedSidebar } from "@/components/feed/FeedSidebar";
+import { loadFeedSidebarData } from "@/components/feed/FeedSidebar";
+import { FeedSidebarWidgets } from "@/components/feed/FeedSidebarWidgets";
+import { FeedOverviewResponsive } from "@/components/feed/FeedOverviewResponsive";
 import { CompactStatsWidget } from "@/components/feed/CompactStatsWidget";
 import type { StatItem } from "@/components/feed/CompactStatsWidget";
+import type { FeedOverviewStatChip } from "@/components/feed/feed-overview-types";
 import type { PollMetadata } from "@/components/feed/types";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +49,7 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
     { count: eventsCount },
     { data: posts, error: postsError, count: postsCount },
     userName,
+    feedSidebarData,
   ] = await Promise.all([
     queryClient.from("members").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null).is("graduated_at", null).eq("status", "active"),
     queryClient.from("alumni").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null),
@@ -61,6 +65,7 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
     orgCtx.userId
       ? supabase.from("users").select("name").eq("id", orgCtx.userId).maybeSingle().then((r) => r.data)
       : Promise.resolve(null),
+    loadFeedSidebarData(supabase, org.id, orgCtx.role, orgCtx.status, orgCtx.userId),
   ]);
 
   const donationStat = await getCachedDonationStats(org.id);
@@ -171,6 +176,21 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
     },
   ];
 
+  const feedOverviewStatChips: FeedOverviewStatChip[] = [
+    { label: "Active Members", value: membersCount || 0, href: `/${orgSlug}/members`, iconKey: "users" },
+    { label: "Alumni", value: alumniCount || 0, href: `/${orgSlug}/alumni`, iconKey: "graduation-cap" },
+    ...(orgCtx.hasParentsAccess && (parentsCount ?? 0) > 0 && (orgCtx.role === "admin" || orgCtx.role === "active_member" || orgCtx.role === "parent")
+      ? [{ label: "Parents", value: parentsCount || 0, href: `/${orgSlug}/parents`, iconKey: "heart" as const }]
+      : []),
+    { label: "Upcoming Events", value: eventsCount || 0, href: `/${orgSlug}/events`, iconKey: "calendar-clock" },
+    {
+      label: "Total Donations",
+      value: `$${totalDonations.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+      href: `/${orgSlug}/donations`,
+      iconKey: "hand-heart",
+    },
+  ];
+
   return (
     <div className="animate-fade-in">
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
@@ -198,19 +218,11 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
           />
         </div>
 
-        {/* Right sidebar */}
-        <aside className="hidden xl:block">
-          <div className="sticky top-8 space-y-4">
-            <CompactStatsWidget stats={stats} />
-            <FeedSidebar
-              orgSlug={orgSlug}
-              orgId={org.id}
-              role={orgCtx.role}
-              status={orgCtx.status}
-              userId={orgCtx.userId}
-            />
-          </div>
-        </aside>
+        {/* Right rail (xl+ sticky) + collapsible org overview below xl */}
+        <FeedOverviewResponsive statChips={feedOverviewStatChips}>
+          <CompactStatsWidget stats={stats} />
+          <FeedSidebarWidgets orgSlug={orgSlug} data={feedSidebarData} />
+        </FeedOverviewResponsive>
       </div>
     </div>
   );

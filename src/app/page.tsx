@@ -91,7 +91,7 @@ export default async function LandingPage() {
       <LandingHeader />
 
       {/* Hero - "The Emergence" */}
-      <section className="relative z-10 pt-12 lg:pt-20 pb-20 px-6">
+      <section className="relative z-10 pt-12 lg:pt-20 pb-[max(5rem,env(safe-area-inset-bottom,0px))] lg:pb-20 px-6">
         {/* Stadium Light Beams */}
         <StadiumLightBeams />
 
@@ -179,12 +179,12 @@ export default async function LandingPage() {
 
       {/* How It Works - "The Playbook" (moved before Features) */}
       <section className="relative z-10 py-24 px-6">
-        <div className="chalkboard max-w-5xl mx-auto rounded-2xl p-8 sm:p-12">
-          <div className="text-center mb-16">
+        <div className="chalkboard max-w-5xl mx-auto rounded-2xl p-8 max-md:py-12 max-md:px-7 sm:p-12">
+          <div className="text-center mb-12 max-md:mb-10 md:mb-16">
             <h2 className="scroll-reveal font-display text-4xl sm:text-5xl font-bold">
               The <span className="text-landing-cream">Playbook</span>
             </h2>
-            <p className="scroll-reveal text-landing-cream/50 mt-4">Your game plan to get started</p>
+            <p className="scroll-reveal text-landing-cream/50 mt-4 max-md:mt-3">Your game plan to get started</p>
           </div>
 
           {/* Desktop: horizontal layout with play-route connectors */}
@@ -210,18 +210,22 @@ export default async function LandingPage() {
           </div>
 
           {/* Mobile: vertical timeline */}
-          <div className="md:hidden mobile-timeline space-y-10">
+          <div className="md:hidden mobile-timeline space-y-14">
             {[
               { step: "1", title: "Create your org", desc: "Sign up and customize your team\u2019s profile, colors, and settings." },
               { step: "2", title: "Invite members", desc: "Share your unique invite code or send email invitations." },
               { step: "3", title: "Build your legacy", desc: "Track events, manage donations, and connect generations." },
             ].map((item) => (
               <div key={item.step} className="scroll-reveal relative">
-                <div className="play-marker mb-4">
+                <div className="play-marker mb-4 max-md:mb-0">
                   <span className="font-display font-bold text-xl text-landing-cream">{item.step}</span>
                 </div>
-                <h3 className="font-display font-semibold text-xl text-landing-cream mb-2">{item.title}</h3>
-                <p className="text-landing-cream/50 text-sm leading-relaxed">{item.desc}</p>
+                <h3 className="font-display font-semibold text-lg sm:text-xl text-landing-cream mb-2 max-md:tracking-tight">
+                  {item.title}
+                </h3>
+                <p className="text-landing-cream/50 text-sm leading-relaxed max-md:leading-relaxed max-md:pr-1">
+                  {item.desc}
+                </p>
               </div>
             ))}
           </div>
