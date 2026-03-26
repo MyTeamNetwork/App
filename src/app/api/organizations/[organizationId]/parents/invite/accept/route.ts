@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { validateJson, ValidationError, baseSchemas, sanitizeIlikeInput } from "@/lib/security/validation";
 import { safeString } from "@/lib/schemas";
+import { claimOrgInviteUse } from "./claim-org-invite-use";
 
 const acceptInviteSchema = z.object({
   code: z.string().min(1).max(200),
@@ -136,97 +137,6 @@ async function claimLegacyInvite(
         .eq("status", "accepted");
     },
   };
-}
-
-async function claimOrgInviteUse(
-  serviceSupabase: ServiceSupabase,
-  inviteId: string,
-  respond: (payload: unknown, status?: number) => NextResponse,
-) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const { data: current, error: currentError } = await serviceSupabase
-      .from("organization_invites")
-      .select("id,organization_id,role,expires_at,revoked_at,uses_remaining")
-      .eq("id", inviteId)
-      .eq("role", "parent")
-      .maybeSingle();
-
-    if (currentError || !current) {
-      if (currentError) {
-        console.error("[org/parents/invite/accept] Org invite reload error:", currentError);
-        return { response: respond({ error: "Failed to process invite" }, 500) };
-      }
-      return { response: respond({ error: "Invalid invite code" }, 400) };
-    }
-
-    const now = new Date();
-    if (current.organization_id == null) {
-      return { response: respond({ error: "Invalid invite code" }, 400) };
-    }
-    if (current.revoked_at) {
-      return { response: respond({ error: "Invite has been revoked" }, 410) };
-    }
-    if (current.expires_at && new Date(current.expires_at) < now) {
-      return { response: respond({ error: "Invite has expired" }, 410) };
-    }
-    if (current.uses_remaining == null) {
-      return {
-        organizationId: current.organization_id,
-        rollback: async () => {},
-      };
-    }
-    if (current.uses_remaining <= 0) {
-      return { response: respond({ error: "Invite has no uses remaining" }, 409) };
-    }
-
-    const claimNow = new Date().toISOString();
-    const nextUsesRemaining = current.uses_remaining - 1;
-    let claimQuery = serviceSupabase
-      .from("organization_invites")
-      .update({ uses_remaining: nextUsesRemaining })
-      .eq("id", current.id)
-      .eq("role", "parent")
-      .eq("uses_remaining", current.uses_remaining)
-      .is("revoked_at", null);
-
-    if (current.expires_at !== null) {
-      claimQuery = claimQuery.gt("expires_at", claimNow);
-    }
-
-    const { data: claimedRows, error: claimError } = await claimQuery.select("id");
-
-    if (claimError) {
-      console.error("[org/parents/invite/accept] Org invite claim error:", claimError);
-      return { response: respond({ error: "Failed to process invite" }, 500) };
-    }
-
-    if (claimedRows && claimedRows.length > 0) {
-      return {
-        organizationId: current.organization_id,
-        rollback: async () => {
-          await serviceSupabase
-            .from("organization_invites")
-            .update({ uses_remaining: current.uses_remaining })
-            .eq("id", current.id)
-            .eq("uses_remaining", nextUsesRemaining);
-        },
-      };
-    }
-  }
-
-  const { data: current } = await serviceSupabase
-    .from("organization_invites")
-    .select("expires_at,revoked_at,uses_remaining")
-    .eq("id", inviteId)
-    .eq("role", "parent")
-    .maybeSingle();
-
-  if (current?.revoked_at) return { response: respond({ error: "Invite has been revoked" }, 410) };
-  if (current?.expires_at && new Date(current.expires_at) < new Date()) {
-    return { response: respond({ error: "Invite has expired" }, 410) };
-  }
-
-  return { response: respond({ error: "Invite has no uses remaining" }, 409) };
 }
 
 async function grantParentMembership(
