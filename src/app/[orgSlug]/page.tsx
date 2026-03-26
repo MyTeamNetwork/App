@@ -6,12 +6,16 @@ import { resolveDataClient } from "@/lib/auth/dev-admin";
 import { fetchMediaForEntities } from "@/lib/media/fetch";
 
 import { getCachedDonationStats } from "@/lib/cached-queries";
+import { loadFeedSidebarData } from "@/lib/feed/load-feed-sidebar-data";
 
 import { FeedComposer } from "@/components/feed/FeedComposer";
 import { FeedList } from "@/components/feed/FeedList";
 import { FeedSidebar } from "@/components/feed/FeedSidebar";
+import { FeedSidebarWidgets } from "@/components/feed/FeedSidebarWidgets";
+import { OrgHomeMobileOverview } from "@/components/feed/OrgHomeMobileOverview";
 import { CompactStatsWidget } from "@/components/feed/CompactStatsWidget";
 import type { StatItem } from "@/components/feed/CompactStatsWidget";
+import type { MobileStatChip } from "@/components/feed/feed-mobile-stat-types";
 import type { PollMetadata } from "@/components/feed/types";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +42,7 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
   const limit = 25;
   const offset = (page - 1) * limit;
 
-  // Fetch stats + feed posts in parallel
+  // Fetch stats + feed posts + sidebar widget data in parallel
   const [
     { count: membersCount },
     { count: alumniCount },
@@ -46,6 +50,7 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
     { count: eventsCount },
     { data: posts, error: postsError, count: postsCount },
     userName,
+    feedSidebarData,
   ] = await Promise.all([
     queryClient.from("members").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null).is("graduated_at", null).eq("status", "active"),
     queryClient.from("alumni").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null),
@@ -61,6 +66,12 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
     orgCtx.userId
       ? supabase.from("users").select("name").eq("id", orgCtx.userId).maybeSingle().then((r) => r.data)
       : Promise.resolve(null),
+    loadFeedSidebarData({
+      orgId: org.id,
+      role: orgCtx.role,
+      status: orgCtx.status,
+      userId: orgCtx.userId,
+    }),
   ]);
 
   const donationStat = await getCachedDonationStats(org.id);
@@ -171,6 +182,21 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
     },
   ];
 
+  const mobileStatChips: MobileStatChip[] = [
+    { label: "Active Members", value: String(membersCount || 0), href: `/${orgSlug}/members`, iconKey: "users" },
+    { label: "Alumni", value: String(alumniCount || 0), href: `/${orgSlug}/alumni`, iconKey: "graduation-cap" },
+    ...(orgCtx.hasParentsAccess && (parentsCount ?? 0) > 0 && (orgCtx.role === "admin" || orgCtx.role === "active_member" || orgCtx.role === "parent")
+      ? [{ label: "Parents", value: String(parentsCount || 0), href: `/${orgSlug}/parents`, iconKey: "heart" as const }]
+      : []),
+    { label: "Upcoming Events", value: String(eventsCount || 0), href: `/${orgSlug}/events`, iconKey: "calendar-clock" },
+    {
+      label: "Total Donations",
+      value: `$${totalDonations.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
+      href: `/${orgSlug}/donations`,
+      iconKey: "hand-heart",
+    },
+  ];
+
   return (
     <div className="animate-fade-in">
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
@@ -181,6 +207,11 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
               <FeedComposer orgId={org.id} userName={userName?.name || undefined} />
             </div>
           )}
+
+          <OrgHomeMobileOverview statChips={mobileStatChips}>
+            <FeedSidebarWidgets orgSlug={orgSlug} data={feedSidebarData} />
+          </OrgHomeMobileOverview>
+
           <div className="flex items-center gap-3 mb-4">
             <div className="h-px flex-1 bg-border/50" />
             <span className="text-[10px] font-mono font-semibold uppercase tracking-widest text-muted-foreground/50">
@@ -208,6 +239,7 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
               role={orgCtx.role}
               status={orgCtx.status}
               userId={orgCtx.userId}
+              data={feedSidebarData}
             />
           </div>
         </aside>
