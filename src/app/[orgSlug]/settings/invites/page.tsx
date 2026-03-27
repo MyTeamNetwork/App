@@ -191,6 +191,7 @@ export default function InvitesPage() {
         showForm={showInviteForm}
         onShowFormChange={setShowInviteForm}
         onAlumniInviteCreated={handleQuotaRefresh}
+        orgRequireApproval={requireApproval}
       />
 
       <MembershipPanel

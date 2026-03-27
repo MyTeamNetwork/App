@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "@/components/layout";
-import { Button, Card, Badge, Select, Input } from "@/components/ui";
-import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
-import { QRCodeDisplay } from "@/components/invites";
-import { getRoleBadgeVariant, getRoleLabel } from "@/lib/auth/role-display";
+import { Button, Card, Badge } from "@/components/ui";
+import { getRoleLabel } from "@/lib/auth/role-display";
 import { formatShortDate } from "@/lib/utils/dates";
 
 interface PendingMember {
@@ -18,78 +17,31 @@ interface PendingMember {
   users?: { name: string | null; email: string | null };
 }
 
-interface Invite {
-  id: string;
-  code: string;
-  token: string | null;
-  role: string;
-  uses_remaining: number | null;
-  expires_at: string | null;
-  revoked_at: string | null;
-  created_at: string;
-}
-
-function generateCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
-
-function generateToken(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let token = "";
-  for (let i = 0; i < 32; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return token;
-}
-
 export default function ApprovalsPage() {
   const params = useParams();
   const orgSlug = params.orgSlug as string;
 
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
   const [pendingAlumni, setPendingAlumni] = useState<PendingMember[]>([]);
-  const [invites, setInvites] = useState<Invite[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
-  const [requireApproval, setRequireApproval] = useState(false);
-  const [isSavingToggle, setIsSavingToggle] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
 
-  // New invite form state
-  const [showInviteForm, setShowInviteForm] = useState(false);
-  const [newRole, setNewRole] = useState<"active_member" | "admin" | "alumni">("active_member");
-  const [newUses, setNewUses] = useState<string>("");
-  const [newExpires, setNewExpires] = useState<string>("");
-  const [isCreating, setIsCreating] = useState(false);
-  const [showQR, setShowQR] = useState<string | null>(null);
-
-  // Fetch pending members and invites
   useEffect(() => {
     const fetchData = async () => {
       const supabase = createClient();
 
-      // Get org
-      // Cast needed: require_invite_approval exists in DB but not yet in generated types
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: orgs, error: orgError } = await (supabase as any)
+      const { data: orgs, error: orgError } = await supabase
         .from("organizations")
-        .select("id, require_invite_approval")
+        .select("id")
         .eq("slug", orgSlug)
         .limit(1);
 
-      const org = orgs?.[0] as { id: string; require_invite_approval?: boolean } | undefined;
+      const org = orgs?.[0];
 
       if (org && !orgError) {
         setOrgId(org.id);
-        setRequireApproval(org.require_invite_approval ?? false);
 
-        // Get pending memberships
         const { data: memberships } = await supabase
           .from("user_organization_roles")
           .select("user_id, role, status, created_at, users(name, email)")
@@ -112,19 +64,8 @@ export default function ApprovalsPage() {
             };
           }) || [];
 
-        // Separate members and alumni
         setPendingMembers(normalizedMemberships.filter(m => m.role === "active_member" || m.role === "admin"));
         setPendingAlumni(normalizedMemberships.filter(m => m.role === "alumni"));
-
-        // Get active invites
-        const { data: inviteData } = await supabase
-          .from("organization_invites")
-          .select("*")
-          .eq("organization_id", org.id)
-          .is("revoked_at", null)
-          .order("created_at", { ascending: false });
-
-        setInvites(inviteData || []);
       }
 
       setIsLoading(false);
@@ -149,7 +90,6 @@ export default function ApprovalsPage() {
       return;
     }
 
-    // Remove from pending lists
     setPendingMembers((prev) => prev.filter((m) => m.user_id !== userId));
     setPendingAlumni((prev) => prev.filter((m) => m.user_id !== userId));
   };
@@ -172,114 +112,14 @@ export default function ApprovalsPage() {
       return;
     }
 
-    // Remove from pending lists
     setPendingMembers((prev) => prev.filter((m) => m.user_id !== userId));
     setPendingAlumni((prev) => prev.filter((m) => m.user_id !== userId));
-  };
-
-  const handleCreateInvite = async () => {
-    if (!orgId) return;
-    setIsCreating(true);
-    setError(null);
-
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    const code = generateCode();
-    const token = generateToken();
-    const usesRemaining = newUses ? parseInt(newUses) : null;
-    const expiresAt = newExpires ? new Date(newExpires).toISOString() : null;
-
-    const { data, error: insertError } = await supabase
-      .from("organization_invites")
-      .insert({
-        organization_id: orgId,
-        code,
-        token,
-        role: newRole,
-        uses_remaining: usesRemaining,
-        expires_at: expiresAt,
-        created_by_user_id: user?.id,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      setError(insertError.message);
-    } else if (data) {
-      setInvites([data, ...invites]);
-      setShowInviteForm(false);
-      setNewRole("active_member");
-      setNewUses("");
-      setNewExpires("");
-    }
-
-    setIsCreating(false);
-  };
-
-  const handleRevokeInvite = async (inviteId: string) => {
-    const supabase = createClient();
-    await supabase
-      .from("organization_invites")
-      .update({ revoked_at: new Date().toISOString() })
-      .eq("id", inviteId);
-
-    setInvites(invites.filter((i) => i.id !== inviteId));
-  };
-
-  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-    };
-  }, []);
-
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(key);
-    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-    copyTimerRef.current = setTimeout(() => setCopied(null), 2000);
-  };
-
-  const handleToggleApproval = async (checked: boolean) => {
-    if (!orgId) return;
-    setIsSavingToggle(true);
-    setError(null);
-
-    try {
-      const res = await fetch(`/api/organizations/${orgId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ require_invite_approval: checked }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error || "Failed to update approval setting");
-        return;
-      }
-
-      setRequireApproval(checked);
-    } catch {
-      setError("Failed to update approval setting");
-    } finally {
-      setIsSavingToggle(false);
-    }
-  };
-
-  const getInviteLink = (invite: Invite) => {
-    const base = typeof window !== "undefined" ? window.location.origin : "";
-    if (invite.token) {
-      return `${base}/app/join?token=${invite.token}`;
-    }
-    return `${base}/app/join?code=${invite.code}`;
   };
 
   if (isLoading) {
     return (
       <div>
-        <PageHeader title="Member Approvals" description="Loading..." />
+        <PageHeader title="Pending Approvals" description="Loading..." />
         <div className="animate-pulse space-y-4">
           <div className="h-32 bg-muted rounded-xl" />
         </div>
@@ -292,9 +132,9 @@ export default function ApprovalsPage() {
   return (
     <div>
       <PageHeader
-        title="Member Approvals"
+        title="Pending Approvals"
         description="Review and approve pending membership requests"
-        backHref={`/${orgSlug}`}
+        backHref={`/${orgSlug}/settings/invites`}
       />
 
       {error && (
@@ -302,144 +142,6 @@ export default function ApprovalsPage() {
           {error}
         </div>
       )}
-
-      {/* Approval Toggle */}
-      <Card className="p-6 mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-foreground">Require Approval for New Members</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              When enabled, users who join via invite must be approved before gaining access.
-            </p>
-          </div>
-          <ToggleSwitch
-            checked={requireApproval}
-            onChange={handleToggleApproval}
-            disabled={isSavingToggle}
-            label="Require invite approval"
-          />
-        </div>
-        {!requireApproval && totalPending > 0 && (
-          <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm">
-            Approval is off, but {totalPending} request{totalPending !== 1 ? "s" : ""} still require{totalPending === 1 ? "s" : ""} manual review.
-          </div>
-        )}
-      </Card>
-
-      {/* Invite Link Section */}
-      <Card className="p-6 mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h3 className="font-semibold text-foreground">Invite Links</h3>
-            <p className="text-sm text-muted-foreground">Generate invite links for new members</p>
-          </div>
-          {!showInviteForm && (
-            <Button onClick={() => setShowInviteForm(true)} size="sm">
-              <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              Create Invite
-            </Button>
-          )}
-        </div>
-
-        {showInviteForm && (
-          <div className="p-4 rounded-xl bg-muted/50 mb-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-              <Select
-                label="Role"
-                value={newRole}
-                onChange={(e) => setNewRole(e.target.value as "active_member" | "admin" | "alumni")}
-                options={[
-                  { value: "active_member", label: "Active Member" },
-                  { value: "admin", label: "Admin" },
-                  { value: "alumni", label: "Alumni" },
-                ]}
-              />
-              <Input
-                label="Max Uses"
-                type="number"
-                value={newUses}
-                onChange={(e) => setNewUses(e.target.value)}
-                placeholder="Unlimited"
-                min={1}
-              />
-              <Input
-                label="Expires On"
-                type="date"
-                value={newExpires}
-                onChange={(e) => setNewExpires(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-3">
-              <Button onClick={handleCreateInvite} isLoading={isCreating}>
-                Generate Link
-              </Button>
-              <Button variant="secondary" onClick={() => setShowInviteForm(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {invites.length > 0 ? (
-          <div className="space-y-3">
-            {invites.slice(0, 3).map((invite) => {
-              const inviteLink = getInviteLink(invite);
-              const isExpired = invite.expires_at && new Date(invite.expires_at) < new Date();
-              const isExhausted = invite.uses_remaining !== null && invite.uses_remaining <= 0;
-
-              return (
-                <div key={invite.id} className={`p-4 rounded-xl border border-border ${isExpired || isExhausted ? "opacity-60" : ""}`}>
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div className="flex items-center gap-3">
-                      <code className="font-mono text-lg font-bold">{invite.code}</code>
-                      <Badge variant={getRoleBadgeVariant(invite.role)}>
-                        {getRoleLabel(invite.role)}
-                      </Badge>
-                      {isExpired && <Badge variant="error">Expired</Badge>}
-                      {isExhausted && <Badge variant="error">No uses left</Badge>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => copyToClipboard(inviteLink, `link-${invite.id}`)}
-                      >
-                        {copied === `link-${invite.id}` ? "Copied!" : "Copy Link"}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setShowQR(showQR === invite.id ? null : invite.id)}
-                      >
-                        QR
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-500"
-                        onClick={() => handleRevokeInvite(invite.id)}
-                      >
-                        Revoke
-                      </Button>
-                    </div>
-                  </div>
-                  {showQR === invite.id && (
-                    <div className="mt-4 pt-4 border-t border-border flex justify-center">
-                      <QRCodeDisplay url={inviteLink} size={180} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No active invites. Create one to let people join.
-          </p>
-        )}
-      </Card>
 
       {/* Pending Members Section */}
       <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -549,6 +251,12 @@ export default function ApprovalsPage() {
             </svg>
           </div>
           <p className="text-muted-foreground">All caught up! No pending approvals.</p>
+          <Link
+            href={`/${orgSlug}/settings/invites`}
+            className="text-sm text-muted-foreground hover:underline mt-2 inline-block"
+          >
+            Back to Settings
+          </Link>
         </div>
       )}
     </div>

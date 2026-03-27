@@ -52,6 +52,7 @@ interface OrgInvitePanelProps {
   showForm: boolean;
   onShowFormChange: (show: boolean) => void;
   onAlumniInviteCreated: () => void;
+  orgRequireApproval: boolean;
 }
 
 export function OrgInvitePanel({
@@ -61,6 +62,7 @@ export function OrgInvitePanel({
   showForm,
   onShowFormChange,
   onAlumniInviteCreated,
+  orgRequireApproval,
 }: OrgInvitePanelProps) {
   const supabase = useMemo(() => createClient(), []);
   const [orgInvites, setOrgInvites] = useState<Invite[]>([]);
@@ -308,34 +310,21 @@ export function OrgInvitePanel({
               onChange={(e) => setNewExpires(e.target.value)}
             />
           </div>
-          <div className="mb-4">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={newRequireApproval === true}
-                ref={(el) => {
-                  if (el) el.indeterminate = newRequireApproval === null;
-                }}
-                onChange={() => {
-                  // Cycle: null (inherit) -> true (require) -> false (skip) -> null
-                  if (newRequireApproval === null) setNewRequireApproval(true);
-                  else if (newRequireApproval === true) setNewRequireApproval(false);
-                  else setNewRequireApproval(null);
-                }}
-                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-              />
-              <span className="text-sm text-foreground">
-                Require approval
-                <span className="text-muted-foreground ml-1">
-                  {newRequireApproval === null
-                    ? "(use org default)"
-                    : newRequireApproval
-                      ? "(always require)"
-                      : "(never require)"}
+          {!orgRequireApproval && (
+            <div className="mb-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newRequireApproval === true}
+                  onChange={(e) => setNewRequireApproval(e.target.checked ? true : null)}
+                  className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                />
+                <span className="text-sm text-foreground">
+                  Require approval for this invite
                 </span>
-              </span>
-            </label>
-          </div>
+              </label>
+            </div>
+          )}
           {newRole === "alumni" && atAlumniLimit && (
             <p className="text-xs text-amber-600">
               Alumni limit reached for your plan. Upgrade above to add more alumni invites.
