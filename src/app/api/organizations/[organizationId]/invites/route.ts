@@ -10,6 +10,7 @@ const createInviteSchema = z.object({
   role: z.enum(["admin", "active_member", "alumni", "parent"]),
   uses: z.number().int().positive().optional().nullable(),
   expiresAt: z.string().datetime().optional().nullable(),
+  requireApproval: z.boolean().optional().nullable(),
 });
 
 export const dynamic = "force-dynamic";
@@ -83,6 +84,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     p_role: body.role,
     p_uses: body.uses ?? null,
     p_expires_at: body.expiresAt ?? null,
+    p_require_approval: body.requireApproval ?? null,
   });
 
   if (rpcError || !invite) {

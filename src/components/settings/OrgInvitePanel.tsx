@@ -17,6 +17,7 @@ interface Invite {
   expires_at: string | null;
   revoked_at: string | null;
   created_at: string;
+  require_approval: boolean | null;
 }
 
 interface ParentInvite {
@@ -41,6 +42,7 @@ interface InviteItem {
   revoked_at?: string | null;
   status?: "pending" | "accepted" | "revoked";
   email?: string;
+  require_approval?: boolean | null;
 }
 
 interface OrgInvitePanelProps {
@@ -50,6 +52,7 @@ interface OrgInvitePanelProps {
   showForm: boolean;
   onShowFormChange: (show: boolean) => void;
   onAlumniInviteCreated: () => void;
+  orgRequireApproval: boolean;
 }
 
 export function OrgInvitePanel({
@@ -59,6 +62,7 @@ export function OrgInvitePanel({
   showForm,
   onShowFormChange,
   onAlumniInviteCreated,
+  orgRequireApproval,
 }: OrgInvitePanelProps) {
   const supabase = useMemo(() => createClient(), []);
   const [orgInvites, setOrgInvites] = useState<Invite[]>([]);
@@ -80,6 +84,7 @@ export function OrgInvitePanel({
   const [newRole, setNewRole] = useState<"active_member" | "admin" | "alumni" | "parent">("active_member");
   const [newUses, setNewUses] = useState("");
   const [newExpires, setNewExpires] = useState("");
+  const [newRequireApproval, setNewRequireApproval] = useState<boolean | null>(null);
 
   // Fetch invites
   useEffect(() => {
@@ -129,6 +134,7 @@ export function OrgInvitePanel({
           role: newRole,
           uses: usesRemaining,
           expiresAt,
+          requireApproval: newRequireApproval,
         }),
       });
 
@@ -146,6 +152,7 @@ export function OrgInvitePanel({
       setNewRole("active_member");
       setNewUses("");
       setNewExpires("");
+      setNewRequireApproval(null);
       succeeded = true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create invite");
@@ -249,6 +256,7 @@ export function OrgInvitePanel({
       role: invite.role,
       uses_remaining: invite.uses_remaining,
       revoked_at: invite.revoked_at,
+      require_approval: invite.require_approval,
     })),
     ...parentInvites.map((invite) => ({
       source: "legacy_parent_invite" as const,
@@ -302,6 +310,25 @@ export function OrgInvitePanel({
               onChange={(e) => setNewExpires(e.target.value)}
             />
           </div>
+          {orgRequireApproval ? (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm">
+              Approval is required — new members who use this invite will need admin approval before gaining access.
+            </div>
+          ) : (
+            <div className="mb-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newRequireApproval === true}
+                  onChange={(e) => setNewRequireApproval(e.target.checked ? true : null)}
+                  className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                />
+                <span className="text-sm text-foreground">
+                  Require approval for this invite
+                </span>
+              </label>
+            </div>
+          )}
           {newRole === "alumni" && atAlumniLimit && (
             <p className="text-xs text-amber-600">
               Alumni limit reached for your plan. Upgrade above to add more alumni invites.
@@ -358,6 +385,12 @@ export function OrgInvitePanel({
                         <Badge variant={getRoleBadgeVariant(role)}>
                           {getRoleLabel(role)}
                         </Badge>
+                        {invite.require_approval === true && (
+                          <Badge variant="warning">Approval required</Badge>
+                        )}
+                        {invite.require_approval === false && (
+                          <Badge variant="success">Auto-approve</Badge>
+                        )}
                         {expired && <Badge variant="error">Expired</Badge>}
                         {exhausted && <Badge variant="error">No uses left</Badge>}
                         {revoked && <Badge variant="error">Revoked</Badge>}
