@@ -17,6 +17,7 @@ interface Invite {
   expires_at: string | null;
   revoked_at: string | null;
   created_at: string;
+  require_approval: boolean | null;
 }
 
 interface ParentInvite {
@@ -41,6 +42,7 @@ interface InviteItem {
   revoked_at?: string | null;
   status?: "pending" | "accepted" | "revoked";
   email?: string;
+  require_approval?: boolean | null;
 }
 
 interface OrgInvitePanelProps {
@@ -80,6 +82,7 @@ export function OrgInvitePanel({
   const [newRole, setNewRole] = useState<"active_member" | "admin" | "alumni" | "parent">("active_member");
   const [newUses, setNewUses] = useState("");
   const [newExpires, setNewExpires] = useState("");
+  const [newRequireApproval, setNewRequireApproval] = useState<boolean | null>(null);
 
   // Fetch invites
   useEffect(() => {
@@ -129,6 +132,7 @@ export function OrgInvitePanel({
           role: newRole,
           uses: usesRemaining,
           expiresAt,
+          requireApproval: newRequireApproval,
         }),
       });
 
@@ -146,6 +150,7 @@ export function OrgInvitePanel({
       setNewRole("active_member");
       setNewUses("");
       setNewExpires("");
+      setNewRequireApproval(null);
       succeeded = true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to create invite");
@@ -249,6 +254,7 @@ export function OrgInvitePanel({
       role: invite.role,
       uses_remaining: invite.uses_remaining,
       revoked_at: invite.revoked_at,
+      require_approval: invite.require_approval,
     })),
     ...parentInvites.map((invite) => ({
       source: "legacy_parent_invite" as const,
@@ -301,6 +307,34 @@ export function OrgInvitePanel({
               value={newExpires}
               onChange={(e) => setNewExpires(e.target.value)}
             />
+          </div>
+          <div className="mb-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newRequireApproval === true}
+                ref={(el) => {
+                  if (el) el.indeterminate = newRequireApproval === null;
+                }}
+                onChange={() => {
+                  // Cycle: null (inherit) -> true (require) -> false (skip) -> null
+                  if (newRequireApproval === null) setNewRequireApproval(true);
+                  else if (newRequireApproval === true) setNewRequireApproval(false);
+                  else setNewRequireApproval(null);
+                }}
+                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+              />
+              <span className="text-sm text-foreground">
+                Require approval
+                <span className="text-muted-foreground ml-1">
+                  {newRequireApproval === null
+                    ? "(use org default)"
+                    : newRequireApproval
+                      ? "(always require)"
+                      : "(never require)"}
+                </span>
+              </span>
+            </label>
           </div>
           {newRole === "alumni" && atAlumniLimit && (
             <p className="text-xs text-amber-600">
@@ -358,6 +392,12 @@ export function OrgInvitePanel({
                         <Badge variant={getRoleBadgeVariant(role)}>
                           {getRoleLabel(role)}
                         </Badge>
+                        {invite.require_approval === true && (
+                          <Badge variant="warning">Approval required</Badge>
+                        )}
+                        {invite.require_approval === false && (
+                          <Badge variant="success">Auto-approve</Badge>
+                        )}
                         {expired && <Badge variant="error">Expired</Badge>}
                         {exhausted && <Badge variant="error">No uses left</Badge>}
                         {revoked && <Badge variant="error">Revoked</Badge>}
