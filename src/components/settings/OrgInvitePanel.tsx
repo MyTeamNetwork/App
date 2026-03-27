@@ -310,7 +310,11 @@ export function OrgInvitePanel({
               onChange={(e) => setNewExpires(e.target.value)}
             />
           </div>
-          {!orgRequireApproval && (
+          {orgRequireApproval ? (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm">
+              Approval is required — new members who use this invite will need admin approval before gaining access.
+            </div>
+          ) : (
             <div className="mb-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
