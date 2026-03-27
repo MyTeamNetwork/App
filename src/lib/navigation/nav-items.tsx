@@ -25,6 +25,7 @@ import {
   BriefcaseIcon,
   FeedIcon,
   ParentsIcon,
+  ShieldCheckIcon,
 } from "@/components/icons/nav-icons";
 
 export type NavGroupId = "people" | "community" | "schedule" | "activity" | "finance" | "admin";
@@ -86,6 +87,7 @@ export const ORG_NAV_ITEMS: OrgNavItem[] = [
   { href: "/forms", label: "Forms", icon: ClipboardIcon, roles: ["admin", "active_member", "alumni", "parent"], group: "community" },
   { href: "/media", label: "Media", icon: GridIcon, roles: ["admin", "active_member", "alumni", "parent"], group: "community" },
   { href: "/customization", label: "Customization", icon: SettingsIcon, roles: ["admin", "active_member", "alumni", "parent"], configurable: false, group: "admin" },
+  { href: "/settings/approvals", label: "Approvals", icon: ShieldCheckIcon, roles: ["admin"], group: "admin" },
   { href: "/settings/invites", label: "Settings", icon: InviteIcon, roles: ["admin"], group: "admin" },
   { href: "/settings/navigation", label: "Navigation", icon: SettingsIcon, roles: ["admin"], configurable: false, group: "admin" },
 ];
