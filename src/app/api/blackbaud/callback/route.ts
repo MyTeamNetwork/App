@@ -28,10 +28,6 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${appUrl}/app?error=blackbaud_invalid_callback`);
   }
 
-  // #region agent log
-  console.error("[blackbaud-debug] callback received", { codeLen: code.length, state, appUrl });
-  // #endregion
-
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -54,7 +50,6 @@ export async function GET(req: Request) {
     .maybeSingle();
 
   if (claimError || !oauthState) {
-    // Either the state doesn't exist, was already consumed, or DB error
     return NextResponse.redirect(`${appUrl}/app?error=blackbaud_invalid_state`);
   }
 
@@ -82,20 +77,13 @@ export async function GET(req: Request) {
   }
 
   try {
-    // #region agent log
-    console.error("[blackbaud-debug] pre-exchange", { codeLen: code.length, timeSinceInitMs: Date.now() - new Date(oauthState.initiated_at).getTime() });
-    // #endregion
     const tokens = await exchangeCodeForTokens(code);
     const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
     // Post-callback verification: test API call
-    const subKey = getBlackbaudSubscriptionKey();
-    // #region agent log
-    console.error("[blackbaud-debug] subscription key check", { subKeyLen: subKey.length, subKeyPrefix: subKey.substring(0, 8), looksHex: /^[0-9a-f]+$/i.test(subKey) });
-    // #endregion
     const client = createBlackbaudClient({
       accessToken: tokens.access_token,
-      subscriptionKey: subKey,
+      subscriptionKey: getBlackbaudSubscriptionKey(),
     });
 
     try {
@@ -149,16 +137,12 @@ export async function GET(req: Request) {
     const redirectPath = oauthState.redirect_path || "/app";
     return NextResponse.redirect(`${appUrl}${redirectPath}?success=blackbaud_connected`);
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    // #region agent log
-    console.error("[blackbaud-debug] exchange catch block", { error: errMsg });
-    // #endregion
-    debugLog("blackbaud-callback", "token exchange failed", { error: errMsg });
+    debugLog("blackbaud-callback", "token exchange failed", { error: err instanceof Error ? err.message : String(err) });
 
     const syncError = makeSyncError(
       "code_exchange",
       "EXCHANGE_FAILED",
-      errMsg
+      err instanceof Error ? err.message : "Token exchange failed"
     );
 
     await serviceSupabase
@@ -171,7 +155,6 @@ export async function GET(req: Request) {
       .eq("provider", "blackbaud");
 
     const redirectPath = oauthState.redirect_path || "/app";
-    const detail = encodeURIComponent(errMsg.substring(0, 200));
-    return NextResponse.redirect(`${appUrl}${redirectPath}?error=blackbaud_exchange_failed&detail=${detail}`);
+    return NextResponse.redirect(`${appUrl}${redirectPath}?error=blackbaud_exchange_failed`);
   }
 }

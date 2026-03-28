@@ -59,9 +59,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Failed to initiate connection" }, { status: 500, headers: rateLimit.headers });
   }
 
-  const authUrl = getAuthorizationUrl(oauthState.id);
-  // #region agent log
-  console.error("[blackbaud-debug] auth redirect", { authUrl: authUrl.replace(/client_id=[^&]+/, "client_id=REDACTED") });
-  // #endregion
-  return NextResponse.redirect(authUrl);
+  return NextResponse.redirect(getAuthorizationUrl(oauthState.id));
 }

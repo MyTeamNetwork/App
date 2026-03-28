@@ -49,7 +49,6 @@ export default function IntegrationsPage() {
     if (success === "blackbaud_connected") {
       showFeedback("Blackbaud connected successfully!", "success", { duration: 5000 });
     } else if (error) {
-      const detail = searchParams.get("detail");
       const messages: Record<string, string> = {
         blackbaud_oauth_denied: "Blackbaud authorization was denied.",
         blackbaud_invalid_callback: "Invalid callback from Blackbaud.",
@@ -63,9 +62,7 @@ export default function IntegrationsPage() {
         blackbaud_exchange_failed: "Failed to exchange authorization code.",
         session_expired: "Your session expired. Please log in and try again.",
       };
-      const base = messages[error] || `Connection error: ${error}`;
-      const msg = detail ? `${base} Detail: ${detail}` : base;
-      showFeedback(msg, "error", { duration: 8000 });
+      showFeedback(messages[error] || `Connection error: ${error}`, "error", { duration: 8000 });
     }
   }, [searchParams]);
 

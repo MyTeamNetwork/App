@@ -74,23 +74,7 @@ const BLACKBAUD_AUTH_URL = "https://app.blackbaud.com/oauth/authorize";
 const BLACKBAUD_TOKEN_URL = "https://oauth2.sky.blackbaud.com/token";
 
 function getBasicAuthHeader(): string {
-  const clientId = getBlackbaudClientId();
-  const clientSecret = getBlackbaudClientSecret();
-  const rawId = process.env.BLACKBAUD_CLIENT_ID ?? "";
-  const rawSecret = process.env.BLACKBAUD_CLIENT_SECRET ?? "";
-  // #region agent log
-  console.error("[blackbaud-debug] credentials check", {
-    clientIdLen: clientId.length,
-    clientSecretLen: clientSecret.length,
-    rawIdLen: rawId.length,
-    rawSecretLen: rawSecret.length,
-    idWasTrimmed: rawId.length !== clientId.length,
-    secretWasTrimmed: rawSecret.length !== clientSecret.length,
-    clientIdPrefix: clientId.substring(0, 8),
-    secretPrefix: clientSecret.substring(0, 4) + "...",
-  });
-  // #endregion
-  const credentials = `${clientId}:${clientSecret}`;
+  const credentials = `${getBlackbaudClientId()}:${getBlackbaudClientSecret()}`;
   return `Basic ${Buffer.from(credentials).toString("base64")}`;
 }
 
@@ -113,10 +97,6 @@ export function getAuthorizationUrl(state: string): string {
  * Exchanges an authorization code for access and refresh tokens.
  */
 export async function exchangeCodeForTokens(code: string): Promise<BlackbaudTokenResponse> {
-  const redirectUri = getRedirectUri();
-  // #region agent log
-  console.error("[blackbaud-debug] exchangeCodeForTokens called", { redirectUri, codeLen: code.length, tokenUrl: BLACKBAUD_TOKEN_URL });
-  // #endregion
   const response = await fetch(BLACKBAUD_TOKEN_URL, {
     method: "POST",
     headers: {
@@ -126,21 +106,15 @@ export async function exchangeCodeForTokens(code: string): Promise<BlackbaudToke
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: redirectUri,
+      redirect_uri: getRedirectUri(),
     }),
   });
 
   if (!response.ok) {
     const text = await response.text();
-    // #region agent log
-    console.error("[blackbaud-debug] token exchange FAILED", { status: response.status, statusText: response.statusText, body: text, redirectUri });
-    // #endregion
     throw new Error(`Blackbaud token exchange failed (${response.status}): ${text}`);
   }
 
-  // #region agent log
-  console.error("[blackbaud-debug] token exchange SUCCEEDED");
-  // #endregion
   return response.json() as Promise<BlackbaudTokenResponse>;
 }
 
