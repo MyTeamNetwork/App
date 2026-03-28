@@ -38,8 +38,6 @@ class BlackbaudSyncFailure extends Error {
  * Runs a full sync cycle: paginated fetch → normalize → upsert.
  * Creates a sync log entry and updates integration state.
  */
-const _dl = (loc: string, msg: string, data?: Record<string, unknown>) => fetch('http://127.0.0.1:7242/ingest/f6fe50b5-6abd-4a79-8685-54d1dabba251',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:`sync.ts:${loc}`,message:msg,data,timestamp:Date.now()})}).catch(()=>{});
-
 export async function runSync(deps: SyncDeps): Promise<SyncResult> {
   const { client, supabase, integrationId, syncType, lastSyncedAt } = deps;
 
@@ -63,7 +61,7 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 
   if (logError) {
     // #region agent log
-    await _dl('syncLog','sync log insert FAILED',{code:(logError as {code?:string}).code,message:logError.message,hypothesisId:'H2'});
+    console.error("[bb-sync-debug] sync log insert FAILED", { code: (logError as { code?: string }).code, message: logError.message });
     // #endregion
     const pgCode = (logError as { code?: string }).code;
     if (pgCode === UNIQUE_VIOLATION) {
@@ -122,6 +120,9 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
     }
   } else {
     syncLogId = syncLog?.id ?? null;
+    // #region agent log
+    console.error("[bb-sync-debug] sync log created", { syncLogId });
+    // #endregion
   }
 
   const totals: SyncResult = { ok: true, created: 0, updated: 0, unchanged: 0, skipped: 0 };
@@ -133,7 +134,7 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
   try {
     const health = await checkBlackbaudHealth(client);
     // #region agent log
-    await _dl('health','health check result',{ok:health.ok,reason:health.reason,error:health.error,hypothesisId:'H3'});
+    console.error("[bb-sync-debug] health check", { ok: health.ok, reason: health.reason, error: health.error });
     // #endregion
     if (!health.ok) {
       throw new BlackbaudSyncFailure(
@@ -163,11 +164,9 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
       );
 
       const constituents = response.value;
-      debugLog("blackbaud-sync", "fetched page", {
-        offset,
-        count: constituents.length,
-        total: response.count,
-      });
+      // #region agent log
+      console.error("[bb-sync-debug] fetched page", { offset, count: constituents.length, total: response.count });
+      // #endregion
 
       if (constituents.length === 0) {
         break;
@@ -201,27 +200,20 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
         }
       }
 
-      let batchResult: SyncResult;
-      try {
-        batchResult = await upsertConstituents(
-          {
-            supabase: deps.supabase,
-            integrationId: deps.integrationId,
-            organizationId: deps.organizationId,
-            alumniLimit: deps.alumniLimit,
-            currentAlumniCount: deps.currentAlumniCount + totals.created,
-          },
-          normalized
-        );
-        // #region agent log
-        await _dl('upsert','upsert batch OK',{created:batchResult.created,updated:batchResult.updated,skipped:batchResult.skipped,hypothesisId:'H5'});
-        // #endregion
-      } catch (upsertErr) {
-        // #region agent log
-        await _dl('upsert','upsert batch THREW',{error:upsertErr instanceof Error ? upsertErr.message : String(upsertErr),hypothesisId:'H5'});
-        // #endregion
-        throw upsertErr;
-      }
+      const batchResult = await upsertConstituents(
+        {
+          supabase: deps.supabase,
+          integrationId: deps.integrationId,
+          organizationId: deps.organizationId,
+          alumniLimit: deps.alumniLimit,
+          currentAlumniCount: deps.currentAlumniCount + totals.created,
+        },
+        normalized
+      );
+
+      // #region agent log
+      console.error("[bb-sync-debug] upsert batch", { created: batchResult.created, updated: batchResult.updated, unchanged: batchResult.unchanged, skipped: batchResult.skipped });
+      // #endregion
 
       totals.created += batchResult.created;
       totals.updated += batchResult.updated;
@@ -260,6 +252,9 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 
     return totals;
   } catch (err) {
+    // #region agent log
+    console.error("[bb-sync-debug] sync CATCH block", { error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.substring(0, 500) : undefined });
+    // #endregion
     const failure =
       err instanceof BlackbaudSyncFailure
         ? err
