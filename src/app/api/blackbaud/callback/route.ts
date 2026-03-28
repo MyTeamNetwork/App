@@ -89,9 +89,13 @@ export async function GET(req: Request) {
     const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
     // Post-callback verification: test API call
+    const subKey = getBlackbaudSubscriptionKey();
+    // #region agent log
+    console.error("[blackbaud-debug] subscription key check", { subKeyLen: subKey.length, subKeyPrefix: subKey.substring(0, 8), looksHex: /^[0-9a-f]+$/i.test(subKey) });
+    // #endregion
     const client = createBlackbaudClient({
       accessToken: tokens.access_token,
-      subscriptionKey: getBlackbaudSubscriptionKey(),
+      subscriptionKey: subKey,
     });
 
     try {
