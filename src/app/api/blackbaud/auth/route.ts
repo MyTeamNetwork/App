@@ -60,5 +60,8 @@ export async function GET(req: Request) {
   }
 
   const authUrl = getAuthorizationUrl(oauthState.id);
+  // #region agent log
+  console.error("[blackbaud-debug] auth redirect", { authUrl: authUrl.replace(/client_id=[^&]+/, "client_id=REDACTED") });
+  // #endregion
   return NextResponse.redirect(authUrl);
 }

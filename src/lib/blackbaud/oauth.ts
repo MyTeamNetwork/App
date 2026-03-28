@@ -87,23 +87,34 @@ export function getAuthorizationUrl(state: string): string {
  * Exchanges an authorization code for access and refresh tokens.
  */
 export async function exchangeCodeForTokens(code: string): Promise<BlackbaudTokenResponse> {
+  const redirectUri = getRedirectUri();
+  const clientId = getBlackbaudClientId();
+  // #region agent log
+  console.error("[blackbaud-debug] exchangeCodeForTokens called", { redirectUri, clientId: clientId.substring(0, 8) + "...", codeLen: code.length, tokenUrl: BLACKBAUD_TOKEN_URL });
+  // #endregion
   const response = await fetch(BLACKBAUD_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: getRedirectUri(),
-      client_id: getBlackbaudClientId(),
+      redirect_uri: redirectUri,
+      client_id: clientId,
       client_secret: getBlackbaudClientSecret(),
     }),
   });
 
   if (!response.ok) {
     const text = await response.text();
+    // #region agent log
+    console.error("[blackbaud-debug] token exchange FAILED", { status: response.status, statusText: response.statusText, body: text, redirectUri, clientId: clientId.substring(0, 8) + "..." });
+    // #endregion
     throw new Error(`Blackbaud token exchange failed (${response.status}): ${text}`);
   }
 
+  // #region agent log
+  console.error("[blackbaud-debug] token exchange SUCCEEDED");
+  // #endregion
   return response.json() as Promise<BlackbaudTokenResponse>;
 }
 
