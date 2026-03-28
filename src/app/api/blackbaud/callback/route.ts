@@ -82,48 +82,10 @@ export async function GET(req: Request) {
   }
 
   try {
-    // #region agent log — inline exchange with full request/response capture
-    const debugExchangeStart = Date.now();
-    const { tokens: debugTokens, debugInfo } = await (async () => {
-      const { exchangeCodeForTokens: exchange } = await import("@/lib/blackbaud/oauth");
-
-      // First: test with fake code to prove credentials work
-      let fakeResult = "";
-      try {
-        await exchange("fake_debug_probe");
-      } catch (e) {
-        fakeResult = e instanceof Error ? e.message : String(e);
-      }
-
-      // Then: real exchange
-      let realResult: any = null;
-      let realError = "";
-      try {
-        realResult = await exchange(code);
-      } catch (e) {
-        realError = e instanceof Error ? e.message : String(e);
-      }
-
-      return {
-        tokens: realResult,
-        debugInfo: {
-          fakeCodeResult: fakeResult.substring(0, 150),
-          realCodeError: realError.substring(0, 150),
-          codeLen: code.length,
-          codePrefix: code.substring(0, 10),
-          elapsedMs: Date.now() - debugExchangeStart,
-        },
-      };
-    })();
-    console.error("[blackbaud-debug] inline exchange debug", debugInfo);
-
-    if (!debugTokens) {
-      const detail = encodeURIComponent(JSON.stringify(debugInfo).substring(0, 400));
-      const redirectPath = oauthState.redirect_path || "/app";
-      return NextResponse.redirect(`${appUrl}${redirectPath}?error=blackbaud_exchange_failed&detail=${detail}`);
-    }
-    const tokens = debugTokens;
+    // #region agent log
+    console.error("[blackbaud-debug] pre-exchange", { codeLen: code.length, timeSinceInitMs: Date.now() - new Date(oauthState.initiated_at).getTime() });
     // #endregion
+    const tokens = await exchangeCodeForTokens(code);
     const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
     // Post-callback verification: test API call
