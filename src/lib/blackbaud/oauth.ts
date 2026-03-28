@@ -17,8 +17,13 @@ export function isBlackbaudConfigured(): boolean {
   );
 }
 
+function cleanEnvValue(raw: string | undefined): string {
+  if (!raw) return "";
+  return raw.replace(/\\n/g, "").trim();
+}
+
 function getBlackbaudClientId(): string {
-  const val = process.env.BLACKBAUD_CLIENT_ID?.trim();
+  const val = cleanEnvValue(process.env.BLACKBAUD_CLIENT_ID);
   if (!val) {
     throw new Error("Missing required environment variable: BLACKBAUD_CLIENT_ID");
   }
@@ -26,7 +31,7 @@ function getBlackbaudClientId(): string {
 }
 
 function getBlackbaudClientSecret(): string {
-  const val = process.env.BLACKBAUD_CLIENT_SECRET?.trim();
+  const val = cleanEnvValue(process.env.BLACKBAUD_CLIENT_SECRET);
   if (!val) {
     throw new Error("Missing required environment variable: BLACKBAUD_CLIENT_SECRET");
   }
@@ -34,7 +39,7 @@ function getBlackbaudClientSecret(): string {
 }
 
 function getBlackbaudEncryptionKey(): string {
-  const val = process.env.BLACKBAUD_TOKEN_ENCRYPTION_KEY?.trim();
+  const val = cleanEnvValue(process.env.BLACKBAUD_TOKEN_ENCRYPTION_KEY);
   if (!val) {
     throw new Error("Missing required environment variable: BLACKBAUD_TOKEN_ENCRYPTION_KEY");
   }
@@ -42,7 +47,7 @@ function getBlackbaudEncryptionKey(): string {
 }
 
 export function getBlackbaudSubscriptionKey(): string {
-  const val = process.env.BLACKBAUD_SUBSCRIPTION_KEY?.trim();
+  const val = cleanEnvValue(process.env.BLACKBAUD_SUBSCRIPTION_KEY);
   if (!val) {
     throw new Error("Missing required environment variable: BLACKBAUD_SUBSCRIPTION_KEY");
   }
