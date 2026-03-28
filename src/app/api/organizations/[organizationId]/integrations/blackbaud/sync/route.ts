@@ -24,11 +24,16 @@ type BlackbaudIntegrationWithTokens = BlackbaudIntegration & {
   token_expires_at: string;
 };
 
+const _dl = (loc: string, msg: string, data?: Record<string, unknown>) => fetch('http://127.0.0.1:7242/ingest/f6fe50b5-6abd-4a79-8685-54d1dabba251',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:`sync/route.ts:${loc}`,message:msg,data,timestamp:Date.now()})}).catch(()=>{});
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ organizationId: string }> }
 ) {
   const { organizationId } = await params;
+  // #region agent log
+  await _dl('entry','sync POST called',{organizationId,hypothesisId:'all'});
+  // #endregion
 
   const supabase = await createClient();
   const {
@@ -78,6 +83,10 @@ export async function POST(
     );
   }
 
+  // #region agent log
+  await _dl('integration','integration lookup result',{found:!!integration,status:integration?.status,hypothesisId:'H2'});
+  // #endregion
+
   const activeIntegration = integration as BlackbaudIntegration;
   if (
     !activeIntegration.access_token_enc ||
@@ -100,33 +109,64 @@ export async function POST(
   let accessToken: string;
   try {
     accessToken = await refreshTokenWithFallback(hydratedIntegration, serviceSupabase);
-  } catch {
+    // #region agent log
+    await _dl('token','token refresh succeeded',{tokenLen:accessToken.length,hypothesisId:'H1'});
+    // #endregion
+  } catch (tokenErr) {
+    // #region agent log
+    await _dl('token','token refresh FAILED',{error:tokenErr instanceof Error ? tokenErr.message : String(tokenErr),hypothesisId:'H1'});
+    // #endregion
     return NextResponse.json(
       { error: "Failed to refresh Blackbaud access token" },
       { status: 502, headers: rateLimit.headers }
     );
   }
 
-  const capacity = await getAlumniCapacitySnapshot(
-    organizationId,
-    serviceSupabase
-  );
+  let capacity: { alumniLimit: number | null; currentAlumniCount: number };
+  try {
+    capacity = await getAlumniCapacitySnapshot(organizationId, serviceSupabase);
+    // #region agent log
+    await _dl('capacity','capacity snapshot OK',{alumniLimit:capacity.alumniLimit,currentAlumniCount:capacity.currentAlumniCount,hypothesisId:'H4'});
+    // #endregion
+  } catch (capErr) {
+    // #region agent log
+    await _dl('capacity','capacity snapshot FAILED',{error:capErr instanceof Error ? capErr.message : String(capErr),hypothesisId:'H4'});
+    // #endregion
+    return NextResponse.json(
+      { error: "Failed to check alumni capacity", detail: capErr instanceof Error ? capErr.message : String(capErr) },
+      { status: 500, headers: rateLimit.headers }
+    );
+  }
 
   const client = createBlackbaudClient({
     accessToken,
     subscriptionKey: getBlackbaudSubscriptionKey(),
   });
 
-  const result = await runSync({
-    client,
-    supabase: serviceSupabase,
-    integrationId: activeIntegration.id,
-    organizationId,
-    alumniLimit: capacity.alumniLimit,
-    currentAlumniCount: capacity.currentAlumniCount,
-    syncType: "manual",
-    lastSyncedAt: activeIntegration.last_synced_at,
-  });
+  let result: Awaited<ReturnType<typeof runSync>>;
+  try {
+    result = await runSync({
+      client,
+      supabase: serviceSupabase,
+      integrationId: activeIntegration.id,
+      organizationId,
+      alumniLimit: capacity.alumniLimit,
+      currentAlumniCount: capacity.currentAlumniCount,
+      syncType: "manual",
+      lastSyncedAt: activeIntegration.last_synced_at,
+    });
+    // #region agent log
+    await _dl('runSync','runSync returned',{ok:result.ok,created:result.created,updated:result.updated,skipped:result.skipped,error:result.error,hypothesisId:'H2,H3,H5'});
+    // #endregion
+  } catch (syncErr) {
+    // #region agent log
+    await _dl('runSync','runSync THREW',{error:syncErr instanceof Error ? syncErr.message : String(syncErr),stack:syncErr instanceof Error ? syncErr.stack?.substring(0,500) : undefined,hypothesisId:'H2,H3,H5'});
+    // #endregion
+    return NextResponse.json(
+      { error: "Sync failed unexpectedly", detail: syncErr instanceof Error ? syncErr.message : String(syncErr) },
+      { status: 500, headers: rateLimit.headers }
+    );
+  }
 
   return NextResponse.json(
     { result },

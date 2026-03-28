@@ -38,6 +38,8 @@ class BlackbaudSyncFailure extends Error {
  * Runs a full sync cycle: paginated fetch → normalize → upsert.
  * Creates a sync log entry and updates integration state.
  */
+const _dl = (loc: string, msg: string, data?: Record<string, unknown>) => fetch('http://127.0.0.1:7242/ingest/f6fe50b5-6abd-4a79-8685-54d1dabba251',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:`sync.ts:${loc}`,message:msg,data,timestamp:Date.now()})}).catch(()=>{});
+
 export async function runSync(deps: SyncDeps): Promise<SyncResult> {
   const { client, supabase, integrationId, syncType, lastSyncedAt } = deps;
 
@@ -60,6 +62,9 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
     .single();
 
   if (logError) {
+    // #region agent log
+    await _dl('syncLog','sync log insert FAILED',{code:(logError as {code?:string}).code,message:logError.message,hypothesisId:'H2'});
+    // #endregion
     const pgCode = (logError as { code?: string }).code;
     if (pgCode === UNIQUE_VIOLATION) {
       // Another sync is running — check if stale
@@ -127,6 +132,9 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 
   try {
     const health = await checkBlackbaudHealth(client);
+    // #region agent log
+    await _dl('health','health check result',{ok:health.ok,reason:health.reason,error:health.error,hypothesisId:'H3'});
+    // #endregion
     if (!health.ok) {
       throw new BlackbaudSyncFailure(
         "api_verify",
@@ -193,16 +201,27 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
         }
       }
 
-      const batchResult = await upsertConstituents(
-        {
-          supabase: deps.supabase,
-          integrationId: deps.integrationId,
-          organizationId: deps.organizationId,
-          alumniLimit: deps.alumniLimit,
-          currentAlumniCount: deps.currentAlumniCount + totals.created,
-        },
-        normalized
-      );
+      let batchResult: SyncResult;
+      try {
+        batchResult = await upsertConstituents(
+          {
+            supabase: deps.supabase,
+            integrationId: deps.integrationId,
+            organizationId: deps.organizationId,
+            alumniLimit: deps.alumniLimit,
+            currentAlumniCount: deps.currentAlumniCount + totals.created,
+          },
+          normalized
+        );
+        // #region agent log
+        await _dl('upsert','upsert batch OK',{created:batchResult.created,updated:batchResult.updated,skipped:batchResult.skipped,hypothesisId:'H5'});
+        // #endregion
+      } catch (upsertErr) {
+        // #region agent log
+        await _dl('upsert','upsert batch THREW',{error:upsertErr instanceof Error ? upsertErr.message : String(upsertErr),hypothesisId:'H5'});
+        // #endregion
+        throw upsertErr;
+      }
 
       totals.created += batchResult.created;
       totals.updated += batchResult.updated;
