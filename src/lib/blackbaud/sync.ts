@@ -5,7 +5,7 @@ import type {
   NormalizedConstituent,
   SyncError,
 } from "./types";
-import type { BlackbaudClient } from "./client";
+import { BlackbaudApiError, type BlackbaudClient } from "./client";
 import { normalizeConstituent } from "./normalize";
 import { upsertConstituents } from "./storage";
 import { makeSyncError } from "./oauth";
@@ -26,11 +26,15 @@ export interface SyncDeps {
 class BlackbaudSyncFailure extends Error {
   phase: SyncError["phase"];
   code: string;
+  isQuotaExhausted: boolean;
+  retryAfterHuman: string | null;
 
-  constructor(phase: SyncError["phase"], code: string, message: string) {
+  constructor(phase: SyncError["phase"], code: string, message: string, opts?: { isQuotaExhausted?: boolean; retryAfterHuman?: string | null }) {
     super(message);
     this.phase = phase;
     this.code = code;
+    this.isQuotaExhausted = opts?.isQuotaExhausted ?? false;
+    this.retryAfterHuman = opts?.retryAfterHuman ?? null;
   }
 }
 
@@ -42,8 +46,6 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
   const { client, supabase, integrationId, syncType, lastSyncedAt } = deps;
 
   // ── Concurrency guard (insert-first, catch unique violation) ──
-  // The unique partial index on (integration_id) WHERE status = 'running'
-  // atomically prevents concurrent syncs.
   const UNIQUE_VIOLATION = "23505";
   const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 
@@ -60,12 +62,8 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
     .single();
 
   if (logError) {
-    // #region agent log
-    console.error("[bb-sync-debug] sync log insert FAILED", { code: (logError as { code?: string }).code, message: logError.message });
-    // #endregion
     const pgCode = (logError as { code?: string }).code;
     if (pgCode === UNIQUE_VIOLATION) {
-      // Another sync is running — check if stale
       const { data: runningSyncs } = await supabase
         .from("integration_sync_log")
         .select("id, started_at")
@@ -81,7 +79,6 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
           return { ok: false, created: 0, updated: 0, unchanged: 0, skipped: 0, error: "Sync already in progress" };
         }
 
-        // Stale lock — mark as failed and retry
         await supabase
           .from("integration_sync_log")
           .update({ status: "failed", error_message: "Stale lock released", completed_at: new Date().toISOString() })
@@ -93,7 +90,6 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
           staleSinceMs: Date.now() - startedAt.getTime(),
         });
 
-        // Retry insert after releasing stale lock
         const { data: retryLog, error: retryError } = await supabase
           .from("integration_sync_log")
           .insert({
@@ -111,7 +107,6 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 
         syncLogId = retryLog?.id ?? null;
       } else {
-        // Unique violation but no running sync found (race resolved) — bail
         return { ok: false, created: 0, updated: 0, unchanged: 0, skipped: 0, error: "Sync already in progress" };
       }
     } else {
@@ -120,27 +115,20 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
     }
   } else {
     syncLogId = syncLog?.id ?? null;
-    // #region agent log
-    console.error("[bb-sync-debug] sync log created", { syncLogId });
-    // #endregion
   }
 
   const totals: SyncResult = { ok: true, created: 0, updated: 0, unchanged: 0, skipped: 0 };
-
-  // Capture cursor BEFORE fetching so records modified during this sync
-  // are re-processed next run (upsert handles overlap harmlessly).
   const syncStartedAt = new Date().toISOString();
 
   try {
     const health = await checkBlackbaudHealth(client);
-    // #region agent log
-    console.error("[bb-sync-debug] health check", { ok: health.ok, reason: health.reason, error: health.error });
-    // #endregion
     if (!health.ok) {
+      const msg = formatBlackbaudHealthError(health);
       throw new BlackbaudSyncFailure(
         "api_verify",
-        "VERIFY_FAILED",
-        formatBlackbaudHealthError(health)
+        health.reason === "quota_exhausted" ? "QUOTA_EXHAUSTED" : "VERIFY_FAILED",
+        msg,
+        { isQuotaExhausted: health.reason === "quota_exhausted", retryAfterHuman: health.retryAfterHuman },
       );
     }
 
@@ -164,15 +152,16 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
       );
 
       const constituents = response.value;
-      // #region agent log
-      console.error("[bb-sync-debug] fetched page", { offset, count: constituents.length, total: response.count });
-      // #endregion
+      debugLog("blackbaud-sync", "fetched page", {
+        offset,
+        count: constituents.length,
+        total: response.count,
+      });
 
       if (constituents.length === 0) {
         break;
       }
 
-      // Phase 1: fetch email sub-resource only
       const normalized: NormalizedConstituent[] = [];
       for (const constituent of constituents) {
         try {
@@ -184,6 +173,9 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
             emails = emailsRes.value;
             await new Promise((resolve) => setTimeout(resolve, 50));
           } catch (err) {
+            if (err instanceof BlackbaudApiError && err.isQuotaExhausted) {
+              throw err;
+            }
             debugLog("blackbaud-sync", "email fetch error", {
               constituentId: constituent.id,
               error: err instanceof Error ? err.message : String(err),
@@ -192,6 +184,14 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 
           normalized.push(normalizeConstituent(constituent, emails, [], []));
         } catch (err) {
+          if (err instanceof BlackbaudApiError && err.isQuotaExhausted) {
+            throw new BlackbaudSyncFailure(
+              "api_fetch",
+              "QUOTA_EXHAUSTED",
+              `Blackbaud API quota exhausted.${err.retryAfterHuman ? ` Quota resets in ${err.retryAfterHuman}.` : ""}`,
+              { isQuotaExhausted: true, retryAfterHuman: err.retryAfterHuman },
+            );
+          }
           debugLog("blackbaud-sync", "normalize error", {
             constituentId: constituent.id,
             error: err instanceof Error ? err.message : String(err),
@@ -211,10 +211,6 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
         normalized
       );
 
-      // #region agent log
-      console.error("[bb-sync-debug] upsert batch", { created: batchResult.created, updated: batchResult.updated, unchanged: batchResult.unchanged, skipped: batchResult.skipped });
-      // #endregion
-
       totals.created += batchResult.created;
       totals.updated += batchResult.updated;
       totals.unchanged += batchResult.unchanged;
@@ -224,7 +220,6 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
       hasMore = constituents.length === limit;
     }
 
-    // Update sync log as completed
     if (syncLogId) {
       await supabase
         .from("integration_sync_log")
@@ -239,7 +234,6 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
         .eq("id", syncLogId);
     }
 
-    // Update integration state
     await supabase
       .from("org_integrations")
       .update({
@@ -252,16 +246,14 @@ export async function runSync(deps: SyncDeps): Promise<SyncResult> {
 
     return totals;
   } catch (err) {
-    // #region agent log
-    console.error("[bb-sync-debug] sync CATCH block", { error: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack?.substring(0, 500) : undefined });
-    // #endregion
     const failure =
       err instanceof BlackbaudSyncFailure
         ? err
         : new BlackbaudSyncFailure(
             "api_fetch",
-            "SYNC_FAILED",
-            err instanceof Error ? err.message : String(err)
+            err instanceof BlackbaudApiError && err.isQuotaExhausted ? "QUOTA_EXHAUSTED" : "SYNC_FAILED",
+            err instanceof Error ? err.message : String(err),
+            err instanceof BlackbaudApiError ? { isQuotaExhausted: err.isQuotaExhausted, retryAfterHuman: err.retryAfterHuman } : undefined,
           );
     const errorMessage = failure.message;
     const syncError = makeSyncError(failure.phase, failure.code, errorMessage);

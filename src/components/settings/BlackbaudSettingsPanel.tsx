@@ -41,6 +41,23 @@ function formatLastSync(lastSyncedAt: string | null): string {
   return new Date(lastSyncedAt).toLocaleString();
 }
 
+function formatSyncErrorMessage(error: SyncError): string {
+  if (error.code === "QUOTA_EXHAUSTED") {
+    const retryMatch = error.message.match(/resets? in (\d{2}:\d{2}:\d{2})/i);
+    if (retryMatch) {
+      return `Blackbaud API daily quota reached. Try again in ${retryMatch[1]}.`;
+    }
+    return "Blackbaud API daily quota reached. Please try again later.";
+  }
+  if (error.code === "VERIFY_FAILED" && error.message.includes("quota")) {
+    return "Blackbaud API daily quota reached. Please try again later.";
+  }
+  if (error.code === "VERIFY_FAILED") {
+    return "Could not verify Blackbaud API access. Your connection may need to be refreshed.";
+  }
+  return error.message;
+}
+
 function BlackbaudIcon({ className }: { className?: string }) {
   return (
     <svg className={className || "w-5 h-5"} viewBox="0 0 24 24" fill="currentColor">
@@ -73,7 +90,23 @@ export function BlackbaudSettingsPanel({
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data?.error || "Sync failed");
+        if (res.status === 429 || data?.result?.error?.toLowerCase().includes("quota")) {
+          showFeedback(
+            "Blackbaud API daily quota reached. Please try again later — quota resets automatically.",
+            "error",
+            { duration: 8000 }
+          );
+          return;
+        }
+        if (data?.result?.error === "Sync already in progress") {
+          showFeedback(
+            "A sync is already running. Please wait a few minutes and try again.",
+            "error",
+            { duration: 5000 }
+          );
+          return;
+        }
+        throw new Error(data?.result?.error || data?.error || "Sync failed");
       }
 
       const result = data.result;
@@ -82,7 +115,6 @@ export function BlackbaudSettingsPanel({
         "success",
         { duration: 5000 }
       );
-      // Reload to show updated state
       window.location.reload();
     } catch (err) {
       showFeedback(
@@ -119,7 +151,6 @@ export function BlackbaudSettingsPanel({
     }
   };
 
-  // Loading skeleton
   if (loading) {
     return (
       <Card className="p-5">
@@ -185,7 +216,13 @@ export function BlackbaudSettingsPanel({
 
         {isError && integration.lastSyncError && (
           <InlineBanner variant="error">
-            {integration.lastSyncError.message}
+            {formatSyncErrorMessage(integration.lastSyncError)}
+          </InlineBanner>
+        )}
+
+        {isConnected && integration.lastSyncError && (
+          <InlineBanner variant="warning">
+            Last sync issue: {formatSyncErrorMessage(integration.lastSyncError)}
           </InlineBanner>
         )}
       </div>
