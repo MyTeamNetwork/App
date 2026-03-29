@@ -55,6 +55,7 @@ const patchSchema = z
       (tz) => { try { Intl.DateTimeFormat(undefined, { timeZone: tz }); return true; } catch { return false; } },
       { message: "Invalid IANA timezone" },
     ).optional(),
+    default_language: z.enum(["en", "es", "fr", "ar", "zh", "pt"]).optional(),
   })
   .strict();
 const ALLOWED_NAV_PATHS = new Set([...ORG_NAV_ITEMS.map((item) => item.href), "dashboard"]);
@@ -170,7 +171,7 @@ export async function PATCH(req: Request, { params }: RouteParams) {
     const serviceSupabase = createServiceClient();
 
     // Build update payload - only include fields that were provided
-    const updatePayload: { nav_config?: NavConfig; name?: string; feed_post_roles?: string[]; job_post_roles?: string[]; discussion_post_roles?: string[]; media_upload_roles?: string[]; linkedin_resync_enabled?: boolean; require_invite_approval?: boolean; timezone?: string } = {};
+    const updatePayload: { nav_config?: NavConfig; name?: string; feed_post_roles?: string[]; job_post_roles?: string[]; discussion_post_roles?: string[]; media_upload_roles?: string[]; linkedin_resync_enabled?: boolean; require_invite_approval?: boolean; timezone?: string; default_language?: string } = {};
 
     // Only update nav_config if navConfig or nav_config was provided in the request
     if (parsedBody.navConfig !== undefined || parsedBody.nav_config !== undefined) {
@@ -217,6 +218,9 @@ export async function PATCH(req: Request, { params }: RouteParams) {
     if (parsedBody.timezone !== undefined) {
       updatePayload.timezone = parsedBody.timezone;
     }
+    if (parsedBody.default_language !== undefined) {
+      updatePayload.default_language = parsedBody.default_language;
+    }
 
     // If nothing to update, return early
     if (Object.keys(updatePayload).length === 0) {
@@ -229,7 +233,7 @@ export async function PATCH(req: Request, { params }: RouteParams) {
       .from("organizations")
       .update(updatePayload)
       .eq("id", organizationId)
-      .select("id, name, nav_config, feed_post_roles, job_post_roles, discussion_post_roles, media_upload_roles, linkedin_resync_enabled, require_invite_approval, timezone")
+      .select("id, name, nav_config, feed_post_roles, job_post_roles, discussion_post_roles, media_upload_roles, linkedin_resync_enabled, require_invite_approval, timezone, default_language")
       .maybeSingle();
 
     if (updateError) {
@@ -241,7 +245,7 @@ export async function PATCH(req: Request, { params }: RouteParams) {
     }
 
     // Return response with updated fields
-    const response: { navConfig?: NavConfig; name?: string; feed_post_roles?: string[]; job_post_roles?: string[]; discussion_post_roles?: string[]; media_upload_roles?: string[]; linkedin_resync_enabled?: boolean; require_invite_approval?: boolean; timezone?: string } = {};
+    const response: { navConfig?: NavConfig; name?: string; feed_post_roles?: string[]; job_post_roles?: string[]; discussion_post_roles?: string[]; media_upload_roles?: string[]; linkedin_resync_enabled?: boolean; require_invite_approval?: boolean; timezone?: string; default_language?: string } = {};
     if (updatePayload.nav_config !== undefined) {
       response.navConfig = navConfig;
     }
@@ -268,6 +272,9 @@ export async function PATCH(req: Request, { params }: RouteParams) {
     }
     if (updatePayload.timezone !== undefined) {
       response.timezone = updatedOrg.timezone as string;
+    }
+    if (updatePayload.default_language !== undefined) {
+      response.default_language = updatedOrg.default_language as string;
     }
 
     return respond(response);

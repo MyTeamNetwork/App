@@ -15,6 +15,12 @@ import { OrgNameCard } from "@/components/settings/OrgNameCard";
 import { BrandingCard } from "@/components/settings/BrandingCard";
 import { NotificationPrefsCard } from "@/components/settings/NotificationPrefsCard";
 import { StorageUsageCard } from "@/components/settings/StorageUsageCard";
+import { LOCALE_NAMES } from "@/i18n/config";
+import type { SupportedLocale } from "@/i18n/config";
+
+const LANGUAGE_OPTIONS = (Object.entries(LOCALE_NAMES) as [SupportedLocale, string][]).map(
+  ([value, label]) => ({ value, label })
+);
 
 const TIMEZONE_OPTIONS = [
   { value: "America/New_York", label: "Eastern Time (US)" },
@@ -116,6 +122,12 @@ function OrgSettingsContent() {
   const [timezoneError, setTimezoneError] = useState<string | null>(null);
   const [timezoneSuccess, setTimezoneSuccess] = useState<string | null>(null);
 
+  // Language state
+  const [defaultLanguage, setDefaultLanguage] = useState("en");
+  const [languageSaving, setLanguageSaving] = useState(false);
+  const [languageError, setLanguageError] = useState<string | null>(null);
+  const [languageSuccess, setLanguageSuccess] = useState<string | null>(null);
+
   // LinkedIn resync toggle state
   const [linkedinResyncEnabled, setLinkedinResyncEnabled] = useState(false);
   const [linkedinResyncSaving, setLinkedinResyncSaving] = useState(false);
@@ -130,7 +142,7 @@ function OrgSettingsContent() {
 
       const { data: org, error: orgError } = await supabase
         .from("organizations")
-        .select("id, name, logo_url, primary_color, secondary_color, feed_post_roles, job_post_roles, discussion_post_roles, media_upload_roles, linkedin_resync_enabled, timezone")
+        .select("id, name, logo_url, primary_color, secondary_color, feed_post_roles, job_post_roles, discussion_post_roles, media_upload_roles, linkedin_resync_enabled, timezone, default_language")
         .eq("slug", orgSlug)
         .maybeSingle();
 
@@ -151,6 +163,7 @@ function OrgSettingsContent() {
       setMediaUploadRoles((org as Record<string, unknown>).media_upload_roles as string[] || ["admin"]);
       setLinkedinResyncEnabled((org as Record<string, unknown>).linkedin_resync_enabled === true);
       setTimezone(((org as Record<string, unknown>).timezone as string) || "America/New_York");
+      setDefaultLanguage(((org as Record<string, unknown>).default_language as string) || "en");
 
       const {
         data: { user },
@@ -363,6 +376,40 @@ function OrgSettingsContent() {
     }
   };
 
+  const handleLanguageSave = async () => {
+    if (!orgId) return;
+    if (role !== "admin") {
+      setLanguageError("Only admins can change the default language.");
+      return;
+    }
+
+    setLanguageSaving(true);
+    setLanguageError(null);
+    setLanguageSuccess(null);
+
+    try {
+      const res = await fetch(`/api/organizations/${orgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ default_language: defaultLanguage }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Unable to update language");
+      }
+
+      if (data?.default_language) {
+        setDefaultLanguage(data.default_language);
+      }
+      setLanguageSuccess("Default language updated.");
+    } catch (err) {
+      setLanguageError(err instanceof Error ? err.message : "Unable to update language");
+    } finally {
+      setLanguageSaving(false);
+    }
+  };
+
   const isAdmin = role === "admin";
 
   return (
@@ -426,6 +473,40 @@ function OrgSettingsContent() {
               )}
               {timezoneSuccess && (
                 <p className="text-sm text-green-600 dark:text-green-400">{timezoneSuccess}</p>
+              )}
+            </Card>
+          )}
+
+          {isAdmin && (
+            <Card className="org-settings-card p-5 space-y-3 opacity-0 translate-y-2">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-foreground" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z" />
+                </svg>
+                <p className="font-semibold text-foreground">Default Language</p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Set the default language for all members in this organization. Members can override this in their personal settings.
+              </p>
+              <Select
+                label="Language"
+                options={LANGUAGE_OPTIONS}
+                value={defaultLanguage}
+                onChange={(e) => { setDefaultLanguage(e.target.value); setLanguageSuccess(null); }}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleLanguageSave}
+                disabled={languageSaving}
+              >
+                {languageSaving ? "Saving..." : "Save Language"}
+              </Button>
+              {languageError && (
+                <p className="text-sm text-red-600 dark:text-red-400">{languageError}</p>
+              )}
+              {languageSuccess && (
+                <p className="text-sm text-green-600 dark:text-green-400">{languageSuccess}</p>
               )}
             </Card>
           )}

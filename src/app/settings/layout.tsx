@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/settings/connected-accounts", label: "Connected Accounts" },
   { href: "/settings/notifications", label: "Notifications" },
+  { href: "/settings/language", label: "Language" },
 ];
 
 export default function SettingsLayout({

@@ -1,0 +1,90 @@
+{
+  "nav": {
+    "groups": {
+      "people": "People",
+      "community": "Community",
+      "schedule": "Schedule",
+      "activity": "Activity",
+      "finance": "Finance",
+      "admin": "Admin"
+    },
+    "items": {
+      "home": "Home",
+      "members": "Members",
+      "messages": "Messages",
+      "alumni": "Alumni",
+      "parents": "Parents",
+      "mentorship": "Mentorship",
+      "workouts": "Workouts",
+      "competition": "Competition",
+      "events": "Events",
+      "announcements": "Announcements",
+      "philanthropy": "Philanthropy",
+      "donations": "Donations",
+      "expenses": "Expenses",
+      "records": "Records",
+      "calendar": "Calendar",
+      "jobs": "Jobs",
+      "forms": "Forms",
+      "media": "Media",
+      "customization": "Customization",
+      "approvals": "Approvals",
+      "settings": "Settings",
+      "navigation": "Navigation"
+    }
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "back": "Back",
+    "edit": "Edit",
+    "create": "Create",
+    "close": "Close",
+    "confirm": "Confirm",
+    "loading": "Loading...",
+    "saving": "Saving...",
+    "noResults": "No results found",
+    "search": "Search...",
+    "submit": "Submit",
+    "required": "Required",
+    "optional": "Optional",
+    "yes": "Yes",
+    "no": "No",
+    "or": "or",
+    "and": "and"
+  },
+  "roles": {
+    "admin": "Admin",
+    "activeMember": "Active Member",
+    "alumni": "Alumni",
+    "parent": "Parent"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "signUp": "Sign up"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": {
+      "title": "Language",
+      "description": "Choose your preferred language",
+      "orgDefault": "Organization default",
+      "useOrgDefault": "Use organization default ({language})"
+    }
+  },
+  "customization": {
+    "title": "Customization",
+    "description": "Update your org brand and notifications in one place.",
+    "language": {
+      "title": "Default Language",
+      "description": "Set the default language for all members in this organization."
+    }
+  },
+  "feedback": {
+    "savedSuccessfully": "Saved successfully",
+    "errorOccurred": "An error occurred",
+    "changesSaved": "Changes saved"
+  }
+}

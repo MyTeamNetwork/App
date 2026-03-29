@@ -11,9 +11,35 @@ import {
   getRedirectForMembershipStatus,
   shouldRedirectToCanonicalHost,
 } from "./lib/middleware/routing-decisions";
+import { SUPPORTED_LOCALES, DEFAULT_LOCALE } from "./i18n/config";
+import type { SupportedLocale } from "./i18n/config";
 
 // Validate at module load
 validateAuthTestMode();
+
+/** Sync the NEXT_LOCALE cookie from DB language preferences (user override → org default → 'en'). */
+function syncLocaleCookie(
+  request: NextRequest,
+  response: NextResponse,
+  userLangOverride: string | null | undefined,
+  orgDefaultLang: string | null | undefined,
+) {
+  const effective = (
+    SUPPORTED_LOCALES.includes(userLangOverride as SupportedLocale) ? userLangOverride :
+    SUPPORTED_LOCALES.includes(orgDefaultLang as SupportedLocale) ? orgDefaultLang :
+    DEFAULT_LOCALE
+  ) as string;
+
+  const current = request.cookies.get("NEXT_LOCALE")?.value;
+  if (effective !== current) {
+    response.cookies.set("NEXT_LOCALE", effective, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+  }
+}
 
 const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
 const supabaseAnonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
@@ -341,6 +367,10 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  // ── Locale tracking (populated during org/user checks below) ──
+  let userLangOverride: string | null | undefined;
+  let orgDefaultLang: string | null | undefined;
+
   // Check for revoked access on org routes
   // Org routes are paths like /[orgSlug]/... but not /app/ or /auth/ or /api/ or /settings/ or /enterprise/
   const isOrgRoute = !pathname.startsWith("/app") &&
@@ -395,6 +425,9 @@ export async function middleware(request: NextRequest) {
             }
           } else if (ctx?.found) {
             membershipStatus = ctx.membership?.status;
+            // Capture language fields from RPC for locale cookie sync (no extra query)
+            orgDefaultLang = ctx.organization?.default_language ?? null;
+            userLangOverride = ctx.membership?.language_override ?? null;
           }
           // If !ctx?.found the org doesn't exist — layout.tsx handles the 404 gate
 
@@ -428,6 +461,27 @@ export async function middleware(request: NextRequest) {
         }
       }
     }
+  }
+
+  // ── Locale cookie sync ──
+  // For org routes, language fields were already captured from the RPC above.
+  // For non-org routes, only query the user's override when the cookie is missing
+  // (it persists for 1 year and is re-synced when the user changes their preference).
+  if (user) {
+    if (!isOrgRoute && !request.cookies.get("NEXT_LOCALE")?.value) {
+      try {
+        const { data: userData } = await supabase
+          .from("users")
+          .select("language_override")
+          .eq("id", user.id)
+          .maybeSingle();
+        userLangOverride = userData?.language_override ?? null;
+      } catch {
+        // Non-critical — fall through to default locale
+      }
+    }
+
+    syncLocaleCookie(request, response, userLangOverride, orgDefaultLang);
   }
 
   response.headers.set("x-pathname", pathname);
