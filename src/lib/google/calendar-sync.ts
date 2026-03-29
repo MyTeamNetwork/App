@@ -5,8 +5,10 @@ import {
     getValidAccessToken,
     getCalendarConnection,
 } from "./oauth";
-export type { CalendarEvent } from "./calendar-event-mapper";
-export { mapEventToCalendarEvent } from "./calendar-event-mapper";
+import type { CalendarEvent } from "./calendar-event-mapper";
+import { mapEventToCalendarEvent } from "./calendar-event-mapper";
+export type { CalendarEvent };
+export { mapEventToCalendarEvent };
 
 export interface SyncResult {
     success: boolean;
