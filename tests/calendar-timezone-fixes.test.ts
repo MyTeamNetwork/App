@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { formatShortDate } from "@/lib/utils/dates";
+import { mapEventToCalendarEvent } from "@/lib/google/calendar-event-mapper";
 
 /**
  * Tests for calendar timezone bug fixes.
@@ -63,28 +64,6 @@ describe("Recurrence auto-select UTC day from date+time", () => {
 // ─── BUG 3: mapEventToCalendarEvent timezone ───────────────────────────
 
 describe("mapEventToCalendarEvent timezone parameter", () => {
-  /**
-   * Local copy of the pure mapping function for testing without module imports
-   * that depend on googleapis env vars.
-   */
-  function mapEventToCalendarEvent(
-    event: { title: string; description?: string | null; location?: string | null; start_date: string; end_date?: string | null },
-    orgTimeZone?: string,
-  ) {
-    const startDate = new Date(event.start_date);
-    const endDate = event.end_date
-      ? new Date(event.end_date)
-      : new Date(startDate.getTime() + 60 * 60 * 1000);
-    const timeZone = orgTimeZone || "UTC";
-    return {
-      summary: event.title,
-      description: event.description ?? undefined,
-      location: event.location ?? undefined,
-      start: { dateTime: startDate.toISOString(), timeZone },
-      end: { dateTime: endDate.toISOString(), timeZone },
-    };
-  }
-
   it("uses org timezone when provided", () => {
     const result = mapEventToCalendarEvent(
       { title: "Practice", start_date: "2026-03-09T23:00:00.000Z" },

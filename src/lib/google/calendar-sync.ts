@@ -5,15 +5,8 @@ import {
     getValidAccessToken,
     getCalendarConnection,
 } from "./oauth";
-
-// Types for calendar events
-export interface CalendarEvent {
-    summary: string;
-    description?: string;
-    location?: string;
-    start: { dateTime: string; timeZone: string };
-    end: { dateTime: string; timeZone: string };
-}
+export type { CalendarEvent } from "./calendar-event-mapper";
+export { mapEventToCalendarEvent } from "./calendar-event-mapper";
 
 export interface SyncResult {
     success: boolean;
@@ -178,54 +171,6 @@ export async function deleteCalendarEvent(
             error: errorMessage,
         };
     }
-}
-
-
-/**
- * Maps an organization event to a Google Calendar event format
- * @param event - The organization event from the database
- * @returns CalendarEvent formatted for Google Calendar API
- * 
- * Requirements: 2.2
- * - summary equal to event.title
- * - description equal to event.description (if present)
- * - location equal to event.location (if present)
- * - start.dateTime equal to event.start_date
- * - end.dateTime equal to event.end_date (or start_date + 1 hour if no end_date)
- */
-export function mapEventToCalendarEvent(event: {
-    title: string;
-    description?: string | null;
-    location?: string | null;
-    start_date: string;
-    end_date?: string | null;
-}, orgTimeZone?: string): CalendarEvent {
-    const startDate = new Date(event.start_date);
-
-    // If no end_date, default to start_date + 1 hour
-    let endDate: Date;
-    if (event.end_date) {
-        endDate = new Date(event.end_date);
-    } else {
-        endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1 hour
-    }
-
-    // Use org timezone so Google Calendar displays events at the correct local time
-    const timeZone = orgTimeZone || "UTC";
-
-    return {
-        summary: event.title,
-        description: event.description ?? undefined,
-        location: event.location ?? undefined,
-        start: {
-            dateTime: startDate.toISOString(),
-            timeZone,
-        },
-        end: {
-            dateTime: endDate.toISOString(),
-            timeZone,
-        },
-    };
 }
 
 
