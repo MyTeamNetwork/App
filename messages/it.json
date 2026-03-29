@@ -1,0 +1,94 @@
+{
+  "nav": {
+    "groups": {
+      "people": "Persone",
+      "community": "Comunita",
+      "schedule": "Programma",
+      "activity": "Attivita",
+      "finance": "Finanze",
+      "admin": "Admin"
+    },
+    "items": {
+      "home": "Home",
+      "members": "Membri",
+      "messages": "Messaggi",
+      "alumni": "Ex studenti",
+      "parents": "Genitori",
+      "mentorship": "Mentoring",
+      "workouts": "Allenamenti",
+      "competition": "Competizione",
+      "events": "Eventi",
+      "announcements": "Annunci",
+      "philanthropy": "Filantropia",
+      "donations": "Donazioni",
+      "expenses": "Spese",
+      "records": "Archivio",
+      "calendar": "Calendario",
+      "jobs": "Lavoro",
+      "forms": "Moduli",
+      "media": "Media",
+      "customization": "Personalizzazione",
+      "approvals": "Approvazioni",
+      "settings": "Impostazioni",
+      "navigation": "Navigazione"
+    }
+  },
+  "common": {
+    "save": "Salva",
+    "cancel": "Annulla",
+    "delete": "Elimina",
+    "back": "Indietro",
+    "edit": "Modifica",
+    "create": "Crea",
+    "close": "Chiudi",
+    "confirm": "Conferma",
+    "loading": "Caricamento...",
+    "saving": "Salvataggio...",
+    "noResults": "Nessun risultato trovato",
+    "search": "Cerca...",
+    "submit": "Invia",
+    "required": "Obbligatorio",
+    "optional": "Facoltativo",
+    "yes": "Si",
+    "no": "No",
+    "or": "o",
+    "and": "e"
+  },
+  "roles": {
+    "admin": "Amministratore",
+    "activeMember": "Membro attivo",
+    "alumni": "Ex studente",
+    "parent": "Genitore"
+  },
+  "auth": {
+    "signIn": "Accedi",
+    "signOut": "Esci",
+    "signUp": "Registrati"
+  },
+  "settings": {
+    "title": "Impostazioni",
+    "language": {
+      "title": "Lingua",
+      "description": "Scegli la tua lingua preferita",
+      "orgDefault": "Lingua dell'organizzazione",
+      "useOrgDefault": "Usa la lingua dell'organizzazione ({language})"
+    }
+  },
+  "customization": {
+    "title": "Personalizzazione",
+    "description": "Aggiorna il marchio e le notifiche della tua organizzazione.",
+    "language": {
+      "title": "Lingua predefinita",
+      "description": "Imposta la lingua predefinita per tutti i membri di questa organizzazione."
+    }
+  },
+  "feedback": {
+    "savedSuccessfully": "Salvato con successo",
+    "errorOccurred": "Si e verificato un errore",
+    "changesSaved": "Modifiche salvate"
+  },
+  "sidebar": {
+    "switchOrg": "Cambia organizzazione",
+    "poweredBy": "Realizzato da"
+  }
+}

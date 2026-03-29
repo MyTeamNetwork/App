@@ -1,1 +1,94 @@
-{}
+{
+  "nav": {
+    "groups": {
+      "people": "Personas",
+      "community": "Comunidad",
+      "schedule": "Horario",
+      "activity": "Actividad",
+      "finance": "Finanzas",
+      "admin": "Admin"
+    },
+    "items": {
+      "home": "Inicio",
+      "members": "Miembros",
+      "messages": "Mensajes",
+      "alumni": "Egresados",
+      "parents": "Padres",
+      "mentorship": "Mentorias",
+      "workouts": "Entrenamientos",
+      "competition": "Competencia",
+      "events": "Eventos",
+      "announcements": "Anuncios",
+      "philanthropy": "Filantropia",
+      "donations": "Donaciones",
+      "expenses": "Gastos",
+      "records": "Registros",
+      "calendar": "Calendario",
+      "jobs": "Empleos",
+      "forms": "Formularios",
+      "media": "Medios",
+      "customization": "Personalizar",
+      "approvals": "Aprobaciones",
+      "settings": "Ajustes",
+      "navigation": "Navegacion"
+    }
+  },
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "back": "Volver",
+    "edit": "Editar",
+    "create": "Crear",
+    "close": "Cerrar",
+    "confirm": "Confirmar",
+    "loading": "Cargando...",
+    "saving": "Guardando...",
+    "noResults": "No se encontraron resultados",
+    "search": "Buscar...",
+    "submit": "Enviar",
+    "required": "Obligatorio",
+    "optional": "Opcional",
+    "yes": "Si",
+    "no": "No",
+    "or": "o",
+    "and": "y"
+  },
+  "roles": {
+    "admin": "Administrador",
+    "activeMember": "Miembro activo",
+    "alumni": "Egresado",
+    "parent": "Padre/Madre"
+  },
+  "auth": {
+    "signIn": "Iniciar sesion",
+    "signOut": "Cerrar sesion",
+    "signUp": "Registrarse"
+  },
+  "settings": {
+    "title": "Ajustes",
+    "language": {
+      "title": "Idioma",
+      "description": "Elige tu idioma preferido",
+      "orgDefault": "Idioma de la organizacion",
+      "useOrgDefault": "Usar idioma de la organizacion ({language})"
+    }
+  },
+  "customization": {
+    "title": "Personalizar",
+    "description": "Actualiza la marca y notificaciones de tu organizacion.",
+    "language": {
+      "title": "Idioma predeterminado",
+      "description": "Establece el idioma predeterminado para todos los miembros de esta organizacion."
+    }
+  },
+  "feedback": {
+    "savedSuccessfully": "Guardado correctamente",
+    "errorOccurred": "Ocurrio un error",
+    "changesSaved": "Cambios guardados"
+  },
+  "sidebar": {
+    "switchOrg": "Cambiar organizacion",
+    "poweredBy": "Impulsado por"
+  }
+}

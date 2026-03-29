@@ -55,7 +55,7 @@ const patchSchema = z
       (tz) => { try { Intl.DateTimeFormat(undefined, { timeZone: tz }); return true; } catch { return false; } },
       { message: "Invalid IANA timezone" },
     ).optional(),
-    default_language: z.enum(["en", "es", "fr", "ar", "zh", "pt"]).optional(),
+    default_language: z.enum(["en", "es", "fr", "ar", "zh", "pt", "it"]).optional(),
   })
   .strict();
 const ALLOWED_NAV_PATHS = new Set([...ORG_NAV_ITEMS.map((item) => item.href), "dashboard"]);

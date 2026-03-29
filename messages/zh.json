@@ -1,1 +1,94 @@
-{}
+{
+  "nav": {
+    "groups": {
+      "people": "\u4eba\u5458",
+      "community": "\u793e\u533a",
+      "schedule": "\u65e5\u7a0b",
+      "activity": "\u6d3b\u52a8",
+      "finance": "\u8d22\u52a1",
+      "admin": "\u7ba1\u7406"
+    },
+    "items": {
+      "home": "\u9996\u9875",
+      "members": "\u6210\u5458",
+      "messages": "\u6d88\u606f",
+      "alumni": "\u6821\u53cb",
+      "parents": "\u5bb6\u957f",
+      "mentorship": "\u5bfc\u5e08",
+      "workouts": "\u8bad\u7ec3",
+      "competition": "\u6bd4\u8d5b",
+      "events": "\u6d3b\u52a8",
+      "announcements": "\u516c\u544a",
+      "philanthropy": "\u6148\u5584",
+      "donations": "\u6350\u6b3e",
+      "expenses": "\u652f\u51fa",
+      "records": "\u8bb0\u5f55",
+      "calendar": "\u65e5\u5386",
+      "jobs": "\u804c\u4f4d",
+      "forms": "\u8868\u5355",
+      "media": "\u5a92\u4f53",
+      "customization": "\u81ea\u5b9a\u4e49",
+      "approvals": "\u5ba1\u6279",
+      "settings": "\u8bbe\u7f6e",
+      "navigation": "\u5bfc\u822a"
+    }
+  },
+  "common": {
+    "save": "\u4fdd\u5b58",
+    "cancel": "\u53d6\u6d88",
+    "delete": "\u5220\u9664",
+    "back": "\u8fd4\u56de",
+    "edit": "\u7f16\u8f91",
+    "create": "\u521b\u5efa",
+    "close": "\u5173\u95ed",
+    "confirm": "\u786e\u8ba4",
+    "loading": "\u52a0\u8f7d\u4e2d...",
+    "saving": "\u4fdd\u5b58\u4e2d...",
+    "noResults": "\u672a\u627e\u5230\u7ed3\u679c",
+    "search": "\u641c\u7d22...",
+    "submit": "\u63d0\u4ea4",
+    "required": "\u5fc5\u586b",
+    "optional": "\u53ef\u9009",
+    "yes": "\u662f",
+    "no": "\u5426",
+    "or": "\u6216",
+    "and": "\u548c"
+  },
+  "roles": {
+    "admin": "\u7ba1\u7406\u5458",
+    "activeMember": "\u6d3b\u8dc3\u6210\u5458",
+    "alumni": "\u6821\u53cb",
+    "parent": "\u5bb6\u957f"
+  },
+  "auth": {
+    "signIn": "\u767b\u5f55",
+    "signOut": "\u9000\u51fa",
+    "signUp": "\u6ce8\u518c"
+  },
+  "settings": {
+    "title": "\u8bbe\u7f6e",
+    "language": {
+      "title": "\u8bed\u8a00",
+      "description": "\u9009\u62e9\u60a8\u7684\u9996\u9009\u8bed\u8a00",
+      "orgDefault": "\u7ec4\u7ec7\u9ed8\u8ba4\u8bed\u8a00",
+      "useOrgDefault": "\u4f7f\u7528\u7ec4\u7ec7\u9ed8\u8ba4\u8bed\u8a00 ({language})"
+    }
+  },
+  "customization": {
+    "title": "\u81ea\u5b9a\u4e49",
+    "description": "\u66f4\u65b0\u7ec4\u7ec7\u54c1\u724c\u548c\u901a\u77e5\u8bbe\u7f6e\u3002",
+    "language": {
+      "title": "\u9ed8\u8ba4\u8bed\u8a00",
+      "description": "\u4e3a\u6b64\u7ec4\u7ec7\u7684\u6240\u6709\u6210\u5458\u8bbe\u7f6e\u9ed8\u8ba4\u8bed\u8a00\u3002"
+    }
+  },
+  "feedback": {
+    "savedSuccessfully": "\u4fdd\u5b58\u6210\u529f",
+    "errorOccurred": "\u53d1\u751f\u9519\u8bef",
+    "changesSaved": "\u66f4\u6539\u5df2\u4fdd\u5b58"
+  },
+  "sidebar": {
+    "switchOrg": "\u5207\u6362\u7ec4\u7ec7",
+    "poweredBy": "\u7531...\u63d0\u4f9b\u652f\u6301"
+  }
+}

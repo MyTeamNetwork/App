@@ -55,7 +55,7 @@ export const orgSettingsSchema = z.object({
 export type OrgSettingsForm = z.infer<typeof orgSettingsSchema>;
 
 // Supported locales for i18n
-export const supportedLocaleSchema = z.enum(["en", "es", "fr", "ar", "zh", "pt"]);
+export const supportedLocaleSchema = z.enum(["en", "es", "fr", "ar", "zh", "pt", "it"]);
 export type SupportedLocaleValue = z.infer<typeof supportedLocaleSchema>;
 
 // Optional locale (for user override — null means "use org default")

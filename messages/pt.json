@@ -1,1 +1,94 @@
-{}
+{
+  "nav": {
+    "groups": {
+      "people": "Pessoas",
+      "community": "Comunidade",
+      "schedule": "Agenda",
+      "activity": "Atividade",
+      "finance": "Financeiro",
+      "admin": "Admin"
+    },
+    "items": {
+      "home": "Inicio",
+      "members": "Membros",
+      "messages": "Mensagens",
+      "alumni": "Ex-alunos",
+      "parents": "Pais",
+      "mentorship": "Mentoria",
+      "workouts": "Treinos",
+      "competition": "Competicao",
+      "events": "Eventos",
+      "announcements": "Avisos",
+      "philanthropy": "Filantropia",
+      "donations": "Doacoes",
+      "expenses": "Despesas",
+      "records": "Registros",
+      "calendar": "Calendario",
+      "jobs": "Vagas",
+      "forms": "Formularios",
+      "media": "Midia",
+      "customization": "Personalizacao",
+      "approvals": "Aprovacoes",
+      "settings": "Configuracoes",
+      "navigation": "Navegacao"
+    }
+  },
+  "common": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "back": "Voltar",
+    "edit": "Editar",
+    "create": "Criar",
+    "close": "Fechar",
+    "confirm": "Confirmar",
+    "loading": "Carregando...",
+    "saving": "Salvando...",
+    "noResults": "Nenhum resultado encontrado",
+    "search": "Buscar...",
+    "submit": "Enviar",
+    "required": "Obrigatorio",
+    "optional": "Opcional",
+    "yes": "Sim",
+    "no": "Nao",
+    "or": "ou",
+    "and": "e"
+  },
+  "roles": {
+    "admin": "Administrador",
+    "activeMember": "Membro ativo",
+    "alumni": "Ex-aluno",
+    "parent": "Pai/Mae"
+  },
+  "auth": {
+    "signIn": "Entrar",
+    "signOut": "Sair",
+    "signUp": "Cadastrar"
+  },
+  "settings": {
+    "title": "Configuracoes",
+    "language": {
+      "title": "Idioma",
+      "description": "Escolha seu idioma preferido",
+      "orgDefault": "Idioma da organizacao",
+      "useOrgDefault": "Usar idioma da organizacao ({language})"
+    }
+  },
+  "customization": {
+    "title": "Personalizacao",
+    "description": "Atualize a marca e notificacoes da sua organizacao.",
+    "language": {
+      "title": "Idioma padrao",
+      "description": "Defina o idioma padrao para todos os membros desta organizacao."
+    }
+  },
+  "feedback": {
+    "savedSuccessfully": "Salvo com sucesso",
+    "errorOccurred": "Ocorreu um erro",
+    "changesSaved": "Alteracoes salvas"
+  },
+  "sidebar": {
+    "switchOrg": "Trocar organizacao",
+    "poweredBy": "Desenvolvido por"
+  }
+}

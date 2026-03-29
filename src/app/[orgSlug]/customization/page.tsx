@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { animate, stagger } from "animejs";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import type { NotificationPreference, UserRole } from "@/types/database";
 import { normalizeRole, type OrgRole } from "@/lib/auth/role-utils";
@@ -56,15 +57,17 @@ export default function OrgSettingsPage() {
 function OrgSettingsLoading() {
   const params = useParams();
   const orgSlug = params.orgSlug as string;
+  const tCustom = useTranslations("customization");
+  const tCommon = useTranslations("common");
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Customization"
-        description="Update your org brand and notifications in one place."
+        title={tCustom("title")}
+        description={tCustom("description")}
         backHref={`/${orgSlug}`}
       />
-      <Card className="p-5 text-muted-foreground text-sm">Loading settings...</Card>
+      <Card className="p-5 text-muted-foreground text-sm">{tCommon("loading")}</Card>
     </div>
   );
 }
@@ -74,6 +77,8 @@ function OrgSettingsContent() {
   const router = useRouter();
   const orgSlug = params.orgSlug as string;
   const supabase = useMemo(() => createClient(), []);
+  const tCustom = useTranslations("customization");
+  const tCommon = useTranslations("common");
 
   // Bootstrap state
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -415,13 +420,13 @@ function OrgSettingsContent() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Customization"
-        description="Update your org brand and notifications in one place."
+        title={tCustom("title")}
+        description={tCustom("description")}
         backHref={`/${orgSlug}`}
       />
 
       {loading ? (
-        <Card className="p-5 text-muted-foreground text-sm">Loading settings...</Card>
+        <Card className="p-5 text-muted-foreground text-sm">{tCommon("loading")}</Card>
       ) : pageError ? (
         <Card className="p-5 text-red-600 dark:text-red-400 text-sm">{pageError}</Card>
       ) : (
@@ -466,7 +471,7 @@ function OrgSettingsContent() {
                 onClick={handleTimezoneSave}
                 disabled={timezoneSaving}
               >
-                {timezoneSaving ? "Saving..." : "Save Timezone"}
+                {timezoneSaving ? tCommon("saving") : tCommon("save")}
               </Button>
               {timezoneError && (
                 <p className="text-sm text-red-600 dark:text-red-400">{timezoneError}</p>
@@ -483,13 +488,13 @@ function OrgSettingsContent() {
                 <svg className="w-5 h-5 text-foreground" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z" />
                 </svg>
-                <p className="font-semibold text-foreground">Default Language</p>
+                <p className="font-semibold text-foreground">{tCustom("language.title")}</p>
               </div>
               <p className="text-sm text-muted-foreground">
-                Set the default language for all members in this organization. Members can override this in their personal settings.
+                {tCustom("language.description")}
               </p>
               <Select
-                label="Language"
+                label={tCustom("language.title")}
                 options={LANGUAGE_OPTIONS}
                 value={defaultLanguage}
                 onChange={(e) => { setDefaultLanguage(e.target.value); setLanguageSuccess(null); }}
@@ -500,7 +505,7 @@ function OrgSettingsContent() {
                 onClick={handleLanguageSave}
                 disabled={languageSaving}
               >
-                {languageSaving ? "Saving..." : "Save Language"}
+                {languageSaving ? tCommon("saving") : tCommon("save")}
               </Button>
               {languageError && (
                 <p className="text-sm text-red-600 dark:text-red-400">{languageError}</p>

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { Card, Button, Select } from "@/components/ui";
 import { LOCALE_NAMES } from "@/i18n/config";
@@ -20,15 +21,17 @@ export default function LanguageSettingsPage() {
 }
 
 function LanguageSettingsLoading() {
+  const t = useTranslations("settings.language");
+  const tCommon = useTranslations("common");
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold text-foreground">Language</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
         <p className="text-muted-foreground">
-          Choose your preferred language for the app interface.
+          {t("description")}
         </p>
       </div>
-      <Card className="p-5 text-muted-foreground text-sm">Loading…</Card>
+      <Card className="p-5 text-muted-foreground text-sm">{tCommon("loading")}</Card>
     </div>
   );
 }
@@ -36,6 +39,9 @@ function LanguageSettingsLoading() {
 function LanguageSettingsContent() {
   const supabase = createClient();
   const router = useRouter();
+  const t = useTranslations("settings.language");
+  const tCommon = useTranslations("common");
+  const tFeedback = useTranslations("feedback");
   const [loading, setLoading] = useState(true);
   const [language, setLanguage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -79,7 +85,7 @@ function LanguageSettingsContent() {
 
       if (updateError) throw new Error(updateError.message);
 
-      setSuccess("Language preference saved.");
+      setSuccess(tFeedback("savedSuccessfully"));
 
       // Refresh triggers middleware re-sync which updates the NEXT_LOCALE cookie
       router.refresh();
@@ -97,17 +103,17 @@ function LanguageSettingsContent() {
   return (
     <div className="space-y-6">
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold text-foreground">Language</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
         <p className="text-muted-foreground">
-          Choose your preferred language for the app interface. This overrides the organization default for all orgs you belong to.
+          {t("description")}
         </p>
       </div>
 
       <Card className="p-5 space-y-4">
         <Select
-          label="Preferred Language"
+          label={t("title")}
           options={[
-            { value: "", label: "Use organization default" },
+            { value: "", label: t("orgDefault") },
             ...LANGUAGE_OPTIONS,
           ]}
           value={language || ""}
@@ -120,7 +126,7 @@ function LanguageSettingsContent() {
           onClick={handleSave}
           disabled={saving}
         >
-          {saving ? "Saving..." : "Save Language"}
+          {saving ? tCommon("saving") : tCommon("save")}
         </Button>
 
         {error && (

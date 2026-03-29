@@ -86,5 +86,9 @@
     "savedSuccessfully": "Saved successfully",
     "errorOccurred": "An error occurred",
     "changesSaved": "Changes saved"
+  },
+  "sidebar": {
+    "switchOrg": "Switch Organization",
+    "poweredBy": "Powered by"
   }
 }

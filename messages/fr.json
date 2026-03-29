@@ -1,1 +1,94 @@
-{}
+{
+  "nav": {
+    "groups": {
+      "people": "Personnes",
+      "community": "Communaute",
+      "schedule": "Horaire",
+      "activity": "Activite",
+      "finance": "Finances",
+      "admin": "Admin"
+    },
+    "items": {
+      "home": "Accueil",
+      "members": "Membres",
+      "messages": "Messages",
+      "alumni": "Anciens",
+      "parents": "Parents",
+      "mentorship": "Mentorat",
+      "workouts": "Entrainements",
+      "competition": "Competition",
+      "events": "Evenements",
+      "announcements": "Annonces",
+      "philanthropy": "Philanthropie",
+      "donations": "Dons",
+      "expenses": "Depenses",
+      "records": "Archives",
+      "calendar": "Calendrier",
+      "jobs": "Emplois",
+      "forms": "Formulaires",
+      "media": "Medias",
+      "customization": "Personnalisation",
+      "approvals": "Approbations",
+      "settings": "Parametres",
+      "navigation": "Navigation"
+    }
+  },
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "back": "Retour",
+    "edit": "Modifier",
+    "create": "Creer",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "loading": "Chargement...",
+    "saving": "Enregistrement...",
+    "noResults": "Aucun resultat trouve",
+    "search": "Rechercher...",
+    "submit": "Soumettre",
+    "required": "Obligatoire",
+    "optional": "Facultatif",
+    "yes": "Oui",
+    "no": "Non",
+    "or": "ou",
+    "and": "et"
+  },
+  "roles": {
+    "admin": "Administrateur",
+    "activeMember": "Membre actif",
+    "alumni": "Ancien",
+    "parent": "Parent"
+  },
+  "auth": {
+    "signIn": "Se connecter",
+    "signOut": "Se deconnecter",
+    "signUp": "S'inscrire"
+  },
+  "settings": {
+    "title": "Parametres",
+    "language": {
+      "title": "Langue",
+      "description": "Choisissez votre langue preferee",
+      "orgDefault": "Langue de l'organisation",
+      "useOrgDefault": "Utiliser la langue de l'organisation ({language})"
+    }
+  },
+  "customization": {
+    "title": "Personnalisation",
+    "description": "Mettez a jour la marque et les notifications de votre organisation.",
+    "language": {
+      "title": "Langue par defaut",
+      "description": "Definissez la langue par defaut pour tous les membres de cette organisation."
+    }
+  },
+  "feedback": {
+    "savedSuccessfully": "Enregistre avec succes",
+    "errorOccurred": "Une erreur est survenue",
+    "changesSaved": "Modifications enregistrees"
+  },
+  "sidebar": {
+    "switchOrg": "Changer d'organisation",
+    "poweredBy": "Propulse par"
+  }
+}
