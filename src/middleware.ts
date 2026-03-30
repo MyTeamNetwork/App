@@ -469,10 +469,10 @@ export async function middleware(request: NextRequest) {
 
   // ── Locale cookie sync ──
   // For org routes, language fields were already captured from the RPC above.
-  // For non-org routes, only query the user's override when the cookie is missing
-  // (it persists for 1 year and is re-synced when the user changes their preference).
+  // For non-org routes, always query the user's language preference so the
+  // cookie stays in sync with DB changes (e.g. after saving on /settings/language).
   if (user) {
-    if (!isOrgRoute && !request.cookies.get("NEXT_LOCALE")?.value) {
+    if (!isOrgRoute) {
       try {
         const { data: userData } = await supabase
           .from("users")
@@ -508,13 +508,7 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // Only sync the locale cookie when we actually have language data to work with.
-    // On non-org routes where the cookie already exists, we skip the DB lookup
-    // (performance optimisation), so both vars stay undefined — calling sync here
-    // would incorrectly reset the cookie to 'en'.
-    if (userLangOverride !== undefined || orgDefaultLang !== undefined || isOrgRoute) {
-      syncLocaleCookie(request, response, userLangOverride, orgDefaultLang);
-    }
+    syncLocaleCookie(request, response, userLangOverride, orgDefaultLang);
   }
 
   response.headers.set("x-pathname", pathname);
