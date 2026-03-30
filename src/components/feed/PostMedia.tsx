@@ -26,6 +26,42 @@ export function PostMedia({ media }: PostMediaProps) {
     );
   }
 
+  if (images.length === 3) {
+    return (
+      <div className="mt-3 flex flex-col gap-1.5 rounded-xl overflow-hidden">
+        {/* First image full-width */}
+        {images[0].url && (
+          <div className="relative aspect-video bg-muted">
+            <Image
+              src={images[0].url}
+              alt={images[0].fileName || "Post image"}
+              fill
+              className="object-cover hover:brightness-[1.02] transition-all duration-300"
+              unoptimized
+            />
+          </div>
+        )}
+        {/* Bottom two images half-width */}
+        <div className="grid grid-cols-2 gap-1.5">
+          {images.slice(1).map((img) =>
+            img.url ? (
+              <div key={img.id} className="relative aspect-square bg-muted">
+                <Image
+                  src={img.url}
+                  alt={img.fileName || "Post image"}
+                  fill
+                  className="object-cover hover:brightness-[1.02] transition-all duration-300"
+                  unoptimized
+                />
+              </div>
+            ) : null
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // 2 or 4 images — uniform 2-column grid
   return (
     <div className="mt-3 grid grid-cols-2 gap-1.5 rounded-xl overflow-hidden">
       {images.map((img) =>
