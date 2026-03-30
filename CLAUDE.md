@@ -138,7 +138,7 @@ Stored in `.env.local` (never commit).
 
 ## File Placement Rules
 
-- **Plan files**: NEVER create plan/design documents inside the repo. Use `~/.claude/plans/` instead.
+- **Plan files**: NEVER create plan/design documents inside the repo (including `docs/plans/`). Use `~/.claude/plans/` instead.
 - **Server actions**: Place in existing `src/lib/` modules. Do NOT create `src/lib/actions/`.
 
 ## Bug Investigation

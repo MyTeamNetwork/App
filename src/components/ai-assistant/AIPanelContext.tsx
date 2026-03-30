@@ -29,14 +29,7 @@ export function AIPanelProvider({ children, autoOpen = false }: AIPanelProviderP
       return;
     }
 
-    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-
-    setIsOpen(
-      resolveInitialAIPanelOpen({
-        isAdmin: autoOpen,
-        isDesktop,
-      })
-    );
+    setIsOpen(resolveInitialAIPanelOpen());
 
     window.localStorage.removeItem(AI_PANEL_PREFERENCE_KEY);
   }, [autoOpen]);
