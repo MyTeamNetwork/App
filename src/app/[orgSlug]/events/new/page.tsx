@@ -12,6 +12,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { newEventSchema, type NewEventForm } from "@/lib/schemas/content";
 import { expandRecurrence, type RecurrenceRule } from "@/lib/events/recurrence";
 import { createRecurringEvents } from "@/lib/events/recurring-operations";
+import { localToUtcIso, resolveOrgTimezone, getLocalWeekday, getLocalDayOfMonth } from "@/lib/utils/timezone";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 
 type TargetUser = {
@@ -27,6 +28,7 @@ export default function NewEventPage() {
   const orgSlug = params.orgSlug as string;
 
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [orgTimezone, setOrgTimezone] = useState<string>("America/New_York");
   const [navConfig, setNavConfig] = useState<NavConfig | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,23 +78,17 @@ export default function NewEventPage() {
   const endDate = watch("end_date");
   const endTime = watch("end_time");
 
-  // Auto-select day of week from start date+time (UTC day must match recurrence engine)
+  // Auto-select day of week from start date+time using org timezone
   useEffect(() => {
     if (startDate && repeatType === "weekly" && selectedDays.length === 0) {
-      // Compute UTC day from the actual date+time the event will be stored as.
-      // Without startTime, use noon local as a safe default (same UTC day as local day).
-      const d = startTime
-        ? new Date(`${startDate}T${startTime}`)
-        : new Date(`${startDate}T12:00:00`);
-      setSelectedDays([String(d.getUTCDay())]);
+      const utcIso = localToUtcIso(startDate, startTime || "12:00", orgTimezone);
+      setSelectedDays([String(getLocalWeekday(utcIso, orgTimezone))]);
     }
     if (startDate && repeatType === "monthly" && !dayOfMonth) {
-      const d = startTime
-        ? new Date(`${startDate}T${startTime}`)
-        : new Date(`${startDate}T12:00:00`);
-      setDayOfMonth(String(d.getUTCDate()));
+      const utcIso = localToUtcIso(startDate, startTime || "12:00", orgTimezone);
+      setDayOfMonth(String(getLocalDayOfMonth(utcIso, orgTimezone)));
     }
-  }, [startDate, startTime, repeatType, selectedDays.length, dayOfMonth]);
+  }, [startDate, startTime, repeatType, selectedDays.length, dayOfMonth, orgTimezone]);
 
   // Sync recurrence state to form values
   useEffect(() => {
@@ -135,27 +131,28 @@ export default function NewEventPage() {
       recurrence_end_date: repeatEndDate || undefined,
     };
 
-    const startISO = new Date(`${startDate}T${startTime}`).toISOString();
-    const endISO = endDate && endTime ? new Date(`${endDate}T${endTime}`).toISOString() : null;
+    const startISO = localToUtcIso(startDate, startTime, orgTimezone);
+    const endISO = endDate && endTime ? localToUtcIso(endDate, endTime, orgTimezone) : null;
 
     try {
       return expandRecurrence(startISO, endISO, rule).length;
     } catch {
       return 0;
     }
-  }, [repeatType, startDate, startTime, endDate, endTime, selectedDays, dayOfMonth, repeatEndDate]);
+  }, [repeatType, startDate, startTime, endDate, endTime, selectedDays, dayOfMonth, repeatEndDate, orgTimezone]);
 
   useEffect(() => {
     const supabase = createClient();
     const load = async () => {
       const { data: org } = await supabase
         .from("organizations")
-        .select("id, nav_config")
+        .select("id, nav_config, timezone")
         .eq("slug", orgSlug)
         .maybeSingle();
 
       if (!org) return;
       setOrgId(org.id);
+      setOrgTimezone(resolveOrgTimezone(org.timezone));
 
       // Parse nav_config
       if (org.nav_config && typeof org.nav_config === "object" && !Array.isArray(org.nav_config)) {
@@ -219,11 +216,19 @@ export default function NewEventPage() {
 
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Combine date and time
-    const startDateTime = new Date(`${data.start_date}T${data.start_time}`).toISOString();
-    const endDateTime = data.end_date && data.end_time
-      ? new Date(`${data.end_date}T${data.end_time}`).toISOString()
-      : null;
+    // Combine date and time using org timezone for correct UTC conversion
+    let startDateTime: string;
+    let endDateTime: string | null;
+    try {
+      startDateTime = localToUtcIso(data.start_date, data.start_time, orgTimezone);
+      endDateTime = data.end_date && data.end_time
+        ? localToUtcIso(data.end_date, data.end_time, orgTimezone)
+        : null;
+    } catch (err) {
+      setError(`Invalid date/time: ${err instanceof Error ? err.message : "unknown error"}`);
+      setIsLoading(false);
+      return;
+    }
 
     const audienceValue = data.audience === "specific" ? "both" : data.audience;
     const targetIds = data.audience === "specific" ? targetUserIds : null;

@@ -9,6 +9,7 @@ type UnifiedEventFeedProps = {
   orgId: string;
   orgSlug: string;
   initialEvents?: UnifiedEvent[];
+  timeZone?: string;
 };
 
 type SourceFilterKey = "events" | "schedules" | "feeds" | "classes";
@@ -75,15 +76,17 @@ function getSourceColors(sourceType: string) {
   }
 }
 
-function groupEventsByDate(events: UnifiedEvent[]): Map<string, UnifiedEvent[]> {
+function groupEventsByDate(events: UnifiedEvent[], timeZone?: string): Map<string, UnifiedEvent[]> {
   const grouped = new Map<string, UnifiedEvent[]>();
 
   events.forEach((event) => {
-    const dateKey = new Date(event.startAt).toLocaleDateString("en-US", {
+    const opts: Intl.DateTimeFormatOptions = {
       weekday: "long",
       month: "short",
       day: "numeric",
-    });
+    };
+    if (timeZone) opts.timeZone = timeZone;
+    const dateKey = new Date(event.startAt).toLocaleDateString("en-US", opts);
     const existing = grouped.get(dateKey) || [];
     existing.push(event);
     grouped.set(dateKey, existing);
@@ -99,7 +102,7 @@ function getBadgeColor(badgeText: string): string {
   return "bg-muted text-muted-foreground";
 }
 
-export function UnifiedEventFeed({ orgId, orgSlug, initialEvents }: UnifiedEventFeedProps) {
+export function UnifiedEventFeed({ orgId, orgSlug, initialEvents, timeZone }: UnifiedEventFeedProps) {
   const hasInitialData = initialEvents !== undefined;
   const [events, setEvents] = useState<UnifiedEvent[]>(initialEvents ?? []);
   const [loading, setLoading] = useState(!hasInitialData);
@@ -174,7 +177,7 @@ export function UnifiedEventFeed({ orgId, orgSlug, initialEvents }: UnifiedEvent
     setActiveFilter(key);
   };
 
-  const groupedEvents = useMemo(() => groupEventsByDate(events), [events]);
+  const groupedEvents = useMemo(() => groupEventsByDate(events, timeZone), [events, timeZone]);
 
   const renderEmptyState = () => {
     const hasEventsSource = activeFilter === "all" || activeFilter === "events";
@@ -207,7 +210,7 @@ export function UnifiedEventFeed({ orgId, orgSlug, initialEvents }: UnifiedEvent
 
   const renderEventRow = (event: UnifiedEvent) => {
     const { dot, badge } = getSourceColors(event.sourceType);
-    const formattedTime = formatCalendarEventTime(event);
+    const formattedTime = formatCalendarEventTime(event, "en-US", timeZone);
 
     const rowContent = (
       <>

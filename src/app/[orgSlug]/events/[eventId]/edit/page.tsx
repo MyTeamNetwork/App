@@ -11,6 +11,7 @@ import { resolveActionLabel } from "@/lib/navigation/label-resolver";
 import { useLocale, useTranslations } from "next-intl";
 import { editEventSchema, type EditEventForm } from "@/lib/schemas/content";
 import { updateFutureEvents } from "@/lib/events/recurring-operations";
+import { localToUtcIso, utcToLocalParts, resolveOrgTimezone } from "@/lib/utils/timezone";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import type { Event, EventType } from "@/types/database";
 
@@ -26,6 +27,7 @@ export default function EditEventPage() {
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [navConfig, setNavConfig] = useState<NavConfig | null>(null);
+  const [orgTimezone, setOrgTimezone] = useState<string>("America/New_York");
   const [isRecurring, setIsRecurring] = useState(false);
   const [showScopeDialog, setShowScopeDialog] = useState(false);
   const [pendingData, setPendingData] = useState<EditEventForm | null>(null);
@@ -67,7 +69,7 @@ export default function EditEventPage() {
 
       const { data: org } = await supabase
         .from("organizations")
-        .select("id, nav_config")
+        .select("id, nav_config, timezone")
         .eq("slug", orgSlug)
         .single();
 
@@ -76,6 +78,9 @@ export default function EditEventPage() {
         setIsFetching(false);
         return;
       }
+
+      const tz = resolveOrgTimezone(org.timezone);
+      setOrgTimezone(tz);
 
       // Parse nav_config
       if (org.nav_config && typeof org.nav_config === "object" && !Array.isArray(org.nav_config)) {
@@ -99,20 +104,17 @@ export default function EditEventPage() {
       const e = event as Event;
       setIsRecurring(!!e.recurrence_group_id);
 
-      const startDate = new Date(e.start_date);
-      const endDate = e.end_date ? new Date(e.end_date) : null;
-
-      const pad = (n: number) => String(n).padStart(2, "0");
-      const toLocalDateString = (d: Date) =>
-        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      // Decompose UTC timestamps into org-timezone local parts for form population
+      const startParts = utcToLocalParts(e.start_date, tz);
+      const endParts = e.end_date ? utcToLocalParts(e.end_date, tz) : null;
 
       reset({
         title: e.title || "",
         description: e.description || "",
-        start_date: toLocalDateString(startDate),
-        start_time: startDate.toTimeString().slice(0, 5),
-        end_date: endDate ? toLocalDateString(endDate) : "",
-        end_time: endDate ? endDate.toTimeString().slice(0, 5) : "",
+        start_date: startParts.date,
+        start_time: startParts.time,
+        end_date: endParts?.date ?? "",
+        end_time: endParts?.time ?? "",
         location: e.location || "",
         event_type: e.event_type || "general",
         is_philanthropy: e.is_philanthropy || false,
@@ -153,11 +155,19 @@ export default function EditEventPage() {
       return;
     }
 
-    // Combine date and time
-    const startDateTime = new Date(`${data.start_date}T${data.start_time}`).toISOString();
-    const endDateTime = data.end_date && data.end_time
-      ? new Date(`${data.end_date}T${data.end_time}`).toISOString()
-      : null;
+    // Combine date and time using org timezone for correct UTC conversion
+    let startDateTime: string;
+    let endDateTime: string | null;
+    try {
+      startDateTime = localToUtcIso(data.start_date, data.start_time, orgTimezone);
+      endDateTime = data.end_date && data.end_time
+        ? localToUtcIso(data.end_date, data.end_time, orgTimezone)
+        : null;
+    } catch (err) {
+      setError(`Invalid date/time: ${err instanceof Error ? err.message : "unknown error"}`);
+      setIsLoading(false);
+      return;
+    }
 
     if (scope === "this_and_future") {
       // Update this event and all future events in the series

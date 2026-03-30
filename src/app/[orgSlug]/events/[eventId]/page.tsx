@@ -8,6 +8,7 @@ import { EventRsvp, AttendanceList, EventDeleteButton, RecurringEventDeleteButto
 import type { RsvpStatus } from "@/types/database";
 import { EventOpenTracker } from "@/components/analytics/EventsViewTracker";
 import { LocalDate, LocalTime } from "@/components/ui";
+import { resolveOrgTimezone } from "@/lib/utils/timezone";
 
 interface EventDetailPageProps {
   params: Promise<{ orgSlug: string; eventId: string }>;
@@ -18,6 +19,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
   const { organization: org, isAdmin } = await getOrgContext(orgSlug);
   if (!org) return notFound();
+  const orgTimeZone = resolveOrgTimezone(org.timezone);
 
   const supabase = await createClient();
 
@@ -160,7 +162,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                 Date
               </dt>
               <dd className="text-foreground font-medium mt-1">
-                <LocalDate iso={event.start_date} options={{
+                <LocalDate iso={event.start_date} timeZone={orgTimeZone} options={{
                   weekday: "long",
                   year: "numeric",
                   month: "long",
@@ -177,11 +179,11 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                 Time
               </dt>
               <dd className="text-foreground font-medium mt-1">
-                <LocalTime iso={event.start_date} />
+                <LocalTime iso={event.start_date} timeZone={orgTimeZone} />
                 {event.end_date && (
                   <>
                     {" — "}
-                    <LocalTime iso={event.end_date} />
+                    <LocalTime iso={event.end_date} timeZone={orgTimeZone} />
                   </>
                 )}
               </dd>

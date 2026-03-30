@@ -129,7 +129,7 @@ export function splitEventIntoLocalDaySegments(event: CalendarEventLike): LocalE
   return segments;
 }
 
-export function formatCalendarEventTime(event: CalendarEventLike, locale = "en-US"): string {
+export function formatCalendarEventTime(event: CalendarEventLike, locale = "en-US", timeZone?: string): string {
   const range = resolveEventRange(event);
   if (!range) return "";
   if (event.allDay) return "All day";
@@ -139,6 +139,7 @@ export function formatCalendarEventTime(event: CalendarEventLike, locale = "en-U
     hour: "numeric",
     minute: "2-digit",
   };
+  if (timeZone) timeOptions.timeZone = timeZone;
 
   const startTime = start.toLocaleTimeString(locale, timeOptions);
   if (!event.endAt) {
@@ -156,6 +157,7 @@ export function formatCalendarEventTime(event: CalendarEventLike, locale = "en-U
     hour: "numeric",
     minute: "2-digit",
   };
+  if (timeZone) dateTimeOptions.timeZone = timeZone;
 
   return `${start.toLocaleDateString(locale, dateTimeOptions)} – ${end.toLocaleDateString(locale, dateTimeOptions)}`;
 }

@@ -10,6 +10,7 @@ import type { NavConfig } from "@/lib/navigation/nav-items";
 import { EventsViewTracker } from "@/components/analytics/EventsViewTracker";
 import { GoogleCalendarBanner } from "@/components/events";
 import { LocalDateMonth, LocalDateDay, LocalTime } from "@/components/ui";
+import { resolveOrgTimezone } from "@/lib/utils/timezone";
 
 interface EventsPageProps {
   params: Promise<{ orgSlug: string }>;
@@ -26,6 +27,7 @@ export default async function EventsPage({ params, searchParams }: EventsPagePro
 
   const org = orgCtx.organization;
   const isAdmin = orgCtx.isAdmin;
+  const orgTimeZone = resolveOrgTimezone(org.timezone);
 
   const supabase = await createClient();
 
@@ -137,10 +139,10 @@ export default async function EventsPage({ params, searchParams }: EventsPagePro
                   {/* Date Block */}
                   <div className="h-16 w-16 rounded-xl bg-muted flex flex-col items-center justify-center text-center flex-shrink-0">
                     <span className="text-xs font-medium text-muted-foreground uppercase">
-                      <LocalDateMonth iso={event.start_date} />
+                      <LocalDateMonth iso={event.start_date} timeZone={orgTimeZone} />
                     </span>
                     <span className="text-2xl font-bold text-foreground leading-none">
-                      <LocalDateDay iso={event.start_date} />
+                      <LocalDateDay iso={event.start_date} timeZone={orgTimeZone} />
                     </span>
                   </div>
 
@@ -172,7 +174,7 @@ export default async function EventsPage({ params, searchParams }: EventsPagePro
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <LocalTime iso={event.start_date} />
+                        <LocalTime iso={event.start_date} timeZone={orgTimeZone} />
                       </div>
                       {event.location && (
                         <div className="flex items-center gap-1.5">

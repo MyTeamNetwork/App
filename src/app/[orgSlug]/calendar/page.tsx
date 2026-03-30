@@ -8,6 +8,7 @@ import { resolveLabel, resolveActionLabel } from "@/lib/navigation/label-resolve
 import { getLocale, getTranslations } from "next-intl/server";
 import { fetchUnifiedEvents } from "@/lib/calendar/unified-events";
 import type { NavConfig } from "@/lib/navigation/nav-items";
+import { resolveOrgTimezone } from "@/lib/utils/timezone";
 import type { AcademicSchedule, User } from "@/types/database";
 import type { UnifiedEvent } from "@/lib/calendar/unified-events";
 
@@ -113,6 +114,7 @@ export default async function CalendarPage({ params }: CalendarPageProps) {
         mySchedules={mySchedules}
         allSchedules={allSchedules}
         initialEvents={initialEvents}
+        timeZone={resolveOrgTimezone(orgCtx.organization.timezone)}
       />
     </div>
   );
