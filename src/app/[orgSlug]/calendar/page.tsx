@@ -64,12 +64,13 @@ export default async function CalendarPage({ params }: CalendarPageProps) {
   const t = (key: string) => tNav(key);
   const pageLabel = resolveLabel("/calendar", navConfig, t, locale);
   const actionLabel = resolveActionLabel("/calendar", navConfig, "Add", t, locale);
+  const tCalendar = await getTranslations("calendar");
 
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader
         title={pageLabel}
-        description="View all events, schedules, and availability"
+        description={tCalendar("description")}
         actions={
           <div className="flex items-center gap-2">
             {orgCtx.isAdmin && (
@@ -80,7 +81,7 @@ export default async function CalendarPage({ params }: CalendarPageProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                   <span className="sr-only">Manage Sources</span>
-                  <span className="hidden sm:inline">Sources</span>
+                  <span className="hidden sm:inline">{tCalendar("sources")}</span>
                 </Button>
               </Link>
             )}
@@ -90,7 +91,7 @@ export default async function CalendarPage({ params }: CalendarPageProps) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M2.985 19.644l3.181-3.182" />
                 </svg>
                 <span className="sr-only">Sync Settings</span>
-                <span className="hidden sm:inline">Sync</span>
+                <span className="hidden sm:inline">{tCalendar("sync")}</span>
               </Button>
             </Link>
             <Link href={`/${orgSlug}/calendar/new`}>
