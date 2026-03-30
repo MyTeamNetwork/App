@@ -408,9 +408,19 @@ function OrgSettingsContent() {
         setDefaultLanguage(data.default_language);
       }
 
-      // Clear the cookie so middleware re-resolves the correct locale
-      // (user override → org default → 'en') on the reload below.
-      // Don't set it directly — that would stomp an admin's personal override.
+      // Also clear the admin's personal language override so they immediately
+      // see the org default they just chose. Without this, their personal
+      // override (e.g. 'en') takes priority and the change appears to do nothing.
+      const supabase = (await import("@/lib/supabase/client")).createClient();
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        await supabase
+          .from("users")
+          .update({ language_override: null })
+          .eq("id", currentUser.id);
+      }
+
+      // Clear the cookie so middleware re-resolves the correct locale from DB.
       const secure = window.location.protocol === "https:" ? ";secure" : "";
       document.cookie = `NEXT_LOCALE=;path=/;max-age=0${secure}`;
 
