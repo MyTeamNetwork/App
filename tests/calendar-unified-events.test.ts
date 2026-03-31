@@ -4,6 +4,7 @@ import { eventOverlapsRange } from "../src/lib/calendar/event-segments";
 import {
   buildUnifiedCalendarDateRange,
   expandAcademicSchedule,
+  getUnifiedEventFloatingDateKey,
   normalizeUnifiedTeamEvent,
   sortUnifiedEvents,
 } from "../src/lib/calendar/unified-events";
@@ -134,6 +135,7 @@ test("sortUnifiedEvents: keeps imported all-day feed events ordered by floating 
         sourceType: "feed",
         sourceName: "Google Calendar",
         badges: [],
+        floatingDateKey: "2026-03-30",
       },
       {
         id: "feed:late-film",
@@ -153,6 +155,75 @@ test("sortUnifiedEvents: keeps imported all-day feed events ordered by floating 
   assert.deepStrictEqual(
     sorted.map((event) => event.id),
     ["feed:late-film", "feed:all-day-import"],
+  );
+});
+
+test("sortUnifiedEvents: uses explicit floating-date metadata for host-offset ICS all-day rows", () => {
+  const sorted = sortUnifiedEvents(
+    [
+      {
+        id: "feed:all-day-ics",
+        title: "New Year Holiday",
+        startAt: "2023-12-31T15:00:00.000Z",
+        endAt: "2024-01-01T15:00:00.000Z",
+        allDay: true,
+        location: null,
+        sourceType: "feed",
+        sourceName: "Calendar Feed",
+        badges: [],
+        floatingDateKey: "2024-01-01",
+      },
+      {
+        id: "feed:late-film",
+        title: "Late practice film",
+        startAt: "2024-01-01T06:30:00.000Z",
+        endAt: "2024-01-01T07:30:00.000Z",
+        allDay: false,
+        location: null,
+        sourceType: "feed",
+        sourceName: "Calendar Feed",
+        badges: [],
+      },
+    ],
+    "America/Los_Angeles",
+  );
+
+  assert.deepStrictEqual(
+    sorted.map((event) => event.id),
+    ["feed:late-film", "feed:all-day-ics"],
+  );
+});
+
+test("getUnifiedEventFloatingDateKey: never reinterprets an all-day ISO prefix without metadata", () => {
+  assert.equal(
+    getUnifiedEventFloatingDateKey({
+      id: "feed:all-day-ics",
+      title: "New Year Holiday",
+      startAt: "2023-12-31T15:00:00.000Z",
+      endAt: "2024-01-01T15:00:00.000Z",
+      allDay: true,
+      location: null,
+      sourceType: "feed",
+      sourceName: "Calendar Feed",
+      badges: [],
+    }),
+    null,
+  );
+
+  assert.equal(
+    getUnifiedEventFloatingDateKey({
+      id: "feed:all-day-ics",
+      title: "New Year Holiday",
+      startAt: "2023-12-31T15:00:00.000Z",
+      endAt: "2024-01-01T15:00:00.000Z",
+      allDay: true,
+      location: null,
+      sourceType: "feed",
+      sourceName: "Calendar Feed",
+      badges: [],
+      floatingDateKey: "2024-01-01",
+    }),
+    "2024-01-01",
   );
 });
 

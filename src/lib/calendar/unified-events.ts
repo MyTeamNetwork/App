@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Json } from "@/types/database";
 import { eventOverlapsRange } from "@/lib/calendar/event-segments";
 import { localToUtcIso, resolveOrgTimezone } from "@/lib/utils/timezone";
 
@@ -15,6 +16,7 @@ export type UnifiedEvent = {
   eventId?: string;
   academicScheduleId?: string;
   color?: string;
+  floatingDateKey?: string;
 };
 
 export type SourceType = "events" | "schedules" | "feeds" | "classes";
@@ -68,7 +70,13 @@ export function toLocalDateString(date: Date): string {
 }
 
 function isPlainDateString(value: string | null | undefined): boolean {
-  return Boolean(value && PLAIN_DATE_PATTERN.test(value));
+  return typeof value === "string" && PLAIN_DATE_PATTERN.test(value);
+}
+
+function asRecord(value: Json | Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function addDaysToDateString(dateStr: string, days: number): string {
@@ -77,17 +85,83 @@ function addDaysToDateString(dateStr: string, days: number): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
-function getAllDayFloatingDateKey(startAt: string, allDay: boolean): string | null {
+function normalizeAllDayBoundary(value: string): string {
+  return isPlainDateString(value) ? value : value.slice(0, 10);
+}
+
+function getCalendarEventFloatingDateKey(
+  provider: string | null | undefined,
+  raw: Json | null,
+  allDay: boolean,
+): string | null {
   if (!allDay) {
     return null;
   }
 
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(startAt);
-  return match?.[1] ?? null;
+  const rawRecord = asRecord(raw);
+  if (!rawRecord) {
+    return null;
+  }
+
+  if (provider === "google") {
+    const startRecord = asRecord(rawRecord.start as Json | Record<string, unknown> | null | undefined);
+    const googleDate = typeof startRecord?.date === "string" ? startRecord.date : null;
+    return isPlainDateString(googleDate) ? googleDate : null;
+  }
+
+  if (provider === "ics") {
+    const dateKey = typeof rawRecord.dateKey === "string" ? rawRecord.dateKey : null;
+    return isPlainDateString(dateKey) ? dateKey : null;
+  }
+
+  return null;
+}
+
+function getCalendarEventFloatingEndDateKey(
+  provider: string | null | undefined,
+  raw: Json | null,
+  allDay: boolean,
+): string | null {
+  if (!allDay) {
+    return null;
+  }
+
+  const rawRecord = asRecord(raw);
+  if (!rawRecord) {
+    return null;
+  }
+
+  if (provider === "google") {
+    const endRecord = asRecord(rawRecord.end as Json | Record<string, unknown> | null | undefined);
+    const googleDate = typeof endRecord?.date === "string" ? endRecord.date : null;
+    return isPlainDateString(googleDate) ? googleDate : null;
+  }
+
+  if (provider === "ics") {
+    const endDateKey = typeof rawRecord.endDateKey === "string" ? rawRecord.endDateKey : null;
+    return isPlainDateString(endDateKey) ? endDateKey : null;
+  }
+
+  return null;
+}
+
+export function getUnifiedEventFloatingDateKey(
+  event: Pick<UnifiedEvent, "allDay" | "startAt" | "floatingDateKey">,
+): string | null {
+  if (!event.allDay) {
+    return null;
+  }
+
+  const explicitFloatingDateKey = event.floatingDateKey;
+  if (explicitFloatingDateKey && isPlainDateString(explicitFloatingDateKey)) {
+    return explicitFloatingDateKey;
+  }
+
+  return isPlainDateString(event.startAt) ? event.startAt : null;
 }
 
 function getUnifiedEventSortTimestamp(event: UnifiedEvent, timeZone?: string): number {
-  const floatingDateKey = getAllDayFloatingDateKey(event.startAt, event.allDay);
+  const floatingDateKey = getUnifiedEventFloatingDateKey(event);
   if (floatingDateKey) {
     return new Date(localToUtcIso(floatingDateKey, "00:00", resolveOrgTimezone(timeZone))).getTime();
   }
@@ -132,12 +206,12 @@ export function normalizeUnifiedTeamEvent(event: UnifiedTeamEventRecord): Unifie
   const allDay = isPlainDateString(event.start_date) || isPlainDateString(event.end_date);
   const startDateValue = event.start_date;
   const startAt = allDay
-    ? (isPlainDateString(startDateValue) ? startDateValue : startDateValue.slice(0, 10))
+    ? normalizeAllDayBoundary(startDateValue)
     : startDateValue;
   const endDateValue = event.end_date;
   const inclusiveEndDate = endDateValue === null
     ? null
-    : (isPlainDateString(endDateValue) ? endDateValue : endDateValue.slice(0, 10));
+    : normalizeAllDayBoundary(endDateValue);
   const endAt = allDay
     ? addDaysToDateString(inclusiveEndDate ?? startAt, 1)
     : endDateValue;
@@ -340,7 +414,7 @@ async function fetchCalendarEvents(
   try {
     const { data, error } = await supabase
       .from("calendar_events")
-      .select("id, title, start_at, end_at, all_day, location, feed_id, scope, user_id, calendar_feeds(provider)")
+      .select("id, title, start_at, end_at, all_day, location, raw, feed_id, scope, user_id, calendar_feeds(provider)")
       .eq("organization_id", orgId)
       .or(`scope.eq.org,user_id.eq.${userId}`)
       .lte("start_at", end.toISOString())
@@ -353,21 +427,28 @@ async function fetchCalendarEvents(
     }
     if (!data) return [];
 
-    const overlapping = data.filter((event) => eventOverlapsRange({
-      startAt: event.start_at,
-      endAt: event.end_at,
-      allDay: Boolean(event.all_day),
-    }, start, end));
-
-    return overlapping.map((event): UnifiedEvent => {
+    return data.flatMap((event): UnifiedEvent[] => {
       const feed = Array.isArray(event.calendar_feeds)
         ? event.calendar_feeds[0]
         : event.calendar_feeds;
-      const sourceName = (feed as { provider?: string } | null)?.provider === "google"
+      const provider = (feed as { provider?: string } | null)?.provider;
+      const sourceName = provider === "google"
         ? "Google Calendar"
         : "Calendar Feed";
+      const floatingDateKey = getCalendarEventFloatingDateKey(provider, event.raw ?? null, event.all_day || false);
+      const floatingEndDateKey = getCalendarEventFloatingEndDateKey(provider, event.raw ?? null, event.all_day || false);
 
-      return {
+      const overlapsRange = eventOverlapsRange({
+        startAt: floatingDateKey ?? event.start_at,
+        endAt: floatingEndDateKey ?? event.end_at,
+        allDay: Boolean(event.all_day),
+      }, start, end);
+
+      if (!overlapsRange) {
+        return [];
+      }
+
+      return [{
         id: `feed:${event.id}`,
         title: event.title || "Untitled Event",
         startAt: event.start_at,
@@ -377,7 +458,8 @@ async function fetchCalendarEvents(
         sourceType: "feed",
         sourceName,
         badges: [],
-      };
+        floatingDateKey: floatingDateKey ?? undefined,
+      }];
     });
   } catch (error) {
     console.error("[unified-events] Error querying calendar_events:", error);

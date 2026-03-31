@@ -29,6 +29,18 @@ describe("calendar navigation helpers", () => {
     );
   });
 
+  it("does not deep-link date-only team events until the event pages handle them safely", () => {
+    assert.equal(
+      getUnifiedEventHref("acme", {
+        sourceType: "event",
+        eventId: "event-1",
+        startAt: "2026-03-30",
+        allDay: true,
+      }),
+      null,
+    );
+  });
+
   it("routes academic schedule entries to the schedule edit page", () => {
     assert.equal(
       getUnifiedEventHref("acme", { sourceType: "class", academicScheduleId: "sched-1" }),

@@ -3,7 +3,11 @@ type UnifiedEventLinkTarget = {
   id?: string;
   eventId?: string;
   academicScheduleId?: string;
+  allDay?: boolean;
+  startAt?: string;
 };
+
+const PLAIN_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function parsePrefixedId(value: string | undefined, prefix: "event" | "class"): string | null {
   if (!value?.startsWith(`${prefix}:`)) {
@@ -34,6 +38,15 @@ export function getUnifiedEventHref(
   orgSlug: string,
   event: UnifiedEventLinkTarget,
 ): string | null {
+  if (
+    event.sourceType === "event"
+    && event.allDay
+    && typeof event.startAt === "string"
+    && PLAIN_DATE_PATTERN.test(event.startAt)
+  ) {
+    return null;
+  }
+
   if (event.sourceType === "event") {
     const eventId = event.eventId ?? parsePrefixedId(event.id, "event");
     if (eventId) {

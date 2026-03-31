@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   buildUnifiedCalendarDateRange,
+  getUnifiedEventFloatingDateKey,
   type UnifiedEvent,
 } from "@/lib/calendar/unified-events";
 import { formatCalendarEventTime } from "@/lib/calendar/event-segments";
@@ -89,7 +90,8 @@ function groupEventsByDate(events: UnifiedEvent[], timeZone?: string): Map<strin
       month: "short",
       day: "numeric",
     };
-    const floatingMatch = event.allDay ? /^(\d{4})-(\d{2})-(\d{2})/.exec(event.startAt) : null;
+    const floatingDateKey = getUnifiedEventFloatingDateKey(event);
+    const floatingMatch = floatingDateKey ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(floatingDateKey) : null;
     let dateKey: string;
 
     if (floatingMatch) {
