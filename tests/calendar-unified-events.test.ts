@@ -88,6 +88,38 @@ test("expandAcademicSchedule: handles DST fallback with org timezone offsets", (
   assert.equal(events[0].endAt, "2026-11-02T15:00:00.000Z");
 });
 
+test("expandAcademicSchedule: skips only nonexistent spring-forward occurrences", () => {
+  const schedule = {
+    id: "sched-spring-gap",
+    title: "Early Lab",
+    start_date: "2026-03-07",
+    end_date: "2026-03-09",
+    start_time: "02:30:00",
+    end_time: "03:30:00",
+    occurrence_type: "daily",
+    day_of_week: null,
+    day_of_month: null,
+  };
+
+  const events = expandAcademicSchedule(
+    schedule,
+    new Date("2026-03-07T00:00:00.000Z"),
+    new Date("2026-03-09T23:59:59.999Z"),
+    "America/New_York",
+  );
+
+  assert.equal(events.length, 2);
+  assert.deepStrictEqual(
+    events.map((event) => event.id),
+    [
+      "class:sched-spring-gap:2026-03-07",
+      "class:sched-spring-gap:2026-03-09",
+    ],
+  );
+  assert.equal(events[0].startAt, "2026-03-07T07:30:00.000Z");
+  assert.equal(events[1].startAt, "2026-03-09T06:30:00.000Z");
+});
+
 test("expandAcademicSchedule: single occurrence outside range returns empty", () => {
   const schedule = {
     id: "sched-2",

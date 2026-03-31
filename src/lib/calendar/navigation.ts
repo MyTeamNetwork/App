@@ -5,7 +5,7 @@ type UnifiedEventLinkTarget = {
 };
 
 export function getCalendarPrimaryActionHref(orgSlug: string): string {
-  return `/${orgSlug}/events/new`;
+  return `/${orgSlug}/calendar/new`;
 }
 
 export function getUnifiedEventHref(

@@ -7,6 +7,7 @@ import type { AcademicSchedule, User } from "@/types/database";
 import { splitEventIntoLocalDaySegments } from "@/lib/calendar/event-segments";
 import { computeSummaryStats, formatDateKey, type ConflictInfo } from "./availability-stats";
 import { computeEventBlocks, resolveOverlaps, type PositionedBlock } from "./availability-blocks";
+import { buildAvailabilityWeek, getCurrentTimeMarker } from "./availability-week";
 
 interface AvailabilityGridProps {
   schedules: (AcademicSchedule & { users?: Pick<User, "name" | "email"> | null })[];
@@ -54,12 +55,6 @@ function startOfDay(date: Date): Date {
 }
 
 // Get start of week (Sunday) for a given date
-function getWeekStart(date: Date): Date {
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  d.setDate(d.getDate() - d.getDay());
-  return d;
-}
-
 function getWeekNumber(date: Date): number {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const dayNum = d.getUTCDay() || 7;
@@ -134,58 +129,18 @@ export function AvailabilityGrid({ schedules, orgId, mode = "team", timeZone }: 
     if (!mounted) return;
 
     const updateTime = () => {
-      const now = new Date();
-      setCurrentMinute(now.getHours() * 60 + now.getMinutes());
+      setCurrentMinute(getCurrentTimeMarker(new Date(), timeZone).minute);
     };
     updateTime();
 
     const interval = setInterval(updateTime, 60_000);
     return () => clearInterval(interval);
-  }, [mounted]);
+  }, [mounted, timeZone]);
 
-  const { weekStart, weekLabel, weekDays, rangeStart, rangeEnd } = useMemo(() => {
-    // Use a fixed date during SSR to avoid hydration mismatch
-    // After mount, use the actual current date
-    const today = mounted ? new Date() : new Date(2026, 0, 1); // fallback date for SSR
-    const currentWeekStart = getWeekStart(today);
-
-    // Apply week offset
-    const targetWeekStart = new Date(currentWeekStart);
-    targetWeekStart.setDate(currentWeekStart.getDate() + weekOffset * 7);
-
-    const targetWeekEnd = new Date(targetWeekStart);
-    targetWeekEnd.setDate(targetWeekStart.getDate() + 6);
-
-    // Format label: "Jan 19 - 25, 2026" or "Jan 26 - Feb 1, 2026"
-    const startMonth = targetWeekStart.toLocaleDateString("en-US", { month: "short" });
-    const endMonth = targetWeekEnd.toLocaleDateString("en-US", { month: "short" });
-    const sameMonth = targetWeekStart.getMonth() === targetWeekEnd.getMonth();
-    const label = sameMonth
-      ? `${startMonth} ${targetWeekStart.getDate()} - ${targetWeekEnd.getDate()}, ${targetWeekEnd.getFullYear()}`
-      : `${startMonth} ${targetWeekStart.getDate()} - ${endMonth} ${targetWeekEnd.getDate()}, ${targetWeekEnd.getFullYear()}`;
-
-    const rangeStartDate = new Date(targetWeekStart);
-    rangeStartDate.setHours(0, 0, 0, 0);
-    const rangeEndDate = new Date(targetWeekEnd);
-    rangeEndDate.setHours(23, 59, 59, 999);
-
-    // Build array of 7 days for the week
-    const days: Date[] = [];
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(targetWeekStart);
-      day.setDate(targetWeekStart.getDate() + i);
-      days.push(day);
-    }
-
-    return {
-      weekStart: targetWeekStart,
-      weekEnd: targetWeekEnd,
-      weekLabel: label,
-      weekDays: days,
-      rangeStart: rangeStartDate,
-      rangeEnd: rangeEndDate,
-    };
-  }, [weekOffset, mounted]);
+  const { weekStart, weekLabel, weekDays, rangeStart, rangeEnd, todayKey } = useMemo(() => {
+    const now = mounted ? new Date() : new Date("2026-01-01T12:00:00.000Z");
+    return buildAvailabilityWeek(now, weekOffset, timeZone);
+  }, [weekOffset, mounted, timeZone]);
 
   useEffect(() => {
     if (mode !== "team") {
@@ -374,7 +329,6 @@ export function AvailabilityGrid({ schedules, orgId, mode = "team", timeZone }: 
   );
 
   // Is today in view?
-  const todayKey = mounted ? formatDateKey(new Date()) : "";
   const todayInView = weekDays.some((d) => formatDateKey(d) === todayKey);
   const showTimeLine = todayInView && currentMinute >= GRID_START_MINUTE && currentMinute < GRID_END_HOUR * 60;
   const timeLineTop = showTimeLine ? (currentMinute - GRID_START_MINUTE) : -1;

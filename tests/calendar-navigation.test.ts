@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { getCalendarPrimaryActionHref, getUnifiedEventHref } from "@/lib/calendar/navigation";
 
 describe("calendar navigation helpers", () => {
-  it("routes the main calendar CTA to event creation", () => {
-    assert.equal(getCalendarPrimaryActionHref("acme"), "/acme/events/new");
+  it("routes the main calendar CTA to the member schedule form", () => {
+    assert.equal(getCalendarPrimaryActionHref("acme"), "/acme/calendar/new");
   });
 
   it("routes team events to the event detail page", () => {

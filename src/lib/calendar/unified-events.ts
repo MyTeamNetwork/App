@@ -86,41 +86,57 @@ export function expandAcademicSchedule(
     return events;
   }
 
-  const createEvent = (date: Date): UnifiedEvent => {
+  const createEvent = (date: Date): UnifiedEvent | null => {
     const dateStr = toLocalDateString(date);
-    const startAt = localToUtcIso(dateStr, normalizeScheduleTime(schedule.start_time), resolvedTimeZone);
-    const endAt = localToUtcIso(dateStr, normalizeScheduleTime(schedule.end_time), resolvedTimeZone);
+    try {
+      const startAt = localToUtcIso(dateStr, normalizeScheduleTime(schedule.start_time), resolvedTimeZone);
+      const endAt = localToUtcIso(dateStr, normalizeScheduleTime(schedule.end_time), resolvedTimeZone);
 
-    return {
-      id: `class:${schedule.id}:${dateStr}`,
-      title: schedule.title,
-      startAt,
-      endAt,
-      allDay: false,
-      location: null,
-      sourceType: "class",
-      sourceName: schedule.title,
-      badges: [],
-      academicScheduleId: schedule.id,
-    };
+      return {
+        id: `class:${schedule.id}:${dateStr}`,
+        title: schedule.title,
+        startAt,
+        endAt,
+        allDay: false,
+        location: null,
+        sourceType: "class",
+        sourceName: schedule.title,
+        badges: [],
+        academicScheduleId: schedule.id,
+      };
+    } catch (error) {
+      if (error instanceof RangeError) {
+        return null;
+      }
+      throw error;
+    }
   };
 
   if (schedule.occurrence_type === "single") {
     // Only emit if the single occurrence falls within the requested range
     if (scheduleStart >= rangeStart && scheduleStart <= rangeEnd) {
-      events.push(createEvent(scheduleStart));
+      const event = createEvent(scheduleStart);
+      if (event) {
+        events.push(event);
+      }
     }
   } else if (schedule.occurrence_type === "daily") {
     const current = new Date(effectiveStart);
     while (current <= effectiveEnd) {
-      events.push(createEvent(new Date(current)));
+      const event = createEvent(new Date(current));
+      if (event) {
+        events.push(event);
+      }
       current.setDate(current.getDate() + 1);
     }
   } else if (schedule.occurrence_type === "weekly" && schedule.day_of_week) {
     const current = new Date(effectiveStart);
     while (current <= effectiveEnd) {
       if (schedule.day_of_week.includes(current.getDay())) {
-        events.push(createEvent(new Date(current)));
+        const event = createEvent(new Date(current));
+        if (event) {
+          events.push(event);
+        }
       }
       current.setDate(current.getDate() + 1);
     }
@@ -128,7 +144,10 @@ export function expandAcademicSchedule(
     const current = new Date(effectiveStart);
     while (current <= effectiveEnd) {
       if (current.getDate() === schedule.day_of_month) {
-        events.push(createEvent(new Date(current)));
+        const event = createEvent(new Date(current));
+        if (event) {
+          events.push(event);
+        }
       }
       current.setDate(current.getDate() + 1);
     }
