@@ -6,7 +6,7 @@ import { getOrgContext } from "@/lib/auth/roles";
 import { CalendarContent } from "@/components/calendar/CalendarContent";
 import { resolveLabel, resolveActionLabel } from "@/lib/navigation/label-resolver";
 import { getLocale, getTranslations } from "next-intl/server";
-import { fetchUnifiedEvents } from "@/lib/calendar/unified-events";
+import { buildUnifiedCalendarDateRange, fetchUnifiedEvents } from "@/lib/calendar/unified-events";
 import { getCalendarPrimaryActionHref } from "@/lib/calendar/navigation";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import { resolveOrgTimezone } from "@/lib/utils/timezone";
@@ -28,10 +28,7 @@ export default async function CalendarPage({ params }: CalendarPageProps) {
   const orgId = orgCtx.organization.id;
   const orgTimeZone = resolveOrgTimezone(orgCtx.organization.timezone);
 
-  // Use 180-day range with 1-day UTC buffer to match client's UnifiedEventFeed
-  const now = new Date();
-  const rangeStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
-  const rangeEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 181, 23, 59, 59, 999));
+  const { start: rangeStart, end: rangeEnd } = buildUnifiedCalendarDateRange();
 
   const [mySchedulesResult, allSchedulesResult, initialEventsResult] = await Promise.all([
     supabase

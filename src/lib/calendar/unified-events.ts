@@ -26,6 +26,19 @@ export type FetchUnifiedEventsOptions = {
   timeZone?: string;
 };
 
+type UnifiedTeamEventRecord = {
+  id: string;
+  title: string;
+  start_date: string;
+  end_date: string | null;
+  location: string | null;
+  event_type: string | null;
+  is_philanthropy: boolean;
+  recurrence_group_id: string | null;
+};
+
+const PLAIN_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 export function parseSourcesParam(sourcesParam: string | null): Set<SourceType> {
   if (!sourcesParam) {
     return new Set(["events", "schedules", "feeds", "classes"]);
@@ -54,8 +67,58 @@ export function toLocalDateString(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+function isPlainDateString(value: string | null | undefined): boolean {
+  return Boolean(value && PLAIN_DATE_PATTERN.test(value));
+}
+
+function addDaysToDateString(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+export function buildUnifiedCalendarDateRange(now: Date = new Date()): { start: Date; end: Date } {
+  return {
+    start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1)),
+    end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 181, 23, 59, 59, 999)),
+  };
+}
+
 function normalizeScheduleTime(time: string): string {
   return time.split(":").slice(0, 2).join(":");
+}
+
+export function normalizeUnifiedTeamEvent(event: UnifiedTeamEventRecord): UnifiedEvent {
+  const badges: string[] = [];
+  if (event.event_type) badges.push(event.event_type);
+  if (event.is_philanthropy) badges.push("philanthropy");
+  if (event.recurrence_group_id) badges.push("recurring");
+
+  const allDay = isPlainDateString(event.start_date) || isPlainDateString(event.end_date);
+  const startDateValue = event.start_date;
+  const startAt = allDay
+    ? (isPlainDateString(startDateValue) ? startDateValue : startDateValue.slice(0, 10))
+    : startDateValue;
+  const endDateValue = event.end_date;
+  const inclusiveEndDate = endDateValue === null
+    ? null
+    : (isPlainDateString(endDateValue) ? endDateValue : endDateValue.slice(0, 10));
+  const endAt = allDay
+    ? addDaysToDateString(inclusiveEndDate ?? startAt, 1)
+    : endDateValue;
+
+  return {
+    id: `event:${event.id}`,
+    title: event.title,
+    startAt,
+    endAt,
+    allDay,
+    location: event.location,
+    sourceType: "event",
+    sourceName: "Team Event",
+    badges,
+    eventId: event.id,
+  };
 }
 
 export function expandAcademicSchedule(
@@ -178,31 +241,8 @@ async function fetchEvents(
     }
     if (!data) return [];
 
-    const overlapping = data.filter((event) => eventOverlapsRange({
-      startAt: event.start_date,
-      endAt: event.end_date,
-      allDay: false,
-    }, start, end));
-
-    return overlapping.map((event): UnifiedEvent => {
-      const badges: string[] = [];
-      if (event.event_type) badges.push(event.event_type);
-      if (event.is_philanthropy) badges.push("philanthropy");
-      if (event.recurrence_group_id) badges.push("recurring");
-
-      return {
-        id: `event:${event.id}`,
-        title: event.title,
-        startAt: event.start_date,
-        endAt: event.end_date,
-        allDay: false,
-        location: event.location,
-        sourceType: "event",
-        sourceName: "Team Event",
-        badges,
-        eventId: event.id,
-      };
-    });
+    const normalizedEvents = data.map((event) => normalizeUnifiedTeamEvent(event));
+    return normalizedEvents.filter((event) => eventOverlapsRange(event, start, end));
   } catch (error) {
     console.error("[unified-events] Error querying events:", error);
     return [];

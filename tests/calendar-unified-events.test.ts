@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert";
-import { expandAcademicSchedule } from "../src/lib/calendar/unified-events";
+import { eventOverlapsRange } from "../src/lib/calendar/event-segments";
+import {
+  buildUnifiedCalendarDateRange,
+  expandAcademicSchedule,
+  normalizeUnifiedTeamEvent,
+} from "../src/lib/calendar/unified-events";
 
 const originalTimeZone = process.env.TZ;
 process.env.TZ = "UTC";
@@ -35,6 +40,48 @@ test("expandAcademicSchedule: weekly schedule expands within range", () => {
   assert.ok(events.length > 0, "Should produce events");
   assert.ok(events.every((e) => e.sourceType === "class"));
   assert.ok(events.every((e) => e.title === "Math 101"));
+});
+
+test("buildUnifiedCalendarDateRange: keeps server and client list windows aligned", () => {
+  const range = buildUnifiedCalendarDateRange(new Date("2026-03-30T15:45:00.000Z"));
+
+  assert.equal(range.start.toISOString(), "2026-03-29T00:00:00.000Z");
+  assert.equal(range.end.toISOString(), "2026-09-27T23:59:59.999Z");
+});
+
+test("normalizeUnifiedTeamEvent: preserves plain-date team events as visible all-day rows", () => {
+  const normalized = normalizeUnifiedTeamEvent(
+    {
+      id: "event-1",
+      title: "Founders Day",
+      start_date: "2026-03-30",
+      end_date: null,
+      location: "Main Hall",
+      event_type: null,
+      is_philanthropy: false,
+      recurrence_group_id: null,
+    },
+    "America/New_York",
+  );
+
+  assert.deepStrictEqual(
+    normalized,
+    {
+      id: "event:event-1",
+      title: "Founders Day",
+      startAt: "2026-03-30",
+      endAt: "2026-03-31",
+      allDay: true,
+      location: "Main Hall",
+      sourceType: "event",
+      sourceName: "Team Event",
+      badges: [],
+      eventId: "event-1",
+    },
+  );
+
+  const range = buildUnifiedCalendarDateRange(new Date("2026-03-30T15:45:00.000Z"));
+  assert.equal(eventOverlapsRange(normalized, range.start, range.end), true);
 });
 
 test("expandAcademicSchedule: uses org timezone for generated timestamps", () => {

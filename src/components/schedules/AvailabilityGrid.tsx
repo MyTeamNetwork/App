@@ -116,7 +116,7 @@ export function AvailabilityGrid({ schedules, orgId, mode = "team", timeZone }: 
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [eventsError, setEventsError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [currentMinute, setCurrentMinute] = useState<number>(-1);
+  const [clockTick, setClockTick] = useState<number>(0);
   const gridRef = useRef<HTMLDivElement>(null);
 
   // Mark component as mounted to avoid hydration mismatch with dates
@@ -129,7 +129,7 @@ export function AvailabilityGrid({ schedules, orgId, mode = "team", timeZone }: 
     if (!mounted) return;
 
     const updateTime = () => {
-      setCurrentMinute(getCurrentTimeMarker(new Date(), timeZone).minute);
+      setClockTick(Date.now());
     };
     updateTime();
 
@@ -137,10 +137,20 @@ export function AvailabilityGrid({ schedules, orgId, mode = "team", timeZone }: 
     return () => clearInterval(interval);
   }, [mounted, timeZone]);
 
-  const { weekStart, weekLabel, weekDays, rangeStart, rangeEnd, todayKey } = useMemo(() => {
-    const now = mounted ? new Date() : new Date("2026-01-01T12:00:00.000Z");
+  const currentTimeMarker = useMemo(() => {
+    const now = mounted && clockTick > 0 ? new Date(clockTick) : new Date("2026-01-01T12:00:00.000Z");
+    return getCurrentTimeMarker(now, timeZone);
+  }, [clockTick, mounted, timeZone]);
+
+  const { weekStart, weekLabel, weekDays, rangeStart, rangeEnd } = useMemo(() => {
+    const now = mounted
+      ? parseDateKey(currentTimeMarker.dateKey)
+      : new Date("2026-01-01T12:00:00.000Z");
     return buildAvailabilityWeek(now, weekOffset, timeZone);
-  }, [weekOffset, mounted, timeZone]);
+  }, [currentTimeMarker.dateKey, weekOffset, mounted, timeZone]);
+
+  const todayKey = currentTimeMarker.dateKey;
+  const currentMinute = currentTimeMarker.minute;
 
   useEffect(() => {
     if (mode !== "team") {

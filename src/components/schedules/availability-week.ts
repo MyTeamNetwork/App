@@ -23,6 +23,10 @@ export type AvailabilityWeekContext = {
   todayKey: string;
 };
 
+export type AvailabilityRenderState = AvailabilityWeekContext & {
+  currentMinute: number;
+};
+
 function parseDateKey(dateKey: string): Date {
   const [year, month, day] = dateKey.split("-").map(Number);
   return new Date(year, month - 1, day, 12);
@@ -116,5 +120,15 @@ export function buildAvailabilityWeek(now: Date, weekOffset: number, timeZone?: 
     rangeStart,
     rangeEnd,
     todayKey,
+  };
+}
+
+export function buildAvailabilityRenderState(now: Date, weekOffset: number, timeZone?: string): AvailabilityRenderState {
+  const week = buildAvailabilityWeek(now, weekOffset, timeZone);
+  const { minute: currentMinute } = getCurrentTimeMarker(now, timeZone);
+
+  return {
+    ...week,
+    currentMinute,
   };
 }

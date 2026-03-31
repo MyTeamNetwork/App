@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { UnifiedEvent } from "@/lib/calendar/unified-events";
+import {
+  buildUnifiedCalendarDateRange,
+  type UnifiedEvent,
+} from "@/lib/calendar/unified-events";
 import { formatCalendarEventTime } from "@/lib/calendar/event-segments";
-import { getCalendarPrimaryActionHref, getUnifiedEventHref } from "@/lib/calendar/navigation";
+import { getTeamEventCreationHref, getUnifiedEventHref } from "@/lib/calendar/navigation";
 
 type UnifiedEventFeedProps = {
   orgId: string;
@@ -86,8 +89,18 @@ function groupEventsByDate(events: UnifiedEvent[], timeZone?: string): Map<strin
       month: "short",
       day: "numeric",
     };
-    if (timeZone) opts.timeZone = timeZone;
-    const dateKey = new Date(event.startAt).toLocaleDateString("en-US", opts);
+    const floatingMatch = event.allDay ? /^(\d{4})-(\d{2})-(\d{2})/.exec(event.startAt) : null;
+    let dateKey: string;
+
+    if (floatingMatch) {
+      const [, year, month, day] = floatingMatch;
+      const floatingDate = new Date(Number(year), Number(month) - 1, Number(day), 12);
+      dateKey = floatingDate.toLocaleDateString("en-US", opts);
+    } else {
+      if (timeZone) opts.timeZone = timeZone;
+      dateKey = new Date(event.startAt).toLocaleDateString("en-US", opts);
+    }
+
     const existing = grouped.get(dateKey) || [];
     existing.push(event);
     grouped.set(dateKey, existing);
@@ -110,14 +123,7 @@ export function UnifiedEventFeed({ orgId, orgSlug, initialEvents, timeZone }: Un
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
 
-  const dateRange = useMemo(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setDate(end.getDate() + 180);
-    end.setHours(23, 59, 59, 999);
-    return { start, end };
-  }, []);
+  const dateRange = useMemo(() => buildUnifiedCalendarDateRange(), []);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -190,7 +196,7 @@ export function UnifiedEventFeed({ orgId, orgSlug, initialEvents, timeZone }: Un
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           {hasEventsSource && (
             <Link
-              href={getCalendarPrimaryActionHref(orgSlug)}
+              href={getTeamEventCreationHref(orgSlug)}
               className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
             >
               Create your first event

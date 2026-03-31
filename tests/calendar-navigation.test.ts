@@ -1,10 +1,18 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getCalendarPrimaryActionHref, getUnifiedEventHref } from "@/lib/calendar/navigation";
+import {
+  getCalendarPrimaryActionHref,
+  getTeamEventCreationHref,
+  getUnifiedEventHref,
+} from "@/lib/calendar/navigation";
 
 describe("calendar navigation helpers", () => {
   it("routes the main calendar CTA to the member schedule form", () => {
     assert.equal(getCalendarPrimaryActionHref("acme"), "/acme/calendar/new");
+  });
+
+  it("routes the unified feed empty-state team event CTA to the event form", () => {
+    assert.equal(getTeamEventCreationHref("acme"), "/acme/events/new");
   });
 
   it("routes team events to the event detail page", () => {

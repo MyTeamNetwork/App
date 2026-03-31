@@ -8,6 +8,10 @@ export function getCalendarPrimaryActionHref(orgSlug: string): string {
   return `/${orgSlug}/calendar/new`;
 }
 
+export function getTeamEventCreationHref(orgSlug: string): string {
+  return `/${orgSlug}/events/new`;
+}
+
 export function getUnifiedEventHref(
   orgSlug: string,
   event: UnifiedEventLinkTarget,
