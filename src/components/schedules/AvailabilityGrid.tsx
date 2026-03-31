@@ -7,7 +7,7 @@ import type { AcademicSchedule, User } from "@/types/database";
 import { splitEventIntoLocalDaySegments } from "@/lib/calendar/event-segments";
 import { computeSummaryStats, formatDateKey, type ConflictInfo } from "./availability-stats";
 import { computeEventBlocks, resolveOverlaps, type PositionedBlock } from "./availability-blocks";
-import { buildAvailabilityWeek, getCurrentTimeMarker } from "./availability-week";
+import { buildAvailabilityRenderState } from "./availability-week";
 
 interface AvailabilityGridProps {
   schedules: (AcademicSchedule & { users?: Pick<User, "name" | "email"> | null })[];
@@ -137,20 +137,15 @@ export function AvailabilityGrid({ schedules, orgId, mode = "team", timeZone }: 
     return () => clearInterval(interval);
   }, [mounted, timeZone]);
 
-  const currentTimeMarker = useMemo(() => {
-    const now = mounted && clockTick > 0 ? new Date(clockTick) : new Date("2026-01-01T12:00:00.000Z");
-    return getCurrentTimeMarker(now, timeZone);
-  }, [clockTick, mounted, timeZone]);
+  const now = useMemo(
+    () => (mounted && clockTick > 0 ? new Date(clockTick) : new Date("2026-01-01T12:00:00.000Z")),
+    [clockTick, mounted],
+  );
 
-  const { weekStart, weekLabel, weekDays, rangeStart, rangeEnd } = useMemo(() => {
-    const now = mounted
-      ? parseDateKey(currentTimeMarker.dateKey)
-      : new Date("2026-01-01T12:00:00.000Z");
-    return buildAvailabilityWeek(now, weekOffset, timeZone);
-  }, [currentTimeMarker.dateKey, weekOffset, mounted, timeZone]);
-
-  const todayKey = currentTimeMarker.dateKey;
-  const currentMinute = currentTimeMarker.minute;
+  const { weekStart, weekLabel, weekDays, rangeStart, rangeEnd, todayKey, currentMinute } = useMemo(
+    () => buildAvailabilityRenderState(now, weekOffset, timeZone),
+    [now, weekOffset, timeZone],
+  );
 
   useEffect(() => {
     if (mode !== "team") {

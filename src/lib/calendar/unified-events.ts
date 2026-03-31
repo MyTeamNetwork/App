@@ -77,6 +77,31 @@ function addDaysToDateString(dateStr: string, days: number): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
+function getUnifiedEventSortTimestamp(event: UnifiedEvent, timeZone?: string): number {
+  if (event.allDay && isPlainDateString(event.startAt)) {
+    return new Date(localToUtcIso(event.startAt, "00:00", resolveOrgTimezone(timeZone))).getTime();
+  }
+
+  return new Date(event.startAt).getTime();
+}
+
+function compareUnifiedEvents(a: UnifiedEvent, b: UnifiedEvent, timeZone?: string): number {
+  const startDiff = getUnifiedEventSortTimestamp(a, timeZone) - getUnifiedEventSortTimestamp(b, timeZone);
+  if (startDiff !== 0) {
+    return startDiff;
+  }
+
+  if (a.allDay !== b.allDay) {
+    return a.allDay ? -1 : 1;
+  }
+
+  return a.id.localeCompare(b.id);
+}
+
+export function sortUnifiedEvents(events: UnifiedEvent[], timeZone?: string): UnifiedEvent[] {
+  return [...events].sort((a, b) => compareUnifiedEvents(a, b, timeZone));
+}
+
 export function buildUnifiedCalendarDateRange(now: Date = new Date()): { start: Date; end: Date } {
   return {
     start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1)),
@@ -408,8 +433,5 @@ export async function fetchUnifiedEvents(
   ]);
 
   const allEvents = [...eventsResult, ...schedulesResult, ...feedsResult, ...classesResult];
-
-  allEvents.sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
-
-  return allEvents;
+  return sortUnifiedEvents(allEvents, resolvedTimeZone);
 }

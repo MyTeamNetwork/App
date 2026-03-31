@@ -5,6 +5,7 @@ import {
   buildUnifiedCalendarDateRange,
   expandAcademicSchedule,
   normalizeUnifiedTeamEvent,
+  sortUnifiedEvents,
 } from "../src/lib/calendar/unified-events";
 
 const originalTimeZone = process.env.TZ;
@@ -82,6 +83,42 @@ test("normalizeUnifiedTeamEvent: preserves plain-date team events as visible all
 
   const range = buildUnifiedCalendarDateRange(new Date("2026-03-30T15:45:00.000Z"));
   assert.equal(eventOverlapsRange(normalized, range.start, range.end), true);
+});
+
+test("sortUnifiedEvents: keeps floating all-day team events ordered by org-local day", () => {
+  const sorted = sortUnifiedEvents(
+    [
+      {
+        id: "event:event-1",
+        title: "Founders Day",
+        startAt: "2026-03-30",
+        endAt: "2026-03-31",
+        allDay: true,
+        location: null,
+        sourceType: "event",
+        sourceName: "Team Event",
+        badges: [],
+        eventId: "event-1",
+      },
+      {
+        id: "feed:feed-1",
+        title: "Late practice film",
+        startAt: "2026-03-30T03:30:00.000Z",
+        endAt: "2026-03-30T04:30:00.000Z",
+        allDay: false,
+        location: null,
+        sourceType: "feed",
+        sourceName: "Calendar Feed",
+        badges: [],
+      },
+    ],
+    "America/New_York",
+  );
+
+  assert.deepStrictEqual(
+    sorted.map((event) => event.id),
+    ["feed:feed-1", "event:event-1"],
+  );
 });
 
 test("expandAcademicSchedule: uses org timezone for generated timestamps", () => {

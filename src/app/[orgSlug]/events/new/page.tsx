@@ -11,6 +11,7 @@ import { resolveActionLabel } from "@/lib/navigation/label-resolver";
 import { useLocale, useTranslations } from "next-intl";
 import { newEventSchema, type NewEventForm } from "@/lib/schemas/content";
 import { expandRecurrence, type RecurrenceRule } from "@/lib/events/recurrence";
+import { EVENT_TYPE_OPTIONS } from "@/lib/events/event-type-options";
 import { createRecurringEvents } from "@/lib/events/recurring-operations";
 import { localToUtcIso, resolveOrgTimezone, getLocalWeekday, getLocalDayOfMonth } from "@/lib/utils/timezone";
 import type { NavConfig } from "@/lib/navigation/nav-items";
@@ -495,16 +496,9 @@ export default function NewEventPage() {
           />
 
           <Select
-            label="Event Type"
+            label="Category"
             error={errors.event_type?.message}
-            options={[
-              { value: "general", label: "General" },
-              { value: "game", label: "Game" },
-              { value: "meeting", label: "Meeting" },
-              { value: "social", label: "Social" },
-              { value: "fundraiser", label: "Fundraiser" },
-              { value: "philanthropy", label: "Philanthropy" },
-            ]}
+            options={[...EVENT_TYPE_OPTIONS]}
             {...register("event_type")}
           />
 

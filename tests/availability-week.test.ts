@@ -73,6 +73,31 @@ describe("availability week context", () => {
     assert.deepStrictEqual(marker, { dateKey: "2026-01-11", minute: 150 });
   });
 
+  it("derives week context from the real clock instead of round-tripping through a date key", () => {
+    const renderState = buildAvailabilityRenderState(
+      new Date("2026-01-11T07:30:00.000Z"),
+      0,
+      "America/New_York",
+    );
+
+    assert.equal(renderState.todayKey, "2026-01-11");
+    assert.equal(formatDateKey(renderState.weekStart), "2026-01-11");
+    assert.deepStrictEqual(
+      renderState.weekDays.map((day) => formatDateKey(day)),
+      [
+        "2026-01-11",
+        "2026-01-12",
+        "2026-01-13",
+        "2026-01-14",
+        "2026-01-15",
+        "2026-01-16",
+        "2026-01-17",
+      ],
+    );
+    assert.equal(renderState.rangeStart.toISOString(), "2026-01-11T05:00:00.000Z");
+    assert.equal(renderState.rangeEnd.toISOString(), "2026-01-18T04:59:59.999Z");
+  });
+
   it("recomputes the org-local today marker after midnight", () => {
     const beforeMidnight = buildAvailabilityRenderState(
       new Date("2026-01-12T04:59:00.000Z"),

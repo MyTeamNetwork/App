@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/layout";
 import { resolveActionLabel } from "@/lib/navigation/label-resolver";
 import { useLocale, useTranslations } from "next-intl";
 import { editEventSchema, type EditEventForm } from "@/lib/schemas/content";
+import { EVENT_TYPE_OPTIONS } from "@/lib/events/event-type-options";
 import { updateFutureEvents } from "@/lib/events/recurring-operations";
 import { localToUtcIso, utcToLocalParts, resolveOrgTimezone } from "@/lib/utils/timezone";
 import type { NavConfig } from "@/lib/navigation/nav-items";
@@ -359,18 +360,11 @@ export default function EditEventPage() {
           />
 
           <Select
-            label="Event Type"
+            label="Category"
             value={eventType}
             onChange={(e) => setValue("event_type", e.target.value as EventType)}
             error={errors.event_type?.message}
-            options={[
-              { value: "general", label: "General" },
-              { value: "game", label: "Game" },
-              { value: "meeting", label: "Meeting" },
-              { value: "social", label: "Social" },
-              { value: "fundraiser", label: "Fundraiser" },
-              { value: "philanthropy", label: "Philanthropy" },
-            ]}
+            options={[...EVENT_TYPE_OPTIONS]}
           />
 
           <div className="flex items-center gap-3">

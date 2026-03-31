@@ -465,6 +465,36 @@ test("includes overlapping multi-day schedule event", () => {
   assert.strictEqual(result.events?.length, 1);
 });
 
+test("team events keep eventId in the unified response payload", () => {
+  const result = simulateUnifiedEvents(
+    {
+      auth: AuthPresets.orgMember("org-1"),
+      orgId: "org-1",
+      start: "2026-03-29T00:00:00Z",
+      end: "2026-03-31T23:59:59Z",
+      sources: "events",
+    },
+    {
+      events: [
+        {
+          id: "event-1",
+          title: "Founders Day",
+          start_date: "2026-03-30",
+          end_date: null,
+          location: "Main Hall",
+          event_type: null,
+          is_philanthropy: false,
+          recurrence_group_id: null,
+          deleted_at: null,
+        },
+      ],
+    }
+  );
+
+  assert.strictEqual(result.status, 200);
+  assert.strictEqual(result.events?.[0]?.eventId, "event-1");
+});
+
 test("single-occurrence class outside range is excluded", () => {
   const result = simulateUnifiedEvents(
     {

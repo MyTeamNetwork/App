@@ -22,9 +22,23 @@ describe("calendar navigation helpers", () => {
     );
   });
 
+  it("falls back to the unified event id when the explicit eventId is missing", () => {
+    assert.equal(
+      getUnifiedEventHref("acme", { sourceType: "event", id: "event:event-1" }),
+      "/acme/events/event-1",
+    );
+  });
+
   it("routes academic schedule entries to the schedule edit page", () => {
     assert.equal(
       getUnifiedEventHref("acme", { sourceType: "class", academicScheduleId: "sched-1" }),
+      "/acme/calendar/sched-1/edit",
+    );
+  });
+
+  it("falls back to the unified class id when the explicit schedule id is missing", () => {
+    assert.equal(
+      getUnifiedEventHref("acme", { sourceType: "class", id: "class:sched-1:2026-03-30" }),
       "/acme/calendar/sched-1/edit",
     );
   });
