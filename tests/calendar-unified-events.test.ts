@@ -121,6 +121,41 @@ test("sortUnifiedEvents: keeps floating all-day team events ordered by org-local
   );
 });
 
+test("sortUnifiedEvents: keeps imported all-day feed events ordered by floating local day", () => {
+  const sorted = sortUnifiedEvents(
+    [
+      {
+        id: "feed:all-day-import",
+        title: "Imported Holiday",
+        startAt: "2026-03-30T00:00:00.000Z",
+        endAt: "2026-03-31T00:00:00.000Z",
+        allDay: true,
+        location: null,
+        sourceType: "feed",
+        sourceName: "Google Calendar",
+        badges: [],
+      },
+      {
+        id: "feed:late-film",
+        title: "Late practice film",
+        startAt: "2026-03-30T03:30:00.000Z",
+        endAt: "2026-03-30T04:30:00.000Z",
+        allDay: false,
+        location: null,
+        sourceType: "feed",
+        sourceName: "Calendar Feed",
+        badges: [],
+      },
+    ],
+    "America/New_York",
+  );
+
+  assert.deepStrictEqual(
+    sorted.map((event) => event.id),
+    ["feed:late-film", "feed:all-day-import"],
+  );
+});
+
 test("expandAcademicSchedule: uses org timezone for generated timestamps", () => {
   const schedule = {
     id: "sched-ny",

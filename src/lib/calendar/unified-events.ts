@@ -77,9 +77,19 @@ function addDaysToDateString(dateStr: string, days: number): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
+function getAllDayFloatingDateKey(startAt: string, allDay: boolean): string | null {
+  if (!allDay) {
+    return null;
+  }
+
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(startAt);
+  return match?.[1] ?? null;
+}
+
 function getUnifiedEventSortTimestamp(event: UnifiedEvent, timeZone?: string): number {
-  if (event.allDay && isPlainDateString(event.startAt)) {
-    return new Date(localToUtcIso(event.startAt, "00:00", resolveOrgTimezone(timeZone))).getTime();
+  const floatingDateKey = getAllDayFloatingDateKey(event.startAt, event.allDay);
+  if (floatingDateKey) {
+    return new Date(localToUtcIso(floatingDateKey, "00:00", resolveOrgTimezone(timeZone))).getTime();
   }
 
   return new Date(event.startAt).getTime();
