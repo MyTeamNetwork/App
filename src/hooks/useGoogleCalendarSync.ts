@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { SyncPreferences } from "@/components/settings/GoogleCalendarSyncPanel";
+import { resolveGoogleCalendarConnectionState } from "@/lib/google/calendar-connection-state";
 
 interface CalendarConnection {
   googleEmail: string;
@@ -140,27 +141,24 @@ export function useGoogleCalendarSync({
     setReconnectRequired(false);
     try {
       const response = await fetch("/api/google/calendars");
-      if (response.status === 403) {
-        const data = await response.json();
-        if (data.error === "reconnect_required") {
-          setReconnectRequired(true);
-          setCalendars([]);
-          return;
-        }
-      }
-      if (!response.ok) return;
       const data = await response.json();
+      const resolved = resolveGoogleCalendarConnectionState(response.status, data);
 
-      // Server returns { connected: false } when user has no valid token
-      // (expired/revoked) — reload connection row to pick up status change.
-      if (data.connected === false) {
+      if (resolved.reconnectRequired) {
         setReconnectRequired(true);
         setCalendars([]);
-        await loadConnection();
         return;
       }
 
-      const cals: GoogleCalendar[] = data.calendars || [];
+      if (resolved.disconnected) {
+        setReconnectRequired(false);
+        setCalendars([]);
+        return;
+      }
+
+      if (!response.ok) return;
+
+      const cals: GoogleCalendar[] = resolved.calendars;
       setCalendars(cals);
 
       // One-time normalization: resolve "primary" alias to actual calendar ID
@@ -180,7 +178,7 @@ export function useGoogleCalendarSync({
     } finally {
       setCalendarsLoading(false);
     }
-  }, [setTargetCalendar, loadConnection]);
+  }, [setTargetCalendar]);
 
   // Load sync preferences
   const loadPreferences = useCallback(async () => {
