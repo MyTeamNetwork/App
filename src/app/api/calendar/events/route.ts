@@ -172,11 +172,11 @@ export async function GET(request: Request) {
 
       supabase
         .from("events")
-        .select("id, title, start_date, end_date, location, event_type, organization_id")
+        .select("id, title, start_date, end_date, location, event_type, organization_id, audience, target_user_ids")
         .eq("organization_id", organizationId)
         .is("deleted_at", null)
         .lte("start_date", end.toISOString())
-        .gte("end_date", start.toISOString())
+        .or(`end_date.gte.${start.toISOString()},end_date.is.null`)
         .limit(MAX_EVENTS + 1)
         .order("start_date", { ascending: true }),
     ]);
@@ -225,6 +225,25 @@ export async function GET(request: Request) {
       }));
 
     const normalizedOrg = orgEvents
+      .filter((event) => {
+        const targetUserIds = Array.isArray(event.target_user_ids) ? event.target_user_ids : [];
+        if (targetUserIds.length > 0) {
+          return targetUserIds.includes(user.id);
+        }
+
+        switch (event.audience) {
+          case "members":
+            return membership.role === "admin" || membership.role === "active_member" || membership.role === "member";
+          case "alumni":
+            return membership.role === "alumni";
+          case "all":
+          case "both":
+          case null:
+            return true;
+          default:
+            return true;
+        }
+      })
       .filter((event) => eventOverlapsRange({
         startAt: event.start_date,
         endAt: event.end_date,
