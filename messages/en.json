@@ -579,8 +579,13 @@
     "meeting": "Meeting",
     "social": "Social",
     "fundraiser": "Fundraiser",
+    "practice": "Practice",
+    "workout": "Workout",
     "recurringEvent": "Recurring event",
-    "willAppear": "{label} will appear here once created"
+    "willAppear": "{label} will appear here once created",
+    "noUpcomingEvents": "No upcoming {label}",
+    "noPastEvents": "No past {label}",
+    "eventsWillAppear": "{label} will appear here once scheduled"
   },
   "donations": {
     "totalRaised": "Total Raised",

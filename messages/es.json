@@ -579,8 +579,13 @@
     "meeting": "Reunion",
     "social": "Social",
     "fundraiser": "Recaudacion",
+    "practice": "Practica",
+    "workout": "Entrenamiento",
     "recurringEvent": "Evento recurrente",
-    "willAppear": "{label} aparecera aqui una vez creado"
+    "willAppear": "{label} aparecera aqui una vez creado",
+    "noUpcomingEvents": "No hay {label} proximos",
+    "noPastEvents": "No hay {label} pasados",
+    "eventsWillAppear": "{label} aparecera aqui una vez programado"
   },
   "donations": {
     "totalRaised": "Total recaudado",

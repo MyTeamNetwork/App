@@ -579,8 +579,13 @@
     "meeting": "会议",
     "social": "社交",
     "fundraiser": "筹款",
+    "practice": "训练",
+    "workout": "锻炼",
     "recurringEvent": "周期性活动",
-    "willAppear": "{label}创建后将显示在此处"
+    "willAppear": "{label}创建后将显示在此处",
+    "noUpcomingEvents": "没有即将举行的{label}",
+    "noPastEvents": "没有过去的{label}",
+    "eventsWillAppear": "{label}安排后将显示在此处"
   },
   "donations": {
     "totalRaised": "筹集总额",
