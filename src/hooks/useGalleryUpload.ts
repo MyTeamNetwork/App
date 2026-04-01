@@ -50,7 +50,7 @@ export interface UploadFileEntry {
 // ---------------------------------------------------------------------------
 
 type Action =
-  | { type: "ADD_FILES"; entries: UploadFileEntry[] }
+  | { type: "ADD_FILES"; entries: UploadFileEntry[]; replaceExisting?: boolean }
   | { type: "UPDATE_FIELD"; id: string; field: "title" | "description" | "takenAt"; value: string }
   | { type: "UPDATE_TAGS"; id: string; tags: string[] }
   | { type: "SET_STATUS"; id: string; status: FileUploadStatus; error?: string }
@@ -69,10 +69,12 @@ interface State {
   pendingAlbumName: string | null;
 }
 
-function reducer(state: State, action: Action): State {
+export function galleryUploadReducer(state: State, action: Action): State {
   switch (action.type) {
     case "ADD_FILES":
-      return { ...state, files: [...state.files, ...action.entries] };
+      return action.replaceExisting
+        ? { ...state, files: action.entries, completedMediaIds: [] }
+        : { ...state, files: [...state.files, ...action.entries] };
 
     case "UPDATE_FIELD":
       return {
@@ -183,7 +185,7 @@ interface UseGalleryUploadOptions {
 }
 
 export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGalleryUploadOptions) {
-  const [state, dispatch] = useReducer(reducer, {
+  const [state, dispatch] = useReducer(galleryUploadReducer, {
     files: [],
     completedMediaIds: [],
     pendingAlbumName: null,
@@ -194,15 +196,33 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
   const onFileCompleteRef = useRef(onFileComplete);
   onFileCompleteRef.current = onFileComplete;
 
+  const resetQueue = useCallback((entries: UploadFileEntry[] = []) => {
+    xhrRefs.current.forEach((xhr) => xhr.abort());
+    xhrRefs.current.clear();
+
+    state.files.forEach((f) => {
+      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+    });
+
+    processingRef.current.clear();
+
+    if (entries.length > 0) {
+      dispatch({ type: "ADD_FILES", entries, replaceExisting: true });
+      return;
+    }
+
+    dispatch({ type: "CLEAR_ALL" });
+  }, [state.files]);
+
   // ------- Add files -------
   const addFiles = useCallback(
-    (newFiles: File[]) => {
+    (newFiles: File[], options?: { replaceExisting?: boolean }) => {
       const batchCheck = checkBatchLimit(newFiles.length);
       if (!batchCheck.valid) {
         return { rejected: newFiles.map((f) => ({ name: f.name, error: batchCheck.error! })) };
       }
 
-      const existingEntries = state.files.map((f) => ({
+      const existingEntries = (options?.replaceExisting ? [] : state.files).map((f) => ({
         name: f.fileName,
         size: f.fileSize,
       }));
@@ -249,12 +269,16 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
       }
 
       if (entries.length > 0) {
-        dispatch({ type: "ADD_FILES", entries });
+        if (options?.replaceExisting) {
+          resetQueue(entries);
+        } else {
+          dispatch({ type: "ADD_FILES", entries });
+        }
       }
 
       return { rejected };
     },
-    [state.files],
+    [resetQueue, state.files],
   );
 
   // ------- Set pending album name (from folder upload) -------
@@ -492,16 +516,8 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
   );
 
   const cancelAll = useCallback(() => {
-    xhrRefs.current.forEach((xhr) => xhr.abort());
-    xhrRefs.current.clear();
-
-    state.files.forEach((f) => {
-      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
-    });
-
-    processingRef.current.clear();
-    dispatch({ type: "CLEAR_ALL" });
-  }, [state.files]);
+    resetQueue();
+  }, [resetQueue]);
 
   // ------- Field updates -------
   const updateField = useCallback(
