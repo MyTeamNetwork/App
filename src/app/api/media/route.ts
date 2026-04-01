@@ -232,35 +232,23 @@ export async function POST(request: NextRequest) {
     const initialStatus = "uploading";
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated client surface
-    const { error: shiftError } = await (serviceClient as any).rpc("shift_media_gallery_sort_orders", {
+    const { data: mediaId, error: createError } = await (serviceClient as any).rpc("create_media_gallery_upload", {
       p_org_id: orgId,
+      p_uploaded_by: user.id,
+      p_storage_path: storagePath,
+      p_file_name: fileName,
+      p_mime_type: mimeType,
+      p_file_size_bytes: fileSizeBytes,
+      p_media_type: mediaType,
+      p_title: title || fileName,
+      p_description: description || null,
+      p_tags: tags || [],
+      p_taken_at: takenAt || null,
+      p_status: initialStatus,
     });
-    if (shiftError) {
-      console.error("[media/gallery] shift gallery sort failed:", shiftError);
-      return NextResponse.json({ error: "Failed to create media item" }, { status: 500 });
-    }
 
-    const { data: mediaItem, error: insertError } = await serviceClient
-      .from("media_items")
-      .insert({
-        organization_id: orgId,
-        uploaded_by: user.id,
-        storage_path: storagePath,
-        file_name: fileName,
-        mime_type: mimeType,
-        file_size_bytes: fileSizeBytes,
-        media_type: mediaType,
-        title: title || fileName,
-        description: description || null,
-        tags: tags || [],
-        taken_at: takenAt || null,
-        status: initialStatus,
-        gallery_sort_order: 0,
-      })
-      .select("id")
-      .single();
-
-    if (insertError) {
+    if (createError || !mediaId) {
+      console.error("[media/gallery] create upload row failed:", createError);
       return NextResponse.json({ error: "Failed to create media item" }, { status: 500 });
     }
 
@@ -271,15 +259,15 @@ export async function POST(request: NextRequest) {
 
     if (signedError || !signedData) {
       // Clean up the DB row if we can't get a signed URL
-      await serviceClient.from("media_items").delete().eq("id", mediaItem.id);
+      await serviceClient.from("media_items").delete().eq("id", mediaId);
       return NextResponse.json({ error: "Failed to generate upload URL" }, { status: 500 });
     }
 
-    console.log("[media/gallery] Upload intent created", { orgId, mediaId: mediaItem.id, mimeType, fileSizeBytes });
+    console.log("[media/gallery] Upload intent created", { orgId, mediaId, mimeType, fileSizeBytes });
 
     return NextResponse.json(
       {
-        mediaId: mediaItem.id,
+        mediaId,
         signedUrl: signedData.signedUrl,
         token: signedData.token,
         path: storagePath,

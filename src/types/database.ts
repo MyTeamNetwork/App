@@ -5803,6 +5803,23 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: undefined
       }
+      create_media_gallery_upload: {
+        Args: {
+          p_description?: string
+          p_file_name: string
+          p_file_size_bytes: number
+          p_media_type: string
+          p_mime_type: string
+          p_org_id: string
+          p_status?: string
+          p_storage_path: string
+          p_tags?: string[]
+          p_taken_at?: string
+          p_title: string
+          p_uploaded_by: string
+        }
+        Returns: string
+      }
       shift_media_gallery_sort_orders: {
         Args: { p_org_id: string }
         Returns: undefined

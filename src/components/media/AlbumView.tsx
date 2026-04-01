@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { showFeedback } from "@/lib/feedback/show-feedback";
+import {
+  BulkDeletePartialError,
+  bulkDeleteSelectedMedia,
+  getBulkDeletePartialFailureMessage,
+  getBulkDeleteSuccessMessage,
+} from "@/lib/media/delete-media-client";
 import { Button, EmptyState } from "@/components/ui";
 import { MediaCard, type MediaItem } from "./MediaCard";
 import { MediaDetailModal } from "./MediaDetailModal";
@@ -182,17 +188,10 @@ export function AlbumView({
 
     setBulkDeleting(true);
     try {
-      const res = await fetch("/api/media/bulk-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, mediaIds: Array.from(selectedIds) }),
+      const { deletedIds } = await bulkDeleteSelectedMedia({
+        orgId,
+        mediaIds: Array.from(selectedIds),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Failed to delete");
-      }
-
-      const { deletedIds } = await res.json();
       const deletedSet = new Set((deletedIds as string[]) || []);
       setItems((prev) => prev.filter((item) => !deletedSet.has(item.id)));
       if (selectedItem && deletedSet.has(selectedItem.id)) {
@@ -206,11 +205,31 @@ export function AlbumView({
 
       exitSelectMode();
       showFeedback(
-        `Deleted ${deletedSet.size} item${deletedSet.size === 1 ? "" : "s"}`,
+        getBulkDeleteSuccessMessage(deletedSet.size),
         "success",
         { duration: 3000 },
       );
     } catch (err) {
+      if (err instanceof BulkDeletePartialError) {
+        const deletedSet = new Set(err.deletedIds);
+        setItems((prev) => prev.filter((item) => !deletedSet.has(item.id)));
+        setSelectedIds((prev) => new Set(Array.from(prev).filter((id) => !deletedSet.has(id))));
+        if (selectedItem && deletedSet.has(selectedItem.id)) {
+          setSelectedItem(null);
+        }
+
+        const albumUpdates = getAlbumUpdatesAfterMediaDelete(album, deletedSet, deletedSet.size);
+        if (Object.keys(albumUpdates).length > 0) {
+          onAlbumUpdated?.(albumUpdates);
+        }
+
+        showFeedback(
+          getBulkDeletePartialFailureMessage(err.deletedIds.length, err.failedIds.length),
+          "error",
+          { duration: 4000 },
+        );
+        return;
+      }
       setError(err instanceof Error ? err.message : "Bulk delete failed");
     } finally {
       setBulkDeleting(false);

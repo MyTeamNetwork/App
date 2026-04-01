@@ -20,6 +20,12 @@ import { CSS } from "@dnd-kit/utilities";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { showFeedback } from "@/lib/feedback/show-feedback";
+import {
+  BulkDeletePartialError,
+  bulkDeleteSelectedMedia,
+  getBulkDeletePartialFailureMessage,
+  getBulkDeleteSuccessMessage,
+} from "@/lib/media/delete-media-client";
 import { Button, EmptyState } from "@/components/ui";
 import { MediaFilters } from "./MediaFilters";
 import { MediaCard, type MediaItem } from "./MediaCard";
@@ -279,21 +285,32 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
     }
     setBulkDeleting(true);
     try {
-      const res = await fetch("/api/media/bulk-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, mediaIds: Array.from(selectedIds) }),
+      const { deletedIds } = await bulkDeleteSelectedMedia({
+        orgId,
+        mediaIds: Array.from(selectedIds),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Failed to delete");
-      }
-      const { deletedIds } = await res.json();
       const deletedSet = new Set(deletedIds as string[]);
       setItems((prev) => prev.filter((i) => !deletedSet.has(i.id)));
+      if (selectedItem && deletedSet.has(selectedItem.id)) {
+        setSelectedItem(null);
+      }
       exitSelectMode();
-      showFeedback(`Deleted ${deletedIds.length} item${deletedIds.length === 1 ? "" : "s"}`, "success", { duration: 3000 });
+      showFeedback(getBulkDeleteSuccessMessage(deletedIds.length), "success", { duration: 3000 });
     } catch (err) {
+      if (err instanceof BulkDeletePartialError) {
+        const deletedSet = new Set(err.deletedIds);
+        setItems((prev) => prev.filter((item) => !deletedSet.has(item.id)));
+        setSelectedIds((prev) => new Set(Array.from(prev).filter((id) => !deletedSet.has(id))));
+        if (selectedItem && deletedSet.has(selectedItem.id)) {
+          setSelectedItem(null);
+        }
+        showFeedback(
+          getBulkDeletePartialFailureMessage(err.deletedIds.length, err.failedIds.length),
+          "error",
+          { duration: 4000 },
+        );
+        return;
+      }
       setError(err instanceof Error ? err.message : "Bulk delete failed");
     } finally {
       setBulkDeleting(false);
