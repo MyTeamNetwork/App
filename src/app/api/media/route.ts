@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { getOrgMembership } from "@/lib/auth/api-helpers";
 import { validateJson, ValidationError, validationErrorResponse } from "@/lib/security/validation";
+import { GALLERY_ALBUM_BATCH_RATE_LIMIT } from "@/lib/media/gallery-upload-server";
 import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
 import { galleryUploadIntentSchema, mediaListQuerySchema, GALLERY_ALLOWED_MIME_TYPES } from "@/lib/schemas/media";
 import {
@@ -178,8 +179,7 @@ export async function POST(request: NextRequest) {
     const rateLimit = checkRateLimit(request, {
       userId: user.id,
       feature: "media upload",
-      limitPerIp: 20,
-      limitPerUser: 10,
+      ...GALLERY_ALBUM_BATCH_RATE_LIMIT,
     });
     if (!rateLimit.ok) {
       return buildRateLimitResponse(rateLimit);

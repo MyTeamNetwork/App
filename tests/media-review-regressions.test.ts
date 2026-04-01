@@ -24,13 +24,9 @@ test("album item route filters out soft-deleted joined media rows", () => {
 
 test("folder import appends files without cancelling the current upload queue", () => {
   const source = readSource("src/components/media/MediaUploadPanel.tsx");
-  const handleFolderBlock = source.match(
-    /const handleFolder = useCallback\([\s\S]*?\n  \);\n\n  \/\/ Escape to close/,
-  );
-
-  assert.ok(handleFolderBlock, "expected MediaUploadPanel handleFolder block");
-  assert.match(handleFolderBlock[0], /addFiles\(folderFiles\);/);
-  assert.doesNotMatch(handleFolderBlock[0], /cancelAll\(/);
+  assert.match(source, /const handleFolder = useCallback\(/);
+  assert.match(source, /startFolderImport\(folderFiles, folderName\)/);
+  assert.doesNotMatch(source, /handleFolder[\s\S]*cancelAll\(/);
 });
 
 test("media upload route uses the transactional gallery upload RPC", () => {

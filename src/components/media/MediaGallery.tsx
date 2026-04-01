@@ -36,6 +36,16 @@ import { AlbumView } from "./AlbumView";
 import { AlbumPickerModal } from "./AlbumPickerModal";
 import type { MediaAlbum } from "./AlbumCard";
 import type { UploadFileEntry } from "@/hooks/useGalleryUpload";
+import {
+  buildOptimisticMediaItem,
+  mergeUploadTags,
+} from "@/lib/media/gallery-upload-client";
+import {
+  canDeleteMediaItem,
+  filterBulkDeleteSelection,
+  getBulkDeleteEligibleIds,
+} from "@/lib/media/delete-selection";
+import { useMediaUploadManager } from "./MediaUploadManagerContext";
 
 interface MediaGalleryProps {
   orgId: string;
@@ -111,6 +121,7 @@ function SortableMediaRow({
 export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: MediaGalleryProps) {
   const tMedia = useTranslations("media");
   const tCommon = useTranslations("common");
+  const { importingAlbum } = useMediaUploadManager();
 
   // View tab state
   const [view, setView] = useState<GalleryView>("albums");
@@ -151,9 +162,21 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
   const itemsRef = useRef<MediaItem[]>([]);
   itemsRef.current = items;
   const reducedMotion = usePrefersReducedMotion();
+  const displayedSelectedAlbum =
+    selectedAlbum && importingAlbum && importingAlbum.id === selectedAlbum.id
+      ? { ...selectedAlbum, ...importingAlbum }
+      : selectedAlbum;
 
   const galleryFiltersDefault =
     mediaType === "all" && !year && !tag && (!isAdmin || statusFilter === "all");
+  const deleteActor = useMemo(
+    () => ({ isAdmin, currentUserId }),
+    [isAdmin, currentUserId],
+  );
+  const eligibleDeleteIds = useMemo(
+    () => getBulkDeleteEligibleIds(items, deleteActor),
+    [items, deleteActor],
+  );
 
   /** Full-org order requires admin (non-admins only see approved items; RPC needs every row). */
   const canReorderPhotos = canUpload && isAdmin && galleryFiltersDefault;
@@ -249,6 +272,16 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
     }
   }, [photosReorderMode]);
 
+  useEffect(() => {
+    if (!selectMode) return;
+
+    setSelectedIds((prev) => {
+      const next = filterBulkDeleteSelection(items, prev, deleteActor);
+      if (next.length === prev.size) return prev;
+      return new Set(next);
+    });
+  }, [items, deleteActor, selectMode]);
+
   const loadMore = async () => {
     if (!nextCursor || loadingMore || photosReorderMode) return;
     setLoadingMore(true);
@@ -289,7 +322,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
         orgId,
         mediaIds: Array.from(selectedIds),
       });
-      const deletedSet = new Set(deletedIds as string[]);
+      const deletedSet = new Set(deletedIds);
       setItems((prev) => prev.filter((i) => !deletedSet.has(i.id)));
       if (selectedItem && deletedSet.has(selectedItem.id)) {
         setSelectedItem(null);
@@ -369,20 +402,10 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
   // Optimistic insertion when a file finishes uploading
   const handleFileComplete = useCallback(
     (entry: UploadFileEntry, mediaId: string) => {
-      const isVideo = entry.mimeType.startsWith("video/");
-      const optimisticItem: MediaItem = {
-        id: mediaId,
-        title: entry.title || entry.fileName,
-        description: entry.description || null,
-        media_type: isVideo ? "video" : "image",
-        url: entry.previewUrl,
-        thumbnail_url: isVideo ? null : entry.previewUrl,
-        tags: entry.tags,
-        taken_at: entry.takenAt ? new Date(entry.takenAt).toISOString() : null,
-        created_at: new Date().toISOString(),
-        uploaded_by: currentUserId || "",
-        status: isAdmin ? "approved" : "pending",
-      };
+      const optimisticItem: MediaItem = buildOptimisticMediaItem(entry, mediaId, {
+        currentUserId,
+        isAdmin,
+      });
 
       // Only add to items list if we're on the photos tab
       if (view === "photos") {
@@ -390,22 +413,8 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
       }
 
       if (entry.tags.length > 0) {
-        setAvailableTags((prev) => {
-          const set = new Set(prev);
-          entry.tags.forEach((t) => set.add(t));
-          return Array.from(set).sort();
-        });
+        setAvailableTags((prev) => mergeUploadTags(prev, entry.tags));
       }
-
-      fetch(`/api/media/${mediaId}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((real: MediaItem | null) => {
-          if (!real) return;
-          setItems((prev) =>
-            prev.map((i) => (i.id === mediaId ? { ...i, ...real } : i)),
-          );
-        })
-        .catch(() => {});
     },
     [currentUserId, isAdmin, view],
   );
@@ -613,7 +622,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
               {selectMode && items.length > 0 && (
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setSelectedIds(new Set(items.map((i) => i.id)))}
+                    onClick={() => setSelectedIds(new Set(eligibleDeleteIds))}
                     className="px-2.5 py-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] rounded-lg hover:bg-[var(--muted)] transition-colors"
                   >
                     {tCommon("all")}
@@ -647,6 +656,12 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
         </div>
       )}
 
+      {view === "photos" && selectMode && !isAdmin && eligibleDeleteIds.length < items.length && (
+        <div className="mb-4 text-xs text-muted-foreground">
+          Only your uploads can be selected for delete.
+        </div>
+      )}
+
       {/* ── Albums view ── */}
       {view === "albums" && !selectedAlbum && (
         <AlbumGrid
@@ -656,9 +671,9 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
         />
       )}
 
-      {view === "albums" && selectedAlbum && (
+      {view === "albums" && displayedSelectedAlbum && (
         <AlbumView
-          album={selectedAlbum}
+          album={displayedSelectedAlbum}
           orgId={orgId}
           isAdmin={isAdmin}
           canUpload={canUpload}
@@ -784,7 +799,11 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
                       onClick={() => setSelectedItem(item)}
                       selectable={selectMode}
                       selected={selectedIds.has(item.id)}
-                      onToggle={() => toggleItem(item.id)}
+                      selectionDisabled={selectMode && !canDeleteMediaItem(item, deleteActor)}
+                      onToggle={() => {
+                        if (!canDeleteMediaItem(item, deleteActor)) return;
+                        toggleItem(item.id);
+                      }}
                     />
                   ))}
                 </div>
@@ -821,8 +840,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
               <Button size="sm" onClick={() => setShowAlbumPicker(true)}>
                 {tMedia("addToAlbum")}
               </Button>
-              {/* Bulk delete: show if admin or uploader of all selected */}
-              {(isAdmin || (currentUserId && items.filter((i) => selectedIds.has(i.id)).every((i) => i.uploaded_by === currentUserId))) && (
+              {selectedIds.size > 0 && (
                 <Button
                   size="sm"
                   variant={bulkDeleteConfirm ? "danger" : "secondary"}

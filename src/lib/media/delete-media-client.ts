@@ -1,4 +1,4 @@
-const BULK_DELETE_CHUNK_SIZE = 100;
+export const MEDIA_BULK_DELETE_BATCH_SIZE = 100;
 
 interface BulkDeleteChunkResponse {
   deletedIds?: string[];
@@ -7,7 +7,13 @@ interface BulkDeleteChunkResponse {
 interface BulkDeleteRequest {
   orgId: string;
   mediaIds: string[];
+  batchSize?: number;
   fetchImpl?: typeof fetch;
+}
+
+interface BulkDeleteResult {
+  deletedIds: string[];
+  deletedCount: number;
 }
 
 export class BulkDeletePartialError extends Error {
@@ -22,6 +28,20 @@ export class BulkDeletePartialError extends Error {
   }
 }
 
+export function chunkBulkDeleteMediaIds(
+  mediaIds: string[],
+  batchSize = MEDIA_BULK_DELETE_BATCH_SIZE,
+): string[][] {
+  const uniqueIds = Array.from(new Set(mediaIds));
+  if (uniqueIds.length === 0) return [];
+
+  const chunks: string[][] = [];
+  for (let index = 0; index < uniqueIds.length; index += batchSize) {
+    chunks.push(uniqueIds.slice(index, index + batchSize));
+  }
+  return chunks;
+}
+
 async function parseBulkDeleteError(response: Response): Promise<string> {
   const data = await response.json().catch(() => null) as { error?: string } | null;
   return data?.error || "Failed to delete";
@@ -30,16 +50,17 @@ async function parseBulkDeleteError(response: Response): Promise<string> {
 export async function bulkDeleteSelectedMedia({
   orgId,
   mediaIds,
+  batchSize = MEDIA_BULK_DELETE_BATCH_SIZE,
   fetchImpl = fetch,
-}: BulkDeleteRequest): Promise<{ deletedIds: string[] }> {
-  if (mediaIds.length === 0) {
-    return { deletedIds: [] };
+}: BulkDeleteRequest): Promise<BulkDeleteResult> {
+  const chunks = chunkBulkDeleteMediaIds(mediaIds, batchSize);
+  if (chunks.length === 0) {
+    return { deletedIds: [], deletedCount: 0 };
   }
 
   const deletedIds: string[] = [];
 
-  for (let chunkIndex = 0; chunkIndex < mediaIds.length; chunkIndex += BULK_DELETE_CHUNK_SIZE) {
-    const chunk = mediaIds.slice(chunkIndex, chunkIndex + BULK_DELETE_CHUNK_SIZE);
+  for (const [chunkIndex, chunk] of chunks.entries()) {
     const response = await fetchImpl("/api/media/bulk-delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -49,7 +70,11 @@ export async function bulkDeleteSelectedMedia({
     if (!response.ok) {
       const message = await parseBulkDeleteError(response);
       if (deletedIds.length > 0) {
-        throw new BulkDeletePartialError(message, deletedIds, mediaIds.slice(chunkIndex));
+        throw new BulkDeletePartialError(
+          message,
+          deletedIds,
+          chunks.slice(chunkIndex).flat(),
+        );
       }
       throw new Error(message);
     }
@@ -58,7 +83,10 @@ export async function bulkDeleteSelectedMedia({
     deletedIds.push(...(data?.deletedIds ?? []));
   }
 
-  return { deletedIds };
+  return {
+    deletedIds,
+    deletedCount: deletedIds.length,
+  };
 }
 
 export function getBulkDeleteSuccessMessage(deletedCount: number): string {

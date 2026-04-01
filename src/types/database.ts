@@ -3116,6 +3116,7 @@ export type Database = {
           deleted_at: string | null
           description: string | null
           id: string
+          is_upload_draft: boolean
           item_count: number
           name: string
           organization_id: string
@@ -3129,6 +3130,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           id?: string
+          is_upload_draft?: boolean
           item_count?: number
           name: string
           organization_id: string
@@ -3142,6 +3144,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           id?: string
+          is_upload_draft?: boolean
           item_count?: number
           name?: string
           organization_id?: string
