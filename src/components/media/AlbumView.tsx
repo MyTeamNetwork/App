@@ -19,6 +19,7 @@ import {
   getAlbumUpdatesAfterMediaDelete,
 } from "@/lib/media/albums";
 import { buildOptimisticMediaItem } from "@/lib/media/gallery-upload-client";
+import { bulkDeleteSelectedMedia } from "@/lib/media/delete-media-client";
 
 interface AlbumViewProps {
   album: MediaAlbum;
@@ -186,18 +187,11 @@ export function AlbumView({
 
     setBulkDeleting(true);
     try {
-      const res = await fetch("/api/media/bulk-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, mediaIds: Array.from(selectedIds) }),
+      const { deletedIds } = await bulkDeleteSelectedMedia({
+        orgId,
+        mediaIds: Array.from(selectedIds),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Failed to delete");
-      }
-
-      const { deletedIds } = await res.json();
-      const deletedSet = new Set((deletedIds as string[]) || []);
+      const deletedSet = new Set(deletedIds);
       setItems((prev) => prev.filter((item) => !deletedSet.has(item.id)));
       if (selectedItem && deletedSet.has(selectedItem.id)) {
         setSelectedItem(null);

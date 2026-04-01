@@ -34,6 +34,12 @@ import {
   buildOptimisticMediaItem,
   mergeUploadTags,
 } from "@/lib/media/gallery-upload-client";
+import { bulkDeleteSelectedMedia } from "@/lib/media/delete-media-client";
+import {
+  canDeleteMediaItem,
+  filterBulkDeleteSelection,
+  getBulkDeleteEligibleIds,
+} from "@/lib/media/delete-selection";
 import { useMediaUploadManager } from "./MediaUploadManagerContext";
 
 interface MediaGalleryProps {
@@ -158,6 +164,14 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
 
   const galleryFiltersDefault =
     mediaType === "all" && !year && !tag && (!isAdmin || statusFilter === "all");
+  const deleteActor = useMemo(
+    () => ({ isAdmin, currentUserId }),
+    [isAdmin, currentUserId],
+  );
+  const eligibleDeleteIds = useMemo(
+    () => getBulkDeleteEligibleIds(items, deleteActor),
+    [items, deleteActor],
+  );
 
   /** Full-org order requires admin (non-admins only see approved items; RPC needs every row). */
   const canReorderPhotos = canUpload && isAdmin && galleryFiltersDefault;
@@ -253,6 +267,16 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
     }
   }, [photosReorderMode]);
 
+  useEffect(() => {
+    if (!selectMode) return;
+
+    setSelectedIds((prev) => {
+      const next = filterBulkDeleteSelection(items, prev, deleteActor);
+      if (next.length === prev.size) return prev;
+      return new Set(next);
+    });
+  }, [items, deleteActor, selectMode]);
+
   const loadMore = async () => {
     if (!nextCursor || loadingMore || photosReorderMode) return;
     setLoadingMore(true);
@@ -289,17 +313,11 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
     }
     setBulkDeleting(true);
     try {
-      const res = await fetch("/api/media/bulk-delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, mediaIds: Array.from(selectedIds) }),
+      const { deletedIds } = await bulkDeleteSelectedMedia({
+        orgId,
+        mediaIds: Array.from(selectedIds),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Failed to delete");
-      }
-      const { deletedIds } = await res.json();
-      const deletedSet = new Set(deletedIds as string[]);
+      const deletedSet = new Set(deletedIds);
       setItems((prev) => prev.filter((i) => !deletedSet.has(i.id)));
       exitSelectMode();
       showFeedback(`Deleted ${deletedIds.length} item${deletedIds.length === 1 ? "" : "s"}`, "success", { duration: 3000 });
@@ -582,7 +600,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
               {selectMode && items.length > 0 && (
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setSelectedIds(new Set(items.map((i) => i.id)))}
+                    onClick={() => setSelectedIds(new Set(eligibleDeleteIds))}
                     className="px-2.5 py-1 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] rounded-lg hover:bg-[var(--muted)] transition-colors"
                   >
                     {tCommon("all")}
@@ -613,6 +631,12 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
         <div className="mb-4 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20 rounded-lg p-3">
           {error}
           <button onClick={() => setError(null)} className="ml-2 underline">{tCommon("dismiss")}</button>
+        </div>
+      )}
+
+      {view === "photos" && selectMode && !isAdmin && eligibleDeleteIds.length < items.length && (
+        <div className="mb-4 text-xs text-muted-foreground">
+          Only your uploads can be selected for delete.
         </div>
       )}
 
@@ -753,7 +777,11 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
                       onClick={() => setSelectedItem(item)}
                       selectable={selectMode}
                       selected={selectedIds.has(item.id)}
-                      onToggle={() => toggleItem(item.id)}
+                      selectionDisabled={selectMode && !canDeleteMediaItem(item, deleteActor)}
+                      onToggle={() => {
+                        if (!canDeleteMediaItem(item, deleteActor)) return;
+                        toggleItem(item.id);
+                      }}
                     />
                   ))}
                 </div>
@@ -790,8 +818,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
               <Button size="sm" onClick={() => setShowAlbumPicker(true)}>
                 {tMedia("addToAlbum")}
               </Button>
-              {/* Bulk delete: show if admin or uploader of all selected */}
-              {(isAdmin || (currentUserId && items.filter((i) => selectedIds.has(i.id)).every((i) => i.uploaded_by === currentUserId))) && (
+              {selectedIds.size > 0 && (
                 <Button
                   size="sm"
                   variant={bulkDeleteConfirm ? "danger" : "secondary"}
