@@ -34,8 +34,8 @@ test("media upload route uses the transactional gallery upload RPC", () => {
   const normalized = squishWhitespace(source);
 
   assert.ok(
-    normalized.includes('rpc("create_media_gallery_upload"'),
-    "media upload route should create rows through the transactional RPC",
+    normalized.includes("createMediaGalleryUploadRecord("),
+    "media upload route should create rows through the shared upload-record helper",
   );
   assert.equal(
     normalized.includes('rpc("shift_media_gallery_sort_orders"'),

@@ -6,7 +6,12 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { getOrgMembership } from "@/lib/auth/api-helpers";
 import { validateJson, ValidationError, validationErrorResponse } from "@/lib/security/validation";
-import { GALLERY_ALBUM_BATCH_RATE_LIMIT } from "@/lib/media/gallery-upload-server";
+import {
+  createMediaGalleryUploadRecord,
+  GALLERY_ALBUM_BATCH_RATE_LIMIT,
+  type GalleryUploadRecordClient,
+  isMissingCreateMediaGalleryUploadRpcError,
+} from "@/lib/media/gallery-upload-server";
 import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
 import { galleryUploadIntentSchema, mediaListQuerySchema, GALLERY_ALLOWED_MIME_TYPES } from "@/lib/schemas/media";
 import {
@@ -231,24 +236,33 @@ export async function POST(request: NextRequest) {
     // Start in "uploading" state — finalize endpoint transitions to final status
     const initialStatus = "uploading";
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RPC not in generated client surface
-    const { data: mediaId, error: createError } = await (serviceClient as any).rpc("create_media_gallery_upload", {
-      p_org_id: orgId,
-      p_uploaded_by: user.id,
-      p_storage_path: storagePath,
-      p_file_name: fileName,
-      p_mime_type: mimeType,
-      p_file_size_bytes: fileSizeBytes,
-      p_media_type: mediaType,
-      p_title: title || fileName,
-      p_description: description || null,
-      p_tags: tags || [],
-      p_taken_at: takenAt || null,
-      p_status: initialStatus,
-    });
+    let mediaId: string;
+    let creationPath: "rpc" | "fallback";
 
-    if (createError || !mediaId) {
-      console.error("[media/gallery] create upload row failed:", createError);
+    try {
+      ({ mediaId, creationPath } = await createMediaGalleryUploadRecord(
+        serviceClient as unknown as GalleryUploadRecordClient,
+        {
+          orgId,
+          uploadedBy: user.id,
+          storagePath,
+          fileName,
+          mimeType,
+          fileSizeBytes,
+          mediaType,
+          title: title || fileName,
+          description: description || null,
+          tags: tags || [],
+          takenAt: takenAt || null,
+          status: initialStatus,
+        },
+      ));
+    } catch (createError) {
+      console.error("[media/gallery] create upload row failed:", {
+        orgId,
+        missingRpc: isMissingCreateMediaGalleryUploadRpcError(createError),
+        error: createError,
+      });
       return NextResponse.json({ error: "Failed to create media item" }, { status: 500 });
     }
 
@@ -263,7 +277,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to generate upload URL" }, { status: 500 });
     }
 
-    console.log("[media/gallery] Upload intent created", { orgId, mediaId, mimeType, fileSizeBytes });
+    console.log("[media/gallery] Upload intent created", {
+      orgId,
+      mediaId,
+      mimeType,
+      fileSizeBytes,
+      creationPath,
+    });
 
     return NextResponse.json(
       {

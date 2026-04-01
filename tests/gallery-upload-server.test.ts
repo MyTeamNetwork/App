@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  createMediaGalleryUploadRecord,
   GALLERY_ALBUM_BATCH_RATE_LIMIT,
+  type GalleryUploadRecordClient,
   getNextGallerySortOrder,
   isMissingMediaAlbumsDraftColumnError,
+  isMissingCreateMediaGalleryUploadRpcError,
   isStaleEmptyUploadDraftAlbum,
   shouldListMediaAlbum,
   withMediaAlbumsDraftColumnFallback,
@@ -20,6 +23,128 @@ test("new gallery uploads prepend by using the next lowest sort order", () => {
   assert.equal(getNextGallerySortOrder(null), 0);
   assert.equal(getNextGallerySortOrder(0), -1);
   assert.equal(getNextGallerySortOrder(-4), -5);
+});
+
+test("gallery upload RPC fallback detects missing function errors", () => {
+  assert.equal(
+    isMissingCreateMediaGalleryUploadRpcError({
+      code: "42883",
+      message: 'function public.create_media_gallery_upload(uuid, uuid, text) does not exist',
+    }),
+    true,
+  );
+
+  assert.equal(
+    isMissingCreateMediaGalleryUploadRpcError({
+      code: "PGRST202",
+      message: "Could not find the function public.create_media_gallery_upload in the schema cache",
+    }),
+    true,
+  );
+
+  assert.equal(
+    isMissingCreateMediaGalleryUploadRpcError({
+      code: "23505",
+      message: "duplicate key value violates unique constraint",
+    }),
+    false,
+  );
+});
+
+test("gallery upload record creation uses the RPC result when available", async () => {
+  const rpcCalls: Array<{ fn: string; params: Record<string, unknown> }> = [];
+
+  const client: GalleryUploadRecordClient = {
+      rpc: async (fn, params) => {
+        rpcCalls.push({ fn, params });
+        return { data: "media-rpc-1", error: null };
+      },
+      from: () => {
+        throw new Error("fallback should not be used");
+      },
+    };
+
+  const result = await createMediaGalleryUploadRecord(
+    client,
+    {
+      orgId: "org-1",
+      uploadedBy: "user-1",
+      storagePath: "org-1/image/file.jpg",
+      fileName: "file.jpg",
+      mimeType: "image/jpeg",
+      fileSizeBytes: 1234,
+      mediaType: "image",
+      title: "file",
+    },
+  );
+
+  assert.equal(rpcCalls.length, 1);
+  assert.equal(rpcCalls[0].fn, "create_media_gallery_upload");
+  assert.deepEqual(result, { mediaId: "media-rpc-1", creationPath: "rpc" });
+});
+
+test("gallery upload record creation falls back to app-side insert when the RPC is missing", async () => {
+  const inserts: Record<string, unknown>[] = [];
+
+  const client: GalleryUploadRecordClient = {
+      rpc: async () => ({
+        data: null,
+        error: {
+          code: "42883",
+          message: 'function public.create_media_gallery_upload(uuid, uuid, text) does not exist',
+        },
+      }),
+      from: (table: string) => {
+        assert.equal(table, "media_items");
+        return {
+          select: () => ({
+            eq: () => ({
+              is: () => ({
+                order: () => ({
+                  limit: () => ({
+                    maybeSingle: async () => ({
+                      data: { gallery_sort_order: -4 },
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+          insert: (payload: Record<string, unknown>) => {
+            inserts.push(payload);
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: { id: "media-fallback-1" },
+                  error: null,
+                }),
+              }),
+            };
+          },
+        };
+      },
+    };
+
+  const result = await createMediaGalleryUploadRecord(
+    client,
+    {
+      orgId: "org-1",
+      uploadedBy: "user-1",
+      storagePath: "org-1/image/file.jpg",
+      fileName: "file.jpg",
+      mimeType: "image/jpeg",
+      fileSizeBytes: 1234,
+      mediaType: "image",
+      title: "file",
+      tags: ["spring"],
+      status: "uploading",
+    },
+  );
+
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].gallery_sort_order, -5);
+  assert.deepEqual(result, { mediaId: "media-fallback-1", creationPath: "fallback" });
 });
 
 test("album list hides empty upload drafts but keeps normal empty albums visible", () => {
