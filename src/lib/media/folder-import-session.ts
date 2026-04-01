@@ -63,15 +63,22 @@ export function buildFolderImportAlbum<T extends AlbumImportLike>(
 export function mergeFolderImportAlbum<T extends AlbumImportLike & Partial<AlbumImportFields>>(
   albums: T[],
   importingAlbum: T | null,
+  hiddenAlbumIds?: Iterable<string>,
 ): T[] {
-  if (!importingAlbum) return albums;
+  const hiddenIds = hiddenAlbumIds ? new Set(hiddenAlbumIds) : null;
+  const visibleAlbums = hiddenIds
+    ? albums.filter((album) => !hiddenIds.has(album.id))
+    : albums;
 
-  const existingIndex = albums.findIndex((album) => album.id === importingAlbum.id);
+  if (!importingAlbum) return visibleAlbums;
+  if (hiddenIds?.has(importingAlbum.id)) return visibleAlbums;
+
+  const existingIndex = visibleAlbums.findIndex((album) => album.id === importingAlbum.id);
   if (existingIndex === -1) {
-    return [importingAlbum, ...albums];
+    return [importingAlbum, ...visibleAlbums];
   }
 
-  return albums.map((album) =>
+  return visibleAlbums.map((album) =>
     album.id === importingAlbum.id
       ? {
           ...album,

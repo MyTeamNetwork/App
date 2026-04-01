@@ -73,6 +73,24 @@ test("merging an active folder import overlays progress onto the fetched album l
   assert.deepEqual(merged[1], importingAlbum);
 });
 
+test("deleted albums stay hidden even if a folder import overlay still references them", () => {
+  const importingAlbum = makeAlbum({
+    id: "album-1",
+    item_count: 2,
+  });
+
+  const merged = mergeFolderImportAlbum(
+    [
+      makeAlbum({ id: "album-1", name: "Deleted Album" }),
+      makeAlbum({ id: "album-2", name: "Other Album" }),
+    ],
+    importingAlbum,
+    new Set(["album-1"]),
+  );
+
+  assert.deepEqual(merged.map((album) => album.id), ["album-2"]);
+});
+
 test("closing the panel does not end an active folder import session", () => {
   assert.equal(
     isFolderImportSessionActive("Spring Trip", [makeFile("file-1")], "album-1"),

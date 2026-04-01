@@ -33,7 +33,7 @@ interface AlbumViewProps {
   canUpload: boolean;
   currentUserId?: string;
   onBack: () => void;
-  onAlbumDeleted: () => void;
+  onAlbumDeleted: (albumId: string) => void;
   onAlbumUpdated?: (updates: Partial<MediaAlbum>) => void;
 }
 
@@ -275,7 +275,7 @@ export function AlbumView({
         throw new Error(data?.error || "Failed to delete album");
       }
       setShowDeleteModal(false);
-      onAlbumDeleted();
+      onAlbumDeleted(album.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
       setDeletingMode(null);

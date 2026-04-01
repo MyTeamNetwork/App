@@ -29,6 +29,21 @@ test("folder import appends files without cancelling the current upload queue", 
   assert.doesNotMatch(source, /handleFolder[\s\S]*cancelAll\(/);
 });
 
+test("album deletion clears matching import overlays without resetting the whole upload queue", () => {
+  const gallerySource = readSource("src/components/media/MediaGallery.tsx");
+  const uploadManagerSource = readSource("src/components/media/MediaUploadManagerContext.tsx");
+  const albumViewSource = readSource("src/components/media/AlbumView.tsx");
+  const dismissImportAlbumBlock = uploadManagerSource.match(
+    /const dismissImportAlbum = useCallback\(\(albumId: string\) => \{[\s\S]*?\n  \}, \[clearPendingAlbum, folderAlbum\.album\]\);/,
+  )?.[0] ?? "";
+
+  assert.match(albumViewSource, /onAlbumDeleted\(album\.id\)/);
+  assert.match(gallerySource, /dismissImportAlbum\(albumId\)/);
+  assert.match(gallerySource, /hiddenAlbumIds/);
+  assert.ok(dismissImportAlbumBlock.length > 0, "dismissImportAlbum should be defined");
+  assert.doesNotMatch(dismissImportAlbumBlock, /cancelAll\(/);
+});
+
 test("media upload route uses the transactional gallery upload RPC", () => {
   const source = readSource("src/app/api/media/route.ts");
   const normalized = squishWhitespace(source);

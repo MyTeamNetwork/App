@@ -54,6 +54,7 @@ interface MediaUploadManagerContextValue {
   setPendingAlbumName: ReturnType<typeof useGalleryUpload>["setPendingAlbumName"];
   clearPendingAlbum: ReturnType<typeof useGalleryUpload>["clearPendingAlbum"];
   clearFolderImport: () => void;
+  dismissImportAlbum: (albumId: string) => void;
   retryAlbumProvision: () => void;
   startFolderImport: (folderFiles: File[], folderName: string) => Promise<MediaAlbum | null>;
 }
@@ -168,6 +169,14 @@ export function MediaUploadManagerProvider({
     folderAlbum.attachedMediaIds.length,
     resetFolderAlbum,
   ]);
+
+  const dismissImportAlbum = useCallback((albumId: string) => {
+    if (folderAlbum.album?.id !== albumId) return;
+
+    pendingFolderSelectionRef.current = null;
+    clearPendingAlbum();
+    setFolderAlbum(INITIAL_FOLDER_ALBUM_STATE);
+  }, [clearPendingAlbum, folderAlbum.album]);
 
   const startFolderImport = useCallback(
     async (folderFiles: File[], folderName: string) => {
@@ -368,6 +377,7 @@ export function MediaUploadManagerProvider({
       setPendingAlbumName,
       clearPendingAlbum,
       clearFolderImport,
+      dismissImportAlbum,
       retryAlbumProvision,
       startFolderImport,
     }),
@@ -379,6 +389,7 @@ export function MediaUploadManagerProvider({
       folderAlbum,
       hasActiveFolderImport,
       importingAlbum,
+      dismissImportAlbum,
       pendingAlbumName,
       removeFile,
       retryAlbumProvision,

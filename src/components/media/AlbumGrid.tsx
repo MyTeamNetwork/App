@@ -29,6 +29,7 @@ import { useMediaUploadManager } from "./MediaUploadManagerContext";
 interface AlbumGridProps {
   orgId: string;
   canCreate: boolean;
+  hiddenAlbumIds?: Iterable<string>;
   onSelectAlbum: (album: MediaAlbum) => void;
 }
 
@@ -85,7 +86,7 @@ function SortableAlbumRow({
   );
 }
 
-export function AlbumGrid({ orgId, canCreate, onSelectAlbum }: AlbumGridProps) {
+export function AlbumGrid({ orgId, canCreate, hiddenAlbumIds, onSelectAlbum }: AlbumGridProps) {
   const tMedia = useTranslations("media");
   const tCommon = useTranslations("common");
   const { importingAlbum } = useMediaUploadManager();
@@ -98,8 +99,8 @@ export function AlbumGrid({ orgId, canCreate, onSelectAlbum }: AlbumGridProps) {
   const reducedMotion = usePrefersReducedMotion();
   const albumsRef = useRef<MediaAlbum[]>([]);
   const visibleAlbums = useMemo(
-    () => mergeFolderImportAlbum(albums, importingAlbum),
-    [albums, importingAlbum],
+    () => mergeFolderImportAlbum(albums, importingAlbum, hiddenAlbumIds),
+    [albums, hiddenAlbumIds, importingAlbum],
   );
   albumsRef.current = visibleAlbums;
 
@@ -190,7 +191,7 @@ export function AlbumGrid({ orgId, canCreate, onSelectAlbum }: AlbumGridProps) {
 
   return (
     <>
-      {albums.length === 0 && !canCreate ? (
+      {visibleAlbums.length === 0 && !canCreate ? (
         <EmptyState
           icon={
             <svg className="w-16 h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -202,7 +203,7 @@ export function AlbumGrid({ orgId, canCreate, onSelectAlbum }: AlbumGridProps) {
         />
       ) : (
         <div className="space-y-4">
-          {canReorder && albums.length > 0 && (
+          {canReorder && visibleAlbums.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/30 px-3 py-2.5">
               <p className="text-sm text-muted-foreground">
                 {reorderMode

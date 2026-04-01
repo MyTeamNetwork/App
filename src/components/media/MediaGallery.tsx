@@ -121,11 +121,12 @@ function SortableMediaRow({
 export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: MediaGalleryProps) {
   const tMedia = useTranslations("media");
   const tCommon = useTranslations("common");
-  const { importingAlbum } = useMediaUploadManager();
+  const { dismissImportAlbum, importingAlbum } = useMediaUploadManager();
 
   // View tab state
   const [view, setView] = useState<GalleryView>("albums");
   const [selectedAlbum, setSelectedAlbum] = useState<MediaAlbum | null>(null);
+  const [hiddenAlbumIds, setHiddenAlbumIds] = useState<Set<string>>(new Set());
 
   // Photos state
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -421,9 +422,26 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
 
   // Callback from MediaUploadPanel after folder upload creates album
   const handleAlbumCreated = useCallback((album: MediaAlbum) => {
+    setHiddenAlbumIds((prev) => {
+      if (!prev.has(album.id)) return prev;
+      const next = new Set(prev);
+      next.delete(album.id);
+      return next;
+    });
     setView("albums");
     setSelectedAlbum(album);
   }, []);
+
+  const handleAlbumDeleted = useCallback((albumId: string) => {
+    setHiddenAlbumIds((prev) => {
+      if (prev.has(albumId)) return prev;
+      const next = new Set(prev);
+      next.add(albumId);
+      return next;
+    });
+    dismissImportAlbum(albumId);
+    setSelectedAlbum((prev) => (prev?.id === albumId ? null : prev));
+  }, [dismissImportAlbum]);
 
   const toggleItem = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -667,6 +685,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
         <AlbumGrid
           orgId={orgId}
           canCreate={canUpload}
+          hiddenAlbumIds={hiddenAlbumIds}
           onSelectAlbum={setSelectedAlbum}
         />
       )}
@@ -679,7 +698,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
           canUpload={canUpload}
           currentUserId={currentUserId}
           onBack={() => setSelectedAlbum(null)}
-          onAlbumDeleted={() => setSelectedAlbum(null)}
+          onAlbumDeleted={handleAlbumDeleted}
           onAlbumUpdated={(updates) =>
             setSelectedAlbum((prev) => (prev ? { ...prev, ...updates } : null))
           }
