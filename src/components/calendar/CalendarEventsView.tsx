@@ -7,7 +7,6 @@ import { GoogleCalendarBanner } from "@/components/events";
 import { LocalDateMonth, LocalDateDay, LocalTime } from "@/components/ui";
 import { calendarEventDetailPath, calendarEventsPath, calendarNewEventPath, type CalendarEventTimeframe } from "@/lib/calendar/routes";
 import { resolveEventActionLabel, resolveEventLabel } from "@/lib/events/labels";
-import { EVENT_TYPE_OPTIONS } from "@/lib/events/event-type-options";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 
 type CalendarEventsViewProps = {
@@ -80,7 +79,7 @@ export async function CalendarEventsView({
           {tEvents("upcoming")}
         </Link>
         <Link
-          href={calendarEventsPath(orgSlug, { timeframe: "past", type: filters.type })}
+          href={calendarEventsPath(orgSlug, { timeframe: "past" })}
           className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
             filters.timeframe === "past"
               ? "bg-org-primary text-white"
@@ -89,23 +88,6 @@ export async function CalendarEventsView({
         >
           {tEvents("pastLabel")}
         </Link>
-        <div className="w-px bg-border mx-2" />
-        {EVENT_TYPE_OPTIONS.map((option) => (
-          <Link
-            key={option.value}
-            href={calendarEventsPath(orgSlug, {
-              timeframe: filters.timeframe,
-              type: option.value === filters.type ? null : option.value,
-            })}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-              filters.type === option.value
-                ? "bg-org-primary text-white"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {tEvents(option.value)}
-          </Link>
-        ))}
       </div>
 
       <Suspense fallback={null}>
