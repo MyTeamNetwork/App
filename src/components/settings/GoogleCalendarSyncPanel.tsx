@@ -12,6 +12,8 @@ export interface SyncPreferences {
   sync_social: boolean;
   sync_fundraiser: boolean;
   sync_philanthropy: boolean;
+  sync_practice: boolean;
+  sync_workout: boolean;
 }
 
 interface CalendarConnection {
@@ -54,16 +56,9 @@ const EVENT_TYPE_KEYS: (keyof SyncPreferences)[] = [
   "sync_social",
   "sync_fundraiser",
   "sync_philanthropy",
+  "sync_practice",
+  "sync_workout",
 ];
-
-const EVENT_TYPE_I18N_MAP: Record<keyof SyncPreferences, string> = {
-  sync_general: "general",
-  sync_game: "game",
-  sync_meeting: "meeting",
-  sync_social: "social",
-  sync_fundraiser: "fundraiser",
-  sync_philanthropy: "philanthropy",
-};
 
 function CalendarIcon() {
   return (
@@ -80,6 +75,19 @@ function CalendarIcon() {
 function formatLastSync(lastSyncAt: string | null, neverLabel: string): string {
   if (!lastSyncAt) return neverLabel;
   return new Date(lastSyncAt).toLocaleString();
+}
+
+function getStatusBadge(status: CalendarConnection["status"], connectedLabel: string, disconnectedLabel: string, errorLabel: string) {
+  switch (status) {
+    case "connected":
+      return <Badge variant="success">{connectedLabel}</Badge>;
+    case "disconnected":
+      return <Badge variant="warning">{disconnectedLabel}</Badge>;
+    case "error":
+      return <Badge variant="error">{errorLabel}</Badge>;
+    default:
+      return <Badge variant="muted">Unknown</Badge>;
+  }
 }
 
 function Spinner() {
@@ -129,7 +137,7 @@ export function GoogleCalendarSyncPanel({
   const tGCal = useTranslations("googleCalendar");
   const tCommon = useTranslations("common");
   const tSchedules = useTranslations("schedules");
-
+  const tEvents = useTranslations("events");
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [targetError, setTargetError] = useState<string | null>(null);
@@ -262,19 +270,16 @@ export function GoogleCalendarSyncPanel({
     );
   }
 
-  // --- Connected state ---
-  function getStatusBadge(status: CalendarConnection["status"]) {
-    switch (status) {
-      case "connected":
-        return <Badge variant="success">{tCommon("connected")}</Badge>;
-      case "disconnected":
-        return <Badge variant="warning">{tCommon("disconnect")}</Badge>;
-      case "error":
-        return <Badge variant="error">{tCommon("error")}</Badge>;
-      default:
-        return <Badge variant="muted">Unknown</Badge>;
-    }
-  }
+  const eventTypeLabels: Record<keyof SyncPreferences, string> = {
+    sync_general: tGCal("types.general.label"),
+    sync_game: tEvents("game"),
+    sync_meeting: tGCal("types.meeting.label"),
+    sync_social: tGCal("types.social.label"),
+    sync_fundraiser: tGCal("types.fundraiser.label"),
+    sync_philanthropy: tEvents("philanthropy"),
+    sync_practice: tEvents("practice"),
+    sync_workout: tEvents("workout"),
+  };
 
   return (
     <Card className="divide-y divide-border/60">
@@ -285,7 +290,7 @@ export function GoogleCalendarSyncPanel({
             <CalendarIcon />
             <p className="font-medium text-foreground">{tGCal("title")}</p>
           </div>
-          {connection && getStatusBadge(connection.status)}
+          {connection && getStatusBadge(connection.status, tCommon("connected"), tGCal("disconnected"), tCommon("error"))}
         </div>
 
         <div className="space-y-1 text-sm">
@@ -365,8 +370,6 @@ export function GoogleCalendarSyncPanel({
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
               {EVENT_TYPE_KEYS.map((key) => {
-                const typeKey = EVENT_TYPE_I18N_MAP[key];
-                const label = tGCal(`types.${typeKey}.label` as Parameters<typeof tGCal>[0]);
                 const isChecked = localPreferences[key];
                 const isSaving = savingKey === key;
 
@@ -393,7 +396,7 @@ export function GoogleCalendarSyncPanel({
                         </div>
                       )}
                     </div>
-                    <span className="text-sm text-foreground">{label}</span>
+                    <span className="text-sm text-foreground">{eventTypeLabels[key]}</span>
                   </label>
                 );
               })}

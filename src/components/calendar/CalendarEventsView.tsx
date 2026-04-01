@@ -25,7 +25,6 @@ type CalendarEventsViewProps = {
   };
 };
 
-const EVENT_TYPES = ["general", "game", "meeting", "social", "fundraiser", "philanthropy"];
 
 export async function CalendarEventsView({
   orgId,
@@ -80,7 +79,7 @@ export async function CalendarEventsView({
           {tEvents("upcoming")}
         </Link>
         <Link
-          href={calendarEventsPath(orgSlug, { timeframe: "past", type: filters.type })}
+          href={calendarEventsPath(orgSlug, { timeframe: "past" })}
           className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
             filters.timeframe === "past"
               ? "bg-org-primary text-white"
@@ -89,23 +88,6 @@ export async function CalendarEventsView({
         >
           {tEvents("pastLabel")}
         </Link>
-        <div className="w-px bg-border mx-2" />
-        {EVENT_TYPES.map((type) => (
-          <Link
-            key={type}
-            href={calendarEventsPath(orgSlug, {
-              timeframe: filters.timeframe,
-              type: type === filters.type ? null : type,
-            })}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors capitalize ${
-              filters.type === type
-                ? "bg-org-primary text-white"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {type}
-          </Link>
-        ))}
       </div>
 
       <Suspense fallback={null}>

@@ -6,6 +6,7 @@ import {
   isAuthenticated,
   hasOrgMembership,
   AuthPresets,
+  getOrgRole,
 } from "../../utils/authMock.ts";
 import { createSupabaseStub } from "../../utils/supabaseStub.ts";
 
@@ -32,7 +33,7 @@ interface EventsResult {
     end_at: string;
     all_day: boolean;
     location: string | null;
-    origin: "calendar" | "schedule";
+    origin: "calendar" | "schedule" | "org";
   }>;
   meta?: {
     count: number;
@@ -61,6 +62,15 @@ interface EventsContext {
     end_at: string;
     location: string | null;
     status: string;
+  }>;
+  orgEvents?: Array<{
+    id: string;
+    title: string;
+    start_date: string;
+    end_date: string | null;
+    location: string | null;
+    audience: string | null;
+    target_user_ids: string[] | null;
   }>;
 }
 
@@ -140,6 +150,7 @@ function simulateGetEvents(
   }
 
   const userId = request.auth.user?.id;
+  const userRole = getOrgRole(request.auth, request.organizationId);
 
   const calendarEvents = queryCalendarEventsForRange(ctx.calendarEvents || [], userId, start, end)
     .map((e) => ({ ...e, origin: "calendar" as const }));
@@ -158,7 +169,44 @@ function simulateGetEvents(
       origin: "schedule" as const,
     }));
 
-  const combined = [...calendarEvents, ...scheduleEvents].sort(
+  const orgEvents = (ctx.orgEvents || [])
+    .filter((event) => new Date(event.start_date) <= end)
+    .filter((event) => event.end_date === null || new Date(event.end_date) >= start)
+    .filter((event) => {
+      const targetUserIds = Array.isArray(event.target_user_ids) ? event.target_user_ids : [];
+      if (targetUserIds.length > 0) {
+        return targetUserIds.includes(userId || "");
+      }
+
+      switch (event.audience) {
+        case "members":
+          return userRole === "admin" || userRole === "active_member";
+        case "alumni":
+          return userRole === "alumni";
+        case "all":
+        case "both":
+        case null:
+          return true;
+        default:
+          return true;
+      }
+    })
+    .filter((event) => eventOverlapsRange({
+      startAt: event.start_date,
+      endAt: event.end_date,
+      allDay: false,
+    }, start, end))
+    .map((event) => ({
+      id: `org:${event.id}`,
+      title: event.title,
+      start_at: event.start_date,
+      end_at: event.end_date ?? event.start_date,
+      all_day: false,
+      location: event.location,
+      origin: "org" as const,
+    }));
+
+  const combined = [...calendarEvents, ...scheduleEvents, ...orgEvents].sort(
     (a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime()
   );
 
@@ -254,6 +302,88 @@ test("GET events returns calendar and schedule events", () => {
   assert.strictEqual(result.events?.length, 2);
   assert.strictEqual(result.events?.[0].origin, "calendar");
   assert.strictEqual(result.events?.[1].origin, "schedule");
+});
+
+test("GET events includes org events with null end_date", () => {
+  const supabase = createSupabaseStub();
+  const result = simulateGetEvents(
+    {
+      auth: AuthPresets.orgMember("org-1"),
+      organizationId: "org-1",
+      start: "2024-01-10T00:00:00Z",
+      end: "2024-01-10T23:59:59Z",
+    },
+    {
+      supabase,
+      orgEvents: [
+        {
+          id: "org-1",
+          title: "One-point org event",
+          start_date: "2024-01-10T15:00:00Z",
+          end_date: null,
+          location: "Fieldhouse",
+          audience: "both",
+          target_user_ids: null,
+        },
+      ],
+    }
+  );
+
+  assert.strictEqual(result.status, 200);
+  assert.deepStrictEqual(
+    result.events?.map((event) => ({ title: event.title, origin: event.origin })),
+    [{ title: "One-point org event", origin: "org" }],
+  );
+});
+
+test("GET events excludes org events outside the current user's audience or target list", () => {
+  const supabase = createSupabaseStub();
+  const result = simulateGetEvents(
+    {
+      auth: AuthPresets.orgMember("org-1"),
+      organizationId: "org-1",
+      start: "2024-01-10T00:00:00Z",
+      end: "2024-01-10T23:59:59Z",
+    },
+    {
+      supabase,
+      orgEvents: [
+        {
+          id: "org-alumni",
+          title: "Alumni only",
+          start_date: "2024-01-10T10:00:00Z",
+          end_date: "2024-01-10T11:00:00Z",
+          location: null,
+          audience: "alumni",
+          target_user_ids: null,
+        },
+        {
+          id: "org-targeted",
+          title: "Targeted away",
+          start_date: "2024-01-10T12:00:00Z",
+          end_date: "2024-01-10T13:00:00Z",
+          location: null,
+          audience: "both",
+          target_user_ids: ["someone-else"],
+        },
+        {
+          id: "org-member",
+          title: "Member event",
+          start_date: "2024-01-10T14:00:00Z",
+          end_date: "2024-01-10T15:00:00Z",
+          location: null,
+          audience: "members",
+          target_user_ids: null,
+        },
+      ],
+    }
+  );
+
+  assert.strictEqual(result.status, 200);
+  assert.deepStrictEqual(
+    result.events?.map((event) => event.title),
+    ["Member event"],
+  );
 });
 
 test("GET events excludes cancelled schedule events", () => {

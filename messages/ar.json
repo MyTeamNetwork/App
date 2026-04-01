@@ -575,12 +575,18 @@
     "upcoming": "القادمة",
     "pastLabel": "السابقة",
     "general": "عام",
+    "philanthropy": "العمل الخيري",
     "game": "مباراة",
     "meeting": "اجتماع",
     "social": "اجتماعي",
     "fundraiser": "جمع تبرعات",
+    "practice": "تدريب",
+    "workout": "تمرين",
     "recurringEvent": "فعالية متكررة",
-    "willAppear": "{label} ستظهر هنا بمجرد إنشائها"
+    "willAppear": "{label} ستظهر هنا بمجرد إنشائها",
+    "noUpcomingEvents": "لا توجد {label} قادمة",
+    "noPastEvents": "لا توجد {label} سابقة",
+    "eventsWillAppear": "{label} ستظهر هنا بمجرد جدولتها"
   },
   "donations": {
     "totalRaised": "إجمالي المبالغ المجموعة",

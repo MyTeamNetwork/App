@@ -154,43 +154,51 @@ export async function GET(request: Request) {
       );
     }
 
-    // Query current user's calendar events
-    // Note: RLS policy only allows users to see their own events (auth.uid() = user_id),
-    // so we can only fetch the current user's events regardless of mode
+    // Query all three event sources in parallel
+    // Note: RLS policy only allows users to see their own calendar_events (auth.uid() = user_id)
 
-    const { events, error } = await fetchOverlappingCalendarEvents(supabase, user.id, start, end);
+    const [calendarResult, scheduleResult, orgResult] = await Promise.all([
+      fetchOverlappingCalendarEvents(supabase, user.id, start, end),
 
-    if (error) {
+      supabase
+        .from("schedule_events")
+        .select("id, title, start_at, end_at, location, status")
+        .eq("org_id", organizationId)
+        .neq("status", "cancelled")
+        .lte("start_at", end.toISOString())
+        .gte("end_at", start.toISOString())
+        .limit(MAX_EVENTS + 1)
+        .order("start_at", { ascending: true }),
+
+      supabase
+        .from("events")
+        .select("id, title, start_date, end_date, location, event_type, organization_id, audience, target_user_ids")
+        .eq("organization_id", organizationId)
+        .is("deleted_at", null)
+        .lte("start_date", end.toISOString())
+        .or(`end_date.gte.${start.toISOString()},end_date.is.null`)
+        .limit(MAX_EVENTS + 1)
+        .order("start_date", { ascending: true }),
+    ]);
+
+    if (calendarResult.error) {
       return NextResponse.json(
         { error: "Database error", message: "Failed to fetch events." },
         { status: 500 }
       );
     }
 
-    let scheduleEvents: {
-      id: string;
-      title: string;
-      start_at: string;
-      end_at: string;
-      location: string | null;
-      status: string;
-    }[] = [];
+    const events = calendarResult.events;
 
-    const { data: scheduleData, error: scheduleError } = await supabase
-      .from("schedule_events")
-      .select("id, title, start_at, end_at, location, status")
-      .eq("org_id", organizationId)
-      .neq("status", "cancelled")
-      .lte("start_at", end.toISOString())
-      .gte("end_at", start.toISOString())
-      .limit(MAX_EVENTS + 1)
-      .order("start_at", { ascending: true });
-
-    if (scheduleError) {
-      console.error("[calendar-events] Failed to fetch schedule events:", scheduleError);
-    } else {
-      scheduleEvents = scheduleData || [];
+    if (scheduleResult.error) {
+      console.error("[calendar-events] Failed to fetch schedule events:", scheduleResult.error);
     }
+    const scheduleEvents = scheduleResult.data || [];
+
+    if (orgResult.error) {
+      console.error("[calendar-events] Failed to fetch org events:", orgResult.error);
+    }
+    const orgEvents = orgResult.data || [];
 
     const normalizedCalendar = events
       .map((event) => ({
@@ -216,7 +224,44 @@ export async function GET(request: Request) {
         origin: "schedule" as const,
       }));
 
-    const combined = [...normalizedCalendar, ...normalizedSchedule].sort((a, b) => {
+    const normalizedOrg = orgEvents
+      .filter((event) => {
+        const targetUserIds = Array.isArray(event.target_user_ids) ? event.target_user_ids : [];
+        if (targetUserIds.length > 0) {
+          return targetUserIds.includes(user.id);
+        }
+
+        switch (event.audience) {
+          case "members":
+            return membership.role === "admin" || membership.role === "active_member" || membership.role === "member";
+          case "alumni":
+            return membership.role === "alumni";
+          case "all":
+          case "both":
+          case null:
+            return true;
+          default:
+            return true;
+        }
+      })
+      .filter((event) => eventOverlapsRange({
+        startAt: event.start_date,
+        endAt: event.end_date,
+        allDay: false,
+      }, start, end))
+      .map((event) => ({
+        id: `org:${event.id}`,
+        title: event.title,
+        start_at: event.start_date,
+        end_at: event.end_date,
+        all_day: false,
+        location: event.location,
+        feed_id: null,
+        user_id: `org:${organizationId}`,
+        origin: "org" as const,
+      }));
+
+    const combined = [...normalizedCalendar, ...normalizedSchedule, ...normalizedOrg].sort((a, b) => {
       return new Date(a.start_at).getTime() - new Date(b.start_at).getTime();
     });
 

@@ -575,12 +575,18 @@
     "upcoming": "A venir",
     "pastLabel": "Passes",
     "general": "General",
+    "philanthropy": "Philanthropie",
     "game": "Match",
     "meeting": "Reunion",
     "social": "Social",
     "fundraiser": "Collecte de fonds",
+    "practice": "Entrainement",
+    "workout": "Exercice",
     "recurringEvent": "Evenement recurrent",
-    "willAppear": "{label} apparaitra ici une fois cree"
+    "willAppear": "{label} apparaitra ici une fois cree",
+    "noUpcomingEvents": "Aucun {label} a venir",
+    "noPastEvents": "Aucun {label} passe",
+    "eventsWillAppear": "{label} apparaitra ici une fois programme"
   },
   "donations": {
     "totalRaised": "Total recolte",
