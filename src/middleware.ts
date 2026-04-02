@@ -8,6 +8,7 @@ import {
   isPublicApiPattern as isPublicApiPatternCheck,
   isPublicRoute as isPublicRouteCheck,
   isAuthOnlyRoute,
+  isOrgRoute,
   getRedirectForMembershipStatus,
   shouldRedirectToCanonicalHost,
 } from "./lib/middleware/routing-decisions";
@@ -376,20 +377,9 @@ export async function middleware(request: NextRequest) {
   let orgDefaultLang: string | null | undefined;
 
   // Check for revoked access on org routes
-  // Org routes are paths like /[orgSlug]/... but not /app/ or /auth/ or /api/ or /settings/ or /enterprise/
-  const isOrgRoute = !pathname.startsWith("/app") &&
-    !pathname.startsWith("/auth") &&
-    !pathname.startsWith("/api") &&
-    !pathname.startsWith("/settings") &&
-    !pathname.startsWith("/enterprise") &&
-    pathname !== "/" &&
-    pathname.split("/").filter(Boolean).length >= 1;
-
-  if (isOrgRoute && user) {
+  if (isOrgRoute(pathname) && user) {
     const orgSlug = pathname.split("/")[1];
-
-    // Only check if it looks like an org slug (not a system path)
-    if (orgSlug && !["app", "auth", "api", "settings", "_next", "favicon.ico"].includes(orgSlug)) {
+    if (orgSlug) {
       // Check if user is dev-admin - if so, skip membership checks entirely
       const userEmail = "email" in user ? (user.email as string | null | undefined) : undefined;
       const userIsDevAdmin = isDevAdminEmail(userEmail);
@@ -483,7 +473,7 @@ export async function middleware(request: NextRequest) {
   // For non-org routes, always query the user's language preference so the
   // cookie stays in sync with DB changes (e.g. after saving on /settings/language).
   if (user) {
-    if (!isOrgRoute) {
+    if (!isOrgRoute(pathname)) {
       try {
         const { data: userData } = await supabase
           .from("users")
