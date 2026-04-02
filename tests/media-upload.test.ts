@@ -200,6 +200,7 @@ describe("uploadIntentSchema", () => {
     fileName: "photo.png",
     mimeType: "image/png",
     fileSize: 1024,
+    previewMimeType: "image/jpeg",
   };
 
   test("accepts valid input", () => {
@@ -226,6 +227,14 @@ describe("uploadIntentSchema", () => {
     const { orgId: _, ...noOrg } = validInput;
     const result = uploadIntentSchema.safeParse(noOrg);
     assert.strictEqual(result.success, false);
+  });
+
+  test("accepts uploads without a preview mime type", () => {
+    const result = uploadIntentSchema.safeParse({
+      ...validInput,
+      previewMimeType: undefined,
+    });
+    assert.strictEqual(result.success, true);
   });
 });
 

@@ -72,13 +72,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Download first bytes from storage for magic byte validation
-    const { data: fileData, error: downloadError } = await serviceClient.storage
+    const { data: signedData } = await serviceClient.storage
       .from(BUCKET)
-      .download(media.storage_path);
+      .createSignedUrl(media.storage_path, 60);
 
-    if (downloadError || !fileData) {
-      // File not uploaded yet or storage error
+    if (!signedData?.signedUrl) {
       await serviceClient
         .from("media_uploads")
         .update({ status: "failed" })
@@ -90,8 +88,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const arrayBuffer = await fileData.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const headRes = await fetch(signedData.signedUrl, {
+      headers: { Range: `bytes=0-${MAGIC_BYTE_READ_SIZE - 1}` },
+    });
+
+    if (!headRes.ok && headRes.status !== 206) {
+      await serviceClient
+        .from("media_uploads")
+        .update({ status: "failed" })
+        .eq("id", body.mediaId);
+
+      return NextResponse.json(
+        { error: "File not found in storage. Upload may have failed." },
+        { status: 400, headers: rateLimit.headers },
+      );
+    }
+
+    let actualFileSize: number | null = null;
+    const contentRange = headRes.headers.get("Content-Range");
+    if (contentRange) {
+      const match = contentRange.match(/\/(\d+)$/);
+      if (match) actualFileSize = Number.parseInt(match[1], 10);
+    }
+
+    if (actualFileSize === null) {
+      const headOnly = await fetch(signedData.signedUrl, { method: "HEAD" });
+      const contentLength = headOnly.headers.get("Content-Length");
+      if (contentLength) actualFileSize = Number.parseInt(contentLength, 10);
+    }
+
+    const buffer = Buffer.from(await headRes.arrayBuffer());
 
     // Validate magic bytes
     const headerBytes = buffer.subarray(0, MAGIC_BYTE_READ_SIZE);
@@ -112,7 +138,7 @@ export async function POST(request: NextRequest) {
     // Update record: status=ready, actual file size, entity link
     const updateData: Record<string, unknown> = {
       status: "ready",
-      file_size: buffer.byteLength,
+      file_size: actualFileSize ?? media.file_size,
       finalized_at: new Date().toISOString(),
     };
 
@@ -137,16 +163,20 @@ export async function POST(request: NextRequest) {
     console.log("[media/finalize] Success", { mediaId: body.mediaId });
 
     // Generate signed URLs
-    const urls = await getMediaUrls(serviceClient, media.storage_path, media.mime_type);
+    const urls = await getMediaUrls(
+      serviceClient,
+      media.storage_path,
+      media.preview_storage_path,
+    );
 
     return NextResponse.json(
       {
         media: {
           id: body.mediaId,
-          url: urls.url,
-          thumbnailUrl: urls.thumbnailUrl,
+          originalUrl: urls.originalUrl,
+          previewUrl: urls.previewUrl,
           mimeType: media.mime_type,
-          fileSize: buffer.byteLength,
+          fileSize: actualFileSize ?? media.file_size,
           fileName: media.file_name,
         },
       },

@@ -27,6 +27,7 @@ describe("galleryUploadIntentSchema", () => {
   it("accepts valid payload with optional fields", () => {
     const result = galleryUploadIntentSchema.safeParse({
       ...validPayload,
+      previewMimeType: "image/jpeg",
       title: "Summer BBQ",
       description: "Photos from the summer BBQ event",
       tags: ["summer", "BBQ", "2026"],

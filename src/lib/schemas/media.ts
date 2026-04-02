@@ -51,6 +51,7 @@ export const uploadIntentSchema = z.object({
   fileName: safeString(255),
   mimeType: safeString(127),
   fileSize: z.number().int().positive().max(25 * 1024 * 1024),
+  previewMimeType: safeString(127).optional(),
 });
 
 export type UploadIntentInput = z.infer<typeof uploadIntentSchema>;
@@ -136,6 +137,7 @@ export const galleryUploadIntentSchema = z.object({
   fileName: safeString(255),
   mimeType: galleryMimeTypeSchema,
   fileSizeBytes: z.number().int().positive().max(GALLERY_VIDEO_MAX_BYTES),
+  previewMimeType: z.string().trim().max(127).optional(),
   title: optionalSafeString(200),
   description: optionalSafeString(2000),
   tags: galleryTagsSchema,
