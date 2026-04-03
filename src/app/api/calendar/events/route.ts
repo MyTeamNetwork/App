@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { eventOverlapsRange } from "@/lib/calendar/event-segments";
+import { getOrgMembership } from "@/lib/auth/api-helpers";
 
 const MAX_EVENTS = 500;
 const MAX_DATE_RANGE_DAYS = 365;
@@ -114,16 +115,10 @@ export async function GET(request: Request) {
       );
     }
 
-    const { data: membership } = await supabase
-      .from("user_organization_roles")
-      .select("role,status")
-      .eq("user_id", user.id)
-      .eq("organization_id", organizationId)
-      .maybeSingle();
-
-    if (!membership || membership.status === "revoked") {
+    const membership = await getOrgMembership(supabase, user.id, organizationId);
+    if (!membership) {
       return NextResponse.json(
-        { error: "Forbidden", message: "You are not a member of this organization." },
+        { error: "Forbidden", message: "Active membership required." },
         { status: 403 }
       );
     }
