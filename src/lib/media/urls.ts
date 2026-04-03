@@ -3,6 +3,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 const SIGNED_URL_EXPIRY = 3600;
 const BUCKET = "org-media";
 
+// Keep cached responses comfortably shorter than the signed URL lifetime so
+// cached URLs still have substantial validity remaining when reused.
+export const MEDIA_CACHE_HEADERS = {
+  "Cache-Control": `private, max-age=${Math.floor(SIGNED_URL_EXPIRY / 12)}`,
+} as const;
+
 export type MediaUrlResult = {
   originalUrl: string | null;
   previewUrl: string | null;
