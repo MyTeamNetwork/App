@@ -332,8 +332,8 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
             className="min-w-[480px]"
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(60px, 80px) repeat(7, minmax(60px, 1fr))",
-              gridTemplateRows: `48px repeat(3, 36px)`,
+              gridTemplateColumns: "minmax(52px, 64px) repeat(7, minmax(60px, 1fr))",
+              gridTemplateRows: `72px repeat(3, 56px)`,
             }}
           >
             {/* Corner cell */}
@@ -359,8 +359,8 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
             className="min-w-[480px]"
             style={{
               display: "grid",
-              gridTemplateColumns: "minmax(60px, 80px) repeat(7, minmax(60px, 1fr))",
-              gridTemplateRows: `48px repeat(16, 36px)`,
+              gridTemplateColumns: "minmax(52px, 64px) repeat(7, minmax(60px, 1fr))",
+              gridTemplateRows: `72px repeat(16, 56px)`,
             }}
           >
             {/* Corner cell */}
@@ -375,26 +375,26 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
               return (
                 <div
                   key={`header-${dateKey}`}
-                  className={`border-b border-l border-border/20 py-2 px-1 text-center bg-card
+                  className={`border-b border-l border-border/20 py-2 px-2 flex flex-col items-center justify-center bg-card
                     ${isToday ? "bg-org-primary/[0.03]" : ""}
                     ${hasBestWindow ? "border-b-2 border-b-emerald-500/50" : ""}`}
                 >
                   <div
-                    className={`text-[10px] font-medium uppercase tracking-wider
+                    className={`text-[11px] font-medium uppercase tracking-wide
                       ${isToday ? "text-org-primary" : "text-muted-foreground"}`}
                   >
                     {day.toLocaleDateString("en-US", { weekday: "short" })}
                   </div>
-                  <div className="mt-0.5 flex justify-center">
+                  <div className="mt-1 flex justify-center">
                     <span
-                      className={`inline-flex items-center justify-center text-sm font-semibold
-                        ${isToday ? "w-7 h-7 rounded-full bg-org-primary text-white" : "text-foreground"}`}
+                      className={`inline-flex items-center justify-center text-base font-semibold
+                        ${isToday ? "w-8 h-8 rounded-full bg-org-primary text-white" : "text-foreground"}`}
                     >
                       {day.getDate()}
                     </span>
                   </div>
                   {hasBestWindow && bw && (
-                    <div className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 truncate px-1">
+                    <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 truncate">
                       {bw.label}
                     </div>
                   )}
@@ -408,7 +408,7 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
               return (
                 <div key={`hour-${hour}`}>
                   {/* Hour label cell — sticky */}
-                  <div className="sticky left-0 z-10 bg-card border-r border-b border-border/20 flex items-center justify-center px-1 text-xs font-medium text-muted-foreground">
+                  <div className="sticky left-0 z-10 bg-card border-r border-b border-border/30 flex items-center justify-end pr-2 text-[11px] font-medium text-muted-foreground">
                     {hourToLabel(hour)}
                   </div>
 
@@ -423,16 +423,16 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
                     if (!cellData) return null;
 
                     const freePct = totalMembers > 0 ? cellData.freeCount / totalMembers : 0;
-                    let bgColor = "bg-muted/20";
+                    let bgColor = "bg-muted/30";
                     let textColor = "text-muted-foreground";
                     if (freePct >= 0.75) {
-                      bgColor = "bg-emerald-500/15 hover:bg-emerald-500/25";
+                      bgColor = "bg-emerald-500/20 dark:bg-emerald-900/30 hover:bg-emerald-500/30 dark:hover:bg-emerald-900/40";
                       textColor = "text-emerald-700 dark:text-emerald-400";
                     } else if (freePct >= 0.4) {
-                      bgColor = "bg-amber-400/15 hover:bg-amber-400/25";
+                      bgColor = "bg-amber-400/20 dark:bg-amber-900/30 hover:bg-amber-400/30 dark:hover:bg-amber-900/40";
                       textColor = "text-amber-700 dark:text-amber-400";
                     } else {
-                      bgColor = "bg-red-500/15 hover:bg-red-500/25";
+                      bgColor = "bg-red-500/20 dark:bg-red-900/30 hover:bg-red-500/30 dark:hover:bg-red-900/40";
                       textColor = "text-red-700 dark:text-red-400";
                     }
 
@@ -442,14 +442,34 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
                       <div
                         key={`cell-${gridKey}`}
                         onClick={() => setSelectedCell((prev) => (prev === gridKey ? null : gridKey))}
-                        className={`relative border-b border-l border-border/15 flex items-center justify-center cursor-pointer transition-colors
+                        className={`relative border-b border-l border-border/30 flex items-center justify-center cursor-pointer transition-colors
                           ${bgColor}
-                          ${isToday ? "bg-org-primary/[0.05]" : ""}
-                          ${isSelected ? "ring-2 ring-inset ring-org-primary/40" : ""}
-                          ${isNow ? "ring-2 ring-inset ring-red-500/40" : ""}`}
+                          ${isToday ? "bg-org-primary/[0.08]" : ""}
+                          ${isSelected ? "ring-2 ring-inset ring-org-primary/50" : ""}
+                          ${isNow ? "ring-2 ring-inset ring-red-500/50" : ""}`}
                       >
-                        <div className={`text-xs font-semibold ${textColor}`}>
-                          {cellData.freeCount} <span className="text-[10px] font-normal">free</span>
+                        <div className="flex flex-col items-center justify-center h-full px-1 gap-0.5">
+                          <span className={`text-sm font-bold leading-none ${textColor}`}>{cellData.freeCount}</span>
+                          <span className="text-[9px] text-muted-foreground leading-none">free</span>
+                          <div className="flex flex-wrap gap-[3px] justify-center mt-1">
+                            {cellData.freeMembers.slice(0, 12).map((member) => (
+                              <span
+                                key={member.userId}
+                                className="inline-block h-[5px] w-[5px] rounded-full bg-emerald-500"
+                                title={member.name}
+                              />
+                            ))}
+                            {cellData.busyEntries.slice(0, 12).map(({ member }) => (
+                              <span
+                                key={member.userId}
+                                className="inline-block h-[5px] w-[5px] rounded-full bg-muted-foreground/30"
+                                title={member.name}
+                              />
+                            ))}
+                            {(cellData.freeMembers.length + cellData.busyEntries.length) > 12 && (
+                              <span className="text-[8px] text-muted-foreground">+{(cellData.freeMembers.length + cellData.busyEntries.length) - 12}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
