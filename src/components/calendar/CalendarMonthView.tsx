@@ -137,7 +137,7 @@ export function CalendarMonthView({ orgId, orgSlug, initialEvents, timeZone, rig
     const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
     const { start: rangeStart, end: rangeEnd } = initialDataRangeRef.current;
 
-    const monthInRange = monthStart >= rangeStart && monthEnd <= rangeEnd;
+    const monthInRange = monthStart <= rangeEnd && monthEnd >= rangeStart;
 
     if (monthInRange && initialEventsRef.current !== undefined) {
       setEvents(initialEventsRef.current);

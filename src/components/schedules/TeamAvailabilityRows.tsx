@@ -275,7 +275,7 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
   }
 
   // Grid column/row definitions
-  const gridCols = "minmax(48px, 56px) repeat(7, minmax(80px, 1fr))";
+  const gridCols = "minmax(48px, 56px) repeat(7, minmax(60px, 1fr))";
   const gridRows = `68px repeat(16, 64px)`;
 
   return (
@@ -331,7 +331,7 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
       {loading ? (
         <div className="overflow-x-auto rounded-xl border border-border/60 bg-card animate-pulse">
           <div
-            className="min-w-[560px]"
+            className="min-w-[476px]"
             style={{ display: "grid", gridTemplateColumns: gridCols, gridTemplateRows: `68px repeat(4, 64px)` }}
           >
             <div className="sticky left-0 z-20 bg-card border-b border-r border-border/40" />
@@ -349,9 +349,9 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
           </div>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border/60 bg-card">
+        <div className="overflow-x-auto rounded-xl border border-border/60 bg-card relative after:pointer-events-none after:absolute after:top-0 after:right-0 after:h-full after:w-8 after:bg-gradient-to-l after:from-card after:to-transparent sm:after:hidden">
           <div
-            className="min-w-[560px]"
+            className="min-w-[476px]"
             style={{ display: "grid", gridTemplateColumns: gridCols, gridTemplateRows: gridRows }}
           >
             {/* ── Corner ── */}
@@ -457,15 +457,17 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
                       >
                         {/* Inner layout: padded, vertically stacked */}
                         <div className="h-full flex flex-col items-center justify-center gap-1.5 px-2 py-2">
-                          {/* Count line */}
-                          <div className="flex items-baseline gap-1">
-                            <span className={`text-base font-bold leading-none tabular-nums ${countColor}`}>
-                              {cellData.freeCount}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground leading-none">
-                              / {totalMembers}
-                            </span>
-                          </div>
+                          {/* Count line - only show when there is a conflict */}
+                          {cellData.freeCount < totalMembers && (
+                            <div className="flex items-baseline gap-1">
+                              <span className={`text-base font-bold leading-none tabular-nums ${countColor}`}>
+                                {cellData.freeCount}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground leading-none">
+                                / {totalMembers}
+                              </span>
+                            </div>
+                          )}
 
                           {/* Member dots */}
                           <div className="flex flex-wrap justify-center gap-[3px]">
