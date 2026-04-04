@@ -59,7 +59,7 @@ function computeBestWindow(
   blocksByMemberAndDay: Map<string, EventBlock[]>,
   dateKey: string,
   totalMembers: number
-): { label: string; freeCount: number } | null {
+): { label: string; freeCount: number; startMinute: number; endMinute: number } | null {
   if (totalMembers === 0) return null;
 
   const threshold = Math.ceil(totalMembers * 0.8);
@@ -108,6 +108,8 @@ function computeBestWindow(
   return {
     label: `${minutesToTimeLabel(bestStart)} – ${minutesToTimeLabel(bestEnd)}`,
     freeCount: bestFree,
+    startMinute: bestStart,
+    endMinute: bestEnd,
   };
 }
 
@@ -129,17 +131,10 @@ function ChevronRightIcon() {
 
 export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailabilityRowsProps) {
   const [weekOffset, setWeekOffset] = useState(0);
-  const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
 
   const week = useMemo(() => buildAvailabilityWeek(new Date(), weekOffset, timeZone), [weekOffset, timeZone]);
-
-  // Default selected day to today (or week start if today not in view)
-  useEffect(() => {
-    const todayInWeek = week.weekDays.find((d) => formatDateKey(d) === week.todayKey);
-    setSelectedDateKey(todayInWeek ? week.todayKey : formatDateKey(week.weekDays[0]));
-  }, [week.todayKey, week.weekDays]);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -227,18 +222,15 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
   );
   const teamStats = stats as { avgAvailability: number; bestTime: string; teamSize: number };
 
-  const bestWindow = useMemo(() => {
-    if (!selectedDateKey) return null;
-    return computeBestWindow(members, blocksByMemberAndDay, selectedDateKey, totalMembers);
-  }, [members, blocksByMemberAndDay, selectedDateKey, totalMembers]);
-
-  const timeLabels = useMemo(() => {
-    const labels: string[] = [];
-    for (let m = GRID_START_MINUTE; m <= GRID_END_MINUTE; m += 120) {
-      labels.push(minutesToTimeLabel(m));
-    }
-    return labels;
-  }, []);
+  const bestWindowByDay = useMemo(() => {
+    const map = new Map<string, { label: string; freeCount: number; startMinute: number; endMinute: number }>();
+    week.weekDays.forEach((day) => {
+      const dateKey = formatDateKey(day);
+      const result = computeBestWindow(members, blocksByMemberAndDay, dateKey, totalMembers);
+      if (result) map.set(dateKey, result);
+    });
+    return map;
+  }, [members, blocksByMemberAndDay, week.weekDays, totalMembers]);
 
   if (totalMembers === 0) {
     return (
@@ -254,16 +246,16 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
       {totalMembers > 0 && (
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl bg-muted/40 px-3 py-2.5 text-center">
-            <p className="text-lg font-bold text-foreground tabular-nums">{teamStats.avgAvailability}%</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Avg availability</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Avg availability</p>
+            <p className="font-mono text-2xl font-bold text-foreground tabular-nums">{teamStats.avgAvailability}%</p>
           </div>
           <div className="rounded-xl bg-muted/40 px-3 py-2.5 text-center">
-            <p className="text-sm font-bold text-foreground leading-tight mt-0.5">{teamStats.bestTime}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Best time</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Best time</p>
+            <p className="font-mono text-2xl font-bold text-foreground tabular-nums">{teamStats.bestTime}</p>
           </div>
           <div className="rounded-xl bg-muted/40 px-3 py-2.5 text-center">
-            <p className="text-lg font-bold text-foreground tabular-nums">{totalMembers}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Members</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Members</p>
+            <p className="font-mono text-2xl font-bold text-foreground tabular-nums">{totalMembers}</p>
           </div>
         </div>
       )}
@@ -299,125 +291,144 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
         </button>
       </div>
 
-      {/* Day selector tabs */}
-      <div className="flex gap-1 overflow-x-auto">
-        {week.weekDays.map((day) => {
-          const key = formatDateKey(day);
-          const isSelected = key === selectedDateKey;
-          const isToday = key === week.todayKey;
-          const dayShort = day.toLocaleDateString("en-US", { weekday: "short" });
-          const dayNum = day.getDate();
-
-          return (
-            <button
-              key={key}
-              onClick={() => setSelectedDateKey(key)}
-              className={`
-                flex-1 min-w-[44px] flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
-                ${isSelected
-                  ? "bg-org-primary text-white shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }
-              `}
-            >
-              <span className="uppercase tracking-wide text-[10px]">{dayShort}</span>
-              <span className={`text-sm font-bold leading-none tabular-nums ${isToday && !isSelected ? "text-org-primary" : ""}`}>
-                {dayNum}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Best window callout */}
-      {bestWindow && (
-        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-emerald-500/8 border border-emerald-500/15">
-          <div className="h-2 w-2 rounded-full bg-emerald-500 flex-shrink-0" />
-          <p className="text-sm text-emerald-700 dark:text-emerald-400">
-            <span className="font-semibold">Best window: {bestWindow.label}</span>
-            <span className="text-emerald-600/70 dark:text-emerald-500/70"> — {bestWindow.freeCount} of {totalMembers} free</span>
-          </p>
-        </div>
-      )}
-
-      {/* Member rows */}
+      {/* Weekly grid */}
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="flex items-center gap-3 animate-pulse">
-              <div className="h-8 w-8 rounded-full bg-muted flex-shrink-0" />
-              <div className="h-8 flex-1 rounded-lg bg-muted" />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {/* Time axis labels */}
-          <div className="flex ml-[calc(2rem+0.75rem+0.75rem)]">
-            {timeLabels.map((label, i) => (
-              <div
-                key={i}
-                className="flex-1 text-[10px] text-muted-foreground/50 tabular-nums"
-                style={{ textAlign: i === 0 ? "left" : i === timeLabels.length - 1 ? "right" : "center" }}
-              >
-                {label}
+        <div className="overflow-x-auto rounded-xl border border-border/50 bg-card animate-pulse">
+          <div
+            className="min-w-[520px]"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(40px, 120px) repeat(7, minmax(60px, 1fr))",
+              gridTemplateRows: `48px repeat(3, 40px)`,
+            }}
+          >
+            {/* Corner cell */}
+            <div className="sticky left-0 z-20 bg-card border-b border-r border-border/30" />
+            {/* Header cells */}
+            {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={`header-${i}`} className="border-b border-l border-border/20 bg-muted/10" />
+            ))}
+            {/* Member skeleton rows */}
+            {[0, 1, 2].map((mi) => (
+              <div key={`member-${mi}`}>
+                <div className="sticky left-0 z-10 bg-card border-r border-b border-border/20 px-2 flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-full bg-muted/50" />
+                  <div className="hidden sm:block h-3 flex-1 rounded bg-muted/40" />
+                </div>
+                {[0, 1, 2, 3, 4, 5, 6].map((di) => (
+                  <div key={`cell-${di}`} className="border-b border-l border-border/15" />
+                ))}
               </div>
             ))}
           </div>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-border/50 bg-card">
+          <div
+            className="min-w-[520px]"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(40px, 120px) repeat(7, minmax(60px, 1fr))",
+              gridTemplateRows: `48px repeat(${members.length}, 40px)`,
+            }}
+          >
+            {/* Corner cell */}
+            <div className="sticky left-0 z-20 bg-card border-b border-r border-border/30" />
 
-          {members.map((member) => {
-            const memberBlocks = selectedDateKey
-              ? (blocksByMemberAndDay.get(`${member.userId}-${selectedDateKey}`) ?? [])
-              : [];
+            {/* Day header cells */}
+            {week.weekDays.map((day) => {
+              const dateKey = formatDateKey(day);
+              const isToday = dateKey === week.todayKey;
+              const hasBestWindow = bestWindowByDay.has(dateKey);
+              const bw = bestWindowByDay.get(dateKey);
+              return (
+                <div
+                  key={`header-${dateKey}`}
+                  className={`border-b border-l border-border/20 py-2 px-1 text-center bg-card
+                    ${isToday ? "bg-org-primary/[0.03]" : ""}
+                    ${hasBestWindow ? "border-b-2 border-b-emerald-500/50" : ""}`}
+                >
+                  <div
+                    className={`text-[10px] font-medium uppercase tracking-wider
+                      ${isToday ? "text-org-primary" : "text-muted-foreground"}`}
+                  >
+                    {day.toLocaleDateString("en-US", { weekday: "short" })}
+                  </div>
+                  <div className="mt-0.5 flex justify-center">
+                    <span
+                      className={`inline-flex items-center justify-center text-sm font-semibold
+                        ${isToday ? "w-7 h-7 rounded-full bg-org-primary text-white" : "text-foreground"}`}
+                    >
+                      {day.getDate()}
+                    </span>
+                  </div>
+                  {hasBestWindow && bw && (
+                    <div className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 truncate px-1">
+                      {bw.label}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
-            return (
-              <div key={member.userId} className="flex items-center gap-3">
-                {/* Avatar */}
-                <div className="h-8 w-8 rounded-full bg-org-primary/15 text-org-primary flex items-center justify-center text-xs font-semibold flex-shrink-0 select-none">
-                  {getInitials(member.name)}
+            {/* Member rows */}
+            {members.map((member) => (
+              <div key={`member-${member.userId}`}>
+                {/* Name/avatar cell — sticky */}
+                <div className="sticky left-0 z-10 bg-card border-r border-b border-border/20 flex items-center gap-2 px-2">
+                  <div className="h-7 w-7 rounded-full bg-org-primary/15 text-org-primary flex items-center justify-center text-[10px] font-semibold flex-shrink-0 select-none">
+                    {getInitials(member.name)}
+                  </div>
+                  <span className="hidden sm:block text-xs text-muted-foreground truncate">{member.name}</span>
                 </div>
 
-                {/* Timeline */}
-                <div className="flex-1 relative h-8 rounded-lg bg-muted/30 overflow-hidden">
-                  {/* Busy blocks */}
-                  {memberBlocks.map((block) => {
-                    const leftPct = blockToPercent(block.startMinute);
-                    const widthPct = blockToPercent(block.endMinute) - leftPct;
-                    const color = block.isOrg ? "bg-org-primary/70" : "bg-org-secondary/70";
-                    const timeLabel = `${minutesToTimeLabel(block.startMinute)} – ${minutesToTimeLabel(block.endMinute)}`;
+                {/* Day cells */}
+                {week.weekDays.map((day) => {
+                  const dateKey = formatDateKey(day);
+                  const isToday = dateKey === week.todayKey;
+                  const blocks = blocksByMemberAndDay.get(`${member.userId}-${dateKey}`) ?? [];
+                  return (
+                    <div
+                      key={`cell-${member.userId}-${dateKey}`}
+                      className={`relative border-b border-l border-border/15 overflow-hidden
+                        ${isToday ? "bg-org-primary/[0.02]" : ""}`}
+                    >
+                      {/* Busy blocks */}
+                      {blocks.map((block) => {
+                        const leftPct = blockToPercent(block.startMinute);
+                        const widthPct = blockToPercent(block.endMinute) - leftPct;
+                        const color = block.isOrg ? "bg-org-primary/60" : "bg-org-secondary/60";
+                        return (
+                          <div
+                            key={block.id}
+                            title={`${block.title} · ${minutesToTimeLabel(block.startMinute)}–${minutesToTimeLabel(block.endMinute)}`}
+                            className={`absolute top-1 bottom-1 rounded-sm ${color}`}
+                            style={{
+                              left: `${leftPct}%`,
+                              width: `${Math.max(widthPct, 1)}%`,
+                            }}
+                          />
+                        );
+                      })}
 
-                    return (
-                      <div
-                        key={block.id}
-                        title={`${block.title} · ${timeLabel}`}
-                        className={`absolute top-0 h-full ${color} hover:opacity-100 opacity-80 transition-opacity`}
-                        style={{ left: `${leftPct}%`, width: `${Math.max(widthPct, 0.5)}%` }}
-                      />
-                    );
-                  })}
-
-                  {/* Current time indicator (today only) */}
-                  {selectedDateKey === week.todayKey && (() => {
-                    const now = new Date();
-                    const currentMinute = now.getHours() * 60 + now.getMinutes();
-                    if (currentMinute < GRID_START_MINUTE || currentMinute > GRID_END_MINUTE) return null;
-                    const leftPct = blockToPercent(currentMinute);
-                    return (
-                      <div
-                        className="absolute top-0 h-full w-0.5 bg-red-500 z-10"
-                        style={{ left: `${leftPct}%` }}
-                      />
-                    );
-                  })()}
-                </div>
-
-                {/* Name label (hidden on xs, shown on sm+) */}
-                <span className="hidden sm:block text-xs text-muted-foreground w-24 truncate flex-shrink-0" title={member.name}>
-                  {member.name}
-                </span>
+                      {/* Current time vertical line (today only) */}
+                      {isToday && (() => {
+                        const now = new Date();
+                        const currentMinute = now.getHours() * 60 + now.getMinutes();
+                        if (currentMinute < GRID_START_MINUTE || currentMinute > GRID_END_MINUTE) return null;
+                        return (
+                          <div
+                            className="absolute top-0 bottom-0 w-px bg-red-500 z-10 pointer-events-none"
+                            style={{ left: `${blockToPercent(currentMinute)}%` }}
+                          />
+                        );
+                      })()}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       )}
 
