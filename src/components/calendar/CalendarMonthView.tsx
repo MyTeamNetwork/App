@@ -1,0 +1,331 @@
+"use client";
+
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import Link from "next/link";
+import {
+  buildUnifiedCalendarDateRange,
+  getUnifiedEventFloatingDateKey,
+  type UnifiedEvent,
+} from "@/lib/calendar/unified-events";
+import { getUnifiedEventHref } from "@/lib/calendar/navigation";
+
+type CalendarMonthViewProps = {
+  orgId: string;
+  orgSlug: string;
+  initialEvents?: UnifiedEvent[];
+  timeZone?: string;
+  rightSlot?: React.ReactNode;
+};
+
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MAX_VISIBLE_EVENTS = 3;
+
+function toDateKeyInTimeZone(date: Date, timeZone?: string): string {
+  const opts: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  };
+  const parts = new Intl.DateTimeFormat("en-US", opts).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function buildMonthGrid(year: number, month: number): Date[][] {
+  const firstDay = new Date(year, month, 1);
+  const startSunday = new Date(firstDay);
+  startSunday.setDate(1 - firstDay.getDay());
+
+  const weeks: Date[][] = [];
+  const cursor = new Date(startSunday);
+  for (let w = 0; w < 6; w++) {
+    const week: Date[] = [];
+    for (let d = 0; d < 7; d++) {
+      week.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+  return weeks;
+}
+
+function getSourceColors(sourceType: string): { dot: string } {
+  switch (sourceType) {
+    case "event":
+      return { dot: "bg-org-primary" };
+    case "schedule":
+      return { dot: "bg-org-secondary" };
+    case "feed":
+      return { dot: "bg-blue-500" };
+    case "class":
+      return { dot: "bg-slate-500" };
+    default:
+      return { dot: "bg-muted-foreground" };
+  }
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+export function CalendarMonthView({ orgId, orgSlug, initialEvents, timeZone, rightSlot }: CalendarMonthViewProps) {
+  const [displayDate, setDisplayDate] = useState<Date>(() => new Date());
+  const [events, setEvents] = useState<UnifiedEvent[]>(initialEvents ?? []);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const initialDataRangeRef = useRef(buildUnifiedCalendarDateRange());
+  const initialEventsRef = useRef(initialEvents);
+
+  const year = displayDate.getFullYear();
+  const month = displayDate.getMonth();
+
+  const today = useMemo(() => new Date(), []);
+  const todayKey = useMemo(() => toDateKeyInTimeZone(today, timeZone), [today, timeZone]);
+
+  const monthGrid = useMemo(() => buildMonthGrid(year, month), [year, month]);
+
+  const monthName = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(
+        new Date(year, month, 1)
+      ),
+    [year, month]
+  );
+
+  const fetchMonthEvents = useCallback(
+    async (start: Date, end: Date) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          orgId,
+          start: start.toISOString(),
+          end: end.toISOString(),
+        });
+        const res = await fetch(`/api/calendar/unified-events?${params.toString()}`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.message || "Failed to load events.");
+        }
+        const data = await res.json();
+        setEvents(data.events ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load events.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [orgId]
+  );
+
+  useEffect(() => {
+    const monthStart = new Date(year, month, 1);
+    const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+    const { start: rangeStart, end: rangeEnd } = initialDataRangeRef.current;
+
+    const monthInRange = monthStart >= rangeStart && monthEnd <= rangeEnd;
+
+    if (monthInRange && initialEventsRef.current !== undefined) {
+      setEvents(initialEventsRef.current);
+      return;
+    }
+
+    const fetchStart = new Date(year, month, 1);
+    const fetchEnd = new Date(year, month + 2, 0);
+    fetchMonthEvents(fetchStart, fetchEnd);
+  }, [year, month, fetchMonthEvents]);
+
+  const eventsByDateKey = useMemo<Map<string, UnifiedEvent[]>>(() => {
+    const map = new Map<string, UnifiedEvent[]>();
+
+    events.forEach((event) => {
+      const floatingKey = getUnifiedEventFloatingDateKey(event);
+      let dateKey: string;
+
+      if (floatingKey) {
+        dateKey = floatingKey;
+      } else if (event.allDay && /^\d{4}-\d{2}-\d{2}$/.test(event.startAt)) {
+        dateKey = event.startAt;
+      } else {
+        dateKey = toDateKeyInTimeZone(new Date(event.startAt), timeZone);
+      }
+
+      const existing = map.get(dateKey) ?? [];
+      existing.push(event);
+      map.set(dateKey, existing);
+    });
+
+    return map;
+  }, [events, timeZone]);
+
+  const goToPrevMonth = useCallback(() => {
+    setDisplayDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+  }, []);
+
+  const goToNextMonth = useCallback(() => {
+    setDisplayDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+  }, []);
+
+  const goToToday = useCallback(() => {
+    setDisplayDate(new Date());
+  }, []);
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <button
+          onClick={goToPrevMonth}
+          aria-label="Previous month"
+          className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ChevronLeftIcon />
+        </button>
+
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-semibold text-foreground tabular-nums">{monthName}</h2>
+          <button
+            onClick={goToToday}
+            className="text-xs font-medium px-2.5 py-1 rounded-md bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Today
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {rightSlot}
+          <button
+            onClick={goToNextMonth}
+            aria-label="Next month"
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronRightIcon />
+          </button>
+        </div>
+      </div>
+
+      {/* Loading bar */}
+      {loading && (
+        <div className="h-0.5 bg-org-primary/40 animate-pulse rounded mb-3" />
+      )}
+      {error && (
+        <p className="text-xs text-destructive text-center mb-3">{error}</p>
+      )}
+
+      {/* Weekday headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {WEEKDAY_LABELS.map((day) => (
+          <div key={day} className="text-center py-2">
+            <span className="hidden sm:inline text-xs font-medium text-muted-foreground/60">
+              {day}
+            </span>
+            <span className="sm:hidden text-xs font-medium text-muted-foreground/60">
+              {day[0]}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Month grid */}
+      <div className="grid grid-cols-7 border-l border-t border-border/40 rounded-sm overflow-hidden">
+        {monthGrid.flat().map((cellDate, idx) => {
+          const cellKey = toDateKeyInTimeZone(cellDate, timeZone);
+          const isCurrentMonth = cellDate.getMonth() === month;
+          const isToday = cellKey === todayKey;
+          const cellEvents = eventsByDateKey.get(cellKey) ?? [];
+          const visibleEvents = cellEvents.slice(0, MAX_VISIBLE_EVENTS);
+          const overflowCount = cellEvents.length - MAX_VISIBLE_EVENTS;
+
+          return (
+            <div
+              key={idx}
+              className="border-r border-b border-border/40 min-h-[90px] sm:min-h-[110px] p-1.5 flex flex-col gap-0.5 bg-background"
+            >
+              {/* Date number */}
+              <div className="flex justify-start mb-0.5">
+                <span
+                  className={`
+                    text-xs font-medium w-6 h-6 flex items-center justify-center rounded-full leading-none tabular-nums select-none
+                    ${
+                      isToday
+                        ? "bg-org-primary text-white"
+                        : isCurrentMonth
+                          ? "text-foreground"
+                          : "text-muted-foreground/35"
+                    }
+                  `}
+                >
+                  {cellDate.getDate()}
+                </span>
+              </div>
+
+              {/* Event chips (sm+) and dots (xs) */}
+              <div className="flex-1 overflow-hidden space-y-0.5">
+                {visibleEvents.map((event) => {
+                  const { dot } = getSourceColors(event.sourceType);
+                  const href = getUnifiedEventHref(orgSlug, event);
+
+                  if (href) {
+                    return (
+                      <Link
+                        key={event.id}
+                        href={href}
+                        title={event.title}
+                        className={`hidden sm:block text-xs font-medium text-white px-1.5 py-0.5 rounded truncate leading-tight hover:opacity-80 transition-opacity ${dot}`}
+                      >
+                        {event.title}
+                      </Link>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={event.id}
+                      title={event.title}
+                      className={`hidden sm:block text-xs font-medium text-white px-1.5 py-0.5 rounded truncate leading-tight ${dot}`}
+                    >
+                      {event.title}
+                    </div>
+                  );
+                })}
+
+                {/* Mobile: colored dots */}
+                {cellEvents.length > 0 && (
+                  <div className="flex gap-0.5 flex-wrap sm:hidden pt-0.5">
+                    {cellEvents.slice(0, 3).map((event) => (
+                      <span
+                        key={event.id}
+                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getSourceColors(event.sourceType).dot}`}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Overflow count */}
+                {overflowCount > 0 && (
+                  <span className="hidden sm:block text-xs text-muted-foreground/60 pl-1.5 leading-tight">
+                    +{overflowCount} more
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

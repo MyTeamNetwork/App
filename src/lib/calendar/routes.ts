@@ -1,4 +1,5 @@
-export type CalendarSurfaceView = "events" | "all" | "availability";
+export type CalendarSurfaceView = "calendar" | "availability";
+export type CalendarSubview = "grid" | "list";
 export type CalendarEventTimeframe = "upcoming" | "past";
 
 function buildQuery(params: Record<string, string | null | undefined>) {
@@ -26,12 +27,29 @@ export function calendarViewPath(
   } = {}
 ) {
   return `${calendarRootPath(orgSlug)}${buildQuery({
-    view: view === "events" ? null : view,
+    view: view === "calendar" ? null : view,
     timeframe: params.timeframe && params.timeframe !== "upcoming" ? params.timeframe : null,
     type: params.type || null,
   })}`;
 }
 
+export function calendarListPath(
+  orgSlug: string,
+  params: {
+    timeframe?: CalendarEventTimeframe;
+    type?: string | null;
+  } = {}
+) {
+  return `${calendarRootPath(orgSlug)}${buildQuery({
+    subview: "list",
+    timeframe: params.timeframe && params.timeframe !== "upcoming" ? params.timeframe : null,
+    type: params.type || null,
+  })}`;
+}
+
+/**
+ * @deprecated Use calendarListPath instead. Maintained for backward compatibility.
+ */
 export function calendarEventsPath(
   orgSlug: string,
   params: {
@@ -39,15 +57,22 @@ export function calendarEventsPath(
     type?: string | null;
   } = {}
 ) {
-  return calendarViewPath(orgSlug, "events", params);
+  return calendarListPath(orgSlug, params);
 }
 
+/**
+ * @deprecated Use calendarListPath instead. Maintained for backward compatibility.
+ */
 export function calendarAllPath(orgSlug: string) {
-  return calendarViewPath(orgSlug, "all");
+  return calendarListPath(orgSlug);
 }
 
 export function calendarAvailabilityPath(orgSlug: string) {
   return calendarViewPath(orgSlug, "availability");
+}
+
+export function calendarMonthPath(orgSlug: string) {
+  return calendarRootPath(orgSlug);
 }
 
 export function calendarSourcesPath(orgSlug: string) {

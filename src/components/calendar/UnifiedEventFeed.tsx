@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   buildUnifiedCalendarDateRange,
+  buildUnifiedCalendarPastDateRange,
   getUnifiedEventFloatingDateKey,
   type UnifiedEvent,
 } from "@/lib/calendar/unified-events";
+import type { CalendarEventTimeframe } from "@/lib/calendar/routes";
 import { calendarNewEventPath, calendarSourcesPath } from "@/lib/calendar/routes";
 import { formatCalendarEventTime } from "@/lib/calendar/event-segments";
 import { getUnifiedEventHref } from "@/lib/calendar/navigation";
@@ -16,6 +18,7 @@ type UnifiedEventFeedProps = {
   orgSlug: string;
   initialEvents?: UnifiedEvent[];
   timeZone?: string;
+  timeframe?: CalendarEventTimeframe;
 };
 
 type SourceFilterKey = "events" | "schedules" | "feeds" | "classes";
@@ -119,14 +122,16 @@ function getBadgeColor(badgeText: string): string {
   return "bg-muted text-muted-foreground";
 }
 
-export function UnifiedEventFeed({ orgId, orgSlug, initialEvents, timeZone }: UnifiedEventFeedProps) {
+export function UnifiedEventFeed({ orgId, orgSlug, initialEvents, timeZone, timeframe = "upcoming" }: UnifiedEventFeedProps) {
   const hasInitialData = initialEvents !== undefined;
   const [events, setEvents] = useState<UnifiedEvent[]>(initialEvents ?? []);
   const [loading, setLoading] = useState(!hasInitialData);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all");
 
-  const dateRange = useMemo(() => buildUnifiedCalendarDateRange(), []);
+  const dateRange = useMemo(() => {
+    return timeframe === "past" ? buildUnifiedCalendarPastDateRange() : buildUnifiedCalendarDateRange();
+  }, [timeframe]);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -192,10 +197,11 @@ export function UnifiedEventFeed({ orgId, orgSlug, initialEvents, timeZone }: Un
   const renderEmptyState = () => {
     const hasEventsSource = activeFilter === "all" || activeFilter === "events";
     const hasSchedulesSource = activeFilter === "all" || activeFilter === "schedules";
+    const emptyMessage = timeframe === "past" ? "No past events" : "No upcoming events";
 
     return (
       <div className="text-center py-12 space-y-4">
-        <p className="text-sm text-muted-foreground">No upcoming events</p>
+        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           {hasEventsSource && (
             <Link
@@ -255,7 +261,7 @@ export function UnifiedEventFeed({ orgId, orgSlug, initialEvents, timeZone }: Un
       </>
     );
 
-    const className = "flex items-start gap-3 py-3";
+    const className = "flex items-start gap-3 py-3.5";
     const href = getUnifiedEventHref(orgSlug, event);
 
     if (href) {
@@ -317,11 +323,11 @@ export function UnifiedEventFeed({ orgId, orgSlug, initialEvents, timeZone }: Un
       ) : events.length === 0 ? (
         renderEmptyState()
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {Array.from(groupedEvents.entries()).map(([dateLabel, dayEvents]) => (
             <div key={dateLabel}>
               <h3
-                className="sticky top-0 bg-background/95 backdrop-blur-sm z-10 text-sm font-semibold text-foreground mb-1 pb-1 border-b border-border/40"
+                className="sticky top-0 bg-background/95 backdrop-blur-sm z-10 text-xs font-semibold text-muted-foreground uppercase tracking-wider pt-3 pb-2 mb-1 border-b border-border/20"
                 style={{ textWrap: "balance" } as React.CSSProperties}
               >
                 {dateLabel}

@@ -193,6 +193,13 @@ export function buildUnifiedCalendarDateRange(now: Date = new Date()): { start: 
   };
 }
 
+export function buildUnifiedCalendarPastDateRange(now: Date = new Date()): { start: Date; end: Date } {
+  return {
+    start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 6, now.getUTCDate())),
+    end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999)),
+  };
+}
+
 function normalizeScheduleTime(time: string): string {
   return time.split(":").slice(0, 2).join(":");
 }

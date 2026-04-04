@@ -1,17 +1,17 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/layout";
 import { Button } from "@/components/ui";
 import { getOrgContext } from "@/lib/auth/roles";
 import { CalendarViewToggle } from "@/components/calendar/CalendarViewToggle";
-import { UnifiedEventFeed } from "@/components/calendar/UnifiedEventFeed";
-import { CalendarEventsView } from "@/components/calendar/CalendarEventsView";
+import { CalendarTab } from "@/components/calendar/CalendarTab";
 import { AvailabilityTab } from "@/components/schedules/tabs/AvailabilityTab";
 import { resolveLabel } from "@/lib/navigation/label-resolver";
 import { getLocale, getTranslations } from "next-intl/server";
 import { buildUnifiedCalendarDateRange, fetchUnifiedEvents } from "@/lib/calendar/unified-events";
-import { calendarMySettingsPath, calendarNewEventPath, calendarNewSchedulePath, calendarSourcesPath } from "@/lib/calendar/routes";
-import { parseCalendarEventTimeframe, parseCalendarView } from "@/lib/calendar/view-state";
+import { calendarMySettingsPath, calendarNewEventPath, calendarNewSchedulePath, calendarSourcesPath, calendarListPath } from "@/lib/calendar/routes";
+import { parseCalendarView } from "@/lib/calendar/view-state";
 import { resolveEventActionLabel } from "@/lib/events/labels";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import { resolveOrgTimezone } from "@/lib/utils/timezone";
@@ -20,12 +20,17 @@ import type { UnifiedEvent } from "@/lib/calendar/unified-events";
 
 interface CalendarPageProps {
   params: Promise<{ orgSlug: string }>;
-  searchParams: Promise<{ view?: string; timeframe?: string; type?: string }>;
+  searchParams: Promise<{ view?: string; subview?: string; timeframe?: string; type?: string }>;
 }
 
 export default async function CalendarPage({ params, searchParams }: CalendarPageProps) {
   const { orgSlug } = await params;
   const filters = await searchParams;
+
+  // Redirect old view params to new structure
+  if (filters.view === "events" || filters.view === "all") {
+    redirect(calendarListPath(orgSlug));
+  }
 
   const orgCtx = await getOrgContext(orgSlug);
   const supabase = await createClient();
@@ -34,7 +39,6 @@ export default async function CalendarPage({ params, searchParams }: CalendarPag
 
   const orgId = orgCtx.organization.id;
   const currentView = parseCalendarView(filters.view);
-  const eventTimeframe = parseCalendarEventTimeframe(filters.timeframe);
   const orgTimeZone = resolveOrgTimezone(orgCtx.organization.timezone);
 
   const { start: rangeStart, end: rangeEnd } = buildUnifiedCalendarDateRange();
@@ -74,7 +78,6 @@ export default async function CalendarPage({ params, searchParams }: CalendarPag
   const t = (key: string) => tNav(key);
   const pageLabel = resolveLabel("/calendar", navConfig, t, locale);
   const tCalendar = await getTranslations("calendar");
-  const tEvents = await getTranslations("events");
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -128,33 +131,18 @@ export default async function CalendarPage({ params, searchParams }: CalendarPag
           {currentView === "availability" ? (
             <AvailabilityTab
               orgId={orgId}
+              orgSlug={orgSlug}
               isAdmin={orgCtx.isAdmin}
               mySchedules={mySchedules}
               allSchedules={allSchedules}
               timeZone={orgTimeZone}
             />
-          ) : currentView === "all" ? (
-            <UnifiedEventFeed
+          ) : (
+            <CalendarTab
               orgId={orgId}
               orgSlug={orgSlug}
               initialEvents={initialEvents}
               timeZone={orgTimeZone}
-            />
-          ) : (
-            <CalendarEventsView
-              orgId={orgId}
-              orgSlug={orgSlug}
-              orgName={orgCtx.organization.name}
-              isAdmin={orgCtx.isAdmin}
-              navConfig={navConfig}
-              locale={locale}
-              tNav={t}
-              tEvents={tEvents}
-              timeZone={orgTimeZone}
-              filters={{
-                timeframe: eventTimeframe,
-                type: filters.type,
-              }}
             />
           )}
         </div>
