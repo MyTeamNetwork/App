@@ -61,15 +61,10 @@ export interface BrightDataProfileResult {
   avatar: string | null;
 }
 
-function sanitizeExperienceEntries(experience: BrightDataExperience[]): BrightDataExperience[] {
-  return experience.map((entry) => ({
-    ...entry,
-    description_html: sanitizeRichTextToPlainText(entry.description_html),
-  }));
-}
-
-function sanitizeEducationEntries(education: BrightDataEducation[]): BrightDataEducation[] {
-  return education.map((entry) => ({
+function sanitizeDescriptionHtml<T extends { description_html: string | null }>(
+  entries: T[]
+): T[] {
+  return entries.map((entry) => ({
     ...entry,
     description_html: sanitizeRichTextToPlainText(entry.description_html),
   }));
@@ -308,8 +303,8 @@ function normalizeBrightDataProfile(data: unknown): BrightDataProfileResult | nu
       : typeof raw.summary === "string" ? raw.summary : null,
     current_company: companyName,
     current_company_name: companyNameAlt,
-    experience: sanitizeExperienceEntries(experience),
-    education: sanitizeEducationEntries(education),
+    experience: sanitizeDescriptionHtml(experience),
+    education: sanitizeDescriptionHtml(education),
     educations_details: educationsDetails,
     avatar: typeof raw.avatar === "string" ? raw.avatar : null,
   };
