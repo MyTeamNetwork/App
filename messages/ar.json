@@ -180,6 +180,7 @@
     "reviewPending": "مراجعة الأعضاء المعلقين",
     "viewApprovals": "عرض الموافقات",
     "pendingApprovals": "الموافقات المعلقة",
+    "pendingApprovalsCount": "الموافقات المعلقة: {count}",
     "orgName": {
       "title": "اسم المنظمة",
       "description": "تغيير الاسم المعروض لمنظمتك.",

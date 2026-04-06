@@ -180,6 +180,7 @@
     "reviewPending": "Esamina membri in attesa",
     "viewApprovals": "Visualizza approvazioni",
     "pendingApprovals": "Approvazioni in attesa",
+    "pendingApprovalsCount": "Approvazioni in attesa: {count}",
     "orgName": {
       "title": "Nome dell'organizzazione",
       "description": "Modifica il nome visualizzato della tua organizzazione.",

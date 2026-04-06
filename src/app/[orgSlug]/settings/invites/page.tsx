@@ -156,14 +156,14 @@ export default function InvitesPage() {
           <div>
             <h3 className="font-semibold text-foreground">{tSettings("requireApproval")}</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              {tSettings("requireApprovalDescription")}
+              {tSettings("requireApprovalDesc")}
             </p>
           </div>
           <ToggleSwitch
             checked={requireApproval}
             onChange={handleToggleApproval}
             disabled={isSavingToggle}
-            label="Require invite approval"
+            label={tSettings("requireApprovalLabel")}
           />
         </div>
         {approvalError && (
@@ -174,14 +174,14 @@ export default function InvitesPage() {
         <div className={`mt-4 flex items-center justify-between p-3 rounded-lg ${pendingCount > 0 ? "bg-amber-50 dark:bg-amber-900/20" : "bg-muted/50"}`}>
           <span className={`text-sm ${pendingCount > 0 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}>
             {pendingCount > 0
-              ? tSettings("pendingApprovals", { count: pendingCount })
-              : tSettings("noPendingApprovals")}
+              ? tSettings("pendingApprovalsCount", { count: pendingCount })
+              : tCommon("noPendingApprovals")}
           </span>
           <Link
             href={`/${orgSlug}/settings/approvals`}
             className={`text-sm font-medium hover:underline ${pendingCount > 0 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
           >
-            {pendingCount > 0 ? tSettings("reviewPendingMembers") : tSettings("viewApprovals")}
+            {pendingCount > 0 ? tSettings("reviewPending") : tSettings("viewApprovals")}
           </Link>
         </div>
       </Card>

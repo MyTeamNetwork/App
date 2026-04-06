@@ -180,6 +180,7 @@
     "reviewPending": "Review pending members",
     "viewApprovals": "View approvals",
     "pendingApprovals": "Pending Approvals",
+    "pendingApprovalsCount": "Pending approvals: {count}",
     "orgName": {
       "title": "Organization name",
       "description": "Change your organization's display name.",

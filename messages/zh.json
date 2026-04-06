@@ -180,6 +180,7 @@
     "reviewPending": "审核待处理成员",
     "viewApprovals": "查看审批",
     "pendingApprovals": "待审批",
+    "pendingApprovalsCount": "待审批：{count}",
     "orgName": {
       "title": "组织名称",
       "description": "更改组织的显示名称。",
