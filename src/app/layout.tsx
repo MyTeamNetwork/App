@@ -3,7 +3,6 @@ import "./globals.css";
 import { ErrorBoundaryProvider } from "@/components/errors/ErrorBoundaryProvider";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { Toaster } from "sonner";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import { SITE_DESCRIPTION, SITE_ICON_PATHS, SITE_NAME, SITE_URL } from "@/lib/site-metadata";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
@@ -46,7 +45,6 @@ export default async function RootLayout({
               {children}
             </ErrorBoundaryProvider>
             <Toaster position="bottom-right" richColors closeButton />
-            <SpeedInsights />
           </ThemeProvider>
         </NextIntlClientProvider>
       </body>
