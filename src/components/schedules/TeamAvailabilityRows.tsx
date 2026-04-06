@@ -334,7 +334,7 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
             className="min-w-[476px]"
             style={{ display: "grid", gridTemplateColumns: gridCols, gridTemplateRows: `68px repeat(4, 64px)` }}
           >
-            <div className="sticky left-0 z-20 bg-card border-b border-r border-border/40" />
+            <div className="sticky left-0 z-20 bg-card border-b border-r border-border/60" />
             {[0,1,2,3,4,5,6].map((i) => (
               <div key={i} className="border-b border-l border-border/30 bg-muted/20" />
             ))}
@@ -355,7 +355,7 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
             style={{ display: "grid", gridTemplateColumns: gridCols, gridTemplateRows: gridRows }}
           >
             {/* ── Corner ── */}
-            <div className="sticky left-0 z-20 bg-card border-b border-r border-border/40" />
+            <div className="sticky left-0 z-20 bg-card border-b border-r border-border/60" />
 
             {/* ── Day headers ── */}
             {week.weekDays.map((day) => {
@@ -366,12 +366,12 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
                 <div
                   key={`hdr-${dateKey}`}
                   className={[
-                    "border-b border-l border-border/40 flex flex-col items-center justify-center gap-1 px-2 py-2",
+                    "border-b border-l border-border/60 flex flex-col items-center justify-center gap-1 px-2 py-2",
                     isToday ? "bg-org-primary/[0.04]" : "bg-card",
                     bw ? "border-b-2 border-b-emerald-500/60" : "",
                   ].join(" ")}
                 >
-                  <span className={`text-[10px] font-semibold uppercase tracking-widest ${isToday ? "text-org-primary" : "text-muted-foreground"}`}>
+                  <span className={`text-[10px] font-semibold uppercase tracking-widest ${isToday ? "text-foreground" : "text-muted-foreground"}`}>
                     {day.toLocaleDateString("en-US", { weekday: "short" })}
                   </span>
                   <span className={[
@@ -504,7 +504,7 @@ export function TeamAvailabilityRows({ schedules, orgId, timeZone }: TeamAvailab
       {selectedCellData && (
         <div className="rounded-xl border border-border/60 bg-card shadow-sm overflow-hidden">
           {/* Panel header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/20">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 bg-muted/20">
             <div>
               <p className="text-sm font-semibold text-foreground">
                 {hourToLabel(selectedCellData.hour)}–{hourToLabel(selectedCellData.hour + 1)}{" "}

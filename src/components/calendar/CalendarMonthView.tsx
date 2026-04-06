@@ -241,7 +241,7 @@ export function CalendarMonthView({ orgId, orgSlug, initialEvents, timeZone, rig
       </div>
 
       {/* Month grid */}
-      <div className="grid grid-cols-7 border-l border-t border-border/40 rounded-sm overflow-hidden">
+      <div className="grid grid-cols-7 border-l border-t border-border/60 rounded-sm overflow-hidden">
         {monthGrid.flat().map((cellDate, idx) => {
           const cellKey = toDateKeyInTimeZone(cellDate, timeZone);
           const isCurrentMonth = cellDate.getMonth() === month;
@@ -253,7 +253,7 @@ export function CalendarMonthView({ orgId, orgSlug, initialEvents, timeZone, rig
           return (
             <div
               key={idx}
-              className="border-r border-b border-border/40 min-h-[90px] sm:min-h-[110px] p-1.5 flex flex-col gap-0.5 bg-background"
+              className="border-r border-b border-border/60 min-h-[90px] sm:min-h-[110px] p-1.5 flex flex-col gap-0.5 bg-card"
             >
               {/* Date number */}
               <div className="flex justify-start mb-0.5">
@@ -285,7 +285,7 @@ export function CalendarMonthView({ orgId, orgSlug, initialEvents, timeZone, rig
                         key={event.id}
                         href={href}
                         title={event.title}
-                        className={`hidden sm:block text-xs font-medium text-white px-1.5 py-0.5 rounded truncate leading-tight hover:opacity-80 transition-opacity ${dot}`}
+                        className={`hidden sm:block text-xs font-medium text-white px-1.5 py-0.5 rounded truncate leading-tight hover:opacity-80 transition-opacity border border-foreground/10 ${dot}`}
                       >
                         {event.title}
                       </Link>
@@ -296,7 +296,7 @@ export function CalendarMonthView({ orgId, orgSlug, initialEvents, timeZone, rig
                     <div
                       key={event.id}
                       title={event.title}
-                      className={`hidden sm:block text-xs font-medium text-white px-1.5 py-0.5 rounded truncate leading-tight ${dot}`}
+                      className={`hidden sm:block text-xs font-medium text-white px-1.5 py-0.5 rounded truncate leading-tight border border-foreground/10 ${dot}`}
                     >
                       {event.title}
                     </div>
@@ -309,7 +309,7 @@ export function CalendarMonthView({ orgId, orgSlug, initialEvents, timeZone, rig
                     {cellEvents.slice(0, 3).map((event) => (
                       <span
                         key={event.id}
-                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getSourceColors(event.sourceType).dot}`}
+                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ring-1 ring-foreground/10 ${getSourceColors(event.sourceType).dot}`}
                       />
                     ))}
                   </div>
