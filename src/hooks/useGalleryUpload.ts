@@ -33,6 +33,7 @@ export interface UploadFileEntry {
   previewFile: File | null;
   fileName: string;
   fileSize: number;
+  previewFileSize: number;
   mimeType: string;
   previewMimeType: string | null;
   previewUrl: string | null;
@@ -251,6 +252,7 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
         let previewUrl: string | null = URL.createObjectURL(file);
         let previewMimeType: string | null = null;
         let fileSize = file.size;
+        let previewFileSize = 0;
 
         if (mimeType.startsWith("image/")) {
           try {
@@ -259,6 +261,7 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
             previewFile = prepared.previewFile;
             previewMimeType = prepared.previewMimeType;
             fileSize = prepared.file.size;
+            previewFileSize = prepared.previewFile?.size ?? 0;
             URL.revokeObjectURL(previewUrl);
             previewUrl = prepared.previewUrl;
             console.log("[media/upload] prepared gallery image", {
@@ -282,6 +285,7 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
           previewFile,
           fileName: uploadFile.name,
           fileSize,
+          previewFileSize,
           mimeType: uploadFile.type || mimeType,
           previewMimeType,
           previewUrl,
@@ -383,6 +387,7 @@ export function useGalleryUpload({ orgId, targetAlbumId, onFileComplete }: UseGa
             mimeType: entry.mimeType,
             fileSizeBytes: entry.fileSize,
             previewMimeType: entry.previewMimeType ?? undefined,
+            previewFileSizeBytes: entry.previewFileSize || undefined,
             title: entry.title.trim() || deriveDefaultTitle(entry.fileName),
             description: entry.description.trim() || undefined,
             tags,

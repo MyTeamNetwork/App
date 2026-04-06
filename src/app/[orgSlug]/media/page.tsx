@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import { getTranslations } from "next-intl/server";
 import { getOrgContext } from "@/lib/auth/roles";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { MediaStorageUsageBar } from "@/components/media/MediaStorageUsageBar";
 
 const MediaGallery = dynamic(
   () => import("@/components/media/MediaGallery").then((mod) => mod.MediaGallery),
@@ -31,6 +32,7 @@ export default async function MediaArchivePage({
         title={(await getTranslations("nav.items"))("media")}
         description={(await getTranslations("pages.media"))("description")}
       />
+      <MediaStorageUsageBar orgId={orgCtx.organization.id} isAdmin={isAdmin} />
       <MediaGallery
         orgId={orgCtx.organization.id}
         canUpload={canUpload}

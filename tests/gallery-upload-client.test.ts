@@ -13,6 +13,7 @@ function makeEntry(overrides: Partial<UploadFileEntry> = {}): UploadFileEntry {
     previewFile: null,
     fileName: "spring-game.jpg",
     fileSize: 1024,
+    previewFileSize: 256,
     mimeType: "image/jpeg",
     previewMimeType: "image/jpeg",
     previewUrl: "blob:preview",

@@ -10,11 +10,16 @@ import { getOrgMembership } from "@/lib/auth/api-helpers";
 import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
 import { validateFileConstraints } from "@/lib/media/validation";
 import { isImageMimeType, type MediaFeature } from "@/lib/media/constants";
+import { checkStorageQuota } from "@/lib/media/storage-quota";
+import type { Database } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const BUCKET = "org-media";
+type MediaUploadInsert = Database["public"]["Tables"]["media_uploads"]["Insert"] & {
+  preview_file_size?: number | null;
+};
 
 function extensionForMimeType(mimeType: string): string {
   if (mimeType === "image/png") return "png";
@@ -105,14 +110,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Per-org storage quota enforcement (fail-closed on lookup error).
+    const serviceClient = createServiceClient();
+    const quota = await checkStorageQuota(
+      serviceClient,
+      body.orgId,
+      body.fileSize,
+      body.previewFileSize ?? 0,
+    );
+    if (!quota.ok) {
+      if (quota.reason === "lookup_failed") {
+        return NextResponse.json(
+          { error: "Failed to verify storage quota" },
+          { status: 500, headers: rateLimit.headers },
+        );
+      }
+      return NextResponse.json(
+        {
+          error: "Storage quota exceeded",
+          code: "STORAGE_QUOTA_EXCEEDED",
+          usedBytes: quota.usedBytes,
+          quotaBytes: quota.quotaBytes,
+        },
+        { status: 507, headers: rateLimit.headers },
+      );
+    }
+
     // Generate storage path
     const ext = extname(body.fileName).replace(".", "").toLowerCase() || "bin";
     const storagePath = `${body.orgId}/${body.feature}/${randomUUID()}.${ext}`;
     const previewStoragePath = isImageMimeType(body.mimeType) && body.previewMimeType
       ? `${storagePath.replace(/\.[^.]+$/, "")}-preview.${extensionForMimeType(body.previewMimeType)}`
       : null;
-
-    const serviceClient = createServiceClient();
 
     const [signedOriginal, signedPreview] = await Promise.all([
       serviceClient.storage.from(BUCKET).createSignedUploadUrl(storagePath),
@@ -138,18 +167,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert media_uploads record
+    const uploadRecord: MediaUploadInsert = {
+      organization_id: body.orgId,
+      uploader_id: user.id,
+      storage_path: storagePath,
+      preview_storage_path: previewStoragePath,
+      file_name: body.fileName,
+      mime_type: body.mimeType,
+      file_size: body.fileSize,
+      preview_file_size: body.previewFileSize ?? null,
+      status: "pending",
+    };
+
     const { data: mediaRecord, error: insertError } = await serviceClient
       .from("media_uploads")
-      .insert({
-        organization_id: body.orgId,
-        uploader_id: user.id,
-        storage_path: storagePath,
-        preview_storage_path: previewStoragePath,
-        file_name: body.fileName,
-        mime_type: body.mimeType,
-        file_size: body.fileSize,
-        status: "pending",
-      })
+      .insert(uploadRecord)
       .select("id")
       .single();
 

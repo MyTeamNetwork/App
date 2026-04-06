@@ -20,9 +20,14 @@ import {
   buildGalleryCursorResponse,
 } from "@/lib/pagination/cursor";
 import { batchGetGridPreviewUrls, MEDIA_CACHE_HEADERS } from "@/lib/media/urls";
+import { checkStorageQuota } from "@/lib/media/storage-quota";
+import type { Database } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+type MediaItemUpdate = Database["public"]["Tables"]["media_items"]["Update"] & {
+  preview_file_size_bytes?: number | null;
+};
 
 /**
  * GET /api/media — List gallery items with cursor pagination
@@ -227,6 +232,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
     }
 
+    // Per-org storage quota enforcement (fail-closed on lookup error).
+    const quota = await checkStorageQuota(
+      serviceClient,
+      orgId,
+      fileSizeBytes,
+      body.previewFileSizeBytes ?? 0,
+    );
+    if (!quota.ok) {
+      if (quota.reason === "lookup_failed") {
+        return NextResponse.json(
+          { error: "Failed to verify storage quota" },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json(
+        {
+          error: "Storage quota exceeded",
+          code: "STORAGE_QUOTA_EXCEEDED",
+          usedBytes: quota.usedBytes,
+          quotaBytes: quota.quotaBytes,
+        },
+        { status: 507 },
+      );
+    }
+
     // Determine media type from MIME
     const mediaType = mimeType.startsWith("image/") ? "image" : "video";
 
@@ -275,6 +305,23 @@ export async function POST(request: NextRequest) {
         error: createError,
       });
       return NextResponse.json({ error: "Failed to create media item" }, { status: 500 });
+    }
+
+    if (body.previewFileSizeBytes) {
+      const previewSizeUpdate: MediaItemUpdate = {
+        preview_file_size_bytes: body.previewFileSizeBytes,
+      };
+
+      const { error: previewSizeError } = await serviceClient
+        .from("media_items")
+        .update(previewSizeUpdate)
+        .eq("id", mediaId)
+        .eq("status", initialStatus);
+
+      if (previewSizeError) {
+        await serviceClient.from("media_items").delete().eq("id", mediaId);
+        return NextResponse.json({ error: "Failed to create media item" }, { status: 500 });
+      }
     }
 
     // Generate signed upload URL

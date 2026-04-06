@@ -26,6 +26,7 @@ type PreparedFeedImage = {
   previewUrl: string;
   fileName: string;
   fileSize: number;
+  previewFileSize: number;
   mimeType: string;
   previewMimeType: string | null;
 };
@@ -122,6 +123,7 @@ export function FeedComposer({ orgId, userName }: FeedComposerProps) {
             previewUrl: prepared.previewUrl || URL.createObjectURL(prepared.file),
             fileName: prepared.file.name,
             fileSize: prepared.file.size,
+            previewFileSize: prepared.previewFile?.size ?? 0,
             mimeType: prepared.mimeType,
             previewMimeType: prepared.previewMimeType,
           });
@@ -135,6 +137,7 @@ export function FeedComposer({ orgId, userName }: FeedComposerProps) {
           previewUrl,
           fileName: file.name,
           fileSize: file.size,
+          previewFileSize: 0,
           mimeType: file.type,
           previewMimeType: null,
         });
@@ -179,6 +182,7 @@ export function FeedComposer({ orgId, userName }: FeedComposerProps) {
         mimeType: file.mimeType,
         fileSize: file.fileSize,
         previewMimeType: file.previewMimeType,
+        previewFileSize: file.previewFileSize || undefined,
       }),
     });
 

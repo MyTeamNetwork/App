@@ -432,6 +432,8 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
     setSelectedAlbum(album);
   }, []);
 
+  const [albumRefreshToken, setAlbumRefreshToken] = useState(0);
+
   const handleAlbumDeleted = useCallback((albumId: string) => {
     setHiddenAlbumIds((prev) => {
       if (prev.has(albumId)) return prev;
@@ -441,6 +443,9 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
     });
     dismissImportAlbum(albumId);
     setSelectedAlbum((prev) => (prev?.id === albumId ? null : prev));
+    // Force AlbumGrid to refetch with cache-busting so the deleted album
+    // doesn't reappear from a stale browser cache on remount.
+    setAlbumRefreshToken((t) => t + 1);
   }, [dismissImportAlbum]);
 
   const toggleItem = useCallback((id: string) => {
@@ -687,6 +692,7 @@ export function MediaGallery({ orgId, canUpload, isAdmin, currentUserId }: Media
           canCreate={canUpload}
           hiddenAlbumIds={hiddenAlbumIds}
           onSelectAlbum={setSelectedAlbum}
+          refreshToken={albumRefreshToken}
         />
       )}
 

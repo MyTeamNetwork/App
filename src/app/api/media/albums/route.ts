@@ -10,7 +10,7 @@ import {
   shouldListMediaAlbum,
   withMediaAlbumsDraftColumnFallback,
 } from "@/lib/media/gallery-upload-server";
-import { batchGetGridPreviewUrls, MEDIA_CACHE_HEADERS } from "@/lib/media/urls";
+import { batchGetGridPreviewUrls, MEDIA_LIST_CACHE_HEADERS } from "@/lib/media/urls";
 import { shouldExposeAlbumCover } from "@/lib/media/albums";
 import { z } from "zod";
 
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
       if (albumIds.length === 0) {
         return NextResponse.json(
           { data: [] },
-          { headers: { ...rateLimit.headers, ...MEDIA_CACHE_HEADERS } },
+          { headers: { ...rateLimit.headers, ...MEDIA_LIST_CACHE_HEADERS } },
         );
       }
       // Reuse the same fallback path for both select shapes.
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 
       return enrichAlbumsWithCovers(serviceClient, visibleAlbums, {
         ...rateLimit.headers,
-        ...MEDIA_CACHE_HEADERS,
+        ...MEDIA_LIST_CACHE_HEADERS,
       });
     }
 
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
 
     return enrichAlbumsWithCovers(serviceClient, visibleAlbums, {
       ...rateLimit.headers,
-      ...MEDIA_CACHE_HEADERS,
+      ...MEDIA_LIST_CACHE_HEADERS,
     });
   } catch (error) {
     if (error instanceof ValidationError) return validationErrorResponse(error);

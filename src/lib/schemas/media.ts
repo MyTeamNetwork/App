@@ -54,11 +54,18 @@ export const uploadIntentSchema = z.object({
   mimeType: safeString(127),
   fileSize: z.number().int().positive().max(25 * 1024 * 1024),
   previewMimeType: previewImageMimeTypeSchema.optional(),
+  previewFileSize: z.number().int().nonnegative().max(25 * 1024 * 1024).optional(),
 }).refine(
   (data) => data.mimeType.startsWith("image/") || data.previewMimeType === undefined,
   {
     message: "Preview uploads are only supported for images",
     path: ["previewMimeType"],
+  },
+).refine(
+  (data) => data.previewMimeType !== undefined || data.previewFileSize === undefined,
+  {
+    message: "Preview size is only allowed when preview uploads are present",
+    path: ["previewFileSize"],
   },
 );
 
@@ -146,6 +153,7 @@ export const galleryUploadIntentSchema = z.object({
   mimeType: galleryMimeTypeSchema,
   fileSizeBytes: z.number().int().positive().max(GALLERY_VIDEO_MAX_BYTES),
   previewMimeType: previewImageMimeTypeSchema.optional(),
+  previewFileSizeBytes: z.number().int().nonnegative().max(GALLERY_IMAGE_MAX_BYTES).optional(),
   title: optionalSafeString(200),
   description: optionalSafeString(2000),
   tags: galleryTagsSchema,
@@ -164,6 +172,12 @@ export const galleryUploadIntentSchema = z.object({
   {
     message: "Preview uploads are only supported for images",
     path: ["previewMimeType"],
+  },
+).refine(
+  (data) => data.previewMimeType !== undefined || data.previewFileSizeBytes === undefined,
+  {
+    message: "Preview size is only allowed when preview uploads are present",
+    path: ["previewFileSizeBytes"],
   },
 );
 export type GalleryUploadIntentInput = z.infer<typeof galleryUploadIntentSchema>;

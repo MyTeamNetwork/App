@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { createClient } from "@/lib/supabase/client";
 import { Badge, Card } from "@/components/ui";
 
 interface StorageStats {
@@ -26,17 +25,18 @@ function formatBytes(bytes: number): string {
 }
 
 export function StorageUsageCard({ orgId }: StorageUsageCardProps) {
-  const supabase = useMemo(() => createClient(), []);
   const tSettings = useTranslations("settings");
   const tCommon = useTranslations("common");
   const [storageStats, setStorageStats] = useState<StorageStats | null>(null);
 
   useEffect(() => {
     const fetchStats = async () => {
-      const { data, error } = await supabase.rpc("get_media_storage_stats", {
-        p_org_id: orgId,
+      const res = await fetch(`/api/media/storage-stats?orgId=${encodeURIComponent(orgId)}`, {
+        cache: "no-store",
       });
-      if (!error && data && typeof data === "object" && "allowed" in (data as Record<string, unknown>) && (data as Record<string, unknown>).allowed) {
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && typeof data === "object" && "allowed" in (data as Record<string, unknown>) && (data as Record<string, unknown>).allowed) {
         const d = data as Record<string, unknown>;
         setStorageStats({
           total_bytes: (d.total_bytes as number) ?? 0,
@@ -50,7 +50,7 @@ export function StorageUsageCard({ orgId }: StorageUsageCardProps) {
     };
 
     fetchStats();
-  }, [orgId, supabase]);
+  }, [orgId]);
 
   if (!storageStats) return null;
 

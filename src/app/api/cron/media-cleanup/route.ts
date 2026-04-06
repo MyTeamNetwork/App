@@ -15,7 +15,7 @@ const STALE_HOURS = 24;
 
 /**
  * Daily cron job to clean up orphaned media uploads.
- * Deletes storage files and marks rows as orphaned for pending uploads older than 24 hours.
+ * Deletes storage files and removes stale upload-intent rows older than 24 hours.
  */
 export async function GET(request: Request) {
   const authError = validateCronAuth(request);
@@ -64,6 +64,43 @@ export async function GET(request: Request) {
       }
     }
 
+    const { data: staleGalleryItems, error: galleryQueryError } = await supabase
+      .from("media_items")
+      .select("id, storage_path, preview_storage_path")
+      .eq("status", "uploading")
+      .is("deleted_at", null)
+      .lt("created_at", cutoff)
+      .limit(BATCH_SIZE);
+
+    if (galleryQueryError) {
+      console.error("[cron/media-cleanup] Gallery query error:", galleryQueryError);
+      return NextResponse.json({ error: "Failed to query stale gallery uploads" }, { status: 500 });
+    }
+
+    let cleanedUpGalleryItems = 0;
+
+    for (const item of staleGalleryItems || []) {
+      const storagePaths = [item.storage_path, item.preview_storage_path]
+        .filter((path): path is string => Boolean(path));
+      if (storagePaths.length > 0) {
+        await supabase.storage.from(BUCKET).remove(storagePaths);
+      }
+
+      const { error: updateGalleryError } = await supabase
+        .from("media_items")
+        .update({
+          deleted_at: new Date().toISOString(),
+        })
+        .eq("id", item.id)
+        .eq("status", "uploading");
+
+      if (!updateGalleryError) {
+        cleanedUpGalleryItems++;
+      } else {
+        console.error(`[cron/media-cleanup] Failed to soft-delete gallery item ${item.id}:`, updateGalleryError);
+      }
+    }
+
     const { data: candidateDraftAlbums, error: draftQueryError } = await supabase
       .from("media_albums")
       .select("id, is_upload_draft, item_count, created_at, deleted_at")
@@ -77,8 +114,9 @@ export async function GET(request: Request) {
       if (isMissingMediaAlbumsDraftColumnError(draftQueryError)) {
         return NextResponse.json({
           success: true,
-          cleanedUp: cleanedUpUploads,
+          cleanedUp: cleanedUpUploads + cleanedUpGalleryItems,
           cleanedUpUploads,
+          cleanedUpGalleryItems,
           cleanedUpDraftAlbums: 0,
         });
       }
@@ -107,8 +145,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      cleanedUp: cleanedUpUploads + cleanedUpDraftAlbums,
+      cleanedUp: cleanedUpUploads + cleanedUpGalleryItems + cleanedUpDraftAlbums,
       cleanedUpUploads,
+      cleanedUpGalleryItems,
       cleanedUpDraftAlbums,
     });
   } catch (err) {

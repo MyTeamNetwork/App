@@ -31,6 +31,12 @@ interface AlbumGridProps {
   canCreate: boolean;
   hiddenAlbumIds?: Iterable<string>;
   onSelectAlbum: (album: MediaAlbum) => void;
+  /**
+   * Bumping this value triggers a fresh, cache-busting refetch of albums.
+   * Used by parents after a delete so the gallery doesn't show ghost albums
+   * from a stale browser cache.
+   */
+  refreshToken?: number;
 }
 
 function usePrefersReducedMotion(): boolean {
@@ -86,7 +92,7 @@ function SortableAlbumRow({
   );
 }
 
-export function AlbumGrid({ orgId, canCreate, hiddenAlbumIds, onSelectAlbum }: AlbumGridProps) {
+export function AlbumGrid({ orgId, canCreate, hiddenAlbumIds, onSelectAlbum, refreshToken }: AlbumGridProps) {
   const tMedia = useTranslations("media");
   const tCommon = useTranslations("common");
   const { importingAlbum } = useMediaUploadManager();
@@ -110,7 +116,12 @@ export function AlbumGrid({ orgId, canCreate, hiddenAlbumIds, onSelectAlbum }: A
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/media/albums?orgId=${encodeURIComponent(orgId)}`);
+      // cache: "no-store" — belt-and-braces guard against any intermediate
+      // browser cache so deletes are reflected immediately. The server now
+      // also returns max-age=0 for this endpoint.
+      const res = await fetch(`/api/media/albums?orgId=${encodeURIComponent(orgId)}`, {
+        cache: "no-store",
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error || tMedia("failedToLoadAlbums"));
@@ -126,7 +137,7 @@ export function AlbumGrid({ orgId, canCreate, hiddenAlbumIds, onSelectAlbum }: A
 
   useEffect(() => {
     fetchAlbums();
-  }, [fetchAlbums]);
+  }, [fetchAlbums, refreshToken]);
 
   const albumIds = useMemo(() => visibleAlbums.map((a) => a.id), [visibleAlbums]);
 

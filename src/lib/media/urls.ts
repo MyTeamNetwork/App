@@ -13,6 +13,13 @@ export const MEDIA_CACHE_HEADERS = {
   "Cache-Control": `private, max-age=${Math.floor(SIGNED_URL_EXPIRY / 12)}`,
 } as const;
 
+// Album/list payloads are tiny and must be fresh — long browser caching here
+// caused "ghost albums" after a delete because the stale list kept rendering.
+// Item-level routes that embed signed URLs continue to use MEDIA_CACHE_HEADERS.
+export const MEDIA_LIST_CACHE_HEADERS = {
+  "Cache-Control": "private, max-age=0, must-revalidate",
+} as const;
+
 export type MediaUrlResult = {
   originalUrl: string | null;
   previewUrl: string | null;

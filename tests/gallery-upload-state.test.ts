@@ -12,6 +12,7 @@ function makeEntry(id: string, overrides: Partial<UploadFileEntry> = {}): Upload
     previewFile: null,
     fileName: `${id}.jpg`,
     fileSize: 1234,
+    previewFileSize: 321,
     mimeType: "image/jpeg",
     previewMimeType: "image/jpeg",
     previewUrl: null,
