@@ -265,7 +265,10 @@ const nextConfig = {
               "default-src 'self'",
               "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://js.hcaptcha.com https://challenges.cloudflare.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "img-src 'self' blob: data: https://lh3.googleusercontent.com https://avatars.githubusercontent.com https://rytsziwekhtjdqzzpdso.supabase.co https://media.licdn.com",
+              // External member avatars are browser-fetched via <img>, so CSP
+              // must allow arbitrary HTTPS image origins without widening the
+              // Next.js server-side optimizer allowlist.
+              "img-src 'self' blob: data: https:",
               "font-src 'self' https://fonts.gstatic.com",
               "frame-src https://hcaptcha.com https://newassets.hcaptcha.com https://challenges.cloudflare.com https://js.stripe.com https://connect.stripe.com https://*.stripe.com",
               "media-src 'self' blob: https://rytsziwekhtjdqzzpdso.supabase.co",
