@@ -1,6 +1,7 @@
 import { GALLERY_ALLOWED_MIME_TYPES } from "@/lib/schemas/media";
 
 export const GALLERY_IMAGE_MAX_BYTES = 10 * 1024 * 1024; // 10MB
+export const GALLERY_RAW_IMAGE_MAX_BYTES = 50 * 1024 * 1024; // 50MB
 export const GALLERY_VIDEO_MAX_BYTES = 100 * 1024 * 1024; // 100MB
 const MAX_BATCH_SIZE = 100;
 
@@ -52,6 +53,10 @@ export function validateGalleryRawFile(file: File): ValidationResult {
 
   if (file.size === 0) {
     return { valid: false, error: "File is empty." };
+  }
+
+  if (mimeType.startsWith("image/") && file.size > GALLERY_RAW_IMAGE_MAX_BYTES) {
+    return { valid: false, error: "Images must be under 50 MB before upload." };
   }
 
   // Videos are uploaded as-is, so cap the raw size here. Images are checked

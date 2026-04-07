@@ -3,6 +3,7 @@ import {
   type PreparedImageUpload,
 } from "@/lib/media/image-preparation";
 import { MEDIA_CONSTRAINTS } from "@/lib/media/constants";
+import { GALLERY_RAW_IMAGE_MAX_BYTES } from "@/lib/media/gallery-validation";
 
 /**
  * Single source of truth for the feed-post upload size cap. Imported by
@@ -13,6 +14,8 @@ export const FEED_POST_MAX_FILE_SIZE = MEDIA_CONSTRAINTS.feed_post.maxFileSize;
 
 const MAX_IMAGES = MEDIA_CONSTRAINTS.feed_post.maxAttachments;
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const GIF87A_HEADER = [0x47, 0x49, 0x46, 0x38, 0x37, 0x61];
+const GIF89A_HEADER = [0x47, 0x49, 0x46, 0x38, 0x39, 0x61];
 
 export interface PreparedFeedImage {
   file: File;
@@ -41,6 +44,27 @@ export interface PrepareFeedImagesResult {
   prepared: PreparedFeedImage[];
   /** Human-readable rejection messages, one per skipped file. */
   skipped: string[];
+}
+
+function matchesHeader(bytes: Uint8Array, header: number[]): boolean {
+  return header.every((byte, index) => bytes[index] === byte);
+}
+
+async function sniffGifHeader(file: File): Promise<"valid" | "empty" | "invalid"> {
+  if (file.size === 0) {
+    return "empty";
+  }
+
+  const header = new Uint8Array(await file.slice(0, 6).arrayBuffer());
+  if (header.length < 6) {
+    return "invalid";
+  }
+
+  if (matchesHeader(header, GIF87A_HEADER) || matchesHeader(header, GIF89A_HEADER)) {
+    return "valid";
+  }
+
+  return "invalid";
 }
 
 /**
@@ -80,9 +104,23 @@ export async function prepareFeedImageEntries(
       continue;
     }
 
+    if (file.size > GALLERY_RAW_IMAGE_MAX_BYTES) {
+      skipped.push(`${file.name}: must be under 50MB before upload`);
+      continue;
+    }
+
     // GIFs are passed through without prep so animation is preserved.
     // Their size cap is enforced raw-time.
     if (file.type === "image/gif") {
+      const gifHeaderStatus = await sniffGifHeader(file);
+      if (gifHeaderStatus === "empty") {
+        skipped.push(`${file.name}: file is empty`);
+        continue;
+      }
+      if (gifHeaderStatus === "invalid") {
+        skipped.push(`${file.name}: invalid GIF header`);
+        continue;
+      }
       if (file.size > FEED_POST_MAX_FILE_SIZE) {
         skipped.push(`${file.name}: must be under 10MB`);
         continue;

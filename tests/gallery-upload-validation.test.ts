@@ -4,6 +4,7 @@ import {
   validateGalleryRawFile,
   validateGalleryPreparedSize,
   GALLERY_IMAGE_MAX_BYTES,
+  GALLERY_RAW_IMAGE_MAX_BYTES,
 } from "@/lib/media/gallery-validation";
 
 // A real 14 MB JPEG is the motivating case — iPhone photo that compresses to
@@ -13,6 +14,21 @@ test("validateGalleryRawFile accepts a 14 MB JPEG (raw size no longer gates)", (
   const file = new File([bytes], "IMG_0001.jpeg", { type: "image/jpeg" });
   const result = validateGalleryRawFile(file);
   assert.equal(result.valid, true);
+});
+
+test("validateGalleryRawFile accepts a 49 MB JPEG at the raw image boundary", () => {
+  const file = new File([new Uint8Array(0)], "large.jpeg", { type: "image/jpeg" });
+  Object.defineProperty(file, "size", { value: 49 * 1024 * 1024 });
+  const result = validateGalleryRawFile(file);
+  assert.equal(result.valid, true);
+});
+
+test("validateGalleryRawFile rejects a 51 MB JPEG before prep", () => {
+  const file = new File([new Uint8Array(0)], "too-large.jpeg", { type: "image/jpeg" });
+  Object.defineProperty(file, "size", { value: 51 * 1024 * 1024 });
+  const result = validateGalleryRawFile(file);
+  assert.equal(result.valid, false);
+  assert.equal(result.error, "Images must be under 50 MB before upload.");
 });
 
 test("validateGalleryRawFile rejects HEIC with browser-conversion message", () => {
@@ -86,4 +102,8 @@ test("validateGalleryPreparedSize is a no-op for videos (video cap is raw-time)"
 
 test("GALLERY_IMAGE_MAX_BYTES is exported as the 10 MB constant", () => {
   assert.equal(GALLERY_IMAGE_MAX_BYTES, 10 * 1024 * 1024);
+});
+
+test("GALLERY_RAW_IMAGE_MAX_BYTES is exported as the 50 MB constant", () => {
+  assert.equal(GALLERY_RAW_IMAGE_MAX_BYTES, 50 * 1024 * 1024);
 });
