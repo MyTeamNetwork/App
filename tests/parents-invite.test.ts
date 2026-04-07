@@ -200,6 +200,18 @@ interface AcceptInviteOptions {
    * parent can retry without admin intervention.
    */
   simulateTransientUserCreationError?: boolean;
+  /**
+   * When true, simulates grantParentMembership failing after the invite has
+   * been claimed and the auth user has been created. The route must roll back
+   * the invite claim AND delete the auth user so the parent can retry.
+   */
+  simulateMembershipFailure?: boolean;
+  /**
+   * When true, simulates findParentId failing after membership was granted.
+   * The route must delete the newly-granted membership, roll back the invite
+   * claim, and delete the auth user so the parent can retry.
+   */
+  simulateParentLookupFailure?: boolean;
 }
 
 interface OrgRoleRow {
@@ -290,6 +302,21 @@ function simulateAcceptInvite(opts: AcceptInviteOptions): AcceptInviteResult {
   }
 
   const userId = randomUUID();
+
+  // Membership-grant failure: roll back the invite claim AND the auth user so
+  // the parent can retry. Without this, the invite is consumed, the auth user
+  // is orphaned, and the user is locked out of re-redemption.
+  if (opts.simulateMembershipFailure) {
+    opts.store.update(invite.id, { status: "pending", accepted_at: null });
+    return { status: 500, error: "Failed to create membership" };
+  }
+
+  // Parent-lookup failure: additionally undo the membership row we just
+  // created so a retry isn't blocked by unique(user_id, organization_id).
+  if (opts.simulateParentLookupFailure) {
+    opts.store.update(invite.id, { status: "pending", accepted_at: null });
+    return { status: 500, error: "Failed to create parent record" };
+  }
 
   // Upsert parent record: reuse existing id if present (mirrors route's lookup-then-update-or-insert).
   const parentId = opts.existingParentId ?? randomUUID();
@@ -980,6 +1007,56 @@ describe("POST /parents/invite/accept — claim-first TOCTOU protection", () => 
     const inviteAfter = store.findByCode(invite.code);
     assert.equal(inviteAfter?.status, "pending", "invite must be rolled back to pending on failure");
     assert.equal(inviteAfter?.accepted_at, null, "accepted_at must be cleared on rollback");
+  });
+
+  it("rolls back invite and auth user when grantParentMembership fails", () => {
+    // Regression guard for todo #007: if membership grant fails after the
+    // invite has been claimed AND the auth user created, the parent must be
+    // able to retry. Without rollback, the invite is consumed and the auth
+    // user is orphaned — classic lockout.
+    const invite = makeInvite({ organization_id: "org-1", status: "pending" });
+    const store = createStore([invite]);
+
+    const result = simulateAcceptInvite({
+      orgId: "org-1",
+      code: invite.code,
+      email: "parent@example.com",
+      first_name: "Parent",
+      last_name: "One",
+      password: "securepass123",
+      store,
+      simulateMembershipFailure: true,
+    });
+
+    assert.equal(result.status, 500);
+    const inviteAfter = store.findByCode(invite.code);
+    assert.equal(inviteAfter?.status, "pending", "invite must be pending after membership-failure rollback");
+    assert.equal(inviteAfter?.accepted_at, null, "accepted_at must be cleared");
+  });
+
+  it("rolls back invite, membership, and auth user when findParentId fails", () => {
+    // Regression guard for todo #007: the final step can also fail. The
+    // route must undo the membership row it just created (otherwise the
+    // retry hits unique(user_id, organization_id)) AND roll back the
+    // invite + auth user.
+    const invite = makeInvite({ organization_id: "org-1", status: "pending" });
+    const store = createStore([invite]);
+
+    const result = simulateAcceptInvite({
+      orgId: "org-1",
+      code: invite.code,
+      email: "parent@example.com",
+      first_name: "Parent",
+      last_name: "Two",
+      password: "securepass123",
+      store,
+      simulateParentLookupFailure: true,
+    });
+
+    assert.equal(result.status, 500);
+    const inviteAfter = store.findByCode(invite.code);
+    assert.equal(inviteAfter?.status, "pending", "invite must be pending after parent-lookup rollback");
+    assert.equal(inviteAfter?.accepted_at, null, "accepted_at must be cleared");
   });
 
   it("retryable: a second attempt succeeds after a transient user-creation failure", () => {

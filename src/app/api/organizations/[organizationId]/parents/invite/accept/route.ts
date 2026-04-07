@@ -318,6 +318,22 @@ export async function POST(req: Request, { params }: RouteParams) {
     userId = createResult.user.id;
   }
 
+  // Helper: undo everything we've already done if a later step fails.
+  // Without this, a failure in grantParentMembership or findParentId would
+  // leave the invite consumed, the auth user created, and no working
+  // membership — locking the user out of both re-redemption and sign-in.
+  const rollbackAll = async () => {
+    await claimResult.rollback();
+    try {
+      await serviceSupabase.auth.admin.deleteUser(userId);
+    } catch (deleteError) {
+      console.error(
+        "[org/parents/invite/accept] Failed to delete auth user during rollback:",
+        deleteError,
+      );
+    }
+  };
+
   const membershipResult = await grantParentMembership(
     serviceSupabase,
     userId,
@@ -325,6 +341,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     respond,
   );
   if (!membershipResult.ok) {
+    await rollbackAll();
     return membershipResult.response;
   }
 
@@ -336,6 +353,14 @@ export async function POST(req: Request, { params }: RouteParams) {
     respond,
   );
   if ("response" in parentResult) {
+    // Also undo the membership we just created so a retry isn't blocked
+    // by the unique(user_id, organization_id) constraint.
+    await serviceSupabase
+      .from("user_organization_roles")
+      .delete()
+      .eq("user_id", userId)
+      .eq("organization_id", claimResult.organizationId);
+    await rollbackAll();
     return parentResult.response;
   }
 
