@@ -112,47 +112,6 @@ export default function LoginScreen() {
     setApiError("");
   };
 
-  // Dev login - bypasses auth for local development
-  const handleDevLogin = async () => {
-    setEmailLoading(true);
-    setApiError("");
-    try {
-      const devEmail = process.env.EXPO_PUBLIC_DEV_EMAIL;
-      const devPassword = process.env.EXPO_PUBLIC_DEV_PASSWORD;
-      if (!devEmail || !devPassword) {
-        setApiError(
-          "Dev credentials not configured. Add EXPO_PUBLIC_DEV_EMAIL and EXPO_PUBLIC_DEV_PASSWORD to .env.local"
-        );
-        return;
-      }
-      const { error } = await supabase.auth.signInWithPassword({
-        email: devEmail,
-        password: devPassword,
-      });
-      if (error) {
-        // Provide more helpful error messages for common issues
-        let helpfulMessage = error.message;
-        if (error.message === "Invalid login credentials") {
-          helpfulMessage =
-            "Invalid login credentials. Check that the dev user exists in Supabase and the email is confirmed.";
-        } else if (error.message === "Email not confirmed") {
-          helpfulMessage =
-            "Email not confirmed. Confirm the user in Supabase Dashboard or run: UPDATE auth.users SET email_confirmed_at = NOW() WHERE email = '" +
-            devEmail +
-            "';";
-        }
-        setApiError(helpfulMessage);
-        showToast(helpfulMessage, "error");
-      }
-    } catch (e) {
-      const message = (e as Error).message || "An error occurred";
-      setApiError(message);
-      showToast(message, "error");
-    } finally {
-      setEmailLoading(false);
-    }
-  };
-
   // Email/Password sign in
   const handleEmailSignIn = async () => {
     // Clear previous errors
@@ -472,19 +431,6 @@ export default function LoginScreen() {
               </Pressable>
             </Link>
           </View>
-
-          {/* Dev Login - only shown in development */}
-          {__DEV__ && (
-            <Pressable
-              style={({ pressed }) => [styles.devButton, isLoading && styles.devButtonDisabled, pressed && { opacity: 0.7 }]}
-              onPress={handleDevLogin}
-              disabled={isLoading}
-              accessibilityLabel="Developer login"
-              accessibilityRole="button"
-            >
-              <Text style={styles.devButtonText}>Dev Login</Text>
-            </Pressable>
-          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -706,23 +652,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     fontWeight: "600",
   },
-
-  // Dev Button
-  devButton: {
-    backgroundColor: "transparent",
-    paddingVertical: 10,
-    alignItems: "center",
-    marginTop: spacing.lg,
-  },
-  devButtonDisabled: {
-    opacity: 0.5,
-  },
-  devButtonText: {
-    color: colors.placeholder,
-    fontSize: fontSize.xs,
-    fontWeight: "500",
-  },
-
   // Success Message Box
   successBox: {
     backgroundColor: "#f0fdf4",

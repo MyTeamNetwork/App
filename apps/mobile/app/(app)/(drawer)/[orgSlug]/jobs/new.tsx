@@ -20,6 +20,7 @@ import { TYPOGRAPHY } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { formatDatePickerLabel } from "@/lib/date-format";
+import { isValidEmailAddress, isValidHttpsUrl } from "@/lib/url-safety";
 import type { LocationType, ExperienceLevel } from "@/types/jobs";
 
 const LOCATION_TYPE_OPTIONS: { value: LocationType; label: string }[] = [
@@ -247,6 +248,18 @@ export default function NewJobScreen() {
       return;
     }
 
+    const trimmedApplicationUrl = applicationUrl.trim();
+    if (trimmedApplicationUrl && !isValidHttpsUrl(trimmedApplicationUrl)) {
+      setError("Application URL must start with https://");
+      return;
+    }
+
+    const trimmedContactEmail = contactEmail.trim();
+    if (trimmedContactEmail && !isValidEmailAddress(trimmedContactEmail)) {
+      setError("Please enter a valid contact email.");
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
 
@@ -258,8 +271,8 @@ export default function NewJobScreen() {
         location_type: locationType,
         experience_level: experienceLevel,
         location: location.trim() || null,
-        application_url: applicationUrl.trim() || null,
-        contact_email: contactEmail.trim() || null,
+        application_url: trimmedApplicationUrl || null,
+        contact_email: trimmedContactEmail.toLowerCase() || null,
         expires_at: expiresAt ? expiresAt.toISOString() : null,
       });
       router.back();
@@ -499,4 +512,3 @@ export default function NewJobScreen() {
     </View>
   );
 }
-

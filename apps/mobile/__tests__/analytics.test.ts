@@ -26,6 +26,7 @@ jest.mock("../src/lib/analytics/posthog", () => ({
 
 jest.mock("../src/lib/analytics/sentry", () => ({
   init: jest.fn(),
+  setEnabled: jest.fn(),
   setUser: jest.fn(),
   captureException: jest.fn(),
   captureMessage: jest.fn(),
@@ -72,6 +73,7 @@ describe("Analytics Module", () => {
     analytics.init(VALID_CONFIG);
     expect(posthog.init).toHaveBeenCalledWith(VALID_CONFIG.posthogKey);
     expect(sentry.init).toHaveBeenCalledWith(VALID_CONFIG.sentryDsn);
+    expect(sentry.setEnabled).toHaveBeenCalledWith(true);
   });
 
   it("queues events before init and flushes after init", () => {
@@ -90,7 +92,6 @@ describe("Analytics Module", () => {
     });
     expect(sentry.setUser).toHaveBeenCalledWith({
       id: "user-123",
-      email: "test@example.com",
     });
     expect(posthog.track).toHaveBeenCalledWith("button_clicked", {
       buttonName: "submit",
@@ -122,6 +123,7 @@ describe("Analytics Module", () => {
     analytics.setEnabled(true);
     analytics.init(VALID_CONFIG);
     analytics.setEnabled(false);
+    expect(sentry.setEnabled).toHaveBeenCalledWith(false);
     expect(posthog.reset).toHaveBeenCalled();
     expect(sentry.setUser).toHaveBeenCalledWith(null);
   });

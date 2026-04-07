@@ -20,6 +20,11 @@ jest.mock("expo-application", () => ({
   getAndroidId: jest.fn(),
 }));
 
+jest.mock("expo-crypto", () => ({
+  CryptoDigestAlgorithm: { SHA256: "SHA256" },
+  digestStringAsync: jest.fn(() => Promise.resolve("hashed-device-id")),
+}));
+
 jest.mock("expo-constants", () => ({
   default: {
     expoConfig: {

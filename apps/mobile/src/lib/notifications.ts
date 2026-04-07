@@ -1,6 +1,7 @@
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import * as Application from "expo-application";
+import * as Crypto from "expo-crypto";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { supabase } from "./supabase";
@@ -32,16 +33,34 @@ if (Platform.OS !== "web") {
 
 async function getStableDeviceId(): Promise<string | null> {
   try {
+    let rawId: string | null = null;
     if (Platform.OS === "ios") {
-      return await Application.getIosIdForVendorAsync();
+      rawId = await Application.getIosIdForVendorAsync();
     }
     if (Platform.OS === "android") {
-      return Application.getAndroidId() ?? null;
+      rawId = Application.getAndroidId() ?? null;
+    }
+    if (rawId) {
+      return await hashDeviceIdentifier(rawId);
     }
   } catch (error) {
     console.warn("Failed to resolve device id:", error);
   }
   return null;
+}
+
+async function hashDeviceIdentifier(value: string): Promise<string | null> {
+  if (!value) return null;
+
+  try {
+    return await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      `push-device:${value}`
+    );
+  } catch (error) {
+    console.warn("Failed to hash device id:", error);
+    return null;
+  }
 }
 
 /**
@@ -121,7 +140,10 @@ export async function registerPushToken(
 
   try {
     const stableDeviceId = await getStableDeviceId();
-    const deviceId = stableDeviceId || Constants.deviceId || Device.modelName || "unknown";
+    const fallbackDeviceId = await hashDeviceIdentifier(
+      String(Constants.deviceId || Device.modelName || "")
+    );
+    const deviceId = stableDeviceId || fallbackDeviceId || "unknown";
     const platform = Platform.OS as "ios" | "android" | "web";
 
     if (stableDeviceId) {

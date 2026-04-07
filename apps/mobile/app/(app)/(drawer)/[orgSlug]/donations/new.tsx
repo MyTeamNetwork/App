@@ -12,7 +12,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "expo-router";
 import { DrawerActions } from "@react-navigation/native";
-import * as Linking from "expo-linking";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { getWebAppUrl } from "@/lib/web-api";
@@ -22,6 +21,7 @@ import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
+import { openHttpsUrl } from "@/lib/url-safety";
 
 export default function NewDonationScreen() {
   const navigation = useNavigation();
@@ -226,7 +226,9 @@ export default function NewDonationScreen() {
       }
 
       if (data?.url) {
-        await Linking.openURL(data.url as string);
+        if (!(await openHttpsUrl(data.url as string))) {
+          throw new Error("Checkout URL was invalid");
+        }
         return;
       }
 

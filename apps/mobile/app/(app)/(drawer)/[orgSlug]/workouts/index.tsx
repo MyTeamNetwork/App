@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -24,6 +23,7 @@ import { APP_CHROME } from "@/lib/chrome";
 import { borderRadius, fontSize, fontWeight, spacing } from "@/lib/theme";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { formatLocalDateString } from "@/lib/date-format";
+import { openHttpsUrl } from "@/lib/url-safety";
 import type { Workout, WorkoutLog, WorkoutStatus } from "@teammeet/types";
 
 // Fixed color palette
@@ -344,7 +344,9 @@ export default function WorkoutsScreen() {
                           ) : null}
                           {workout.external_url ? (
                             <Pressable
-                              onPress={() => Linking.openURL(workout.external_url || "")}
+                              onPress={() => {
+                                void openHttpsUrl(workout.external_url || "");
+                              }}
                               style={({ pressed }) => [
                                 styles.linkButton,
                                 pressed && styles.linkButtonPressed,

@@ -10,7 +10,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as Linking from "expo-linking";
 import {
   ArrowLeft,
   Briefcase,
@@ -30,6 +29,7 @@ import { TYPOGRAPHY } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
+import { openEmailAddress, openHttpsUrl } from "@/lib/url-safety";
 import type { JobPostingWithPoster } from "@/types/jobs";
 
 
@@ -237,9 +237,9 @@ export default function JobDetailScreen() {
   const handleApply = useCallback(() => {
     if (!job) return;
     if (job.application_url) {
-      Linking.openURL(job.application_url);
+      void openHttpsUrl(job.application_url);
     } else if (job.contact_email) {
-      Linking.openURL(`mailto:${job.contact_email}`);
+      void openEmailAddress(job.contact_email);
     }
   }, [job]);
 
@@ -414,7 +414,9 @@ export default function JobDetailScreen() {
             <Text style={styles.sectionTitle}>How to Apply</Text>
             {job.application_url != null && (
               <Pressable
-                onPress={() => Linking.openURL(job.application_url!)}
+                onPress={() => {
+                  void openHttpsUrl(job.application_url!);
+                }}
                 style={({ pressed }) => [styles.contactRow, pressed && { opacity: 0.7 }]}
               >
                 <ExternalLink size={16} color={semantic.info} />
@@ -425,7 +427,9 @@ export default function JobDetailScreen() {
             )}
             {job.contact_email != null && (
               <Pressable
-                onPress={() => Linking.openURL(`mailto:${job.contact_email}`)}
+                onPress={() => {
+                  void openEmailAddress(job.contact_email!);
+                }}
                 style={({ pressed }) => [styles.contactRow, pressed && { opacity: 0.7 }]}
               >
                 <Mail size={16} color={semantic.info} />
@@ -472,4 +476,3 @@ export default function JobDetailScreen() {
     </View>
   );
 }
-

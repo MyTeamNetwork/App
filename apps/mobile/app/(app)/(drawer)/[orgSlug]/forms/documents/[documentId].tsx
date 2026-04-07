@@ -13,7 +13,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, Download, Upload, Check, FileText } from "lucide-react-native";
 import * as DocumentPicker from "expo-document-picker";
-import * as Linking from "expo-linking";
 import * as FileSystem from "expo-file-system";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
@@ -22,6 +21,7 @@ import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { formatDefaultDateFromString } from "@/lib/date-format";
+import { openHttpsUrl } from "@/lib/url-safety";
 
 const DOC_COLORS = {
   background: "#f8fafc",
@@ -143,8 +143,9 @@ export default function DocumentFormDetailScreen() {
         throw new Error("Failed to generate download link");
       }
 
-      // Open in browser for download
-      await Linking.openURL(data.signedUrl);
+      if (!(await openHttpsUrl(data.signedUrl))) {
+        throw new Error("Download link was invalid");
+      }
     } catch (e) {
       setError((e as Error).message);
       Alert.alert("Download Failed", (e as Error).message);

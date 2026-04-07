@@ -17,6 +17,8 @@ import { ChevronLeft, CheckCircle } from "lucide-react-native";
 import { supabase } from "@/lib/supabase";
 import { captureException } from "@/lib/analytics";
 import { borderRadius, spacing, fontSize } from "@/lib/theme";
+import { getWebAppUrl } from "@/lib/web-api";
+import { buildMobileRecoveryRedirectTo } from "@/lib/auth-redirects";
 
 // Color system matching login screen
 const colors = {
@@ -80,6 +82,7 @@ export default function ForgotPasswordScreen() {
   const [emailSent, setEmailSent] = useState(false);
 
   const isFormValid = isEmailValid(email);
+  const recoveryRedirectTo = buildMobileRecoveryRedirectTo(getWebAppUrl());
 
   const handleEmailChange = (text: string) => {
     setEmail(text);
@@ -106,14 +109,13 @@ export default function ForgotPasswordScreen() {
       const { error } = await supabase.auth.resetPasswordForEmail(
         trimmedEmail.toLowerCase(),
         {
-          redirectTo: "teammeet://reset-password",
+          redirectTo: recoveryRedirectTo,
         }
       );
 
       if (error) {
         captureException(new Error(error.message), {
           screen: "ForgotPassword",
-          email: trimmedEmail.toLowerCase(),
         });
         // Provide user-friendly error messages
         if (error.message.includes("rate limit")) {
@@ -131,7 +133,6 @@ export default function ForgotPasswordScreen() {
     } catch (e) {
       captureException(e as Error, {
         screen: "ForgotPassword",
-        email: trimmedEmail.toLowerCase(),
       });
       setApiError("Something went wrong. Please try again.");
     } finally {
@@ -198,7 +199,7 @@ export default function ForgotPasswordScreen() {
                 <Text style={styles.successEmail}>{email.trim().toLowerCase()}</Text>
               </Text>
               <Text style={styles.successHint}>
-                {"If you don't see the email, check your spam folder. The link will let you set a new password."}
+                {"If you don't see the email, check your spam folder. The link opens a secure Team Network page in your browser where you can set a new password."}
               </Text>
               <Link href="/(auth)/login" asChild>
                 <Pressable

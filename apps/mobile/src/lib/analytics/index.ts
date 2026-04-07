@@ -66,6 +66,7 @@ function initSdksIfNeeded(): void {
 
   posthog.init(configStored.posthogKey);
   sentry.init(configStored.sentryDsn);
+  sentry.setEnabled(true);
   sdksInitialized = true;
   flushQueue();
 }
@@ -77,6 +78,7 @@ function initSdksIfNeeded(): void {
 export function init(config: AnalyticsConfig): void {
   // Store config for potential later use (e.g., setEnabled(true) after init)
   configStored = config;
+  sentry.setEnabled(enabled);
 
   // Warn in production if config is missing
   if (!hasValidConfig(config) && !__DEV__) {
@@ -104,7 +106,7 @@ export function identify(userId: string, traits?: UserTraits): void {
   }
 
   posthog.identify(userId, traits);
-  sentry.setUser({ id: userId, email: traits?.email as string | undefined });
+  sentry.setUser({ id: userId });
 }
 
 /**
@@ -179,6 +181,7 @@ export function reset(): void {
 export function setEnabled(value: boolean): void {
   const wasEnabled = enabled;
   enabled = value;
+  sentry.setEnabled(value);
 
   if (!value && wasEnabled) {
     reset();

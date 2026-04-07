@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Linking,
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
@@ -29,6 +28,7 @@ import { useOrgRole } from "@/hooks/useOrgRole";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
+import { openEmailAddress, openHttpsUrl } from "@/lib/url-safety";
 
 const DETAIL_COLORS = {
   background: "#ffffff",
@@ -66,13 +66,13 @@ export default function AlumniDetailScreen() {
 
   const handleEmailPress = useCallback(() => {
     if (alumni?.email) {
-      Linking.openURL(`mailto:${alumni.email}`);
+      void openEmailAddress(alumni.email);
     }
   }, [alumni?.email]);
 
   const handleLinkedInPress = useCallback(() => {
     if (alumni?.linkedin_url) {
-      Linking.openURL(alumni.linkedin_url);
+      void openHttpsUrl(alumni.linkedin_url);
     }
   }, [alumni?.linkedin_url]);
 

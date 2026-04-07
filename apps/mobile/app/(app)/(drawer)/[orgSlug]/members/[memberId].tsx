@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { View, Text, ScrollView, ActivityIndicator, StyleSheet, Pressable, Linking, Share } from "react-native";
+import { View, Text, ScrollView, ActivityIndicator, StyleSheet, Pressable, Share } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
@@ -10,6 +10,7 @@ import { useOrg } from "@/contexts/OrgContext";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
+import { openEmailAddress, openHttpsUrl } from "@/lib/url-safety";
 
 const DETAIL_COLORS = {
   background: "#ffffff",
@@ -72,7 +73,7 @@ export default function MemberProfileScreen() {
 
   const handleEmail = () => {
     if (member?.email) {
-      Linking.openURL(`mailto:${member.email}`);
+      void openEmailAddress(member.email);
     }
   };
 
@@ -84,7 +85,7 @@ export default function MemberProfileScreen() {
 
   const handleLinkedIn = () => {
     if (member?.linkedin_url) {
-      Linking.openURL(member.linkedin_url);
+      void openHttpsUrl(member.linkedin_url);
     }
   };
 

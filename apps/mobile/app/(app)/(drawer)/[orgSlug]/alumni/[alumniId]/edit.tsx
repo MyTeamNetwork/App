@@ -25,6 +25,7 @@ import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
+import { isValidLinkedInUrl } from "@/lib/url-safety";
 
 // Validation schema for alumni form
 const alumniFormSchema = z.object({
@@ -395,17 +396,9 @@ export default function EditAlumniScreen() {
 
     // Validate LinkedIn URL format
     const linkedin = formData.linkedin_url.trim();
-    if (linkedin) {
-      try {
-        const url = new URL(linkedin);
-        if (url.protocol !== "https:") {
-          setError("LinkedIn URL must start with https://");
-          return;
-        }
-      } catch {
-        setError("Please enter a valid LinkedIn profile URL.");
-        return;
-      }
+    if (linkedin && !isValidLinkedInUrl(linkedin)) {
+      setError("Please enter a valid LinkedIn profile URL using https://linkedin.com/...");
+      return;
     }
 
     setIsSaving(true);

@@ -30,6 +30,11 @@
             "CFBundleURLSchemes": [
               "com.googleusercontent.apps.156976073490-1iejhf7pnad636bdih1gh3tnbu26hvkn"
             ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "teammeet"
+            ]
           }
         ],
         "UIBackgroundModes": [
@@ -40,7 +45,21 @@
     "android": {
       "package": "com.myteamnetwork.teammeet",
       "versionCode": 1,
-      "googleServicesFile": "./google-services.json"
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "permissions": [
+        "INTERNET",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "scheme": "teammeet",
     "plugins": [
@@ -50,6 +69,7 @@
           "origin": false
         }
       ],
+      "expo-secure-store",
       "@react-native-google-signin/google-signin",
       [
         "expo-notifications",
@@ -63,7 +83,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "TeamMeet needs access to your photos to attach images to posts."
+          "photosPermission": "TeamMeet needs access to your photos to attach images to posts.",
+          "microphonePermission": false
         }
       ]
     ],

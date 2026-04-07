@@ -7,10 +7,11 @@ import { supabase } from "@/lib/supabase";
 import { ColorSchemeProvider } from "@/contexts/ColorSchemeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AuthLoadingScreen from "@/components/AuthLoadingScreen";
-import { init as initAnalytics, identify, reset as resetAnalytics, captureException, hydrateEnabled, setEnabled } from "@/lib/analytics";
+import { init as initAnalytics, identify, reset as resetAnalytics, captureException, hydrateEnabled } from "@/lib/analytics";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useSupabaseAppState } from "@/hooks/useSupabaseAppState";
+import { getNativeAppLinkRoute, sanitizeUrlForTelemetry } from "@/lib/url-safety";
 
 // Suppress known third-party library warnings on web platform
 // These are library compatibility issues that don't affect functionality
@@ -84,12 +85,6 @@ function RootLayoutInner() {
         posthogKey: process.env.EXPO_PUBLIC_POSTHOG_KEY || "",
         sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN || "",
       });
-
-      // Enable analytics in dev mode for testing
-      // TODO: Remove this line or add a dev settings toggle
-      if (__DEV__) {
-        setEnabled(true);
-      }
     };
 
     void bootstrapAnalytics();
@@ -105,7 +100,6 @@ function RootLayoutInner() {
 
     if (userId && userId !== prevUserIdRef.current) {
       identify(userId, {
-        email: session.user.email,
         authProvider: session.user.app_metadata?.provider || "email",
       });
       prevUserIdRef.current = userId;
@@ -114,7 +108,7 @@ function RootLayoutInner() {
       resetAnalytics();
       prevUserIdRef.current = undefined;
     }
-  }, [session?.user?.id, session?.user?.email, session?.user?.app_metadata?.provider]);
+  }, [session?.user?.id, session?.user?.app_metadata?.provider]);
 
   // Handle deep link URLs that contain OAuth tokens or recovery links
   const handleDeepLink = useCallback(async (event: { url: string }) => {
@@ -132,55 +126,21 @@ function RootLayoutInner() {
 
     try {
       const parsedUrl = new URL(url);
-      const isNativeAppLink = parsedUrl.protocol === "teammeet:";
-      if (!isNativeAppLink && !allowedHosts.includes(parsedUrl.hostname)) {
+      const nativeRoute = getNativeAppLinkRoute(url);
+      const isTrustedNativeAuthRoute = nativeRoute === "callback";
+      if (!isTrustedNativeAuthRoute && !allowedHosts.includes(parsedUrl.hostname)) {
         return;
       }
     } catch {
       return;
     }
 
-    // Check if this is a password recovery deep link
-    if (url.includes("type=recovery") || url.includes("reset-password")) {
-      try {
-        const parsedUrl = new URL(url);
-
-        // Extract tokens from hash fragment or query params
-        let accessToken: string | null = null;
-        let refreshToken: string | null = null;
-
-        if (parsedUrl.hash) {
-          const hashParams = new URLSearchParams(parsedUrl.hash.substring(1));
-          accessToken = hashParams.get("access_token");
-          refreshToken = hashParams.get("refresh_token");
-        }
-
-        if (!accessToken) {
-          accessToken = parsedUrl.searchParams.get("access_token");
-          refreshToken = parsedUrl.searchParams.get("refresh_token");
-        }
-
-        // Set the session if we have tokens (needed for updateUser to work)
-        if (accessToken && refreshToken) {
-          await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-        }
-
-        // Navigate to reset-password screen
-        router.replace("/(auth)/reset-password");
-        return;
-      } catch (err) {
-        console.error("Error handling recovery deep link:", err);
-        captureException(err as Error, { context: "handleDeepLink-recovery", url });
-      }
-    }
-
     // Check if this is an auth callback URL with tokens or authorization code
     if (url.includes("access_token") || url.includes("callback") || url.includes("code=")) {
       try {
         const parsedUrl = new URL(url);
+        const nativeRoute = getNativeAppLinkRoute(url);
+        const isNativeCallback = nativeRoute === "callback";
 
         // Handle OAuth errors returned as query params
         const errorParam = parsedUrl.searchParams.get("error");
@@ -188,7 +148,10 @@ function RootLayoutInner() {
         if (errorParam) {
           captureException(
             new Error(errorDescription || errorParam),
-            { context: "handleDeepLink-oauth-error", url }
+            {
+              context: "handleDeepLink-oauth-error",
+              ...sanitizeUrlForTelemetry(url),
+            }
           );
           return;
         }
@@ -201,9 +164,15 @@ function RootLayoutInner() {
           if (exchangeError) {
             captureException(new Error(exchangeError.message), {
               context: "handleDeepLink-pkce",
-              url,
+              ...sanitizeUrlForTelemetry(url),
             });
           }
+          return;
+        }
+
+        // Do not accept raw access/refresh tokens on the custom callback scheme.
+        // PKCE codes are sufficient here and avoid session fixation via arbitrary app links.
+        if (isNativeCallback) {
           return;
         }
 
@@ -229,7 +198,10 @@ function RootLayoutInner() {
           });
         }
       } catch (err) {
-        captureException(err as Error, { context: "handleDeepLink", url });
+        captureException(err as Error, {
+          context: "handleDeepLink",
+          ...sanitizeUrlForTelemetry(url),
+        });
       }
     }
   }, [router]);

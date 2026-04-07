@@ -1,3 +1,5 @@
 .expo/
 ios/
 android/
+ios.bak-*/
+android.bak-*/

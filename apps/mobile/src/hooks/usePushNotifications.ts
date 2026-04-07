@@ -112,8 +112,7 @@ export function usePushNotifications({
 
     // Listen for notifications received while app is foregrounded
     notificationListener.current = Notifications.addNotificationReceivedListener(
-      (notification) => {
-        console.log("Notification received:", notification.request.content.title);
+      () => {
         void incrementBadge();
         // Optionally handle foreground notifications here
       }
