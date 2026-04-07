@@ -141,6 +141,22 @@ Stored in `.env.local` (never commit).
 - **Plan files**: NEVER create plan/design documents inside the repo (including `docs/plans/`). Use `~/.claude/plans/` instead.
 - **Server actions**: Place in existing `src/lib/` modules. Do NOT create `src/lib/actions/`.
 
+## Available Agents
+
+Use these agents for the corresponding tasks:
+
+- **planner** — Create implementation plans before starting any feature work. Use for breaking down tasks, identifying dependencies, and phasing work.
+- **architect** — Use BEFORE making structural decisions that are hard to reverse: adding a new feature domain, designing RLS policies, changing multi-tenant data boundaries, refactoring middleware, evaluating queue vs. inline processing, or any decision that will affect multiple files/tables and that someone will ask "why did we structure it this way?" 6 months from now. Do NOT use for bug fixes or changes that follow established patterns.
+- **tdd-guide** — Enforce write-tests-first for all new features and bug fixes.
+- **reviewer** — Combined code quality + security review after writing or modifying code.
+- **build-error-resolver** — Proactive on build or TypeScript errors.
+- **refactor-cleaner** — Dead code cleanup and consolidation.
+- **e2e-runner** — Playwright end-to-end tests.
+- **Explore** — Deep codebase exploration when Glob/Grep are insufficient.
+- **compound-engineering:data-integrity-guardian** — Migration safety, RLS constraints, transaction boundaries.
+- **compound-engineering:security-sentinel** — Full OWASP security audit before sensitive merges.
+- **compound-engineering:performance-oracle** — Performance bottlenecks, query analysis, scalability review.
+
 ## Bug Investigation
 
 When I report a bug, don't start by trying to fix it. Start by writing a test that reproduces the bug. Then, have subagents try to fix the bug and prove it with a passing test.
