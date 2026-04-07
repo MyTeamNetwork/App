@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { validateJson, ValidationError, baseSchemas, sanitizeIlikeInput } from "@/lib/security/validation";
 import { safeString } from "@/lib/schemas";
 import { claimOrgInviteUse } from "./claim-org-invite-use";
+
+// Distinctive tag for ops to grep when a partial-state recovery is needed.
+// Each occurrence carries an `id=<uuid>` correlation id that is also returned
+// to the caller so support can match user reports to logs.
+const ROLLBACK_ORPHAN_TAG = "[parent-invite-accept rollback orphan]";
+
+type StepResult = { ok: true } | { ok: false; reason: string };
 
 const acceptInviteSchema = z.object({
   code: z.string().min(1).max(200),
@@ -139,12 +147,24 @@ async function claimLegacyInvite(
   };
 }
 
+// Outcome of grantParentMembership tells the caller exactly what happened so a
+// later failure can undo the *correct* state — either deleting a freshly
+// inserted row, or restoring a previously-revoked row to its original role +
+// status. The previous implementation rolled back by unconditionally deleting
+// the row, which destroyed history when the row had been reactivated.
+type MembershipOutcome =
+  | { kind: "inserted" }
+  | { kind: "reactivated"; previousRole: string };
+
 async function grantParentMembership(
   serviceSupabase: ServiceSupabase,
   userId: string,
   organizationId: string,
   respond: (payload: unknown, status?: number) => NextResponse,
-) {
+): Promise<
+  | { ok: true; outcome: MembershipOutcome; undo: () => Promise<StepResult> }
+  | { ok: false; response: NextResponse }
+> {
   const { error: roleError } = await serviceSupabase
     .from("user_organization_roles")
     .insert({
@@ -155,10 +175,55 @@ async function grantParentMembership(
     });
 
   if (!roleError) {
-    return { ok: true as const };
+    return {
+      ok: true,
+      outcome: { kind: "inserted" },
+      undo: async () => {
+        const { error: deleteError } = await serviceSupabase
+          .from("user_organization_roles")
+          .delete()
+          .eq("user_id", userId)
+          .eq("organization_id", organizationId)
+          .eq("role", "parent")
+          .eq("status", "active");
+        if (deleteError) {
+          return { ok: false, reason: `delete inserted role failed: ${deleteError.message}` };
+        }
+        return { ok: true };
+      },
+    };
   }
 
   if (roleError.code === "23505") {
+    // Read the existing row so we know what to restore on rollback. Filter on
+    // status='revoked' because reactivating an already-active row would
+    // overwrite a real membership.
+    const { data: existing, error: existingError } = await serviceSupabase
+      .from("user_organization_roles")
+      .select("role,status")
+      .eq("user_id", userId)
+      .eq("organization_id", organizationId)
+      .eq("status", "revoked")
+      .maybeSingle();
+
+    if (existingError) {
+      console.error("[org/parents/invite/accept] Role lookup before reactivate error:", existingError);
+      return { ok: false, response: respond({ error: "Failed to reactivate membership" }, 500) };
+    }
+
+    if (!existing) {
+      // Active row already exists for this (user, org). The route should not
+      // change anything; treat this as a successful "no-op" grant since the
+      // user is already a member, and provide a no-op undo.
+      return {
+        ok: true,
+        outcome: { kind: "reactivated", previousRole: "" },
+        undo: async () => ({ ok: true }),
+      };
+    }
+
+    const previousRole = existing.role;
+
     const { error: reactivateError } = await serviceSupabase
       .from("user_organization_roles")
       .update({ status: "active", role: "parent" })
@@ -166,16 +231,32 @@ async function grantParentMembership(
       .eq("organization_id", organizationId)
       .eq("status", "revoked");
 
-    if (!reactivateError) {
-      return { ok: true as const };
+    if (reactivateError) {
+      console.error("[org/parents/invite/accept] Role reactivation error:", reactivateError);
+      return { ok: false, response: respond({ error: "Failed to reactivate membership" }, 500) };
     }
 
-    console.error("[org/parents/invite/accept] Role reactivation error:", reactivateError);
-    return { ok: false as const, response: respond({ error: "Failed to reactivate membership" }, 500) };
+    return {
+      ok: true,
+      outcome: { kind: "reactivated", previousRole },
+      undo: async () => {
+        const { error: restoreError } = await serviceSupabase
+          .from("user_organization_roles")
+          .update({ status: "revoked", role: previousRole })
+          .eq("user_id", userId)
+          .eq("organization_id", organizationId)
+          .eq("status", "active")
+          .eq("role", "parent");
+        if (restoreError) {
+          return { ok: false, reason: `restore revoked role failed: ${restoreError.message}` };
+        }
+        return { ok: true };
+      },
+    };
   }
 
   console.error("[org/parents/invite/accept] Role insert error:", roleError);
-  return { ok: false as const, response: respond({ error: "Failed to create membership" }, 500) };
+  return { ok: false, response: respond({ error: "Failed to create membership" }, 500) };
 }
 
 async function findParentId(
@@ -318,20 +399,61 @@ export async function POST(req: Request, { params }: RouteParams) {
     userId = createResult.user.id;
   }
 
-  // Helper: undo everything we've already done if a later step fails.
-  // Without this, a failure in grantParentMembership or findParentId would
-  // leave the invite consumed, the auth user created, and no working
-  // membership — locking the user out of both re-redemption and sign-in.
-  const rollbackAll = async () => {
-    await claimResult.rollback();
-    try {
-      await serviceSupabase.auth.admin.deleteUser(userId);
-    } catch (deleteError) {
-      console.error(
-        "[org/parents/invite/accept] Failed to delete auth user during rollback:",
-        deleteError,
-      );
+  // Run a list of rollback steps in order. Every step is awaited even if an
+  // earlier one fails — the goal is to walk back as much partial state as
+  // possible. The boolean return indicates whether *every* step succeeded;
+  // failures are logged with the correlation id so ops can finish recovery.
+  const runRollback = async (
+    correlationId: string,
+    steps: Array<{ name: string; run: () => Promise<StepResult> }>,
+  ): Promise<{ ok: boolean; failed: string[] }> => {
+    const failed: string[] = [];
+    for (const step of steps) {
+      try {
+        const result = await step.run();
+        if (!result.ok) {
+          failed.push(`${step.name}: ${result.reason}`);
+          console.error(
+            `${ROLLBACK_ORPHAN_TAG} id=${correlationId} step=${step.name} reason=${result.reason}`,
+          );
+        }
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        failed.push(`${step.name}: ${reason}`);
+        console.error(
+          `${ROLLBACK_ORPHAN_TAG} id=${correlationId} step=${step.name} threw=${reason}`,
+        );
+      }
     }
+    return { ok: failed.length === 0, failed };
+  };
+
+  // Wrap the existing claim/auth-delete callbacks in the StepResult shape.
+  const inviteRollbackStep = {
+    name: "invite",
+    run: async (): Promise<StepResult> => {
+      try {
+        await claimResult.rollback();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  };
+
+  const authUserDeleteStep = {
+    name: "auth-user",
+    run: async (): Promise<StepResult> => {
+      try {
+        const { error: deleteError } = await serviceSupabase.auth.admin.deleteUser(userId);
+        if (deleteError) {
+          return { ok: false, reason: deleteError.message };
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      }
+    },
   };
 
   const membershipResult = await grantParentMembership(
@@ -341,7 +463,24 @@ export async function POST(req: Request, { params }: RouteParams) {
     respond,
   );
   if (!membershipResult.ok) {
-    await rollbackAll();
+    // No membership was created, so only invite + auth user need undoing.
+    const correlationId = randomUUID();
+    const rollback = await runRollback(correlationId, [inviteRollbackStep, authUserDeleteStep]);
+
+    if (!rollback.ok) {
+      // Auth-user delete (or invite restore) failed. Restoring the invite to
+      // pending while a stranded auth user shares the email would lock the
+      // parent out on the next attempt (email_exists → invite re-rolled back
+      // again → permanent loop). Surface a stable id so support can clean up.
+      return respond(
+        {
+          error:
+            "Failed to create membership and partial cleanup did not complete. Please contact support with this id.",
+          recoveryId: correlationId,
+        },
+        500,
+      );
+    }
     return membershipResult.response;
   }
 
@@ -353,14 +492,30 @@ export async function POST(req: Request, { params }: RouteParams) {
     respond,
   );
   if ("response" in parentResult) {
-    // Also undo the membership we just created so a retry isn't blocked
-    // by the unique(user_id, organization_id) constraint.
-    await serviceSupabase
-      .from("user_organization_roles")
-      .delete()
-      .eq("user_id", userId)
-      .eq("organization_id", claimResult.organizationId);
-    await rollbackAll();
+    // Three things need undoing now: the membership row (using the
+    // outcome-aware undo so reactivated rows get restored, not deleted),
+    // the invite claim, and the auth user. Order matters only weakly here —
+    // we run them all and report any failures via the correlation id.
+    const correlationId = randomUUID();
+    const rollback = await runRollback(correlationId, [
+      {
+        name: "membership",
+        run: () => membershipResult.undo(),
+      },
+      inviteRollbackStep,
+      authUserDeleteStep,
+    ]);
+
+    if (!rollback.ok) {
+      return respond(
+        {
+          error:
+            "Failed to create parent record and partial cleanup did not complete. Please contact support with this id.",
+          recoveryId: correlationId,
+        },
+        500,
+      );
+    }
     return parentResult.response;
   }
 
