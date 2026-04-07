@@ -98,11 +98,13 @@ test("media GET routes apply private cache headers only on success paths", () =>
   const reorderRoute = readSource("src/app/api/media/reorder-dataset/route.ts");
 
   assert.match(urlsSource, /export const MEDIA_CACHE_HEADERS = \{/);
+  assert.match(urlsSource, /export const MEDIA_LIST_CACHE_HEADERS = \{/);
   assert.match(urlsSource, /"Cache-Control": `private, max-age=\$\{Math\.floor\(SIGNED_URL_EXPIRY \/ 12\)\}`/);
+  assert.match(urlsSource, /"Cache-Control": "private, max-age=0, must-revalidate"/);
   assert.match(listRoute, /headers: \{ \.\.\.rateLimit\.headers, \.\.\.MEDIA_CACHE_HEADERS \}/);
   assert.match(detailRoute, /headers: \{ \.\.\.rateLimit\.headers, \.\.\.MEDIA_CACHE_HEADERS \}/);
-  assert.match(albumsRoute, /headers: \{ \.\.\.rateLimit\.headers, \.\.\.MEDIA_CACHE_HEADERS \}/);
-  assert.match(albumRoute, /headers: \{ \.\.\.rateLimit\.headers, \.\.\.MEDIA_CACHE_HEADERS \}/);
+  assert.match(albumsRoute, /headers: \{ \.\.\.rateLimit\.headers, \.\.\.MEDIA_LIST_CACHE_HEADERS \}/);
+  assert.match(albumRoute, /headers: \{ \.\.\.rateLimit\.headers, \.\.\.MEDIA_LIST_CACHE_HEADERS \}/);
   assert.match(reorderRoute, /headers: \{ \.\.\.rateLimit\.headers, \.\.\.MEDIA_CACHE_HEADERS \}/);
 });
 

@@ -33,6 +33,23 @@ test("GET /api/media/albums responses use list-cache headers, not long-lived MED
   );
 });
 
+test("GET /api/media/albums/[albumId] responses use list-cache headers, not long-lived MEDIA_CACHE_HEADERS", () => {
+  const source = read("src/app/api/media/albums/[albumId]/route.ts");
+  assert.ok(
+    source.includes("MEDIA_LIST_CACHE_HEADERS"),
+    "album item route must import MEDIA_LIST_CACHE_HEADERS",
+  );
+  const getRegion = source.split("export async function PATCH")[0];
+  assert.ok(
+    !getRegion.includes("MEDIA_CACHE_HEADERS"),
+    "GET handler must not reference long-cache MEDIA_CACHE_HEADERS or album contents can stay empty after uploads finish",
+  );
+  assert.ok(
+    getRegion.includes("MEDIA_LIST_CACHE_HEADERS"),
+    "GET handler must spread MEDIA_LIST_CACHE_HEADERS into responses",
+  );
+});
+
 test("AlbumGrid fetches with cache: 'no-store' and reacts to refreshToken", () => {
   const source = read("src/components/media/AlbumGrid.tsx");
   // The component must (a) call /api/media/albums and (b) pass cache: "no-store"
@@ -56,6 +73,18 @@ test("AlbumGrid fetches with cache: 'no-store' and reacts to refreshToken", () =
       source,
     ),
     "AlbumGrid must refetch when refreshToken changes",
+  );
+});
+
+test("AlbumView fetches album items with cache: 'no-store' so transient empty responses are not reused", () => {
+  const source = read("src/components/media/AlbumView.tsx");
+  assert.ok(
+    source.includes("const fetchItems = useCallback("),
+    "AlbumView must define fetchItems via useCallback",
+  );
+  assert.ok(
+    source.includes('cache: "no-store"'),
+    "AlbumView fetchItems must pass cache: 'no-store' to avoid stale empty album payloads",
   );
 });
 

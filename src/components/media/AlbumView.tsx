@@ -86,7 +86,9 @@ export function AlbumView({
     async (cursor?: string) => {
       const params = new URLSearchParams({ orgId, limit: "24" });
       if (cursor) params.set("cursor", cursor);
-      const res = await fetch(`/api/media/albums/${album.id}?${params.toString()}`);
+      const res = await fetch(`/api/media/albums/${album.id}?${params.toString()}`, {
+        cache: "no-store",
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error || "Failed to load album");
