@@ -8,28 +8,19 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
 import { createPostSchema } from "@/lib/schemas/feed";
-import { prepareImageUpload } from "@/lib/media/image-preparation";
+import {
+  prepareFeedImageEntries,
+  type PreparedFeedImage,
+} from "@/lib/media/feed-composer-prep";
+import { MEDIA_CONSTRAINTS } from "@/lib/media/constants";
 import { PollBuilder } from "./PollBuilder";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const MAX_IMAGES = 4;
-const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_IMAGES = MEDIA_CONSTRAINTS.feed_post.maxAttachments;
 
 interface FeedComposerProps {
   orgId: string;
   userName?: string;
 }
-
-type PreparedFeedImage = {
-  file: File;
-  previewFile: File | null;
-  previewUrl: string;
-  fileName: string;
-  fileSize: number;
-  previewFileSize: number;
-  mimeType: string;
-  previewMimeType: string | null;
-};
 
 export function FeedComposer({ orgId, userName }: FeedComposerProps) {
   const router = useRouter();
@@ -69,8 +60,6 @@ export function FeedComposer({ orgId, userName }: FeedComposerProps) {
     // Reset input so the same file(s) can be re-selected after removal
     if (fileInputRef.current) fileInputRef.current.value = "";
 
-    // Validate and filter files outside the state updater to avoid
-    // side effects that break under React 18 Strict Mode double-invocation
     const currentCount = imageFiles.length;
     const slotsAvailable = MAX_IMAGES - currentCount;
 
@@ -79,24 +68,10 @@ export function FeedComposer({ orgId, userName }: FeedComposerProps) {
       return;
     }
 
-    const validFiles: File[] = [];
-    const skipped: string[] = [];
-
-    for (const file of files) {
-      if (validFiles.length >= slotsAvailable) {
-        skipped.push(`${file.name}: maximum ${MAX_IMAGES} images reached`);
-        continue;
-      }
-      if (!ACCEPTED_TYPES.has(file.type)) {
-        skipped.push(`${file.name}: only JPEG, PNG, WebP, and GIF supported`);
-        continue;
-      }
-      if (file.size > MAX_FILE_SIZE) {
-        skipped.push(`${file.name}: must be under 10MB`);
-        continue;
-      }
-      validFiles.push(file);
-    }
+    const { prepared, skipped } = await prepareFeedImageEntries({
+      files,
+      slotsAvailable,
+    });
 
     if (skipped.length > 0) {
       setError(`Skipped: ${skipped.join("; ")}`);
@@ -104,52 +79,10 @@ export function FeedComposer({ orgId, userName }: FeedComposerProps) {
       setError(null);
     }
 
-    if (validFiles.length === 0) return;
+    if (prepared.length === 0) return;
 
-    const preparedFiles: PreparedFeedImage[] = [];
-
-    try {
-      for (const file of validFiles) {
-        if (file.type.startsWith("image/")) {
-          const prepared = await prepareImageUpload(file);
-          console.log("[media/upload] prepared feed image", {
-            fileName: file.name,
-            originalBytes: prepared.originalBytes,
-            normalizedBytes: prepared.normalizedBytes,
-          });
-          preparedFiles.push({
-            file: prepared.file,
-            previewFile: prepared.previewFile,
-            previewUrl: prepared.previewUrl || URL.createObjectURL(prepared.file),
-            fileName: prepared.file.name,
-            fileSize: prepared.file.size,
-            previewFileSize: prepared.previewFile?.size ?? 0,
-            mimeType: prepared.mimeType,
-            previewMimeType: prepared.previewMimeType,
-          });
-          continue;
-        }
-
-        const previewUrl = URL.createObjectURL(file);
-        preparedFiles.push({
-          file,
-          previewFile: null,
-          previewUrl,
-          fileName: file.name,
-          fileSize: file.size,
-          previewFileSize: 0,
-          mimeType: file.type,
-          previewMimeType: null,
-        });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to prepare image upload");
-      preparedFiles.forEach((entry) => URL.revokeObjectURL(entry.previewUrl));
-      return;
-    }
-
-    setImageFiles((prev) => [...prev, ...preparedFiles]);
-    setPreviewUrls((prev) => [...prev, ...preparedFiles.map((f) => f.previewUrl)]);
+    setImageFiles((prev) => [...prev, ...prepared]);
+    setPreviewUrls((prev) => [...prev, ...prepared.map((f) => f.previewUrl)]);
   }, [imageFiles.length]);
 
   const removeImage = useCallback((index: number) => {
