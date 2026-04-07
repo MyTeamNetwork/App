@@ -213,11 +213,15 @@ export async function handleStripeWebhookPost(
     subscription: SubscriptionWithPeriod
   ): Promise<string | null> => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any)
+    const { data, error: lookupError } = await (supabase as any)
       .from("enterprise_subscriptions")
       .select("id")
       .eq("stripe_subscription_id", subscription.id)
       .maybeSingle();
+
+    if (lookupError) {
+      throw new Error(`[handleEnterpriseSubscriptionUpdate] Lookup failed: ${lookupError.message}`);
+    }
 
     if (!data) return null; // Not an enterprise subscription
 
@@ -249,10 +253,14 @@ export async function handleStripeWebhookPost(
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any)
+    const { error: updateError } = await (supabase as any)
       .from("enterprise_subscriptions")
       .update(updatePayload)
       .eq("id", data.id);
+
+    if (updateError) {
+      throw new Error(`[handleEnterpriseSubscriptionUpdate] Update failed: ${updateError.message}`);
+    }
 
     return data.id;
   };
@@ -265,22 +273,30 @@ export async function handleStripeWebhookPost(
     subscriptionId: string
   ): Promise<string | null> => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any)
+    const { data, error: lookupError } = await (supabase as any)
       .from("enterprise_subscriptions")
       .select("id")
       .eq("stripe_subscription_id", subscriptionId)
       .maybeSingle();
 
+    if (lookupError) {
+      throw new Error(`[handleEnterprisePaymentFailed] Lookup failed: ${lookupError.message}`);
+    }
+
     if (!data) return null; // Not an enterprise subscription
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any)
+    const { error: updateError } = await (supabase as any)
       .from("enterprise_subscriptions")
       .update({
         status: "past_due",
         updated_at: new Date().toISOString(),
       })
       .eq("id", data.id);
+
+    if (updateError) {
+      throw new Error(`[handleEnterprisePaymentFailed] Update failed: ${updateError.message}`);
+    }
 
     return data.id;
   };

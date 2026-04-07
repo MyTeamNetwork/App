@@ -44,17 +44,30 @@ export function hasStripeResource(attempt: PaymentAttempt) {
 }
 
 async function fetchByKey(supabase: DbClient, idempotencyKey: string) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("payment_attempts")
     .select("*")
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle();
 
+  if (error) {
+    throw new Error(`[fetchByKey] DB query failed: ${error.message}`);
+  }
+
   return data;
 }
 
 async function fetchById(supabase: DbClient, id: string) {
-  const { data } = await supabase.from("payment_attempts").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabase
+    .from("payment_attempts")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`[fetchById] DB query failed: ${error.message}`);
+  }
+
   return data;
 }
 
@@ -231,7 +244,16 @@ export async function waitForExistingStripeResource(
 ) {
   await new Promise((resolve) => setTimeout(resolve, pauseMs));
 
-  const { data } = await supabase.from("payment_attempts").select("*").eq("id", attemptId).maybeSingle();
+  const { data, error } = await supabase
+    .from("payment_attempts")
+    .select("*")
+    .eq("id", attemptId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`[waitForExistingStripeResource] DB query failed: ${error.message}`);
+  }
+
   if (!data) return null;
   if (!hasStripeResource(data)) return null;
   return data;

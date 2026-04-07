@@ -24,12 +24,16 @@ export async function getUserRoleForOrg(organizationId: string): Promise<UserRol
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
 
-  const { data } = await supabase
+  const { data, error: roleError } = await supabase
     .from("user_organization_roles")
     .select("role,status")
     .eq("user_id", user.id)
     .eq("organization_id", organizationId)
     .maybeSingle();
+
+  if (roleError) {
+    throw new Error(`[getUserRoleForOrg] DB query failed: ${roleError.message}`);
+  }
 
   if (!data || data.status === "revoked") return null;
 

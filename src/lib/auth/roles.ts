@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { MembershipStatus, Organization, UserRole } from "@/types/database";
 import { normalizeRole, roleFlags, type OrgRole } from "./role-utils";
 import { getGracePeriodInfo, type GracePeriodInfo, type SubscriptionStatus } from "@/lib/subscription/grace-period";
+import { resolveCheck } from "@/lib/supabase/resolve-check";
 
 type OrgRoleResult = {
   role: OrgRole | null;
@@ -58,12 +59,15 @@ export async function getOrgRole(params: { orgId: string; userId?: string }): Pr
   }
 
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("user_organization_roles")
-    .select("role,status")
-    .eq("organization_id", params.orgId)
-    .eq("user_id", uid)
-    .maybeSingle();
+  const data = resolveCheck(
+    await supabase
+      .from("user_organization_roles")
+      .select("role,status")
+      .eq("organization_id", params.orgId)
+      .eq("user_id", uid)
+      .maybeSingle(),
+    "getOrgRole"
+  );
 
   const { role, status } = normalizeMembershipRow(data);
   return { role, status, userId: uid };
