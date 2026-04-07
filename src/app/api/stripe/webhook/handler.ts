@@ -477,15 +477,21 @@ export async function handleStripeWebhookPost(
             );
           }
 
-          // Log warning if admin role wasn't granted, but don't fail the webhook
-          // The reconciliation endpoint can fix this, and user can contact support
+          // New-org checkout flows always carry payment_attempt_id and must grant
+          // the purchaser an admin role. If that final write fails, return 500 so
+          // Stripe retries the idempotent provisioning sequence instead of leaving
+          // a paid org in a partially provisioned state.
           if (paymentAttemptId && !adminGranted) {
-            console.error("[stripe-webhook] WARNING: Org created but admin role not granted", {
+            console.error("[stripe-webhook] Failed to grant org admin role - forcing retry", {
               eventId: maskPII(event.id),
               organizationId: maskPII(organizationId),
               paymentAttemptId: maskPII(paymentAttemptId),
               sessionId: maskPII(session.id),
             });
+            return NextResponse.json(
+              { error: "Organization admin grant failed - will retry" },
+              { status: 500 }
+            );
           }
 
           // SECURITY FIX: Validate org owns this Stripe resource
