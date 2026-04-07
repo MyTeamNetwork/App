@@ -846,6 +846,8 @@
     "currentlyUnavailable": "Not available",
     "createPair": "Create a pair",
     "createPairDesc": "Pair an alumni mentor with an active member",
+    "pairMembers": "Pair members",
+    "confirmPair": "Confirm pair",
     "mentorSelectLabel": "Mentor (alumni)",
     "menteeSelectLabel": "Mentee (active member)",
     "selectMentor": "Select mentor",

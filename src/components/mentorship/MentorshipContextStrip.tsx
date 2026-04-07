@@ -169,29 +169,30 @@ function AdminStrip({ orgId, orgSlug }: { orgId: string; orgSlug: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div>
-        <h3 className="font-display text-xl font-semibold text-foreground">
-          {tMentorship("createPair")}
-        </h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          {tMentorship("createPairDesc")}
-        </p>
-      </div>
-      {!expanded && (
-        <div className="sm:text-right">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-display text-xl font-semibold text-foreground">
+            {tMentorship("pairMembers")}
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            {tMentorship("createPairDesc")}
+          </p>
+        </div>
+        {!expanded && (
           <Button
-            variant="ghost"
+            variant="primary"
+            size="sm"
             onClick={() => setExpanded(true)}
             disabled={isSaving}
           >
             {tMentorship("createPair")}
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {expanded && (
-        <div className="w-full sm:basis-full space-y-3 pt-2">
+        <div className="space-y-3">
           {error && (
             <div className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
               {error}
@@ -220,13 +221,14 @@ function AdminStrip({ orgId, orgSlug }: { orgId: string; orgSlug: string }) {
           <div className="flex justify-end gap-2">
             <Button
               variant="ghost"
+              size="sm"
               onClick={() => setExpanded(false)}
               disabled={isSaving}
             >
               {tCommon("cancel")}
             </Button>
-            <Button onClick={handleCreate} isLoading={isSaving}>
-              {tMentorship("createPair")}
+            <Button size="sm" onClick={handleCreate} isLoading={isSaving}>
+              {tMentorship("confirmPair")}
             </Button>
           </div>
         </div>
