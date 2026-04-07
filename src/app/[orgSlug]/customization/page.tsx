@@ -15,7 +15,6 @@ import { PageHeader } from "@/components/layout";
 import { OrgNameCard } from "@/components/settings/OrgNameCard";
 import { BrandingCard } from "@/components/settings/BrandingCard";
 import { NotificationPrefsCard } from "@/components/settings/NotificationPrefsCard";
-import { StorageUsageCard } from "@/components/settings/StorageUsageCard";
 import { LOCALE_NAMES } from "@/i18n/config";
 import type { SupportedLocale } from "@/i18n/config";
 import { getCustomizationTimezoneOptions } from "@/lib/i18n/customization-timezones";
@@ -655,8 +654,6 @@ function OrgSettingsContent() {
             </Card>
           )}
 
-          {/* Storage Usage Card (admin-only) */}
-          {isAdmin && <StorageUsageCard orgId={orgId!} />}
         </div>
       )}
     </div>

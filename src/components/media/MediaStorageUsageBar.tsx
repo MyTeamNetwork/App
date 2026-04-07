@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
+import { formatBytes } from "@/lib/media/format-bytes";
 
 interface MediaStorageUsageBarProps {
   orgId: string;
@@ -12,21 +14,26 @@ interface StorageStats {
   total_bytes?: number;
   quota_bytes?: number | null;
   usage_percent?: number;
+  over_quota?: boolean;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
-}
-
+/**
+ * Fixed-position bottom-left chip showing org media storage usage.
+ *
+ * Visibility is admin-only — both via the `isAdmin` prop (skips the fetch
+ * entirely) and via the API at /api/media/storage-stats which enforces the
+ * same gate server-side. Aggregate org storage is treated as operational
+ * data, so non-admins see nothing.
+ *
+ * State bands:
+ *   <75%  neutral
+ *   75-90% amber
+ *   >=90%  red
+ *   over_quota: red + explicit "Quota exceeded" line
+ *   unlimited (enterprise): show used only, no bar, no percent
+ */
 export function MediaStorageUsageBar({ orgId, isAdmin }: MediaStorageUsageBarProps) {
+  const tStorage = useTranslations("media.storage");
   const [stats, setStats] = useState<StorageStats | null>(null);
 
   useEffect(() => {
@@ -42,7 +49,7 @@ export function MediaStorageUsageBar({ orgId, isAdmin }: MediaStorageUsageBarPro
         const data = (await res.json()) as StorageStats;
         if (!cancelled) setStats(data);
       } catch {
-        // Soft-fail: usage bar is informational, never block the page.
+        // Soft-fail: chip is informational, never block the page.
       }
     })();
     return () => {
@@ -51,37 +58,82 @@ export function MediaStorageUsageBar({ orgId, isAdmin }: MediaStorageUsageBarPro
   }, [orgId, isAdmin]);
 
   if (!isAdmin || !stats || !stats.allowed) return null;
-  if (stats.quota_bytes == null) return null; // unlimited (enterprise)
 
   const used = stats.total_bytes ?? 0;
-  const quota = stats.quota_bytes;
+  const quota = stats.quota_bytes ?? null;
+  const isUnlimited = quota === null;
   const percent = stats.usage_percent ?? 0;
   const clampedPercent = Math.min(100, Math.max(0, percent));
+  const overQuota = stats.over_quota === true;
+  const usedLabel = isUnlimited
+    ? tStorage("usedUnlimited", { used: formatBytes(used) })
+    : tStorage("usedOf", {
+        used: formatBytes(used),
+        quota: formatBytes(quota!),
+      });
+  const ariaLabel = isUnlimited
+    ? tStorage("ariaUsedUnlimited", { used: formatBytes(used) })
+    : tStorage("ariaUsedOf", {
+        used: formatBytes(used),
+        quota: formatBytes(quota!),
+        percent: percent.toFixed(1),
+      });
 
+  // Color band selection — red takes precedence over amber.
   let barColor = "bg-muted-foreground/60";
   let textColor = "text-muted-foreground";
-  if (percent >= 90) {
+  let borderTone = "border-border";
+  if (overQuota || percent >= 90) {
     barColor = "bg-red-500";
     textColor = "text-red-600 dark:text-red-400";
+    borderTone = "border-red-500/40";
   } else if (percent >= 75) {
     barColor = "bg-amber-500";
     textColor = "text-amber-600 dark:text-amber-400";
+    borderTone = "border-amber-500/40";
   }
 
   return (
-    <div className="mb-4 rounded-lg border border-border bg-card px-4 py-3">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={ariaLabel}
+      className={`fixed bottom-24 left-4 right-4 lg:bottom-4 lg:left-[17rem] lg:right-auto z-20 lg:z-40 w-auto max-w-[calc(100vw-2rem)] lg:w-[260px] lg:max-w-[260px] rounded-lg border ${borderTone} bg-card/95 backdrop-blur-sm px-4 py-3 shadow-lg pointer-events-auto`}
+    >
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-foreground">Media storage</span>
-        <span className={`text-sm ${textColor}`}>
-          {formatBytes(used)} of {formatBytes(quota)} used ({percent.toFixed(1)}%)
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {tStorage("title")}
         </span>
+        {!isUnlimited && (
+          <span className={`text-xs font-medium ${textColor}`}>
+            {percent.toFixed(0)}%
+          </span>
+        )}
       </div>
-      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-        <div
-          className={`h-full ${barColor} transition-all`}
-          style={{ width: `${clampedPercent}%` }}
-        />
-      </div>
+
+      {isUnlimited ? (
+        <p className="text-sm text-foreground">{usedLabel}</p>
+      ) : (
+        <>
+          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden mb-2">
+            <div
+              className={`h-full ${barColor} transition-all duration-300`}
+              style={{ width: `${clampedPercent}%` }}
+            />
+          </div>
+          <p className="text-xs text-foreground">{usedLabel}</p>
+          {overQuota && (
+            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+              {tStorage("quotaExceeded")}
+            </p>
+          )}
+          {!overQuota && percent >= 75 && (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {tStorage("approachingLimit")}
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }
