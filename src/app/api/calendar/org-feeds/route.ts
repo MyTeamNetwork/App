@@ -254,7 +254,7 @@ async function handleIcsFeedCreate(
       organization_id: body.organizationId,
       scope: "org",
     })
-    .select("id, user_id, feed_url, status, last_synced_at, last_error, provider, created_at, updated_at, organization_id, scope, connected_user_id, google_calendar_id")
+    .select("id, user_id, feed_url, status, last_synced_at, last_error, provider, created_at, updated_at, organization_id, scope, connected_user_id, external_calendar_id")
     .single();
 
   if (error || !feed) {
@@ -328,7 +328,7 @@ async function handleGoogleFeedCreate(
       organization_id: body.organizationId,
       scope: "org",
       connected_user_id: user.id,
-      google_calendar_id: body.googleCalendarId,
+      external_calendar_id: body.googleCalendarId,
     })
     .select("id, user_id, feed_url, status, last_synced_at, last_error, provider, created_at, updated_at, organization_id, scope")
     .single();
@@ -346,7 +346,7 @@ async function handleGoogleFeedCreate(
   const feedForSync: CalendarFeedRow = {
     ...(feed as CalendarFeedRow),
     connected_user_id: user.id,
-    google_calendar_id: body.googleCalendarId,
+    external_calendar_id: body.googleCalendarId,
   };
   await syncGoogleCalendarFeed(serviceClient, feedForSync);
 

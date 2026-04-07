@@ -324,11 +324,12 @@ export async function getEligibleUsersForEvent(
         return [];
     }
 
-    // Get connections only for org members
+    // Get connections only for org members (Google provider)
     const { data: connections, error: connError } = await supabase
         .from("user_calendar_connections")
         .select("user_id, status")
-        .in("user_id", orgUserIds);
+        .in("user_id", orgUserIds)
+        .eq("provider", "google");
 
     if (connError || !connections) {
         console.error("[calendar-sync] Failed to fetch calendar connections:", connError);
@@ -476,12 +477,13 @@ async function syncEventForUser(
     const connection = await getCalendarConnection(supabase, userId);
     const targetCalendarId = connection?.targetCalendarId || "primary";
 
-    // Check if there's an existing entry for this event/user
+    // Check if there's an existing entry for this event/user (Google provider)
     const { data: existingEntry } = await supabase
         .from("event_calendar_entries")
         .select("*")
         .eq("event_id", eventId)
         .eq("user_id", userId)
+        .eq("provider", "google")
         .single();
 
     if (operation === "create") {
@@ -499,26 +501,26 @@ async function syncEventForUser(
             await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, result);
         } else {
             // Check if user switched their target calendar since the event was created
-            const storedCalendarId = existingEntry.google_calendar_id || "primary";
+            const storedCalendarId = existingEntry.external_calendar_id || "primary";
 
             if (storedCalendarId !== targetCalendarId) {
                 // Calendar changed — migrate the event
                 // Best-effort delete from old calendar (ignore failures)
-                await deleteCalendarEvent(accessToken, existingEntry.google_event_id, storedCalendarId);
+                await deleteCalendarEvent(accessToken, existingEntry.external_event_id, storedCalendarId);
                 // Create on new calendar
                 const createResult = await createCalendarEvent(accessToken, calendarEvent, targetCalendarId);
                 await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, createResult);
             } else {
                 // Same calendar — normal update
-                const result = await updateCalendarEvent(accessToken, existingEntry.google_event_id, calendarEvent, targetCalendarId);
+                const result = await updateCalendarEvent(accessToken, existingEntry.external_event_id, calendarEvent, targetCalendarId);
 
                 // Handle 404 - event was deleted from Google Calendar (Requirement 3.3)
                 if (!result.success && isNotFoundError(result.error)) {
-                    // Create new event and update entry with new google_event_id
+                    // Create new event and update entry with new external_event_id
                     const createResult = await createCalendarEvent(accessToken, calendarEvent, targetCalendarId);
                     await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, createResult);
                 } else {
-                    await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, result, existingEntry.google_event_id);
+                    await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, result, existingEntry.external_event_id);
                 }
             }
         }
@@ -557,9 +559,9 @@ async function handleDeleteSync(
             }
 
             // Use the stored calendar ID (where the event actually lives)
-            const calendarId = entry.google_calendar_id || "primary";
+            const calendarId = entry.external_calendar_id || "primary";
 
-            const result = await deleteCalendarEvent(accessToken, entry.google_event_id, calendarId);
+            const result = await deleteCalendarEvent(accessToken, entry.external_event_id, calendarId);
 
             // Update entry status regardless of success (graceful handling - Requirement 4.3)
             // Deletion failures do NOT throw or block
@@ -586,13 +588,13 @@ async function updateSyncEntry(
     eventId: string,
     userId: string,
     organizationId: string,
-    googleCalendarId: string,
+    externalCalendarId: string,
     result: SyncResult,
-    existingGoogleEventId?: string
+    existingExternalEventId?: string
 ): Promise<void> {
-    const googleEventId = result.googleEventId || existingGoogleEventId || "";
+    const externalEventId = result.googleEventId || existingExternalEventId || "";
 
-    if (!googleEventId && !result.success) {
+    if (!externalEventId && !result.success) {
         // Failed to create and no existing ID - cannot proceed
         return;
     }
@@ -603,11 +605,12 @@ async function updateSyncEntry(
             event_id: eventId,
             user_id: userId,
             organization_id: organizationId,
-            google_event_id: googleEventId,
-            google_calendar_id: googleCalendarId,
+            provider: "google",
+            external_event_id: externalEventId,
+            external_calendar_id: externalCalendarId,
             sync_status: result.success ? "synced" : "failed",
             last_error: result.error || null,
         }, {
-            onConflict: "event_id,user_id",
+            onConflict: "event_id,user_id,provider",
         });
 }

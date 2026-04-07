@@ -187,12 +187,12 @@ export async function GET(request: Request) {
     // Fetch calendar connections
     const { data: calendarConnections } = await serviceSupabase
       .from("user_calendar_connections")
-      .select("google_email, status, created_at")
+      .select("provider_email, provider, status, created_at")
       .eq("user_id", user.id);
 
     if (calendarConnections) {
       exportData.calendarConnections = calendarConnections.map((c) => ({
-        googleEmail: c.google_email,
+        googleEmail: c.provider_email,
         status: c.status,
         createdAt: c.created_at,
       }));

@@ -54,6 +54,7 @@ export async function POST(request: Request) {
             .from("event_calendar_entries")
             .select("event_id, organization_id")
             .eq("user_id", user.id)
+            .eq("provider", "google")
             .in("sync_status", ["pending", "failed"]);
 
         if (organizationId) {
@@ -78,8 +79,9 @@ export async function POST(request: Request) {
             .from("event_calendar_entries")
             .select("event_id, organization_id")
             .eq("user_id", user.id)
+            .eq("provider", "google")
             .eq("sync_status", "synced")
-            .neq("google_calendar_id", targetCalendarId);
+            .neq("external_calendar_id", targetCalendarId);
 
         if (organizationId) {
             mismatchQuery = mismatchQuery.eq("organization_id", organizationId);
@@ -160,7 +162,8 @@ export async function POST(request: Request) {
         await serviceClient
             .from("user_calendar_connections")
             .update({ last_sync_at: new Date().toISOString() })
-            .eq("user_id", user.id);
+            .eq("user_id", user.id)
+            .eq("provider", "google");
 
         return NextResponse.json({
             success: true,
@@ -237,7 +240,7 @@ export async function GET() {
         return NextResponse.json({
             connected: true,
             status: connection.status,
-            googleEmail: connection.googleEmail,
+            googleEmail: connection.providerEmail,
             lastSyncAt: connection.lastSyncAt?.toISOString() || null,
             stats,
         });
