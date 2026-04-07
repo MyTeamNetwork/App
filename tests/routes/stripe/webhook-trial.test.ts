@@ -145,6 +145,69 @@ describe("POST /api/stripe/webhook trial flows", () => {
     assert.equal(eventRows[0].processed_at ?? null, null);
   });
 
+  test("checkout.session.completed returns 500 when admin grant fails for a new org", async () => {
+    supabase.seed("payment_attempts", [
+      {
+        id: "attempt_trial_admin_fail",
+        idempotency_key: "idem_trial_admin_fail",
+        user_id: "user_trial_admin_fail",
+        flow_type: "subscription_checkout",
+        status: "processing",
+        currency: "usd",
+        amount_cents: 0,
+        is_trial: true,
+      },
+    ]);
+    supabase.simulateError("user_organization_roles", { message: "admin role write failed" });
+
+    event = {
+      id: "evt_trial_admin_grant_failure",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_trial_admin_fail",
+          object: "checkout.session",
+          mode: "subscription",
+          payment_status: "no_payment_required",
+          customer: "cus_trial_admin_fail",
+          subscription: "sub_trial_admin_fail",
+          metadata: {
+            organization_id: "org_trial_admin_fail",
+            organization_slug: "trial-admin-fail",
+            organization_name: "Trial Admin Fail",
+            organization_description: "Trial checkout that should retry admin grant",
+            organization_color: "#1e3a5f",
+            alumni_bucket: "none",
+            base_interval: "month",
+            payment_attempt_id: "attempt_trial_admin_fail",
+            is_trial: "true",
+          },
+        },
+      },
+    };
+
+    const { response, body } = await postWebhook();
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(body, { error: "Organization admin grant failed - will retry" });
+
+    const roles = supabase.getRows("user_organization_roles");
+    assert.equal(roles.length, 0);
+
+    const organizations = supabase.getRows("organizations");
+    assert.equal(organizations.length, 1);
+    assert.equal(organizations[0].id, "org_trial_admin_fail");
+
+    const subscriptions = supabase.getRows("organization_subscriptions");
+    assert.equal(subscriptions.length, 1);
+    assert.equal(subscriptions[0].organization_id, "org_trial_admin_fail");
+
+    const eventRows = supabase.getRows("stripe_events");
+    assert.equal(eventRows.length, 1);
+    assert.equal(eventRows[0].event_id, "evt_trial_admin_grant_failure");
+    assert.equal(eventRows[0].processed_at ?? null, null);
+  });
+
   test("checkout.session.completed provisions orgs for no-payment-required trial checkouts", async () => {
     supabase.seed("payment_attempts", [
       {
