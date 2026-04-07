@@ -7,6 +7,10 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Card, Button, Select, ToggleSwitch } from "@/components/ui";
 import { getMentorshipStatusTranslationKey } from "@/lib/mentorship/presentation";
+import {
+  getPairableOrgMembers,
+  memberDisplayLabel,
+} from "@/lib/mentorship/queries";
 
 type Option = { value: string; label: string };
 
@@ -64,43 +68,40 @@ function AdminStrip({ orgId, orgSlug }: { orgId: string; orgSlug: string }) {
 
   useEffect(() => {
     if (!expanded) return;
+    let cancelled = false;
     const supabase = createClient();
     const load = async () => {
-      const { data: mentorRows } = await supabase
-        .from("user_organization_roles")
-        .select("user_id, users(name,email)")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .eq("role", "alumni");
-
-      const { data: menteeRows } = await supabase
-        .from("user_organization_roles")
-        .select("user_id, users(name,email)")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .eq("role", "active_member");
-
-      setMentors(
-        mentorRows?.map((row) => {
-          const user = Array.isArray(row.users) ? row.users[0] : row.users;
-          return {
-            value: row.user_id,
-            label: user?.name || user?.email || "Alumni",
-          };
-        }) || []
-      );
-      setMentees(
-        menteeRows?.map((row) => {
-          const user = Array.isArray(row.users) ? row.users[0] : row.users;
-          return {
-            value: row.user_id,
-            label: user?.name || user?.email || "Member",
-          };
-        }) || []
-      );
+      try {
+        const { mentors: mentorList, mentees: menteeList } =
+          await getPairableOrgMembers(supabase, orgId);
+        if (cancelled) return;
+        setMentors(
+          mentorList.map((member) => ({
+            value: member.user_id,
+            label: memberDisplayLabel(member),
+          }))
+        );
+        setMentees(
+          menteeList.map((member) => ({
+            value: member.user_id,
+            label: memberDisplayLabel(member),
+          }))
+        );
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to load org members."
+          );
+        }
+      }
     };
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [expanded, orgId]);
 
   const handleCreate = async () => {
@@ -177,15 +178,17 @@ function AdminStrip({ orgId, orgSlug }: { orgId: string; orgSlug: string }) {
           {tMentorship("createPairDesc")}
         </p>
       </div>
-      <div className="sm:text-right">
-        <Button
-          variant="ghost"
-          onClick={() => setExpanded((v) => !v)}
-          disabled={isSaving}
-        >
-          {tMentorship("createPair")}
-        </Button>
-      </div>
+      {!expanded && (
+        <div className="sm:text-right">
+          <Button
+            variant="ghost"
+            onClick={() => setExpanded(true)}
+            disabled={isSaving}
+          >
+            {tMentorship("createPair")}
+          </Button>
+        </div>
+      )}
 
       {expanded && (
         <div className="w-full sm:basis-full space-y-3 pt-2">
@@ -298,27 +301,26 @@ function AlumniStrip({ orgId, orgSlug }: { orgId: string; orgSlug: string }) {
           "Mentor"
       );
 
-      const { data: menteeRows, error: menteeError } = await supabase
-        .from("user_organization_roles")
-        .select("user_id, users(name,email)")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .eq("role", "active_member");
-
-      if (menteeError) {
-        setError(menteeError.message);
+      let menteeOpts: Option[] = [];
+      try {
+        // Mentees are active members only, mirroring the admin strip rule.
+        const { mentees: menteeList } = await getPairableOrgMembers(
+          supabase,
+          orgId
+        );
+        menteeOpts = menteeList.map((member) => ({
+          value: member.user_id,
+          label: memberDisplayLabel(member),
+        }));
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to load org members."
+        );
         setIsLoading(false);
         return;
       }
-
-      const menteeOpts =
-        menteeRows?.map((row) => {
-          const userInfo = Array.isArray(row.users) ? row.users[0] : row.users;
-          return {
-            value: row.user_id,
-            label: userInfo?.name || userInfo?.email || "Member",
-          };
-        }) || [];
       setAvailableMentees(menteeOpts);
 
       const { data: pair } = await supabase
