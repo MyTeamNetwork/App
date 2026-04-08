@@ -19,7 +19,7 @@ type TeamOutlookCalendarConnectProps = {
   onSourceAdded: () => Promise<void>;
 };
 
-type ConnectionState = "loading" | "not_connected" | "connected";
+type ConnectionState = "loading" | "not_connected" | "connected" | "reconnect_required";
 
 export function TeamOutlookCalendarConnect({
   orgId,
@@ -56,6 +56,8 @@ export function TeamOutlookCalendarConnect({
 
         if (data && data.status === "connected") {
           setConnectionState("connected");
+        } else if (data && data.status === "reconnect_required") {
+          setConnectionState("reconnect_required");
         } else {
           setConnectionState("not_connected");
         }
@@ -74,11 +76,16 @@ export function TeamOutlookCalendarConnect({
       setCalendarsLoading(true);
       try {
         const response = await fetch("/api/microsoft/calendars");
+        const data = await response.json();
+        if (response.status === 403 && data?.error === "reconnect_required") {
+          setCalendars([]);
+          setConnectionState("reconnect_required");
+          return;
+        }
         if (!response.ok) {
           setCalendars([]);
           return;
         }
-        const data = await response.json();
         setCalendars(data.calendars || []);
       } catch {
         setCalendars([]);
@@ -152,13 +159,15 @@ export function TeamOutlookCalendarConnect({
 
         {connectionState === "loading" ? (
           <p className="text-sm text-muted-foreground">Checking Outlook connection...</p>
-        ) : connectionState === "not_connected" ? (
+        ) : connectionState === "not_connected" || connectionState === "reconnect_required" ? (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Connect your Microsoft Outlook account to import an Outlook Calendar as a team schedule source.
+              {connectionState === "reconnect_required"
+                ? "Reconnect your Microsoft Outlook account to refresh calendar access before importing a team schedule."
+                : "Connect your Microsoft Outlook account to import an Outlook Calendar as a team schedule source."}
             </p>
             <Button variant="secondary" onClick={handleConnect} disabled={isReadOnly}>
-              Connect Outlook Account
+              {connectionState === "reconnect_required" ? "Reconnect Outlook Account" : "Connect Outlook Account"}
             </Button>
           </div>
         ) : calendarsLoading ? (

@@ -281,6 +281,18 @@ export async function updateMicrosoftConnectionStatus(
         .eq("provider", "outlook");
 }
 
+export async function markMicrosoftConnectionReconnectRequired(
+    supabase: SupabaseClient<Database>,
+    userId: string
+): Promise<void> {
+    await supabase
+        .from("user_calendar_connections")
+        .update({ status: "reconnect_required" })
+        .eq("user_id", userId)
+        .eq("provider", "outlook")
+        .eq("status", "connected");
+}
+
 /**
  * Updates the stored tokens after a refresh.
  * CRITICAL: Microsoft rotates the refresh token on every refresh — must store both.
@@ -522,7 +534,7 @@ async function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Disconnects a user's Outlook Calendar by revoking tokens and removing the connection
+ * Disconnects a user's Outlook Calendar by removing the local connection and related records.
  */
 export async function disconnectMicrosoft(
     supabase: SupabaseClient<Database>,
@@ -532,16 +544,6 @@ export async function disconnectMicrosoft(
 
     if (!connection) {
         return { success: true };
-    }
-
-    // Best-effort: revoke sign-in sessions with Microsoft
-    try {
-        await fetch("https://graph.microsoft.com/v1.0/me/revokeSignInSessions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${connection.accessToken}` },
-        });
-    } catch (error) {
-        console.warn("[microsoft-oauth] Failed to revoke sign-in sessions (may already be revoked):", error);
     }
 
     // Remove connection from the database
@@ -565,6 +567,13 @@ export async function disconnectMicrosoft(
         .eq("connected_user_id", userId)
         .eq("provider", "outlook")
         .eq("scope", "personal");
+
+    // Clean up org Outlook schedule sources that rely on this connected user
+    await supabase
+        .from("schedule_sources")
+        .delete()
+        .eq("connected_user_id", userId)
+        .eq("vendor_id", "outlook_calendar");
 
     return { success: true };
 }

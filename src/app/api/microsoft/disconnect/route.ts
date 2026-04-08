@@ -8,12 +8,11 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/microsoft/disconnect
  *
- * Disconnects a user's Outlook Calendar by revoking tokens and removing
- * the connection record.
+ * Disconnects a user's Outlook Calendar by removing the local connection record.
  *
- * - Revokes stored OAuth tokens with Microsoft
  * - Removes user_calendar_connections record
  * - Cleans up related event_calendar_entries
+ * - Cleans up related personal feeds and team schedule sources
  */
 export async function POST() {
     try {
