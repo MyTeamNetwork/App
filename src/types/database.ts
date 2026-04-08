@@ -3264,6 +3264,7 @@ export type Database = {
           moderated_at: string | null
           moderated_by: string | null
           organization_id: string
+          preview_file_size_bytes: number | null
           preview_storage_path: string | null
           rejection_reason: string | null
           status: Database["public"]["Enums"]["media_status"]
@@ -3293,6 +3294,7 @@ export type Database = {
           moderated_at?: string | null
           moderated_by?: string | null
           organization_id: string
+          preview_file_size_bytes?: number | null
           preview_storage_path?: string | null
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["media_status"]
@@ -3322,6 +3324,7 @@ export type Database = {
           moderated_at?: string | null
           moderated_by?: string | null
           organization_id?: string
+          preview_file_size_bytes?: number | null
           preview_storage_path?: string | null
           rejection_reason?: string | null
           status?: Database["public"]["Enums"]["media_status"]
@@ -3364,6 +3367,7 @@ export type Database = {
           id: string
           mime_type: string
           organization_id: string
+          preview_file_size: number | null
           preview_storage_path: string | null
           status: Database["public"]["Enums"]["media_upload_status"]
           storage_path: string
@@ -3380,6 +3384,7 @@ export type Database = {
           id?: string
           mime_type: string
           organization_id: string
+          preview_file_size?: number | null
           preview_storage_path?: string | null
           status?: Database["public"]["Enums"]["media_upload_status"]
           storage_path: string
@@ -3396,6 +3401,7 @@ export type Database = {
           id?: string
           mime_type?: string
           organization_id?: string
+          preview_file_size?: number | null
           preview_storage_path?: string | null
           status?: Database["public"]["Enums"]["media_upload_status"]
           storage_path?: string
@@ -6015,6 +6021,7 @@ export type Database = {
         | "fundraiser"
         | "practice"
         | "workout"
+        | "class"
       media_entity_type: "feed_post" | "discussion_thread" | "job_posting"
       media_status: "uploading" | "pending" | "approved" | "rejected"
       media_upload_status: "pending" | "ready" | "failed" | "orphaned"
@@ -6189,6 +6196,7 @@ export const Constants = {
         "fundraiser",
         "practice",
         "workout",
+        "class",
       ],
       media_entity_type: ["feed_post", "discussion_thread", "job_posting"],
       media_status: ["uploading", "pending", "approved", "rejected"],
