@@ -13,6 +13,7 @@ import {
   Switch,
   Alert,
   Platform,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -31,6 +32,17 @@ import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { formatDefaultDate, formatDefaultDateFromString } from "@/lib/date-format";
 import type { MentorshipLog, MentorshipPair, User } from "@teammeet/types";
+import {
+  MENTORSHIP_MENTEE_ROLES,
+  MENTORSHIP_MENTOR_ROLES,
+  getMentorshipSectionOrder,
+  getVisibleMentorshipPairs,
+  isUserInMentorshipPair,
+  memberDisplayLabel,
+  normalizeMentorshipStatus,
+  partitionPairableOrgMembers,
+  type PairableOrgMemberRow,
+} from "@teammeet/core";
 
 // Fixed color palette
 const MENTORSHIP_COLORS = {
@@ -52,12 +64,54 @@ const MENTORSHIP_COLORS = {
 
 type SelectOption = { value: string; label: string };
 type MentorshipStatus = "active" | "paused" | "completed";
+type MentorDirectoryEntry = {
+  id: string;
+  user_id: string;
+  name: string;
+  email: string | null;
+  photo_url: string | null;
+  industry: string | null;
+  graduation_year: number | null;
+  current_company: string | null;
+  current_city: string | null;
+  expertise_areas: string[] | null;
+  bio: string | null;
+  contact_email: string | null;
+  contact_linkedin: string | null;
+  contact_phone: string | null;
+};
+type MentorProfileRecord = {
+  id: string;
+  bio: string | null;
+  expertise_areas: string[];
+  contact_email: string | null;
+  contact_linkedin: string | null;
+  contact_phone: string | null;
+  is_active: boolean;
+  organization_id: string;
+  user_id: string;
+};
 
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "active", label: "Active" },
   { value: "paused", label: "Paused" },
   { value: "completed", label: "Completed" },
 ];
+
+async function loadPairableOrgMembers(orgId: string) {
+  const { data, error } = await supabase
+    .from("user_organization_roles")
+    .select("user_id, role, users(name, email)")
+    .eq("organization_id", orgId)
+    .eq("status", "active")
+    .in("role", [...MENTORSHIP_MENTOR_ROLES, ...MENTORSHIP_MENTEE_ROLES]);
+
+  if (error) {
+    throw new Error(`Failed to load pairable org members: ${error.message}`);
+  }
+
+  return partitionPairableOrgMembers((data ?? []) as PairableOrgMemberRow[]);
+}
 
 export default function MentorshipScreen() {
   const { orgId, orgName, orgLogoUrl } = useOrg();
@@ -81,6 +135,11 @@ export default function MentorshipScreen() {
   const [pairs, setPairs] = useState<MentorshipPair[]>([]);
   const [logs, setLogs] = useState<MentorshipLog[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [mentorDirectory, setMentorDirectory] = useState<MentorDirectoryEntry[]>([]);
+  const [mentorIndustries, setMentorIndustries] = useState<string[]>([]);
+  const [mentorYears, setMentorYears] = useState<number[]>([]);
+  const [currentUserMentorProfile, setCurrentUserMentorProfile] = useState<MentorProfileRecord | null>(null);
+  const [archivedPairIds, setArchivedPairIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +151,11 @@ export default function MentorshipScreen() {
           setPairs([]);
           setLogs([]);
           setUsers([]);
+          setMentorDirectory([]);
+          setMentorIndustries([]);
+          setMentorYears([]);
+          setCurrentUserMentorProfile(null);
+          setArchivedPairIds([]);
           setLoading(false);
           setRefreshing(false);
           setError(null);
@@ -106,26 +170,38 @@ export default function MentorshipScreen() {
       }
 
       try {
-        const { data: pairsData, error: pairsError } = await supabase
-          .from("mentorship_pairs")
-          .select("*")
-          .eq("organization_id", orgId)
-          .order("created_at", { ascending: false });
+        const [
+          { data: pairsData, error: pairsError },
+          { data: currentUserProfileData, error: currentUserProfileError },
+          { data: mentorProfilesData, error: mentorProfilesError },
+        ] = await Promise.all([
+          supabase
+            .from("mentorship_pairs")
+            .select("*")
+            .eq("organization_id", orgId)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false }),
+          user?.id
+            ? supabase
+                .from("mentor_profiles")
+                .select("*")
+                .eq("organization_id", orgId)
+                .eq("user_id", user.id)
+                .maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+          supabase
+            .from("mentor_profiles")
+            .select("*, users!mentor_profiles_user_id_fkey(id, name, email)")
+            .eq("organization_id", orgId)
+            .eq("is_active", true),
+        ]);
 
         if (pairsError) throw pairsError;
+        if (currentUserProfileError) throw currentUserProfileError;
+        if (mentorProfilesError) throw mentorProfilesError;
 
         const pairIds = (pairsData || []).map((pair) => pair.id);
-        const { data: logsData, error: logsError } = pairIds.length
-          ? await supabase
-              .from("mentorship_logs")
-              .select("*")
-              .eq("organization_id", orgId)
-              .in("pair_id", pairIds)
-              .order("entry_date", { ascending: false })
-              .order("created_at", { ascending: false })
-          : { data: [] as MentorshipLog[] };
-
-        if (logsError) throw logsError;
+        const mentorUserIds = (mentorProfilesData || []).map((profile) => profile.user_id);
 
         const userIds = new Set<string>();
         (pairsData || []).forEach((pair) => {
@@ -133,19 +209,98 @@ export default function MentorshipScreen() {
           if (pair.mentee_user_id) userIds.add(pair.mentee_user_id);
         });
 
-        const { data: usersData, error: usersError } = userIds.size
-          ? await supabase
-              .from("users")
-              .select("id, name, email")
-              .in("id", Array.from(userIds))
-          : { data: [] as User[] };
+        const [
+          { data: logsData, error: logsError },
+          { data: usersData, error: usersError },
+          { data: mentorAlumniData, error: mentorAlumniError },
+        ] = await Promise.all([
+          pairIds.length
+            ? supabase
+                .from("mentorship_logs")
+                .select("*")
+                .eq("organization_id", orgId)
+                .is("deleted_at", null)
+                .in("pair_id", pairIds)
+                .order("entry_date", { ascending: false })
+                .order("created_at", { ascending: false })
+            : Promise.resolve({ data: [] as MentorshipLog[], error: null }),
+          userIds.size
+            ? supabase
+                .from("users")
+                .select("id, name, email")
+                .in("id", Array.from(userIds))
+            : Promise.resolve({ data: [] as User[], error: null }),
+          mentorUserIds.length
+            ? supabase
+                .from("alumni")
+                .select(
+                  "user_id, first_name, last_name, photo_url, industry, graduation_year, current_company, current_city"
+                )
+                .eq("organization_id", orgId)
+                .is("deleted_at", null)
+                .in("user_id", mentorUserIds)
+            : Promise.resolve({ data: [] as any[], error: null }),
+        ]);
 
         if (usersError) throw usersError;
+        if (logsError) throw logsError;
+        if (mentorAlumniError) throw mentorAlumniError;
+
+        const alumniMap = new Map(
+          (mentorAlumniData || []).map((alumni) => [alumni.user_id, alumni])
+        );
+
+        const mentorsForDirectory: MentorDirectoryEntry[] = (mentorProfilesData || []).map(
+          (profile) => {
+            const profileUser = Array.isArray(profile.users) ? profile.users[0] : profile.users;
+            const alumni = alumniMap.get(profile.user_id);
+
+            return {
+              id: profile.id,
+              user_id: profile.user_id,
+              name: profileUser?.name || "Unknown",
+              email: profileUser?.email || null,
+              photo_url: alumni?.photo_url || null,
+              industry: alumni?.industry || null,
+              graduation_year: alumni?.graduation_year || null,
+              current_company: alumni?.current_company || null,
+              current_city: alumni?.current_city || null,
+              expertise_areas: profile.expertise_areas || null,
+              bio: profile.bio || null,
+              contact_email: profile.contact_email || null,
+              contact_linkedin: profile.contact_linkedin || null,
+              contact_phone: profile.contact_phone || null,
+            };
+          }
+        );
+
+        const industries = Array.from(
+          new Set(
+            mentorsForDirectory
+              .map((mentor) => mentor.industry)
+              .filter((industry): industry is string => industry !== null)
+          )
+        ).sort();
+
+        const years = Array.from(
+          new Set(
+            mentorsForDirectory
+              .map((mentor) => mentor.graduation_year)
+              .filter((year): year is number => year !== null)
+          )
+        ).sort((a, b) => b - a);
 
         if (isMountedRef.current) {
           setPairs((pairsData || []) as MentorshipPair[]);
           setLogs((logsData || []) as MentorshipLog[]);
           setUsers((usersData || []) as User[]);
+          setMentorDirectory(mentorsForDirectory);
+          setMentorIndustries(industries);
+          setMentorYears(years);
+          setCurrentUserMentorProfile((currentUserProfileData as MentorProfileRecord | null) ?? null);
+          setArchivedPairIds((current) =>
+            current.filter((pairId) => (pairsData || []).some((pair) => pair.id === pairId))
+          );
           setError(null);
         }
       } catch (fetchError) {
@@ -159,7 +314,7 @@ export default function MentorshipScreen() {
         }
       }
     },
-    [orgId]
+    [orgId, user?.id]
   );
 
   useEffect(() => {
@@ -184,6 +339,10 @@ export default function MentorshipScreen() {
     }
     return [];
   }, [pairs, isAdmin, role, user?.id]);
+  const visibleFilteredPairs = useMemo(
+    () => getVisibleMentorshipPairs(filteredPairs, archivedPairIds),
+    [filteredPairs, archivedPairIds]
+  );
 
   const userMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -204,6 +363,22 @@ export default function MentorshipScreen() {
       return acc;
     }, {} as Record<string, MentorshipLog[]>);
   }, [logs]);
+
+  const myPair = useMemo(() => {
+    if (role !== "active_member" || !user?.id) {
+      return null;
+    }
+
+    return filteredPairs.find((pair) => pair.mentee_user_id === user.id) ?? null;
+  }, [filteredPairs, role, user?.id]);
+
+  const myMentorName = myPair ? userLabel(myPair.mentor_user_id) : null;
+  const myLastLogDate = myPair ? logsByPair[myPair.id]?.[0]?.entry_date ?? null : null;
+  const sectionOrder = getMentorshipSectionOrder({
+    hasPairs: visibleFilteredPairs.length > 0,
+    isAdmin,
+  });
+  const showDirectory = Boolean(orgId);
 
   const showLoading = (loading || roleLoading) && pairs.length === 0;
 
@@ -265,7 +440,7 @@ export default function MentorshipScreen() {
             <View style={styles.headerTextContainer}>
               <Text style={styles.headerTitle}>Mentorship</Text>
               <Text style={styles.headerMeta}>
-                {filteredPairs.length} {filteredPairs.length === 1 ? "pair" : "pairs"}
+                {visibleFilteredPairs.length} {visibleFilteredPairs.length === 1 ? "pair" : "pairs"}
               </Text>
             </View>
           </View>
@@ -302,6 +477,14 @@ export default function MentorshipScreen() {
           ) : null}
 
           {isActiveMember && orgId ? (
+            <ActiveMemberMentorshipSummary
+              myMentorName={myMentorName}
+              myLastLogDate={myLastLogDate}
+              styles={styles}
+            />
+          ) : null}
+
+          {isActiveMember && orgId ? (
             <MenteeStatusToggle orgId={orgId} styles={styles} />
           ) : null}
 
@@ -321,9 +504,21 @@ export default function MentorshipScreen() {
             />
           ) : null}
 
+          {showDirectory && sectionOrder === "directory-first" ? (
+            <MentorDirectorySection
+              mentors={mentorDirectory}
+              industries={mentorIndustries}
+              years={mentorYears}
+              showRegistration={isAlumni}
+              currentUserProfile={currentUserMentorProfile}
+              styles={styles}
+              onRefresh={handleRefresh}
+            />
+          ) : null}
+
           {orgId ? (
             <MentorshipPairsList
-              pairs={filteredPairs}
+              pairs={visibleFilteredPairs}
               logsByPair={logsByPair}
               userLabel={userLabel}
               isAdmin={isAdmin}
@@ -332,9 +527,529 @@ export default function MentorshipScreen() {
               userId={user?.id ?? null}
               styles={styles}
               onRefresh={handleRefresh}
+              onArchive={(pairId) =>
+                setArchivedPairIds((current) =>
+                  current.includes(pairId) ? current : [...current, pairId]
+                )
+              }
+            />
+          ) : null}
+
+          {showDirectory && sectionOrder === "pairs-first" ? (
+            <MentorDirectorySection
+              mentors={mentorDirectory}
+              industries={mentorIndustries}
+              years={mentorYears}
+              showRegistration={isAlumni}
+              currentUserProfile={currentUserMentorProfile}
+              styles={styles}
+              onRefresh={handleRefresh}
             />
           ) : null}
         </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+function ActiveMemberMentorshipSummary({
+  myMentorName,
+  myLastLogDate,
+  styles,
+}: {
+  myMentorName: string | null;
+  myLastLogDate: string | null;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>
+          {myMentorName ? `My mentor: ${myMentorName}` : "Looking for a mentor"}
+        </Text>
+        <Text style={styles.sectionSubtitle}>
+          {myLastLogDate
+            ? `Last session: ${formatDefaultDateFromString(myLastLogDate)}`
+            : "Browse the mentor directory below to find alumni willing to help."}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function MentorDirectorySection({
+  mentors,
+  industries,
+  years,
+  showRegistration,
+  currentUserProfile,
+  styles,
+  onRefresh,
+}: {
+  mentors: MentorDirectoryEntry[];
+  industries: string[];
+  years: number[];
+  showRegistration: boolean;
+  currentUserProfile: MentorProfileRecord | null;
+  styles: ReturnType<typeof createStyles>;
+  onRefresh: () => void;
+}) {
+  const [filters, setFilters] = useState({
+    nameSearch: "",
+    industry: "",
+    year: "",
+  });
+  const [activeSelect, setActiveSelect] = useState<"industry" | "year" | null>(null);
+  const [showProfileForm, setShowProfileForm] = useState(false);
+
+  const filteredMentors = useMemo(() => {
+    const nameQuery = filters.nameSearch.trim().toLowerCase();
+    return mentors.filter((mentor) => {
+      if (nameQuery && !mentor.name.toLowerCase().includes(nameQuery)) {
+        return false;
+      }
+      if (filters.industry && mentor.industry !== filters.industry) {
+        return false;
+      }
+      if (filters.year && mentor.graduation_year?.toString() !== filters.year) {
+        return false;
+      }
+      return true;
+    });
+  }, [filters, mentors]);
+
+  const hasActiveFilters =
+    filters.nameSearch !== "" || filters.industry !== "" || filters.year !== "";
+
+  const industryOptions: SelectOption[] = [
+    { value: "", label: "All industries" },
+    ...industries.map((industry) => ({ value: industry, label: industry })),
+  ];
+  const yearOptions: SelectOption[] = [
+    { value: "", label: "All years" },
+    ...years.map((year) => ({ value: year.toString(), label: `Class of ${year}` })),
+  ];
+
+  const clearFilters = () => {
+    setFilters({
+      nameSearch: "",
+      industry: "",
+      year: "",
+    });
+  };
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Willing to Help</Text>
+        <Text style={styles.sectionSubtitle}>
+          Browse alumni who have raised their hand to mentor and share their expertise.
+        </Text>
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Search mentors</Text>
+        <TextInput
+          value={filters.nameSearch}
+          onChangeText={(nameSearch) => setFilters((current) => ({ ...current, nameSearch }))}
+          placeholder="Search by name"
+          placeholderTextColor={MENTORSHIP_COLORS.secondaryText}
+          style={styles.input}
+        />
+      </View>
+
+      <View style={styles.directoryFilterRow}>
+        <View style={styles.directoryFilterField}>
+          <SelectField
+            label="Industry"
+            value={industryOptions.find((option) => option.value === filters.industry)?.label || ""}
+            placeholder="All industries"
+            onPress={() => setActiveSelect("industry")}
+            styles={styles}
+          />
+        </View>
+        <View style={styles.directoryFilterField}>
+          <SelectField
+            label="Graduation year"
+            value={yearOptions.find((option) => option.value === filters.year)?.label || ""}
+            placeholder="All years"
+            onPress={() => setActiveSelect("year")}
+            styles={styles}
+          />
+        </View>
+      </View>
+
+      {hasActiveFilters ? (
+        <Pressable
+          onPress={clearFilters}
+          style={({ pressed }) => [
+            styles.inlineLinkButton,
+            pressed && styles.inlineLinkButtonPressed,
+          ]}
+        >
+          <Text style={styles.inlineLinkText}>Clear filters</Text>
+        </Pressable>
+      ) : null}
+
+      {showRegistration && !showProfileForm ? (
+        <View style={styles.directoryCallout}>
+          <View style={styles.directoryCalloutBody}>
+            <Text style={styles.calloutTitle}>
+              {currentUserProfile ? "Update your mentor profile" : "Want to give back?"}
+            </Text>
+            <Text style={styles.calloutSubtitle}>
+              {currentUserProfile
+                ? "Keep your mentor profile current so members can find you."
+                : "Join the directory and help current members with your expertise."}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setShowProfileForm(true)}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              styles.calloutButton,
+              pressed && styles.primaryButtonPressed,
+            ]}
+          >
+            <Text style={styles.primaryButtonText}>
+              {currentUserProfile ? "Edit profile" : "Become a mentor"}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {showRegistration && showProfileForm ? (
+        <MentorProfileForm
+          currentUserProfile={currentUserProfile}
+          styles={styles}
+          onCancel={() => setShowProfileForm(false)}
+          onSaved={() => {
+            setShowProfileForm(false);
+            onRefresh();
+          }}
+        />
+      ) : null}
+
+      {filteredMentors.length === 0 ? (
+        <View style={styles.directoryEmptyState}>
+          <Text style={styles.emptyTitle}>
+            {hasActiveFilters ? "No mentors found" : "No mentors yet"}
+          </Text>
+          <Text style={styles.emptySubtitle}>
+            {hasActiveFilters
+              ? "Try adjusting your filters to see more results."
+              : showRegistration
+                ? "Be the first mentor in the directory for this organization."
+                : "Check back later as alumni register to help."}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.directoryList}>
+          {filteredMentors.map((mentor) => (
+            <View key={mentor.id} style={styles.directoryCard}>
+              <View style={styles.directoryCardHeader}>
+                {mentor.photo_url ? (
+                  <Image
+                    source={mentor.photo_url}
+                    style={styles.directoryAvatar}
+                    contentFit="cover"
+                    transition={200}
+                  />
+                ) : (
+                  <View style={styles.directoryAvatarFallback}>
+                    <Text style={styles.directoryAvatarFallbackText}>
+                      {mentor.name[0] ?? "M"}
+                    </Text>
+                  </View>
+                )}
+                <View style={styles.directoryHeaderText}>
+                  <Text style={styles.directoryName}>{mentor.name}</Text>
+                  <Text style={styles.directoryMeta}>
+                    {[mentor.current_company, mentor.current_city].filter(Boolean).join(" · ") || "Mentor"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.directoryBadgeRow}>
+                {mentor.industry ? (
+                  <View style={styles.directoryBadge}>
+                    <Text style={styles.directoryBadgeText}>{mentor.industry}</Text>
+                  </View>
+                ) : null}
+                {mentor.graduation_year ? (
+                  <View style={styles.directoryBadge}>
+                    <Text style={styles.directoryBadgeText}>
+                      Class of {mentor.graduation_year}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {mentor.bio ? (
+                <Text style={styles.directoryBio}>{mentor.bio}</Text>
+              ) : null}
+
+              {mentor.expertise_areas?.length ? (
+                <Text style={styles.directoryExpertise}>
+                  Expertise: {mentor.expertise_areas.join(", ")}
+                </Text>
+              ) : null}
+
+              <View style={styles.directoryContactRow}>
+                {mentor.contact_email ? (
+                  <Pressable
+                    onPress={() => void Linking.openURL(`mailto:${mentor.contact_email}`)}
+                    style={({ pressed }) => [
+                      styles.contactButton,
+                      pressed && styles.contactButtonPressed,
+                    ]}
+                  >
+                    <Text style={styles.contactButtonText}>Email</Text>
+                  </Pressable>
+                ) : null}
+                {mentor.contact_linkedin ? (
+                  <Pressable
+                    onPress={() =>
+                      void Linking.openURL(
+                        mentor.contact_linkedin?.startsWith("http")
+                          ? mentor.contact_linkedin
+                          : `https://${mentor.contact_linkedin}`
+                      )
+                    }
+                    style={({ pressed }) => [
+                      styles.contactButton,
+                      pressed && styles.contactButtonPressed,
+                    ]}
+                  >
+                    <Text style={styles.contactButtonText}>LinkedIn</Text>
+                  </Pressable>
+                ) : null}
+                {mentor.contact_phone ? (
+                  <Pressable
+                    onPress={() => void Linking.openURL(`tel:${mentor.contact_phone}`)}
+                    style={({ pressed }) => [
+                      styles.contactButton,
+                      pressed && styles.contactButtonPressed,
+                    ]}
+                  >
+                    <Text style={styles.contactButtonText}>Call</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      <SelectModal
+        visible={activeSelect === "industry"}
+        title="Choose industry"
+        options={industryOptions}
+        selectedValue={filters.industry}
+        onSelect={(option) => {
+          setFilters((current) => ({ ...current, industry: option.value }));
+          setActiveSelect(null);
+        }}
+        onClose={() => setActiveSelect(null)}
+        styles={styles}
+      />
+      <SelectModal
+        visible={activeSelect === "year"}
+        title="Choose graduation year"
+        options={yearOptions}
+        selectedValue={filters.year}
+        onSelect={(option) => {
+          setFilters((current) => ({ ...current, year: option.value }));
+          setActiveSelect(null);
+        }}
+        onClose={() => setActiveSelect(null)}
+        styles={styles}
+      />
+    </View>
+  );
+}
+
+function MentorProfileForm({
+  currentUserProfile,
+  styles,
+  onCancel,
+  onSaved,
+}: {
+  currentUserProfile: MentorProfileRecord | null;
+  styles: ReturnType<typeof createStyles>;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const { user } = useAuth();
+  const { orgId } = useOrg();
+  const [bio, setBio] = useState(currentUserProfile?.bio ?? "");
+  const [expertiseAreas, setExpertiseAreas] = useState(
+    currentUserProfile?.expertise_areas.join(", ") ?? ""
+  );
+  const [contactEmail, setContactEmail] = useState(currentUserProfile?.contact_email ?? "");
+  const [contactLinkedin, setContactLinkedin] = useState(
+    currentUserProfile?.contact_linkedin ?? ""
+  );
+  const [contactPhone, setContactPhone] = useState(currentUserProfile?.contact_phone ?? "");
+  const [isActive, setIsActive] = useState(currentUserProfile?.is_active ?? true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (!user?.id || !orgId) {
+      setError("You must be signed in to update your mentor profile.");
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    const payload = {
+      organization_id: orgId,
+      user_id: user.id,
+      bio: bio.trim() || null,
+      expertise_areas: expertiseAreas
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+      contact_email: contactEmail.trim() || null,
+      contact_linkedin: contactLinkedin.trim() || null,
+      contact_phone: contactPhone.trim() || null,
+      is_active: isActive,
+    };
+
+    const query = currentUserProfile
+      ? supabase
+          .from("mentor_profiles")
+          .update(payload)
+          .eq("id", currentUserProfile.id)
+          .eq("user_id", user.id)
+      : supabase.from("mentor_profiles").insert(payload);
+
+    const { error: saveError } = await query;
+
+    if (saveError) {
+      setError(saveError.message);
+      setIsSaving(false);
+      return;
+    }
+
+    setIsSaving(false);
+    onSaved();
+  };
+
+  return (
+    <View style={styles.profileFormCard}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>
+          {currentUserProfile ? "Edit mentor profile" : "Become a mentor"}
+        </Text>
+        <Text style={styles.sectionSubtitle}>
+          Share what you can help with so current members know how to reach you.
+        </Text>
+      </View>
+
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Bio</Text>
+        <TextInput
+          value={bio}
+          onChangeText={setBio}
+          placeholder="Tell members about your background and what you can help with."
+          placeholderTextColor={MENTORSHIP_COLORS.secondaryText}
+          multiline
+          textAlignVertical="top"
+          style={[styles.input, styles.textArea]}
+        />
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Areas of expertise</Text>
+        <TextInput
+          value={expertiseAreas}
+          onChangeText={setExpertiseAreas}
+          placeholder="Career advice, interview prep, industry insights"
+          placeholderTextColor={MENTORSHIP_COLORS.secondaryText}
+          style={styles.input}
+        />
+        <Text style={styles.helperText}>Separate multiple areas with commas.</Text>
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Email</Text>
+        <TextInput
+          value={contactEmail}
+          onChangeText={setContactEmail}
+          placeholder="your.email@example.com"
+          placeholderTextColor={MENTORSHIP_COLORS.secondaryText}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          style={styles.input}
+        />
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>LinkedIn URL</Text>
+        <TextInput
+          value={contactLinkedin}
+          onChangeText={setContactLinkedin}
+          placeholder="https://linkedin.com/in/yourprofile"
+          placeholderTextColor={MENTORSHIP_COLORS.secondaryText}
+          autoCapitalize="none"
+          style={styles.input}
+        />
+      </View>
+
+      <View style={styles.fieldGroup}>
+        <Text style={styles.fieldLabel}>Phone</Text>
+        <TextInput
+          value={contactPhone}
+          onChangeText={setContactPhone}
+          placeholder="+1 (555) 123-4567"
+          placeholderTextColor={MENTORSHIP_COLORS.secondaryText}
+          keyboardType="phone-pad"
+          style={styles.input}
+        />
+      </View>
+
+      <View style={styles.toggleRow}>
+        <Text style={styles.toggleLabel}>Visible in directory</Text>
+        <Switch
+          value={isActive}
+          onValueChange={setIsActive}
+          trackColor={{ false: MENTORSHIP_COLORS.border, true: MENTORSHIP_COLORS.primaryLight }}
+          thumbColor={isActive ? MENTORSHIP_COLORS.primary : MENTORSHIP_COLORS.card}
+        />
+      </View>
+
+      <View style={styles.buttonRow}>
+        <Pressable
+          onPress={onCancel}
+          style={({ pressed }) => [
+            styles.ghostButton,
+            pressed && styles.ghostButtonPressed,
+          ]}
+        >
+          <Text style={styles.ghostButtonText}>Cancel</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleSave}
+          disabled={isSaving}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            pressed && styles.primaryButtonPressed,
+            isSaving && styles.buttonDisabled,
+          ]}
+        >
+          {isSaving ? (
+            <ActivityIndicator color={MENTORSHIP_COLORS.primaryForeground} />
+          ) : (
+            <Text style={styles.primaryButtonText}>
+              {currentUserProfile ? "Save profile" : "Register as mentor"}
+            </Text>
+          )}
+        </Pressable>
       </View>
     </View>
   );
@@ -480,53 +1195,30 @@ function MentorshipAdminPanel({
     const load = async () => {
       setIsLoading(true);
       setError(null);
-      const { data: mentorRows, error: mentorError } = await supabase
-        .from("user_organization_roles")
-        .select("user_id, users(name,email)")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .eq("role", "alumni");
+      try {
+        const { mentors: mentorList, mentees: menteeList } =
+          await loadPairableOrgMembers(orgId);
 
-      if (!isMounted) return;
-      if (mentorError) {
-        setError(mentorError.message);
-        setIsLoading(false);
-        return;
+        if (!isMounted) return;
+
+        setMentors(
+          mentorList.map((member) => ({
+            value: member.user_id,
+            label: memberDisplayLabel(member),
+          }))
+        );
+        setMentees(
+          menteeList.map((member) => ({
+            value: member.user_id,
+            label: memberDisplayLabel(member),
+          }))
+        );
+      } catch (loadError) {
+        if (!isMounted) return;
+        setError(
+          loadError instanceof Error ? loadError.message : "Unable to load org members."
+        );
       }
-
-      const { data: menteeRows, error: menteeError } = await supabase
-        .from("user_organization_roles")
-        .select("user_id, users(name,email)")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .eq("role", "active_member");
-
-      if (!isMounted) return;
-      if (menteeError) {
-        setError(menteeError.message);
-        setIsLoading(false);
-        return;
-      }
-
-      setMentors(
-        mentorRows?.map((row) => {
-          const userInfo = Array.isArray(row.users) ? row.users[0] : row.users;
-          return {
-            value: row.user_id,
-            label: userInfo?.name || userInfo?.email || "Alumni",
-          };
-        }) || []
-      );
-
-      setMentees(
-        menteeRows?.map((row) => {
-          const userInfo = Array.isArray(row.users) ? row.users[0] : row.users;
-          return {
-            value: row.user_id,
-            label: userInfo?.name || userInfo?.email || "Member",
-          };
-        }) || []
-      );
 
       setIsLoading(false);
     };
@@ -605,18 +1297,20 @@ function MentorshipAdminPanel({
     <View style={styles.card}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Create pair</Text>
-        <Text style={styles.sectionSubtitle}>Pair an alumni mentor with an active member.</Text>
+        <Text style={styles.sectionSubtitle}>
+          Pair an eligible mentor with an active member.
+        </Text>
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       <SelectField
-        label="Mentor (alumni)"
+        label="Mentor"
         value={mentors.find((m) => m.value === mentorId)?.label || ""}
         placeholder="Select mentor"
         onPress={() => setActiveSelect("mentor")}
         styles={styles}
       />
       <SelectField
-        label="Mentee (active member)"
+        label="Mentee"
         value={mentees.find((m) => m.value === menteeId)?.label || ""}
         placeholder="Select mentee"
         onPress={() => setActiveSelect("mentee")}
@@ -704,44 +1398,39 @@ function MentorPairManager({
       setError(null);
       setMentorId(user.id);
 
-      const { data: menteeRows, error: menteeError } = await supabase
-        .from("user_organization_roles")
-        .select("user_id, users(name,email)")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-        .eq("role", "active_member");
+      try {
+        const { mentees: menteeList } = await loadPairableOrgMembers(orgId);
 
-      if (!isMounted) return;
-      if (menteeError) {
-        setError(menteeError.message);
+        if (!isMounted) return;
+
+        setAvailableMentees(
+          menteeList.map((member) => ({
+            value: member.user_id,
+            label: memberDisplayLabel(member),
+          }))
+        );
+      } catch (loadError) {
+        if (!isMounted) return;
+        setError(
+          loadError instanceof Error ? loadError.message : "Unable to load org members."
+        );
         setIsLoading(false);
         return;
       }
-
-      setAvailableMentees(
-        menteeRows?.map((row) => {
-          const userInfo = Array.isArray(row.users) ? row.users[0] : row.users;
-          return {
-            value: row.user_id,
-            label: userInfo?.name || userInfo?.email || "Member",
-          };
-        }) || []
-      );
 
       const { data: pair } = await supabase
         .from("mentorship_pairs")
         .select("*")
         .eq("organization_id", orgId)
         .eq("mentor_user_id", user.id)
+        .is("deleted_at", null)
         .maybeSingle();
 
       if (pair) {
         setPairId(pair.id);
         setCurrentMenteeId(pair.mentee_user_id);
         setInitialMenteeId(pair.mentee_user_id);
-        const normalizedStatus =
-          pair.status === "completed" || pair.status === "paused" ? pair.status : "active";
-        setStatus(normalizedStatus as MentorshipStatus);
+        setStatus(normalizeMentorshipStatus(pair.status));
       }
 
       setIsLoading(false);
@@ -777,6 +1466,7 @@ function MentorPairManager({
           .update(payload)
           .eq("id", pairId)
           .eq("mentor_user_id", mentorId)
+          .is("deleted_at", null)
           .select("id")
           .maybeSingle()
       : await supabase.from("mentorship_pairs").insert(payload).select("id").maybeSingle();
@@ -835,9 +1525,10 @@ function MentorPairManager({
 
             const { error: deleteError } = await supabase
               .from("mentorship_pairs")
-              .delete()
+              .update({ deleted_at: new Date().toISOString() })
               .eq("id", pairId)
-              .eq("mentor_user_id", mentorId);
+              .eq("mentor_user_id", mentorId)
+              .is("deleted_at", null);
 
             if (deleteError) {
               setError(deleteError.message);
@@ -959,6 +1650,7 @@ function MentorshipPairsList({
   userId,
   styles,
   onRefresh,
+  onArchive,
 }: {
   pairs: MentorshipPair[];
   logsByPair: Record<string, MentorshipLog[]>;
@@ -969,6 +1661,7 @@ function MentorshipPairsList({
   userId: string | null;
   styles: ReturnType<typeof createStyles>;
   onRefresh: () => void;
+  onArchive: (pairId: string) => void;
 }) {
   if (pairs.length === 0) {
     return (
@@ -994,7 +1687,8 @@ function MentorshipPairsList({
           userId={userId}
           userLabel={userLabel}
           styles={styles}
-                    onRefresh={onRefresh}
+          onRefresh={onRefresh}
+          onArchive={onArchive}
         />
       ))}
     </View>
@@ -1013,6 +1707,7 @@ function MentorshipPairCard({
   userLabel,
   styles,
   onRefresh,
+  onArchive,
 }: {
   pair: MentorshipPair;
   mentorLabel: string;
@@ -1025,18 +1720,19 @@ function MentorshipPairCard({
   userLabel: (id: string) => string;
   styles: ReturnType<typeof createStyles>;
   onRefresh: () => void;
+  onArchive: (pairId: string) => void;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleDelete = () => {
     Alert.alert(
-      "Delete mentorship pair?",
-      "This will also remove associated activity logs. This action cannot be undone.",
+      "Archive mentorship pair?",
+      "This will hide the pair from active views while preserving the activity history.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete",
+          text: "Archive",
           style: "destructive",
           onPress: async () => {
             setIsDeleting(true);
@@ -1044,8 +1740,9 @@ function MentorshipPairCard({
 
             const { error: logsError } = await supabase
               .from("mentorship_logs")
-              .delete()
-              .eq("pair_id", pair.id);
+              .update({ deleted_at: new Date().toISOString() })
+              .eq("pair_id", pair.id)
+              .is("deleted_at", null);
 
             if (logsError) {
               setError("Unable to delete mentorship logs. Please try again.");
@@ -1055,8 +1752,9 @@ function MentorshipPairCard({
 
             const { error: pairError } = await supabase
               .from("mentorship_pairs")
-              .delete()
-              .eq("id", pair.id);
+              .update({ deleted_at: new Date().toISOString() })
+              .eq("id", pair.id)
+              .is("deleted_at", null);
 
             if (pairError) {
               setError("Unable to delete mentorship pair. Please try again.");
@@ -1065,6 +1763,7 @@ function MentorshipPairCard({
             }
 
             setIsDeleting(false);
+            onArchive(pair.id);
             onRefresh();
           },
         },
@@ -1072,15 +1771,16 @@ function MentorshipPairCard({
     );
   };
 
+  const isMine = isUserInMentorshipPair(pair, userId ?? undefined);
   const statusColor =
-    pair.status === "completed"
+    normalizeMentorshipStatus(pair.status) === "completed"
       ? MENTORSHIP_COLORS.secondaryText
-      : pair.status === "paused"
+      : normalizeMentorshipStatus(pair.status) === "paused"
         ? MENTORSHIP_COLORS.warning
         : MENTORSHIP_COLORS.success;
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isMine && styles.highlightedCard]}>
       <View style={styles.pairHeader}>
         <View style={styles.pairColumn}>
           <Text style={styles.pairName}>{mentorLabel}</Text>
@@ -1089,7 +1789,7 @@ function MentorshipPairCard({
         <View style={styles.pairCenter}>
           <View style={[styles.statusBadge, { backgroundColor: `${statusColor}22` }]}>
             <Text style={[styles.statusBadgeText, { color: statusColor }]}>
-              {pair.status}
+              {normalizeMentorshipStatus(pair.status)}
             </Text>
           </View>
           {isAdmin ? (
@@ -1103,7 +1803,7 @@ function MentorshipPairCard({
               ]}
             >
               <Trash2 size={14} color={MENTORSHIP_COLORS.error} />
-              <Text style={styles.deleteButtonText}>Delete</Text>
+              <Text style={styles.deleteButtonText}>Archive</Text>
             </Pressable>
           ) : null}
         </View>
@@ -1123,11 +1823,13 @@ function MentorshipPairCard({
                 <Text style={styles.logMetaText}>
                   {formatDefaultDateFromString(log.entry_date)}
                 </Text>
-                <Text style={styles.logMetaText}>by {userLabel(log.created_by)}</Text>
+                <Text style={styles.logMetaText}>Logged by {userLabel(log.created_by)}</Text>
               </View>
               {log.notes ? <Text style={styles.logNotes}>{log.notes}</Text> : null}
               {log.progress_metric !== null ? (
-                <Text style={styles.logMetric}>Progress: {log.progress_metric}</Text>
+                <Text style={styles.logMetric}>
+                  Progress metric: {log.progress_metric}
+                </Text>
               ) : null}
             </View>
           ))}
@@ -1561,6 +2263,10 @@ const createStyles = (surfaceColor: string) =>
     fieldGroup: {
       gap: spacing.xs,
     },
+    helperText: {
+      fontSize: fontSize.xs,
+      color: MENTORSHIP_COLORS.secondaryText,
+    },
     fieldLabel: {
       fontSize: fontSize.sm,
       fontWeight: fontWeight.medium,
@@ -1637,8 +2343,167 @@ const createStyles = (surfaceColor: string) =>
       gap: spacing.sm,
       flexWrap: "wrap",
     },
+    inlineLinkButton: {
+      alignSelf: "flex-start",
+      paddingVertical: spacing.xs,
+    },
+    inlineLinkButtonPressed: {
+      opacity: 0.8,
+    },
+    inlineLinkText: {
+      fontSize: fontSize.sm,
+      color: MENTORSHIP_COLORS.primary,
+      fontWeight: fontWeight.medium,
+    },
+    directoryFilterRow: {
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    directoryFilterField: {
+      flex: 1,
+    },
+    directoryCallout: {
+      borderRadius: borderRadius.lg,
+      borderWidth: 1,
+      borderStyle: "dashed",
+      borderColor: MENTORSHIP_COLORS.border,
+      backgroundColor: MENTORSHIP_COLORS.mutedSurface,
+      padding: spacing.md,
+      gap: spacing.md,
+    },
+    directoryCalloutBody: {
+      gap: spacing.xs,
+    },
+    calloutTitle: {
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
+      color: MENTORSHIP_COLORS.primaryText,
+    },
+    calloutSubtitle: {
+      fontSize: fontSize.sm,
+      color: MENTORSHIP_COLORS.secondaryText,
+    },
+    calloutButton: {
+      alignSelf: "flex-start",
+      paddingHorizontal: spacing.md,
+    },
+    profileFormCard: {
+      borderRadius: borderRadius.lg,
+      borderWidth: 1,
+      borderColor: MENTORSHIP_COLORS.border,
+      backgroundColor: MENTORSHIP_COLORS.mutedSurface,
+      padding: spacing.md,
+      gap: spacing.md,
+    },
+    directoryEmptyState: {
+      alignItems: "flex-start",
+      gap: spacing.xs,
+      paddingTop: spacing.xs,
+    },
+    directoryList: {
+      gap: spacing.md,
+    },
+    directoryCard: {
+      borderRadius: borderRadius.lg,
+      borderWidth: 1,
+      borderColor: MENTORSHIP_COLORS.border,
+      backgroundColor: MENTORSHIP_COLORS.card,
+      padding: spacing.md,
+      gap: spacing.sm,
+    },
+    directoryCardHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    directoryAvatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+    },
+    directoryAvatarFallback: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: MENTORSHIP_COLORS.mutedSurface,
+      borderWidth: 1,
+      borderColor: MENTORSHIP_COLORS.border,
+    },
+    directoryAvatarFallbackText: {
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.bold,
+      color: MENTORSHIP_COLORS.primaryText,
+    },
+    directoryHeaderText: {
+      flex: 1,
+      gap: 2,
+    },
+    directoryName: {
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
+      color: MENTORSHIP_COLORS.primaryText,
+    },
+    directoryMeta: {
+      fontSize: fontSize.sm,
+      color: MENTORSHIP_COLORS.secondaryText,
+    },
+    directoryBadgeRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.xs,
+    },
+    directoryBadge: {
+      borderRadius: 999,
+      backgroundColor: MENTORSHIP_COLORS.mutedSurface,
+      borderWidth: 1,
+      borderColor: MENTORSHIP_COLORS.border,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+    },
+    directoryBadgeText: {
+      fontSize: fontSize.xs,
+      color: MENTORSHIP_COLORS.primaryText,
+      fontWeight: fontWeight.medium,
+    },
+    directoryBio: {
+      fontSize: fontSize.sm,
+      color: MENTORSHIP_COLORS.primaryText,
+      lineHeight: 20,
+    },
+    directoryExpertise: {
+      fontSize: fontSize.sm,
+      color: MENTORSHIP_COLORS.secondaryText,
+      lineHeight: 20,
+    },
+    directoryContactRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacing.sm,
+    },
+    contactButton: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs + 2,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      borderColor: MENTORSHIP_COLORS.border,
+      backgroundColor: MENTORSHIP_COLORS.background,
+    },
+    contactButtonPressed: {
+      opacity: 0.85,
+    },
+    contactButtonText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.medium,
+      color: MENTORSHIP_COLORS.primaryText,
+    },
     pairsList: {
       gap: spacing.md,
+    },
+    highlightedCard: {
+      borderColor: MENTORSHIP_COLORS.primaryLight,
+      borderWidth: 2,
     },
     pairHeader: {
       flexDirection: "row",

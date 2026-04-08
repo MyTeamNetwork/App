@@ -3,16 +3,7 @@ import { ExternalLink, LogOut } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { signOut } from "@/lib/supabase";
 import { getWebAppUrl } from "@/lib/web-api";
-
-const colors = {
-  background: "#ffffff",
-  pressed: "#f1f5f9",
-  divider: "#e2e8f0",
-  label: "#94a3b8",
-  text: "#64748b",
-  destructive: "#dc2626",
-  icon: "#94a3b8",
-};
+import { NEUTRAL, SEMANTIC, SHADOWS, RADIUS, SPACING } from "@/lib/design-tokens";
 
 export function OrgSwitcherActions() {
   const router = useRouter();
@@ -31,80 +22,117 @@ export function OrgSwitcherActions() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.sectionLabel}>Account actions</Text>
+    <>
+      {/* Account Actions card group */}
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>Account Actions</Text>
+        <View style={styles.cardGroup}>
+          <Pressable
+            onPress={handleJoin}
+            style={({ pressed }) => [
+              styles.row,
+              styles.rowFirst,
+              pressed && styles.rowPressed,
+            ]}
+            accessibilityRole="link"
+            accessibilityLabel="Join another organization (opens web)"
+          >
+            <Text style={styles.rowText}>Join another organization</Text>
+            <ExternalLink size={16} color={NEUTRAL.muted} />
+          </Pressable>
 
-      <Pressable
-        onPress={handleJoin}
-        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        accessibilityRole="link"
-        accessibilityLabel="Join another organization (opens web)"
-      >
-        <Text style={styles.rowText}>Join another organization</Text>
-        <ExternalLink size={16} color={colors.icon} />
-      </Pressable>
+          <View style={styles.divider} />
 
-      <Pressable
-        onPress={handleCreate}
-        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        accessibilityRole="link"
-        accessibilityLabel="Create a new organization (opens web)"
-      >
-        <Text style={styles.rowText}>Create a new organization</Text>
-        <ExternalLink size={16} color={colors.icon} />
-      </Pressable>
+          <Pressable
+            onPress={handleCreate}
+            style={({ pressed }) => [
+              styles.row,
+              styles.rowLast,
+              pressed && styles.rowPressed,
+            ]}
+            accessibilityRole="link"
+            accessibilityLabel="Create a new organization (opens web)"
+          >
+            <Text style={styles.rowText}>Create a new organization</Text>
+            <ExternalLink size={16} color={NEUTRAL.muted} />
+          </Pressable>
+        </View>
+      </View>
 
-      <View style={styles.divider} />
-
-      <Pressable
-        onPress={handleSignOut}
-        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-        accessibilityRole="button"
-        accessibilityLabel="Sign out"
-      >
-        <Text style={[styles.rowText, styles.destructiveText]}>Sign out</Text>
-        <LogOut size={16} color={colors.destructive} />
-      </Pressable>
-    </View>
+      {/* Sign out card group */}
+      <View style={styles.section}>
+        <View style={styles.cardGroup}>
+          <Pressable
+            onPress={handleSignOut}
+            style={({ pressed }) => [
+              styles.row,
+              styles.rowFirst,
+              styles.rowLast,
+              pressed && styles.rowPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            <Text style={[styles.rowText, styles.destructiveText]}>Sign out</Text>
+            <LogOut size={16} color={SEMANTIC.error} />
+          </Pressable>
+        </View>
+      </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingTop: 12,
-    paddingBottom: 32,
+  section: {
+    marginTop: SPACING.lg,
+    marginHorizontal: SPACING.md,
   },
   sectionLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
-    color: colors.label,
+    color: NEUTRAL.muted,
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    paddingHorizontal: 16,
-    marginBottom: 8,
+    marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+  },
+  cardGroup: {
+    backgroundColor: NEUTRAL.surface,
+    borderRadius: RADIUS.xl,
+    overflow: "hidden",
+    ...SHADOWS.sm,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.divider,
-    marginVertical: 8,
+    backgroundColor: NEUTRAL.border,
+    marginLeft: SPACING.md,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.background,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    backgroundColor: NEUTRAL.surface,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+  },
+  rowFirst: {
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+  },
+  rowLast: {
+    borderBottomLeftRadius: RADIUS.xl,
+    borderBottomRightRadius: RADIUS.xl,
   },
   rowPressed: {
-    backgroundColor: colors.pressed,
+    backgroundColor: NEUTRAL.divider,
   },
   rowText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "500",
-    color: colors.text,
+    color: NEUTRAL.secondary,
   },
   destructiveText: {
-    color: colors.destructive,
+    color: SEMANTIC.error,
+    fontWeight: "600",
   },
 });

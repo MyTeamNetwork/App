@@ -27,11 +27,12 @@ import {
   Trophy,
 } from "lucide-react-native";
 import { useAuth } from "@/hooks/useAuth";
+import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { signOut } from "@/lib/supabase";
 import { getWebAppUrl } from "@/lib/web-api";
 import { spacing, fontSize, fontWeight } from "@/lib/theme";
-import { NEUTRAL, SEMANTIC } from "@/lib/design-tokens";
+import { NEUTRAL, SEMANTIC, RADIUS } from "@/lib/design-tokens";
 
 interface NavItem {
   label: string;
@@ -59,7 +60,9 @@ export function DrawerContent(props: DrawerContentComponentProps) {
   const { orgSlug } = useGlobalSearchParams<{ orgSlug?: string }>();
   const { user } = useAuth();
   const { permissions } = useOrgRole();
+  const { orgName, orgLogoUrl } = useOrg();
   const slug = typeof orgSlug === "string" ? orgSlug : "";
+  const orgInitial = (orgName ?? slug ?? "").trim().charAt(0).toUpperCase() || "O";
   const userMeta = (user?.user_metadata ?? {}) as { name?: string; avatar_url?: string };
   const displayName = userMeta.name || user?.email || "Member";
   const displayEmail = user?.email || "";
@@ -219,9 +222,29 @@ export function DrawerContent(props: DrawerContentComponentProps) {
         ]}
         scrollEnabled
       >
-        <View style={styles.brandRow}>
+        {/* Drawer header: org identity + product wordmark */}
+        <View style={styles.drawerHeader}>
+          {slug ? (
+            <View style={styles.orgIdentityRow}>
+              <View style={styles.orgLogoContainer}>
+                {orgLogoUrl ? (
+                  <Image
+                    source={orgLogoUrl}
+                    style={styles.orgLogoImage}
+                    contentFit="cover"
+                    transition={200}
+                  />
+                ) : (
+                  <Text style={styles.orgLogoFallback}>{orgInitial}</Text>
+                )}
+              </View>
+              {orgName ? (
+                <Text style={styles.orgName} numberOfLines={1}>{orgName}</Text>
+              ) : null}
+            </View>
+          ) : null}
           <Image
-            source={require("../../../assets/brand-logo.png")}
+            source={require("../../assets/brand-logo.png")}
             style={styles.brandLogo}
             contentFit="contain"
             transition={0}
@@ -280,15 +303,47 @@ const styles = StyleSheet.create({
   scrollContent: {
     // paddingTop is set dynamically with safe area inset
   },
-  brandRow: {
+  drawerHeader: {
     paddingTop: spacing.md,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
+    gap: spacing.md,
+  },
+  orgIdentityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  orgLogoContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: RADIUS.sm,
+    borderCurve: "continuous",
+    backgroundColor: NEUTRAL.dark800,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  orgLogoImage: {
+    width: 40,
+    height: 40,
+  },
+  orgLogoFallback: {
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.semibold,
+    color: NEUTRAL.surface,
+  },
+  orgName: {
+    flex: 1,
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.semibold,
+    color: NEUTRAL.surface,
   },
   brandLogo: {
-    width: 140,
-    height: 94,
+    width: 100,
+    height: 20,
     alignSelf: "flex-start",
+    opacity: 0.5,
   },
   profileCard: {
     flexDirection: "row",
