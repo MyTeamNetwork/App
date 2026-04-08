@@ -12,7 +12,7 @@ const ICON_SIZE = 22;
 // Tab configuration with a centered action button
 const LEFT_TABS = [
   { route: "index", icon: Home, label: "Home" },
-  { route: "events", icon: Calendar, label: "Events" },
+  { route: "calendar", icon: Calendar, label: "Calendar" },
 ] as const;
 
 const RIGHT_TABS = [

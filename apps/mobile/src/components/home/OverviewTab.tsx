@@ -214,7 +214,7 @@ export function OverviewTab({
         </Pressable>
 
         <Pressable
-          onPress={() => onNavigate(`/(app)/${orgSlug}/(tabs)/events`)}
+          onPress={() => onNavigate(`/(app)/${orgSlug}/(tabs)/calendar`)}
           style={({ pressed }) => [styles.heroCard, pressed && styles.cardPressed]}
           accessibilityRole="button"
           accessibilityLabel={`Upcoming Events: ${stats.upcomingEvents}`}

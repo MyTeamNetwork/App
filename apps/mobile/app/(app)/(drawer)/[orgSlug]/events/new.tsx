@@ -563,7 +563,7 @@ export default function NewEventScreen() {
         console.warn("Failed to sync calendar:", syncError);
       }
 
-      router.push(`/(app)/${orgSlug}/(tabs)/events`);
+      router.push(`/(app)/${orgSlug}/(tabs)/calendar`);
     } catch (e) {
       setError((e as Error).message || "Failed to create event.");
     } finally {

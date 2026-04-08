@@ -135,7 +135,7 @@ export function EventsTab({
       <View style={styles.section}>
         <SectionHeader
           title="Upcoming Events"
-          onSeeAll={() => onNavigate(`/(app)/${orgSlug}/(tabs)/events`)}
+          onSeeAll={() => onNavigate(`/(app)/${orgSlug}/(tabs)/calendar`)}
         />
 
         {events.length === 0 ? (
