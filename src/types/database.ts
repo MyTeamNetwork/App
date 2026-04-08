@@ -5087,11 +5087,13 @@ export type Database = {
           created_at: string | null
           id: string
           last_sync_at: string | null
+          microsoft_refresh_lock_expires_at: string | null
+          microsoft_refresh_lock_id: string | null
           provider: string
           provider_email: string
           refresh_token_encrypted: string
           status: string
-          target_calendar_id: string
+          target_calendar_id: string | null
           token_expires_at: string
           updated_at: string | null
           user_id: string
@@ -5101,11 +5103,13 @@ export type Database = {
           created_at?: string | null
           id?: string
           last_sync_at?: string | null
+          microsoft_refresh_lock_expires_at?: string | null
+          microsoft_refresh_lock_id?: string | null
           provider?: string
           provider_email: string
           refresh_token_encrypted: string
           status?: string
-          target_calendar_id?: string
+          target_calendar_id?: string | null
           token_expires_at: string
           updated_at?: string | null
           user_id: string
@@ -5115,11 +5119,13 @@ export type Database = {
           created_at?: string | null
           id?: string
           last_sync_at?: string | null
+          microsoft_refresh_lock_expires_at?: string | null
+          microsoft_refresh_lock_id?: string | null
           provider?: string
           provider_email?: string
           refresh_token_encrypted?: string
           status?: string
-          target_calendar_id?: string
+          target_calendar_id?: string | null
           token_expires_at?: string
           updated_at?: string | null
           user_id?: string
@@ -5560,6 +5566,14 @@ export type Database = {
         Returns: Json
       }
       claim_linkedin_resync: { Args: { p_user_id: string }; Returns: Json }
+      claim_microsoft_token_refresh_lock: {
+        Args: {
+          p_lock_expires_at: string
+          p_lock_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       claim_stale_stripe_event: {
         Args: { p_event_id: string }
         Returns: {
@@ -5889,6 +5903,10 @@ export type Database = {
       release_linkedin_manual_sync: {
         Args: { p_attempt_id: string }
         Returns: Json
+      }
+      release_microsoft_token_refresh_lock: {
+        Args: { p_lock_id: string; p_user_id: string }
+        Returns: boolean
       }
       reorder_media_albums: {
         Args: { p_album_ids: string[]; p_org_id: string }

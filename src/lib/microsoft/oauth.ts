@@ -207,8 +207,6 @@ export async function storeMicrosoftConnection(
             status: "connected",
             last_sync_at: new Date().toISOString(),
             target_calendar_id: existingConnection?.target_calendar_id ?? null,
-        } as unknown as Database["public"]["Tables"]["user_calendar_connections"]["Insert"] & {
-            target_calendar_id: string | null;
         }, {
             onConflict: "user_id,provider",
         });

@@ -298,7 +298,7 @@ export async function getCalendarConnection(
     refreshToken: string;
     expiresAt: Date;
     status: "connected" | "disconnected" | "error";
-    targetCalendarId: string;
+    targetCalendarId: string | null;
     lastSyncAt: Date | null;
 } | null> {
     const { data, error } = await supabase
