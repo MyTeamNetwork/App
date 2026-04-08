@@ -77,15 +77,15 @@ export default function TabsLayout() {
   }, [orgSlug, router]);
 
   const handleRsvpEvent = useCallback(() => {
-    router.push(`/(app)/${orgSlug}/(tabs)/events`);
+    router.push(`/(app)/${orgSlug}/(tabs)/calendar`);
     handleCloseSheet();
   }, [orgSlug, router, handleCloseSheet]);
 
   const handleCheckIn = useCallback(() => {
     if (!orgSlug) return;
-    // Navigate to events tab where user can select an event to check in
+    // Navigate to the calendar tab where user can select an event to check in
     // Check-in requires selecting a specific event first
-    router.push(`/(app)/${orgSlug}/(tabs)/events`);
+    router.push(`/(app)/${orgSlug}/(tabs)/calendar`);
     handleCloseSheet();
   }, [orgSlug, router, handleCloseSheet]);
 
@@ -132,9 +132,9 @@ export default function TabsLayout() {
           }}
         />
         <Tabs.Screen
-          name="events"
+          name="calendar"
           options={{
-            title: "Events",
+            title: "Calendar",
             headerShown: false,
           }}
         />
