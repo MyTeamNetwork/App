@@ -148,4 +148,26 @@ BEGIN
 END;
 $$;
 
+-- ============================================================
+-- 6. Composite indexes on provider column for hot-path queries
+-- ============================================================
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_user_cal_connections_user_provider
+    ON public.user_calendar_connections(user_id, provider);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_event_cal_entries_event_user_provider
+    ON public.event_calendar_entries(event_id, user_id, provider);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE INDEX IF NOT EXISTS idx_event_cal_entries_user_provider_status
+    ON public.event_calendar_entries(user_id, provider, sync_status);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 COMMIT;
