@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { detectConnector } from "@/lib/schedule-connectors/registry";
 import { maskUrl, normalizeUrl } from "@/lib/schedule-connectors/fetch";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { validateJson, ValidationError, validationErrorResponse } from "@/lib/security/validation";
@@ -66,6 +65,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const { detectConnector } = await import("@/lib/schedule-connectors/registry");
     const { connector } = await detectConnector(normalizedUrl, { orgId: body.orgId });
     const preview = await connector.preview({ url: normalizedUrl, orgId: body.orgId });
 

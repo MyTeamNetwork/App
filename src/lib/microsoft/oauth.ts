@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { randomUUID } from "crypto";
 import type { Database } from "@/types/database";
 import { getAppUrl } from "@/lib/url";
 import {
@@ -44,6 +45,9 @@ const MICROSOFT_SCOPES = [
     "User.Read",
     "offline_access",
 ];
+const MICROSOFT_REFRESH_LOCK_TTL_MS = 30_000;
+const MICROSOFT_REFRESH_LOCK_WAIT_MS = 250;
+const MICROSOFT_REFRESH_LOCK_MAX_WAITS = 20;
 
 /**
  * Extracts error code from Microsoft token endpoint response.
@@ -195,6 +199,9 @@ export async function storeMicrosoftConnection(
             token_expires_at: tokens.expiresAt.toISOString(),
             status: "connected",
             last_sync_at: new Date().toISOString(),
+            target_calendar_id: null,
+        } as unknown as Database["public"]["Tables"]["user_calendar_connections"]["Insert"] & {
+            target_calendar_id: string | null;
         }, {
             onConflict: "user_id,provider",
         });
@@ -218,9 +225,10 @@ export async function getMicrosoftConnection(
     providerEmail: string;
     accessToken: string;
     refreshToken: string;
+    refreshTokenEncrypted: string;
     expiresAt: Date;
     status: MicrosoftConnectionStatus;
-    targetCalendarId: string;
+    targetCalendarId: string | null;
     lastSyncAt: Date | null;
 } | null> {
     const { data, error } = await supabase
@@ -240,9 +248,10 @@ export async function getMicrosoftConnection(
             providerEmail: data.provider_email,
             accessToken: decryptToken(data.access_token_encrypted),
             refreshToken: decryptToken(data.refresh_token_encrypted),
+            refreshTokenEncrypted: data.refresh_token_encrypted,
             expiresAt: new Date(data.token_expires_at),
             status: data.status as MicrosoftConnectionStatus,
-            targetCalendarId: data.target_calendar_id,
+            targetCalendarId: data.target_calendar_id ?? null,
             lastSyncAt: data.last_sync_at ? new Date(data.last_sync_at) : null,
         };
     } catch (decryptError) {
@@ -309,61 +318,94 @@ export async function refreshAndStoreMicrosoftToken(
     supabase: SupabaseClient<Database>,
     userId: string
 ): Promise<string | null> {
-    const connection = await getMicrosoftConnection(supabase, userId);
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const connection = await getMicrosoftConnection(supabase, userId);
 
-    if (!connection) {
-        return null;
-    }
+        if (!connection) {
+            return null;
+        }
 
-    try {
-        const body = new URLSearchParams({
-            client_id: getMicrosoftClientId(),
-            client_secret: getMicrosoftClientSecret(),
-            refresh_token: connection.refreshToken,
-            grant_type: "refresh_token",
-            scope: MICROSOFT_SCOPES.join(" "),
-        });
+        if (!isTokenExpired(connection.expiresAt)) {
+            return connection.accessToken;
+        }
 
-        const response = await fetch(MICROSOFT_TOKEN_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: body.toString(),
-        });
+        const lockId = randomUUID();
+        const claimedLock = await claimMicrosoftTokenRefreshLock(supabase, userId, lockId);
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            const errorCode = extractMicrosoftErrorCode(errorText);
-            console.error("[microsoft-oauth] Token refresh failed", {
-                status: response.status,
-                error: errorCode,
+        if (!claimedLock) {
+            const waitedToken = await waitForMicrosoftTokenRefresh(supabase, userId);
+            if (waitedToken) {
+                return waitedToken;
+            }
+            continue;
+        }
+
+        try {
+            const latestConnection = await getMicrosoftConnection(supabase, userId);
+            if (!latestConnection) {
+                return null;
+            }
+
+            if (!isTokenExpired(latestConnection.expiresAt)) {
+                return latestConnection.accessToken;
+            }
+
+            const body = new URLSearchParams({
+                client_id: getMicrosoftClientId(),
+                client_secret: getMicrosoftClientSecret(),
+                refresh_token: latestConnection.refreshToken,
+                grant_type: "refresh_token",
+                scope: MICROSOFT_SCOPES.join(" "),
             });
-            throw new Error(`Token refresh failed: ${errorCode}`);
+
+            const response = await fetch(MICROSOFT_TOKEN_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: body.toString(),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                const errorCode = extractMicrosoftErrorCode(errorText);
+                console.error("[microsoft-oauth] Token refresh failed", {
+                    status: response.status,
+                    error: errorCode,
+                });
+                throw new Error(`Token refresh failed: ${errorCode}`);
+            }
+
+            const tokens = await response.json() as {
+                access_token?: string;
+                refresh_token?: string;
+                expires_in?: number;
+            };
+
+            if (!tokens.access_token) {
+                throw new Error("Failed to refresh access token");
+            }
+
+            const expiresAt = tokens.expires_in
+                ? new Date(Date.now() + tokens.expires_in * 1000)
+                : new Date(Date.now() + 3600 * 1000);
+
+            const newRefreshToken = tokens.refresh_token || latestConnection.refreshToken;
+            await updateMicrosoftStoredTokens(supabase, userId, tokens.access_token, newRefreshToken, expiresAt);
+
+            return tokens.access_token;
+        } catch (error) {
+            console.error("[microsoft-oauth] Failed to refresh token:", error);
+            await markMicrosoftConnectionReconnectRequiredIfUnchanged(
+                supabase,
+                userId,
+                connection.refreshTokenEncrypted
+            );
+            return null;
+        } finally {
+            await releaseMicrosoftTokenRefreshLock(supabase, userId, lockId);
         }
-
-        const tokens = await response.json() as {
-            access_token?: string;
-            refresh_token?: string;
-            expires_in?: number;
-        };
-
-        if (!tokens.access_token) {
-            throw new Error("Failed to refresh access token");
-        }
-
-        const expiresAt = tokens.expires_in
-            ? new Date(Date.now() + tokens.expires_in * 1000)
-            : new Date(Date.now() + 3600 * 1000);
-
-        // CRITICAL: Microsoft returns a new refresh token on every refresh — store it
-        const newRefreshToken = tokens.refresh_token || connection.refreshToken;
-        await updateMicrosoftStoredTokens(supabase, userId, tokens.access_token, newRefreshToken, expiresAt);
-
-        return tokens.access_token;
-    } catch (error) {
-        console.error("[microsoft-oauth] Failed to refresh token:", error);
-        await updateMicrosoftConnectionStatus(supabase, userId, "reconnect_required");
-        return null;
     }
+
+    return null;
 }
 
 /**
@@ -385,6 +427,92 @@ export async function getMicrosoftValidAccessToken(
     }
 
     return connection.accessToken;
+}
+
+async function claimMicrosoftTokenRefreshLock(
+    supabase: SupabaseClient<Database>,
+    userId: string,
+    lockId: string
+): Promise<boolean> {
+    const lockExpiresAt = new Date(Date.now() + MICROSOFT_REFRESH_LOCK_TTL_MS).toISOString();
+    const rpcClient = supabase as unknown as {
+        rpc: (
+            fn: string,
+            args?: Record<string, unknown>
+        ) => Promise<{ data: unknown; error: { message: string } | null }>;
+    };
+
+    const { data, error } = await rpcClient.rpc("claim_microsoft_token_refresh_lock", {
+        p_user_id: userId,
+        p_lock_id: lockId,
+        p_lock_expires_at: lockExpiresAt,
+    });
+
+    if (error) {
+        console.error("[microsoft-oauth] Failed to claim refresh lock:", error);
+        return false;
+    }
+
+    return data === true;
+}
+
+async function releaseMicrosoftTokenRefreshLock(
+    supabase: SupabaseClient<Database>,
+    userId: string,
+    lockId: string
+): Promise<void> {
+    const rpcClient = supabase as unknown as {
+        rpc: (
+            fn: string,
+            args?: Record<string, unknown>
+        ) => Promise<{ data: unknown; error: { message: string } | null }>;
+    };
+
+    const { error } = await rpcClient.rpc("release_microsoft_token_refresh_lock", {
+        p_user_id: userId,
+        p_lock_id: lockId,
+    });
+
+    if (error) {
+        console.error("[microsoft-oauth] Failed to release refresh lock:", error);
+    }
+}
+
+async function waitForMicrosoftTokenRefresh(
+    supabase: SupabaseClient<Database>,
+    userId: string
+): Promise<string | null> {
+    for (let attempt = 0; attempt < MICROSOFT_REFRESH_LOCK_MAX_WAITS; attempt++) {
+        await sleep(MICROSOFT_REFRESH_LOCK_WAIT_MS);
+
+        const connection = await getMicrosoftConnection(supabase, userId);
+        if (!connection || connection.status !== "connected") {
+            return null;
+        }
+
+        if (!isTokenExpired(connection.expiresAt)) {
+            return connection.accessToken;
+        }
+    }
+
+    return null;
+}
+
+async function markMicrosoftConnectionReconnectRequiredIfUnchanged(
+    supabase: SupabaseClient<Database>,
+    userId: string,
+    refreshTokenEncrypted: string
+): Promise<void> {
+    await supabase
+        .from("user_calendar_connections")
+        .update({ status: "reconnect_required" })
+        .eq("user_id", userId)
+        .eq("provider", "outlook")
+        .eq("refresh_token_encrypted", refreshTokenEncrypted);
+}
+
+async function sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**

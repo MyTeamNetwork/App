@@ -26,42 +26,60 @@ export class GraphApiError extends Error {
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
+export interface GraphFetchRetryOptions {
+    maxRetries?: number;
+    sleep?: (ms: number) => Promise<void>;
+}
+
 export async function graphFetch(
     path: string,
     accessToken: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retryOptions: GraphFetchRetryOptions = {}
 ): Promise<Response> {
     const url = path.startsWith("http") ? path : `${GRAPH_BASE}${path}`;
 
-    const response = await fetch(url, {
-        ...options,
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-            ...(options.headers || {}),
-        },
-    });
+    const maxRetries = retryOptions.maxRetries ?? 2;
+    const sleep = retryOptions.sleep ?? defaultSleep;
 
-    if (response.status === 401) {
-        throw new GraphUnauthorizedError();
+    for (let attempt = 0; ; attempt++) {
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+                ...(options.headers || {}),
+            },
+        });
+
+        if (response.status === 401) {
+            throw new GraphUnauthorizedError();
+        }
+
+        if (response.status === 404) {
+            throw new GraphNotFoundError(path);
+        }
+
+        if (response.status === 429) {
+            if (attempt >= maxRetries) {
+                throw new GraphApiError(429, "Microsoft Graph rate limit exceeded after retries");
+            }
+
+            const retryAfter = response.headers.get("Retry-After");
+            const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 10;
+            await sleep(waitSeconds * 1000);
+            continue;
+        }
+
+        if (!response.ok) {
+            const body = await response.text().catch(() => response.statusText);
+            throw new GraphApiError(response.status, body);
+        }
+
+        return response;
     }
+}
 
-    if (response.status === 404) {
-        throw new GraphNotFoundError(path);
-    }
-
-    if (response.status === 429) {
-        const retryAfter = response.headers.get("Retry-After");
-        const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 10;
-        await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
-        // Retry once after backoff
-        return graphFetch(path, accessToken, options);
-    }
-
-    if (!response.ok) {
-        const body = await response.text().catch(() => response.statusText);
-        throw new GraphApiError(response.status, body);
-    }
-
-    return response;
+async function defaultSleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
 }

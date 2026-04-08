@@ -9,7 +9,11 @@ process.env.GOOGLE_TOKEN_ENCRYPTION_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 import { mapEventToMicrosoftCalendarEvent } from "@/lib/microsoft/calendar-event-mapper";
-import { isNotFoundError } from "@/lib/microsoft/calendar-sync";
+import {
+  createOutlookCalendarEvent,
+  isNotFoundError,
+  runWithConcurrencyLimit,
+} from "@/lib/microsoft/calendar-sync";
 
 // ── mapEventToMicrosoftCalendarEvent ──────────────────────────────────────────
 
@@ -227,5 +231,58 @@ describe("MicrosoftSyncResult upsert conflict key contract", () => {
       ["event_id", "provider", "user_id"],
       "Full conflict key must be event_id, user_id, provider"
     );
+  });
+});
+
+describe("createOutlookCalendarEvent", () => {
+  it("treats the legacy 'primary' target as the default Outlook calendar", async () => {
+    const originalFetch = global.fetch;
+    let requestedUrl = "";
+
+    global.fetch = (async (input: string | URL | Request) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify({ id: "external-event-id" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    try {
+      const result = await createOutlookCalendarEvent("token", {
+        subject: "Practice",
+        start: { dateTime: "2026-04-10T09:00:00.000Z", timeZone: "UTC" },
+        end: { dateTime: "2026-04-10T10:00:00.000Z", timeZone: "UTC" },
+      }, "primary");
+
+      assert.equal(result.success, true);
+      assert.equal(
+        requestedUrl,
+        "https://graph.microsoft.com/v1.0/me/events",
+        "Outlook 'primary' should map to the default calendar endpoint",
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+});
+
+describe("runWithConcurrencyLimit", () => {
+  it("bounds concurrent Outlook sync fan-out work", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+
+    const results = await runWithConcurrencyLimit(
+      ["u1", "u2", "u3", "u4", "u5"],
+      2,
+      async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        inFlight--;
+      },
+    );
+
+    assert.equal(results.length, 5);
+    assert.equal(maxInFlight, 2, "Fan-out should never exceed the configured concurrency limit");
   });
 });

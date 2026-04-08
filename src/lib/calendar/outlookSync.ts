@@ -14,6 +14,37 @@ import type {
 
 const MAX_RESULTS_PER_PAGE = 250;
 const MICROSOFT_GRAPH_BASE = "https://graph.microsoft.com/";
+const ISO_WITH_OFFSET_REGEX = /([zZ]|[+-]\d{2}:\d{2})$/;
+const FLOATING_DATETIME_REGEX =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,7}))?)?$/;
+const OUTLOOK_TIMEZONE_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>();
+const MICROSOFT_TIMEZONE_TO_IANA: Record<string, string> = {
+  UTC: "UTC",
+  "Dateline Standard Time": "Etc/GMT+12",
+  "UTC-11": "Etc/GMT+11",
+  "Aleutian Standard Time": "America/Adak",
+  "Hawaiian Standard Time": "Pacific/Honolulu",
+  "Alaskan Standard Time": "America/Anchorage",
+  "Pacific Standard Time": "America/Los_Angeles",
+  "Mountain Standard Time": "America/Denver",
+  "US Mountain Standard Time": "America/Phoenix",
+  "Central Standard Time": "America/Chicago",
+  "Eastern Standard Time": "America/New_York",
+  "Atlantic Standard Time": "America/Halifax",
+  "Newfoundland Standard Time": "America/St_Johns",
+  "GMT Standard Time": "Europe/London",
+  "W. Europe Standard Time": "Europe/Berlin",
+  "Central Europe Standard Time": "Europe/Budapest",
+  "Romance Standard Time": "Europe/Paris",
+  "Turkey Standard Time": "Europe/Istanbul",
+  "Russian Standard Time": "Europe/Moscow",
+  "Arabian Standard Time": "Asia/Dubai",
+  "India Standard Time": "Asia/Kolkata",
+  "China Standard Time": "Asia/Shanghai",
+  "Tokyo Standard Time": "Asia/Tokyo",
+  "AUS Eastern Standard Time": "Australia/Sydney",
+  "New Zealand Standard Time": "Pacific/Auckland",
+};
 
 /**
  * Validates that a nextLink URL is safe to follow.
@@ -69,7 +100,10 @@ export async function fetchOutlookCalendarEvents(
 
   do {
     const response = await fetcher(url, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Prefer: 'outlook.timezone="UTC"',
+      },
     });
 
     if (!response.ok) {
@@ -186,7 +220,7 @@ export function mapOutlookEvent(event: OutlookEvent): CalendarEventInstance | nu
   // For recurring events, instanceKey includes seriesMasterId + start time
   // For single events, instanceKey is just the event id
   const externalUid = event.seriesMasterId ?? event.id;
-  const startAt = resolveDateTime(event.start);
+  const startAt = resolveOutlookDateTime(event.start);
 
   if (!startAt) {
     return null;
@@ -196,7 +230,7 @@ export function mapOutlookEvent(event: OutlookEvent): CalendarEventInstance | nu
     ? `${externalUid}|${startAt}`
     : event.id;
 
-  const endAt = event.end ? resolveDateTime(event.end) : null;
+  const endAt = event.end ? resolveOutlookDateTime(event.end) : null;
 
   return {
     externalUid,
@@ -211,13 +245,125 @@ export function mapOutlookEvent(event: OutlookEvent): CalendarEventInstance | nu
   };
 }
 
-function resolveDateTime(dt: OutlookDateTime): string | null {
-  if (dt.dateTime) {
-    // Graph returns ISO 8601 datetimes without Z — normalize to UTC representation
-    const d = new Date(dt.dateTime);
-    return isNaN(d.getTime()) ? null : d.toISOString();
+export function resolveOutlookDateTime(dt: OutlookDateTime): string | null {
+  if (!dt.dateTime) {
+    return null;
   }
-  return null;
+
+  if (ISO_WITH_OFFSET_REGEX.test(dt.dateTime)) {
+    const parsed = new Date(dt.dateTime);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  const timeZone = normalizeOutlookTimeZone(dt.timeZone);
+  if (!timeZone) {
+    return null;
+  }
+
+  return floatingDateTimeToUtcIso(dt.dateTime, timeZone);
+}
+
+function normalizeOutlookTimeZone(timeZone?: string): string | null {
+  if (!timeZone) {
+    return null;
+  }
+
+  const mappedTimeZone = MICROSOFT_TIMEZONE_TO_IANA[timeZone] ?? timeZone;
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: mappedTimeZone });
+    return mappedTimeZone;
+  } catch {
+    return null;
+  }
+}
+
+function floatingDateTimeToUtcIso(dateTime: string, timeZone: string): string | null {
+  const match = dateTime.match(FLOATING_DATETIME_REGEX);
+  if (!match) {
+    return null;
+  }
+
+  const [
+    ,
+    yearStr,
+    monthStr,
+    dayStr,
+    hourStr,
+    minuteStr,
+    secondStr = "0",
+    fractionStr = "",
+  ] = match;
+
+  const parts = {
+    year: Number(yearStr),
+    month: Number(monthStr),
+    day: Number(dayStr),
+    hour: Number(hourStr),
+    minute: Number(minuteStr),
+    second: Number(secondStr),
+    millisecond: fractionStr ? Number(fractionStr.padEnd(3, "0").slice(0, 3)) : 0,
+  };
+
+  const desiredLocalMs = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second,
+    parts.millisecond,
+  );
+
+  const roughUtc = new Date(desiredLocalMs);
+  const offsetMs = getTimezoneOffsetMs(roughUtc, timeZone);
+  const correctedUtc = new Date(desiredLocalMs - offsetMs);
+  const verifiedOffsetMs = getTimezoneOffsetMs(correctedUtc, timeZone);
+  const finalUtc = verifiedOffsetMs === offsetMs
+    ? correctedUtc
+    : new Date(desiredLocalMs - verifiedOffsetMs);
+
+  return finalUtc.toISOString();
+}
+
+function getTimezoneOffsetMs(date: Date, timeZone: string): number {
+  const formatter = getOutlookTimeZoneFormatter(timeZone);
+  const parts = formatter.formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+  const hourValue = value("hour") === "24" ? "00" : value("hour");
+
+  const localUtc = Date.UTC(
+    Number(value("year")),
+    Number(value("month")) - 1,
+    Number(value("day")),
+    Number(hourValue),
+    Number(value("minute")),
+    Number(value("second")),
+    0,
+  );
+
+  return localUtc - date.getTime();
+}
+
+function getOutlookTimeZoneFormatter(timeZone: string): Intl.DateTimeFormat {
+  const cached = OUTLOOK_TIMEZONE_FORMATTER_CACHE.get(timeZone);
+  if (cached) {
+    return cached;
+  }
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+
+  OUTLOOK_TIMEZONE_FORMATTER_CACHE.set(timeZone, formatter);
+  return formatter;
 }
 
 function serializeOutlookEvent(event: OutlookEvent): Json {

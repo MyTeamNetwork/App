@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { syncCalendarFeed } from "@/lib/calendar/icsSync";
-import { syncGoogleCalendarFeed } from "@/lib/calendar/googleSync";
 import type { CalendarFeedRow } from "@/lib/calendar/syncHelpers";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
@@ -266,6 +264,7 @@ async function handleIcsFeedCreate(
   }
 
   const serviceClient = createServiceClient();
+  const { syncCalendarFeed } = await import("@/lib/calendar/icsSync");
   await syncCalendarFeed(serviceClient, feed);
 
   const { data: updatedFeed } = await serviceClient
@@ -348,6 +347,7 @@ async function handleGoogleFeedCreate(
     connected_user_id: user.id,
     external_calendar_id: body.googleCalendarId,
   };
+  const { syncGoogleCalendarFeed } = await import("@/lib/calendar/googleSync");
   await syncGoogleCalendarFeed(serviceClient, feedForSync);
 
   const { data: updatedFeed } = await serviceClient

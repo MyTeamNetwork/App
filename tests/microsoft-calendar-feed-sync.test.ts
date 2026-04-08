@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { createSupabaseStub } from "./utils/supabaseStub.ts";
-import { syncOutlookCalendarFeed } from "@/lib/calendar/outlookSync";
+import { mapOutlookEvent, syncOutlookCalendarFeed } from "@/lib/calendar/outlookSync";
 import type { CalendarFeedRow } from "@/lib/calendar/syncHelpers";
 
 // ── Shared feed fixture ───────────────────────────────────────────────────────
@@ -200,5 +200,33 @@ describe("syncOutlookCalendarFeed – pagination via @odata.nextLink", () => {
     // All 3 events across both pages must be processed
     assert.strictEqual(result.upserted, 3, "Should upsert events from both pages");
     assert.ok(callCount >= 2, "Should have made at least 2 fetch calls (one per page)");
+  });
+});
+
+describe("mapOutlookEvent – Graph timezone handling", () => {
+  it("interprets UTC floating timestamps using the Graph timeZone field", () => {
+    const instance = mapOutlookEvent({
+      id: "event-utc",
+      subject: "UTC Event",
+      start: { dateTime: "2026-05-01T09:00:00.0000000", timeZone: "UTC" },
+      end: { dateTime: "2026-05-01T10:00:00.0000000", timeZone: "UTC" },
+    });
+
+    assert.ok(instance, "Expected event instance to be created");
+    assert.equal(instance?.startAt, "2026-05-01T09:00:00.000Z");
+    assert.equal(instance?.endAt, "2026-05-01T10:00:00.000Z");
+  });
+
+  it("maps Microsoft timezone labels before converting to UTC", () => {
+    const instance = mapOutlookEvent({
+      id: "event-pst",
+      subject: "Pacific Event",
+      start: { dateTime: "2026-05-01T09:00:00.0000000", timeZone: "Pacific Standard Time" },
+      end: { dateTime: "2026-05-01T10:30:00.0000000", timeZone: "Pacific Standard Time" },
+    });
+
+    assert.ok(instance, "Expected event instance to be created");
+    assert.equal(instance?.startAt, "2026-05-01T16:00:00.000Z");
+    assert.equal(instance?.endAt, "2026-05-01T17:30:00.000Z");
   });
 });

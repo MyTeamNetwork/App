@@ -32,15 +32,6 @@ export async function POST(request: Request) {
         // Use service client for database operations
         const serviceClient = createServiceClient();
 
-        // Check if user has a connected calendar
-        const connection = await getCalendarConnection(serviceClient, user.id);
-        if (!connection || connection.status !== "connected") {
-            return NextResponse.json(
-                { error: "Not connected", message: "Please connect your Google Calendar first." },
-                { status: 400 }
-            );
-        }
-
         // Parse request body for optional organization filter
         let organizationId: string | null = null;
         try {
@@ -50,131 +41,148 @@ export async function POST(request: Request) {
             // No body or invalid JSON - sync all organizations
         }
 
-        // Get pending/failed event entries for this user
-        let query = serviceClient
-            .from("event_calendar_entries")
-            .select("event_id, organization_id")
-            .eq("user_id", user.id)
-            .eq("provider", "google")
-            .in("sync_status", ["pending", "failed"]);
-
-        if (organizationId) {
-            query = query.eq("organization_id", organizationId);
-        }
-
-        const { data: pendingEntries, error: entriesError } = await query;
-
-        if (entriesError) {
-            console.error("[calendar-sync] Error fetching pending entries:", entriesError);
-            return NextResponse.json(
-                { error: "Database error", message: "Failed to fetch pending events." },
-                { status: 500 }
-            );
-        }
-
-        // Get synced entries whose google_calendar_id differs from the user's
-        // current target calendar. These need reprocessing so the existing
-        // mismatch detection in syncEventForUser can migrate them.
-        const targetCalendarId = connection.targetCalendarId || "primary";
-        let mismatchQuery = serviceClient
-            .from("event_calendar_entries")
-            .select("event_id, organization_id")
-            .eq("user_id", user.id)
-            .eq("provider", "google")
-            .eq("sync_status", "synced")
-            .neq("external_calendar_id", targetCalendarId);
-
-        if (organizationId) {
-            mismatchQuery = mismatchQuery.eq("organization_id", organizationId);
-        }
-
-        const { data: mismatchedEntries } = await mismatchQuery;
-
-        // Also get events that haven't been synced yet for this user
-        // (events created after user connected their calendar)
-        const { data: userOrgs } = await serviceClient
-            .from("user_organization_roles")
-            .select("organization_id")
-            .eq("user_id", user.id);
-
-        const orgIds = organizationId
-            ? [organizationId]
-            : (userOrgs?.map(o => o.organization_id) || []);
-
-        let syncedCount = 0;
-        let failedCount = 0;
-        const errors: string[] = [];
-
-        // Merge pending/failed entries with mismatched entries for processing.
-        // No dedup needed: pending/failed and synced are mutually exclusive statuses.
-        const allEntriesToSync = [
-            ...(pendingEntries || []),
-            ...(mismatchedEntries || []),
-        ];
-
-        // Sync pending and mismatched entries
-        for (const entry of allEntriesToSync) {
-            try {
-                await syncEventToUsers(serviceClient, entry.organization_id, entry.event_id, "update");
-                syncedCount++;
-            } catch (error) {
-                failedCount++;
-                const errorMessage = error instanceof Error ? error.message : "Unknown error";
-                errors.push(`Event ${entry.event_id}: ${errorMessage}`);
-            }
-        }
-
-        // Find events that haven't been synced to this user yet
-        for (const orgId of orgIds) {
-            // Get all active events for this organization
-            const { data: events } = await serviceClient
-                .from("events")
-                .select("id")
-                .eq("organization_id", orgId)
-                .is("deleted_at", null);
-
-            if (!events) continue;
-
-            // Get existing entries for this user
-            const { data: existingEntries } = await serviceClient
-                .from("event_calendar_entries")
-                .select("event_id")
-                .eq("user_id", user.id)
-                .eq("organization_id", orgId);
-
-            const existingEventIds = new Set(existingEntries?.map(e => e.event_id) || []);
-
-            // Sync events that don't have entries yet
-            for (const event of events) {
-                if (!existingEventIds.has(event.id)) {
-                    try {
-                        await syncEventToUsers(serviceClient, orgId, event.id, "create");
-                        syncedCount++;
-                    } catch (error) {
-                        failedCount++;
-                        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-                        errors.push(`Event ${event.id}: ${errorMessage}`);
-                    }
-                }
-            }
-        }
-
-        // Update last_sync_at timestamp
-        await serviceClient
-            .from("user_calendar_connections")
-            .update({ last_sync_at: new Date().toISOString() })
-            .eq("user_id", user.id)
-            .eq("provider", "google");
-
-        // Sync Outlook events for connected members (isolated — does not affect Google sync result)
-        try {
-            const { data: outlookConnection } = await serviceClient
+        const [googleConnection, outlookConnectionResult, userOrgsResult] = await Promise.all([
+            getCalendarConnection(serviceClient, user.id),
+            serviceClient
                 .from("user_calendar_connections")
                 .select("id, status")
                 .eq("user_id", user.id)
                 .eq("provider", "outlook")
                 .eq("status", "connected")
-                .maybeSingle();
+                .maybeSingle(),
+            serviceClient
+                .from("user_organization_roles")
+                .select("organization_id")
+                .eq("user_id", user.id),
+        ]);
+
+        const hasGoogleConnection = !!googleConnection && googleConnection.status === "connected";
+        const hasOutlookConnection = !!outlookConnectionResult.data;
+
+        if (!hasGoogleConnection && !hasOutlookConnection) {
+            return NextResponse.json(
+                { error: "Not connected", message: "Please connect a calendar first." },
+                { status: 400 }
+            );
+        }
+
+        const orgIds = organizationId
+            ? [organizationId]
+            : (userOrgsResult.data?.map((org) => org.organization_id) || []);
+
+        let syncedCount = 0;
+        let failedCount = 0;
+        const errors: string[] = [];
+
+        if (hasGoogleConnection && googleConnection) {
+            try {
+                // Get pending/failed event entries for this user
+                let query = serviceClient
+                    .from("event_calendar_entries")
+                    .select("event_id, organization_id")
+                    .eq("user_id", user.id)
+                    .eq("provider", "google")
+                    .in("sync_status", ["pending", "failed"]);
+
+                if (organizationId) {
+                    query = query.eq("organization_id", organizationId);
+                }
+
+                const { data: pendingEntries, error: entriesError } = await query;
+
+                if (entriesError) {
+                    console.error("[calendar-sync] Error fetching Google pending entries:", entriesError);
+                    return NextResponse.json(
+                        { error: "Database error", message: "Failed to fetch pending events." },
+                        { status: 500 }
+                    );
+                }
+
+                // Get synced entries whose google_calendar_id differs from the user's
+                // current target calendar. These need reprocessing so the existing
+                // mismatch detection in syncEventForUser can migrate them.
+                const targetCalendarId = googleConnection.targetCalendarId || "primary";
+                let mismatchQuery = serviceClient
+                    .from("event_calendar_entries")
+                    .select("event_id, organization_id")
+                    .eq("user_id", user.id)
+                    .eq("provider", "google")
+                    .eq("sync_status", "synced")
+                    .neq("external_calendar_id", targetCalendarId);
+
+                if (organizationId) {
+                    mismatchQuery = mismatchQuery.eq("organization_id", organizationId);
+                }
+
+                const { data: mismatchedEntries } = await mismatchQuery;
+
+                // Merge pending/failed entries with mismatched entries for processing.
+                // No dedup needed: pending/failed and synced are mutually exclusive statuses.
+                const allEntriesToSync = [
+                    ...(pendingEntries || []),
+                    ...(mismatchedEntries || []),
+                ];
+
+                for (const entry of allEntriesToSync) {
+                    try {
+                        await syncEventToUsers(serviceClient, entry.organization_id, entry.event_id, "update");
+                        syncedCount++;
+                    } catch (error) {
+                        failedCount++;
+                        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+                        errors.push(`Event ${entry.event_id}: ${errorMessage}`);
+                    }
+                }
+
+                // Find events that haven't been synced to this user yet
+                for (const orgId of orgIds) {
+                    const { data: events } = await serviceClient
+                        .from("events")
+                        .select("id")
+                        .eq("organization_id", orgId)
+                        .is("deleted_at", null);
+
+                    if (!events) continue;
+
+                    const { data: existingEntries } = await serviceClient
+                        .from("event_calendar_entries")
+                        .select("event_id")
+                        .eq("user_id", user.id)
+                        .eq("organization_id", orgId)
+                        .eq("provider", "google");
+
+                    const existingEventIds = new Set(existingEntries?.map((entry) => entry.event_id) || []);
+
+                    for (const event of events) {
+                        if (!existingEventIds.has(event.id)) {
+                            try {
+                                await syncEventToUsers(serviceClient, orgId, event.id, "create");
+                                syncedCount++;
+                            } catch (error) {
+                                failedCount++;
+                                const errorMessage = error instanceof Error ? error.message : "Unknown error";
+                                errors.push(`Event ${event.id}: ${errorMessage}`);
+                            }
+                        }
+                    }
+                }
+
+                await serviceClient
+                    .from("user_calendar_connections")
+                    .update({ last_sync_at: new Date().toISOString() })
+                    .eq("user_id", user.id)
+                    .eq("provider", "google");
+            } catch (googleSyncError) {
+                console.error(
+                    "[calendar-sync] Google sync block error:",
+                    googleSyncError instanceof Error ? googleSyncError.message : googleSyncError
+                );
+            }
+        }
+
+        // Sync Outlook events for connected members (isolated — does not affect Google sync result)
+        try {
+            const outlookConnection = outlookConnectionResult.data;
 
             if (outlookConnection) {
                 // Get pending/failed Outlook entries
