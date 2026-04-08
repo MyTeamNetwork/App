@@ -6,7 +6,7 @@ process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "test-anon-key";
 process.env.NEXT_PUBLIC_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.example.com";
 
-const { createRecoveryConfirmHandler } = await import("../src/app/auth/confirm/route.ts");
+const { createRecoveryConfirmHandler } = await import("../src/lib/auth/recovery-confirm-handler.ts");
 
 test("confirm route verifies recovery token, sets cookies, and redirects to reset-password", async () => {
   let verifyArgs: { type: string; token_hash: string } | null = null;
