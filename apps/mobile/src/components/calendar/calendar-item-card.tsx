@@ -1,0 +1,166 @@
+import React, { useMemo } from "react";
+import { Pressable, Text, View } from "react-native";
+import { Link } from "expo-router";
+import { BookOpen, Calendar as CalendarIcon, Clock, MapPin } from "lucide-react-native";
+
+import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
+import { useThemedStyles } from "@/hooks/useThemedStyles";
+import { RADIUS, SHADOWS, SPACING } from "@/lib/design-tokens";
+import { TYPOGRAPHY } from "@/lib/typography";
+import type { UnifiedCalendarItem } from "@/hooks/useUnifiedCalendar";
+
+interface CalendarItemCardProps {
+  item: UnifiedCalendarItem;
+  orgSlug: string;
+}
+
+const timeFmt = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+function formatTimeRange(startAt: string, endAt: string | null): string {
+  const start = timeFmt.format(new Date(startAt));
+  if (!endAt) return start;
+  return `${start} – ${timeFmt.format(new Date(endAt))}`;
+}
+
+export function CalendarItemCard({ item, orgSlug }: CalendarItemCardProps) {
+  const { neutral } = useAppColorScheme();
+  const styles = useThemedStyles((n, s) => ({
+    card: {
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.lg,
+      borderCurve: "continuous" as const,
+      borderWidth: 1,
+      borderColor: n.border,
+      padding: SPACING.md,
+      ...SHADOWS.sm,
+    },
+    cardPressed: {
+      opacity: 0.7,
+    },
+    headerRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: SPACING.sm,
+      marginBottom: SPACING.sm,
+    },
+    sourceBadge: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 4,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 2,
+      borderRadius: RADIUS.full,
+      borderCurve: "continuous" as const,
+    },
+    sourceBadgeEvent: {
+      backgroundColor: s.successLight,
+    },
+    sourceBadgeSchedule: {
+      backgroundColor: s.infoLight,
+    },
+    sourceBadgeTextEvent: {
+      ...TYPOGRAPHY.labelSmall,
+      color: s.successDark,
+    },
+    sourceBadgeTextSchedule: {
+      ...TYPOGRAPHY.labelSmall,
+      color: s.infoDark,
+    },
+    title: {
+      ...TYPOGRAPHY.titleMedium,
+      color: n.foreground,
+      marginBottom: SPACING.xs,
+    },
+    detailRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 6,
+      marginTop: 2,
+    },
+    detailText: {
+      ...TYPOGRAPHY.bodySmall,
+      color: n.secondary,
+      flex: 1,
+      fontVariant: ["tabular-nums"] as const,
+    },
+    locationText: {
+      ...TYPOGRAPHY.bodySmall,
+      color: n.muted,
+      flex: 1,
+    },
+  }));
+
+  const href = useMemo(() => {
+    if (item.sourceType === "event" && item.eventId) {
+      return `/(app)/${orgSlug}/events/${item.eventId}`;
+    }
+    if (item.sourceType === "schedule" && item.scheduleId) {
+      return `/(app)/${orgSlug}/schedules/${item.scheduleId}/edit`;
+    }
+    return `/(app)/${orgSlug}`;
+  }, [item, orgSlug]);
+
+  const isEvent = item.sourceType === "event";
+  const SourceIcon = isEvent ? CalendarIcon : BookOpen;
+  const accessibilityLabel = `${item.title}, ${item.sourceName}`;
+
+  return (
+    <Link href={href as never} asChild>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      >
+        <View style={styles.headerRow}>
+          <View
+            style={[
+              styles.sourceBadge,
+              isEvent ? styles.sourceBadgeEvent : styles.sourceBadgeSchedule,
+            ]}
+          >
+            <SourceIcon
+              size={12}
+              color={
+                isEvent
+                  ? styles.sourceBadgeTextEvent.color
+                  : styles.sourceBadgeTextSchedule.color
+              }
+            />
+            <Text
+              style={
+                isEvent
+                  ? styles.sourceBadgeTextEvent
+                  : styles.sourceBadgeTextSchedule
+              }
+            >
+              {item.sourceName}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.title} numberOfLines={2} selectable>
+          {item.title}
+        </Text>
+
+        <View style={styles.detailRow}>
+          <Clock size={13} color={neutral.secondary} />
+          <Text style={styles.detailText} selectable>
+            {formatTimeRange(item.startAt, item.endAt)}
+          </Text>
+        </View>
+
+        {item.location && (
+          <View style={styles.detailRow}>
+            <MapPin size={13} color={neutral.muted} />
+            <Text style={styles.locationText} numberOfLines={1} selectable>
+              {item.location}
+            </Text>
+          </View>
+        )}
+      </Pressable>
+    </Link>
+  );
+}
