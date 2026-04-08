@@ -1,61 +1,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-/**
- * Tests for Outlook/Microsoft Calendar connection state resolution.
- *
- * Mirrors the shape of resolveGoogleCalendarConnectionState but for the
- * Microsoft Graph API response shape.  The resolver is inlined here (as
- * permitted by the spec) so these tests remain pure-logic and require no
- * additional production file to exist yet.
- *
- * When the production implementation ships, the tests can be updated to
- * import the real function.
- */
+import {
+  resolveMicrosoftCalendarState,
+  type MicrosoftCalendarListItem,
+  type MicrosoftCalendarsApiBody,
+} from "@/lib/microsoft/calendar-connection-state";
 
-type MicrosoftCalendar = {
-  id: string;
-  name: string;
-  isDefault?: boolean;
-};
-
-type MicrosoftCalendarStateBody = {
-  error?: string;
-  calendars?: MicrosoftCalendar[];
-};
-
-type MicrosoftCalendarState = {
-  reconnectRequired: boolean;
-  disconnected: boolean;
-  calendars: MicrosoftCalendar[];
-};
-
-/**
- * Resolves the Outlook Calendar connection state from an API response.
- *
- * Branch map:
- *  - 403 + { error: "reconnect_required" }  → reconnectRequired: true
- *  - 2xx + calendars missing                → disconnected: true
- *  - 2xx + calendars present                → connected, returns calendars
- */
-function resolveMicrosoftCalendarState(
-  status: number,
-  body: MicrosoftCalendarStateBody
-): MicrosoftCalendarState {
-  if (status === 403 && body.error === "reconnect_required") {
-    return { reconnectRequired: true, disconnected: false, calendars: [] };
-  }
-
-  if (status >= 200 && status < 300 && body.calendars === undefined) {
-    return { reconnectRequired: false, disconnected: true, calendars: [] };
-  }
-
-  return {
-    reconnectRequired: false,
-    disconnected: false,
-    calendars: body.calendars ?? [],
-  };
-}
+type MicrosoftCalendar = MicrosoftCalendarListItem;
+type MicrosoftCalendarStateBody = MicrosoftCalendarsApiBody;
 
 describe("resolveMicrosoftCalendarState", () => {
   it("treats 403 reconnect_required as a reauth state", () => {

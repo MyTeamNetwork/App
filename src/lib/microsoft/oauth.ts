@@ -42,6 +42,7 @@ const MICROSOFT_GRAPH_ME = "https://graph.microsoft.com/v1.0/me?$select=mail,use
 
 const MICROSOFT_SCOPES = [
     "Calendars.ReadWrite",
+    "Calendars.Read.Shared",
     "User.Read",
     "offline_access",
 ];
@@ -540,27 +541,22 @@ export async function disconnectMicrosoft(
     supabase: SupabaseClient<Database>,
     userId: string
 ): Promise<{ success: boolean; error?: string }> {
-    const connection = await getMicrosoftConnection(supabase, userId);
+    // Idempotent provider-scoped cleanup. Do not depend on getMicrosoftConnection,
+    // because token decryption can fail (e.g. encryption key rotated) and would
+    // otherwise leave stale rows behind that strand the user as "Connected".
 
-    if (!connection) {
-        return { success: true };
-    }
-
-    // Remove connection from the database
     await supabase
         .from("user_calendar_connections")
         .delete()
         .eq("user_id", userId)
         .eq("provider", "outlook");
 
-    // Clean up event calendar entries for this user (Outlook only)
     await supabase
         .from("event_calendar_entries")
         .delete()
         .eq("user_id", userId)
         .eq("provider", "outlook");
 
-    // Clean up personal Outlook calendar feeds
     await supabase
         .from("calendar_feeds")
         .delete()
@@ -568,7 +564,6 @@ export async function disconnectMicrosoft(
         .eq("provider", "outlook")
         .eq("scope", "personal");
 
-    // Clean up org Outlook schedule sources that rely on this connected user
     await supabase
         .from("schedule_sources")
         .delete()

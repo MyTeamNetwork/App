@@ -11,8 +11,15 @@ const TEST_ENCRYPTION_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 process.env.GOOGLE_TOKEN_ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
 
-import { getMicrosoftAuthorizationUrl, getMicrosoftOAuthErrorMessage } from "@/lib/microsoft/oauth";
+import {
+  getMicrosoftAuthorizationUrl,
+  getMicrosoftOAuthErrorMessage,
+  storeMicrosoftConnection,
+} from "@/lib/microsoft/oauth";
 import { encryptToken, decryptToken } from "@/lib/crypto/token-encryption";
+import { createSupabaseStub } from "./utils/supabaseStub.ts";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 
 describe("getMicrosoftAuthorizationUrl", () => {
   it("returns a URL pointing to the Microsoft login endpoint", () => {
@@ -32,6 +39,16 @@ describe("getMicrosoftAuthorizationUrl", () => {
     assert.ok(
       url.includes("Calendars.ReadWrite"),
       `Expected URL to contain 'Calendars.ReadWrite', got: ${url}`
+    );
+  });
+
+  it("includes Calendars.Read.Shared scope so team imports can list shared calendars", () => {
+    const state = "test-user-id:1234567890:aGVsbG8=";
+    const url = getMicrosoftAuthorizationUrl(state);
+
+    assert.ok(
+      url.includes("Calendars.Read.Shared"),
+      `Expected URL to contain 'Calendars.Read.Shared', got: ${url}`
     );
   });
 
@@ -156,5 +173,74 @@ describe("token encryption round-trip (shared crypto module)", () => {
       () => decryptToken("not-a-valid-format", TEST_ENCRYPTION_KEY),
       "Should throw on invalid encrypted token format"
     );
+  });
+});
+
+describe("storeMicrosoftConnection", () => {
+  const tokens = {
+    accessToken: "access-token-value",
+    refreshToken: "refresh-token-value",
+    expiresAt: new Date("2026-06-01T00:00:00.000Z"),
+    email: "user@example.com",
+  };
+
+  it("stores a new connection with provider='outlook' and encrypted tokens", async () => {
+    const stub = createSupabaseStub();
+    const supabase = stub as unknown as SupabaseClient<Database>;
+
+    const result = await storeMicrosoftConnection(supabase, "user-1", tokens);
+
+    assert.equal(result.success, true);
+    const rows = stub.getRows("user_calendar_connections");
+    assert.equal(rows.length, 1);
+    const row = rows[0];
+    assert.equal(row.user_id, "user-1");
+    assert.equal(row.provider, "outlook");
+    assert.equal(row.provider_email, "user@example.com");
+    assert.equal(row.status, "connected");
+    // Tokens should be stored encrypted, not as plaintext
+    assert.notEqual(row.access_token_encrypted, "access-token-value");
+    assert.notEqual(row.refresh_token_encrypted, "refresh-token-value");
+  });
+
+  it("preserves existing target_calendar_id on reconnect", async () => {
+    const stub = createSupabaseStub();
+    const supabase = stub as unknown as SupabaseClient<Database>;
+
+    stub.seed("user_calendar_connections", [{
+      id: "conn-1",
+      user_id: "user-1",
+      provider: "outlook",
+      provider_email: "old@example.com",
+      access_token_encrypted: encryptToken("old-access", TEST_ENCRYPTION_KEY),
+      refresh_token_encrypted: encryptToken("old-refresh", TEST_ENCRYPTION_KEY),
+      token_expires_at: "2026-01-01T00:00:00.000Z",
+      status: "reconnect_required",
+      target_calendar_id: "my-saved-calendar-id",
+      last_sync_at: null,
+    }]);
+
+    const result = await storeMicrosoftConnection(supabase, "user-1", tokens);
+
+    assert.equal(result.success, true);
+    const rows = stub.getRows("user_calendar_connections").filter((r) => r.user_id === "user-1" && r.provider === "outlook");
+    assert.equal(rows.length, 1);
+    assert.equal(
+      rows[0].target_calendar_id,
+      "my-saved-calendar-id",
+      "Reconnect must preserve the user's previously chosen target_calendar_id"
+    );
+    assert.equal(rows[0].status, "connected");
+    assert.equal(rows[0].provider_email, "user@example.com");
+  });
+
+  it("stores null target_calendar_id for a first-time connection", async () => {
+    const stub = createSupabaseStub();
+    const supabase = stub as unknown as SupabaseClient<Database>;
+
+    await storeMicrosoftConnection(supabase, "user-1", tokens);
+
+    const row = stub.getRows("user_calendar_connections")[0];
+    assert.equal(row.target_calendar_id, null);
   });
 });

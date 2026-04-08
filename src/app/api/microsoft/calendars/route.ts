@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  * Returns calendars the user can read so both personal sync and team imports work.
  * If the user's token is missing or invalid, returns a 403 with { error: "reconnect_required" }.
  */
-export async function GET() {
+export async function GET(request: Request) {
     try {
         const supabase = await createClient();
         const {
@@ -24,10 +24,15 @@ export async function GET() {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
+        const { searchParams } = new URL(request.url);
+        const modeParam = searchParams.get("mode");
+        const mode = modeParam === "team_import" ? "team_import" : "personal";
+
         return handleMicrosoftCalendarsGet({
             supabase,
             serviceSupabase: createServiceClient(),
             userId: user.id,
+            mode,
         });
     } catch (error) {
         console.error("[microsoft-calendars] Error listing calendars:", error);

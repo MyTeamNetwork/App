@@ -79,35 +79,40 @@ test("handleMicrosoftCalendarsGet preserves connected status for non-auth Graph 
   assert.equal(stub.getRows("user_calendar_connections")[0]?.status, "connected");
 });
 
-test("handleMicrosoftCalendarsGet returns readable calendars, including read-only team calendars", async () => {
+function mixedGraphResponse() {
+  return async () => new Response(JSON.stringify({
+    value: [
+      {
+        id: "default-cal",
+        name: "Calendar",
+        isDefaultCalendar: true,
+        canEdit: true,
+        hexColor: "",
+      },
+      {
+        id: "shared-readonly",
+        name: "Shared Team Calendar",
+        isDefaultCalendar: false,
+        canEdit: false,
+        hexColor: "#AABBCC",
+      },
+    ],
+  }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+test("handleMicrosoftCalendarsGet team_import mode returns readable calendars, including read-only team calendars", async () => {
   const stub = createSupabaseStub();
 
   const response = await handleMicrosoftCalendarsGet({
     supabase: stub as unknown as SupabaseClient<Database>,
     serviceSupabase: stub as unknown as SupabaseClient<Database>,
     userId: "user-1",
+    mode: "team_import",
     getAccessToken: async () => "access-token",
-    fetchImpl: async () => new Response(JSON.stringify({
-      value: [
-        {
-          id: "default-cal",
-          name: "Calendar",
-          isDefaultCalendar: true,
-          canEdit: true,
-          hexColor: "",
-        },
-        {
-          id: "shared-readonly",
-          name: "Shared Team Calendar",
-          isDefaultCalendar: false,
-          canEdit: false,
-          hexColor: "#AABBCC",
-        },
-      ],
-    }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }),
+    fetchImpl: mixedGraphResponse(),
   });
 
   assert.equal(response.status, 200);
@@ -126,4 +131,63 @@ test("handleMicrosoftCalendarsGet returns readable calendars, including read-onl
       },
     ],
   });
+});
+
+test("handleMicrosoftCalendarsGet personal mode excludes read-only shared calendars", async () => {
+  const stub = createSupabaseStub();
+
+  const response = await handleMicrosoftCalendarsGet({
+    supabase: stub as unknown as SupabaseClient<Database>,
+    serviceSupabase: stub as unknown as SupabaseClient<Database>,
+    userId: "user-1",
+    mode: "personal",
+    getAccessToken: async () => "access-token",
+    fetchImpl: mixedGraphResponse(),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    calendars: [
+      {
+        id: "default-cal",
+        name: "Calendar",
+        isDefault: true,
+      },
+    ],
+  });
+});
+
+test("handleMicrosoftCalendarsGet defaults to personal mode when mode is omitted", async () => {
+  const stub = createSupabaseStub();
+
+  const response = await handleMicrosoftCalendarsGet({
+    supabase: stub as unknown as SupabaseClient<Database>,
+    serviceSupabase: stub as unknown as SupabaseClient<Database>,
+    userId: "user-1",
+    getAccessToken: async () => "access-token",
+    fetchImpl: mixedGraphResponse(),
+  });
+
+  assert.equal(response.status, 200);
+  const body = await response.json() as { calendars: Array<{ id: string }> };
+  assert.deepEqual(body.calendars.map((c) => c.id), ["default-cal"]);
+});
+
+test("handleMicrosoftCalendarsGet team_import mode still returns reconnect_required when token missing", async () => {
+  const stub = createSupabaseStub();
+  seedConnectedOutlookConnection(stub);
+
+  const response = await handleMicrosoftCalendarsGet({
+    supabase: stub as unknown as SupabaseClient<Database>,
+    serviceSupabase: stub as unknown as SupabaseClient<Database>,
+    userId: "user-1",
+    mode: "team_import",
+    getAccessToken: async () => null,
+    fetchImpl: async () => {
+      throw new Error("fetch should not be called when access token is missing");
+    },
+  });
+
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: "reconnect_required" });
 });

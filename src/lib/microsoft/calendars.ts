@@ -14,10 +14,13 @@ type MicrosoftCalendarApiRow = {
     hexColor: string;
 };
 
+export type MicrosoftCalendarsMode = "personal" | "team_import";
+
 type MicrosoftCalendarsHandlerDeps = {
     supabase: SupabaseClient<Database>;
     serviceSupabase: SupabaseClient<Database>;
     userId: string;
+    mode?: MicrosoftCalendarsMode;
     getAccessToken?: typeof getMicrosoftValidAccessToken;
     fetchImpl?: typeof fetch;
 };
@@ -26,9 +29,13 @@ function isReconnectRequiredGraphStatus(status: number): boolean {
     return status === 401 || status === 403;
 }
 
-function normalizeMicrosoftCalendars(calendars: MicrosoftCalendarApiRow[]) {
+function normalizeMicrosoftCalendars(
+    calendars: MicrosoftCalendarApiRow[],
+    mode: MicrosoftCalendarsMode
+) {
     return calendars
         .filter((calendar) => calendar.id && calendar.name)
+        .filter((calendar) => mode === "team_import" || calendar.canEdit)
         .map((calendar) => ({
             id: calendar.id,
             name: calendar.name,
@@ -41,6 +48,7 @@ export async function handleMicrosoftCalendarsGet({
     supabase,
     serviceSupabase,
     userId,
+    mode = "personal",
     getAccessToken = getMicrosoftValidAccessToken,
     fetchImpl = fetch,
 }: MicrosoftCalendarsHandlerDeps) {
@@ -77,6 +85,6 @@ export async function handleMicrosoftCalendarsGet({
 
     const data = await response.json() as { value?: MicrosoftCalendarApiRow[] };
     return NextResponse.json({
-        calendars: normalizeMicrosoftCalendars(data.value || []),
+        calendars: normalizeMicrosoftCalendars(data.value || [], mode),
     });
 }

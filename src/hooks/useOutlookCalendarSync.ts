@@ -4,6 +4,11 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { SyncPreferences } from "@/components/settings/GoogleCalendarSyncPanel";
+import {
+  resolveMicrosoftCalendarState,
+  type MicrosoftCalendarListItem,
+  type MicrosoftCalendarsApiBody,
+} from "@/lib/microsoft/calendar-connection-state";
 
 interface CalendarConnection {
   providerEmail: string;
@@ -11,12 +16,7 @@ interface CalendarConnection {
   lastSyncAt: string | null;
 }
 
-export interface OutlookCalendar {
-  id: string;
-  name: string;
-  isDefault: boolean;
-  hexColor?: string;
-}
+export type OutlookCalendar = MicrosoftCalendarListItem;
 
 interface UseOutlookCalendarSyncOptions {
   orgId: string;
@@ -137,25 +137,29 @@ export function useOutlookCalendarSync({
     setCalendarsLoading(true);
     setReconnectRequired(false);
     try {
-      const response = await fetch("/api/microsoft/calendars");
-      const data = await response.json() as { error?: string; calendars?: OutlookCalendar[] };
+      const response = await fetch("/api/microsoft/calendars?mode=personal");
+      const data = (await response.json()) as MicrosoftCalendarsApiBody;
+      const resolved = resolveMicrosoftCalendarState(response.status, data);
 
-      if (response.status === 403 && data.error === "reconnect_required") {
+      if (resolved.reconnectRequired) {
         setReconnectRequired(true);
         setCalendars([]);
         return;
       }
 
-      if (!response.ok) {
+      if (resolved.disconnected) {
+        setReconnectRequired(false);
         setCalendars([]);
         return;
       }
 
-      const cals: OutlookCalendar[] = data.calendars ?? [];
+      if (!response.ok) return;
+
+      const cals = resolved.calendars;
       setCalendars(cals);
 
       // Normalize "primary" alias to the actual default calendar ID
-      if (targetCalendarIdRef.current === "primary") {
+      if (targetCalendarIdRef.current === "primary" || !targetCalendarIdRef.current) {
         const defaultCal = cals.find((c) => c.isDefault);
         if (defaultCal && defaultCal.id !== "primary") {
           try {

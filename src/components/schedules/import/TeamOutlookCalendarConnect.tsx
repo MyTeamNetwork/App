@@ -75,7 +75,7 @@ export function TeamOutlookCalendarConnect({
     async function loadCalendars() {
       setCalendarsLoading(true);
       try {
-        const response = await fetch("/api/microsoft/calendars");
+        const response = await fetch("/api/microsoft/calendars?mode=team_import");
         const data = await response.json();
         if (response.status === 403 && data?.error === "reconnect_required") {
           setCalendars([]);
