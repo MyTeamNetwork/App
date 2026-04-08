@@ -64,11 +64,12 @@ These services require explicit user action to activate:
 | Service | Purpose | Data Shared | Consent Mechanism |
 |---------|---------|-------------|-------------------|
 | **Google Calendar** | Calendar synchronization | Email address, calendar events | User clicks "Sync" button, authorizes via Google OAuth consent screen |
+| **Outlook Calendar** | Calendar synchronization | Email address, calendar events | User clicks "Sync" button, authorizes via Microsoft OAuth consent screen |
 
-**Important Distinction:** User-initiated integrations like Google Calendar require affirmative user action:
+**Important Distinction:** User-initiated integrations like Google Calendar and Outlook Calendar require affirmative user action:
 
 1. User explicitly clicks a "Sync" button
-2. User is redirected to Google's OAuth consent screen
+2. User is redirected to the provider's OAuth consent screen
 3. User reviews requested permissions
 4. User explicitly grants authorization
 5. User can disconnect at any time via account settings
@@ -184,7 +185,7 @@ Deletion is processed within 30 days and includes all personal data, backups, an
 
 ### 7.3 Consent Withdrawal
 
-Users can withdraw consent for user-initiated integrations (e.g., Google Calendar sync) at any time by disconnecting the integration in their account settings.
+Users can withdraw consent for user-initiated integrations (e.g., Google Calendar sync or Outlook Calendar sync) at any time by disconnecting the integration in their account settings.
 
 ---
 

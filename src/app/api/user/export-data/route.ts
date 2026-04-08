@@ -38,7 +38,8 @@ interface UserDataExport {
     emailEnabled: boolean;
   }>;
   calendarConnections: Array<{
-    googleEmail: string;
+    provider: string;
+    providerEmail: string | null;
     status: string;
     createdAt: string | null;
   }>;
@@ -192,7 +193,8 @@ export async function GET(request: Request) {
 
     if (calendarConnections) {
       exportData.calendarConnections = calendarConnections.map((c) => ({
-        googleEmail: c.provider_email,
+        provider: c.provider,
+        providerEmail: c.provider_email,
         status: c.status,
         createdAt: c.created_at,
       }));
