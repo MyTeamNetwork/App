@@ -64,6 +64,7 @@ const blackbaudEnv = [
 const microsoftCalendarEnv = [
   "MICROSOFT_CLIENT_ID",
   "MICROSOFT_CLIENT_SECRET",
+  "GOOGLE_TOKEN_ENCRYPTION_KEY",
 ];
 
 function assertEnv(name, required = true) {

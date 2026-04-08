@@ -17,6 +17,7 @@ export interface MicrosoftSyncResult {
 }
 
 export const DEFAULT_OUTLOOK_SYNC_CONCURRENCY = 5;
+export const DEFAULT_OUTLOOK_SYNC_CALENDAR_ID = "primary";
 
 // Event types that can be synced
 export type EventType =
@@ -33,10 +34,14 @@ export type EventType =
 export type SyncOperation = "create" | "update" | "delete";
 
 export function normalizeOutlookTargetCalendarId(targetCalendarId?: string | null): string | undefined {
-    if (!targetCalendarId || targetCalendarId === "primary") {
+    if (!targetCalendarId || targetCalendarId === DEFAULT_OUTLOOK_SYNC_CALENDAR_ID) {
         return undefined;
     }
     return targetCalendarId;
+}
+
+export function getStoredOutlookCalendarId(targetCalendarId?: string | null): string {
+    return normalizeOutlookTargetCalendarId(targetCalendarId) ?? DEFAULT_OUTLOOK_SYNC_CALENDAR_ID;
 }
 
 export async function runWithConcurrencyLimit<T>(
@@ -412,6 +417,7 @@ async function syncOutlookEventForUser(
     const connection = await getMicrosoftConnection(supabase, userId);
     // Use the target calendar if set; otherwise defaults to user's calendar (handled in createOutlookCalendarEvent)
     const targetCalendarId = normalizeOutlookTargetCalendarId(connection?.targetCalendarId);
+    const storedCalendarId = getStoredOutlookCalendarId(connection?.targetCalendarId);
 
     const { data: existingEntry } = await supabase
         .from("event_calendar_entries")
@@ -427,33 +433,33 @@ async function syncOutlookEventForUser(
         }
 
         const result = await createOutlookCalendarEvent(accessToken, calendarEvent, targetCalendarId);
-        await updateOutlookSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId ?? null, result);
+        await updateOutlookSyncEntry(supabase, eventId, userId, organizationId, storedCalendarId, result);
     } else if (operation === "update") {
         if (!existingEntry) {
             const result = await createOutlookCalendarEvent(accessToken, calendarEvent, targetCalendarId);
-            await updateOutlookSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId ?? null, result);
+            await updateOutlookSyncEntry(supabase, eventId, userId, organizationId, storedCalendarId, result);
         } else {
-            const storedCalendarId = normalizeOutlookTargetCalendarId(existingEntry.external_calendar_id);
+            const normalizedStoredCalendarId = normalizeOutlookTargetCalendarId(existingEntry.external_calendar_id);
 
-            if (storedCalendarId !== targetCalendarId) {
+            if (normalizedStoredCalendarId !== targetCalendarId) {
                 // Calendar changed — migrate the event
                 await deleteOutlookCalendarEvent(accessToken, existingEntry.external_event_id);
                 const createResult = await createOutlookCalendarEvent(accessToken, calendarEvent, targetCalendarId);
-                await updateOutlookSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId ?? null, createResult);
+                await updateOutlookSyncEntry(supabase, eventId, userId, organizationId, storedCalendarId, createResult);
             } else {
                 const result = await updateOutlookCalendarEvent(accessToken, existingEntry.external_event_id, calendarEvent);
 
                 if (!result.success && isNotFoundError(result.error)) {
                     // Event was deleted from Outlook by user — create new
                     const createResult = await createOutlookCalendarEvent(accessToken, calendarEvent, targetCalendarId);
-                    await updateOutlookSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId ?? null, createResult);
+                    await updateOutlookSyncEntry(supabase, eventId, userId, organizationId, storedCalendarId, createResult);
                 } else {
                     await updateOutlookSyncEntry(
                         supabase,
                         eventId,
                         userId,
                         organizationId,
-                        targetCalendarId ?? null,
+                        storedCalendarId,
                         result,
                         existingEntry.external_event_id
                     );
@@ -511,7 +517,7 @@ async function updateOutlookSyncEntry(
     eventId: string,
     userId: string,
     organizationId: string,
-    externalCalendarId: string | null,
+    externalCalendarId: string,
     result: MicrosoftSyncResult,
     existingExternalEventId?: string
 ): Promise<void> {
@@ -532,9 +538,7 @@ async function updateOutlookSyncEntry(
             external_calendar_id: externalCalendarId,
             sync_status: result.success ? "synced" : "failed",
             last_error: result.error || null,
-        } as Database["public"]["Tables"]["event_calendar_entries"]["Insert"] & {
-            external_calendar_id: string | null;
-        }, {
+        } as Database["public"]["Tables"]["event_calendar_entries"]["Insert"], {
             onConflict: "event_id,user_id,provider",
         });
 }

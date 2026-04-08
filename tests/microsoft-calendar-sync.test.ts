@@ -11,7 +11,10 @@ process.env.GOOGLE_TOKEN_ENCRYPTION_KEY =
 import { mapEventToMicrosoftCalendarEvent } from "@/lib/microsoft/calendar-event-mapper";
 import {
   createOutlookCalendarEvent,
+  DEFAULT_OUTLOOK_SYNC_CALENDAR_ID,
+  getStoredOutlookCalendarId,
   isNotFoundError,
+  normalizeOutlookTargetCalendarId,
   runWithConcurrencyLimit,
 } from "@/lib/microsoft/calendar-sync";
 
@@ -263,6 +266,21 @@ describe("createOutlookCalendarEvent", () => {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+});
+
+describe("Outlook default calendar persistence", () => {
+  it("stores the default target calendar as a non-null sentinel", () => {
+    assert.equal(getStoredOutlookCalendarId(undefined), DEFAULT_OUTLOOK_SYNC_CALENDAR_ID);
+    assert.equal(getStoredOutlookCalendarId(null), DEFAULT_OUTLOOK_SYNC_CALENDAR_ID);
+    assert.equal(getStoredOutlookCalendarId("primary"), DEFAULT_OUTLOOK_SYNC_CALENDAR_ID);
+  });
+
+  it("normalizes the stored default-calendar sentinel back to the Graph default target", () => {
+    assert.equal(
+      normalizeOutlookTargetCalendarId(getStoredOutlookCalendarId(undefined)),
+      undefined,
+    );
   });
 });
 

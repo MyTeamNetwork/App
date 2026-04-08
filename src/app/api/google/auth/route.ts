@@ -1,32 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_GOOGLE_REDIRECT_PATH, sanitizeGoogleRedirectPath } from "@/lib/google/redirect";
 import { getAuthorizationUrl } from "@/lib/google/oauth";
 import { getAppUrl } from "@/lib/url";
 
 export const dynamic = "force-dynamic";
-
-// Allowlist of valid redirect paths to prevent query param injection
-const ALLOWED_REDIRECT_PATHS = [
-    "/settings/notifications",
-    "/settings",
-    "/"
-];
-
-/**
- * Sanitizes the redirect parameter by stripping query params and validating against allowlist
- */
-function sanitizeRedirectPath(rawPath: string): string {
-    // Strip any query params from caller input
-    const basePath = rawPath.split("?")[0];
-
-    // Validate against allowlist
-    if (ALLOWED_REDIRECT_PATHS.includes(basePath)) {
-        return basePath;
-    }
-
-    // Default fallback
-    return "/settings/notifications";
-}
 
 /**
  * GET /api/google/auth
@@ -41,8 +19,8 @@ function sanitizeRedirectPath(rawPath: string): string {
  */
 export async function GET(request: Request) {
     const url = new URL(request.url);
-    const rawRedirect = url.searchParams.get("redirect") || "/settings/notifications";
-    const redirectPath = sanitizeRedirectPath(rawRedirect);
+    const rawRedirect = url.searchParams.get("redirect") || DEFAULT_GOOGLE_REDIRECT_PATH;
+    const redirectPath = sanitizeGoogleRedirectPath(rawRedirect);
     const appUrl = getAppUrl();
 
     try {
