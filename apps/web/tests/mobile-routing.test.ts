@@ -49,7 +49,7 @@ test("Critical mobile route files exist", async (t) => {
 
     // Tab screens
     "app/(app)/[orgSlug]/(tabs)/index.tsx",
-    "app/(app)/[orgSlug]/(tabs)/events.tsx",
+    "app/(app)/[orgSlug]/(tabs)/calendar.tsx",
     "app/(app)/[orgSlug]/(tabs)/announcements.tsx",
     "app/(app)/[orgSlug]/(tabs)/members.tsx",
     "app/(app)/[orgSlug]/(tabs)/menu.tsx",
@@ -122,23 +122,28 @@ test("Member detail route is linked from members list", async (t) => {
 });
 
 /**
- * Test: Event detail route is navigable from events list
+ * Test: Event detail route is navigable from the calendar tab
+ *
+ * The mobile Calendar tab renders a unified feed (events + the user's
+ * academic schedules). Event rows deep-link into /events/[eventId] via the
+ * `CalendarItemCard` component (`<Link href asChild>`).
  */
-test("Event detail route is linked from events list", async (t) => {
-  await t.test("Events list navigates to event detail screen", () => {
-    const eventsListPath = path.join(
+test("Event detail route is linked from the calendar feed", async (t) => {
+  await t.test("CalendarItemCard navigates to event detail screen", () => {
+    const cardPath = path.join(
       MOBILE_APP_ROOT,
-      "app/(app)/[orgSlug]/(tabs)/events.tsx"
+      "src/components/calendar/calendar-item-card.tsx"
     );
 
-    assert.ok(fileExists(eventsListPath), "Events list file should exist");
+    assert.ok(fileExists(cardPath), "CalendarItemCard file should exist");
 
-    const content = readFile(eventsListPath);
+    const content = readFile(cardPath);
 
-    // Check that events list navigates to detail screen
+    // Check that the card builds an /events/[eventId] href for event-source items
     assert.ok(
-      content.includes("router.push") && content.includes("events/"),
-      "Events list should have navigation to event detail"
+      content.includes("events/${item.eventId}") ||
+        content.includes("events/" + "${item.eventId}"),
+      "CalendarItemCard should build a deep-link to events/[eventId]"
     );
   });
 });

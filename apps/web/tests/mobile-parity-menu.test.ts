@@ -128,34 +128,38 @@ test("Members screen gates alumni tab", async (t) => {
 });
 
 /**
- * Test: Events screen has admin overflow menu
+ * Test: Calendar screen has admin overflow menu
+ *
+ * The mobile Events tab was merged into a unified Calendar tab in 2026-04
+ * (events + the user's academic schedules). The admin overflow menu moved
+ * with it.
  */
-test("Events screen has admin overflow menu", async (t) => {
-  const eventsPath = path.join(
+test("Calendar screen has admin overflow menu", async (t) => {
+  const calendarPath = path.join(
     MOBILE_APP_ROOT,
-    "app/(app)/[orgSlug]/(tabs)/events.tsx"
+    "app/(app)/[orgSlug]/(tabs)/calendar.tsx"
   );
 
-  const content = readFile(eventsPath);
+  const content = readFile(calendarPath);
 
-  await t.test("Events screen imports OverflowMenu", () => {
+  await t.test("Calendar screen imports OverflowMenu", () => {
     assert.ok(
       content.includes("OverflowMenu"),
-      "Events screen should import OverflowMenu"
+      "Calendar screen should import OverflowMenu"
     );
   });
 
-  await t.test("Events screen uses useOrgRole for permissions", () => {
+  await t.test("Calendar screen uses useOrgRole for permissions", () => {
     assert.ok(
       content.includes("useOrgRole"),
-      "Events screen should use useOrgRole hook"
+      "Calendar screen should use useOrgRole hook"
     );
   });
 
-  await t.test("Events screen creates admin menu items based on permissions", () => {
+  await t.test("Calendar screen creates admin menu items based on permissions", () => {
     assert.ok(
       content.includes("adminMenuItems") || content.includes("canUseAdminActions"),
-      "Events screen should create admin menu items based on permissions"
+      "Calendar screen should create admin menu items based on permissions"
     );
   });
 });
