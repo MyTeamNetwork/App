@@ -2676,6 +2676,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          deleted_at: string | null
           entry_date: string
           id: string
           notes: string | null
@@ -2687,6 +2688,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          deleted_at?: string | null
           entry_date?: string
           id?: string
           notes?: string | null
@@ -2698,6 +2700,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          deleted_at?: string | null
           entry_date?: string
           id?: string
           notes?: string | null
@@ -2726,6 +2729,7 @@ export type Database = {
       mentorship_pairs: {
         Row: {
           created_at: string
+          deleted_at: string | null
           id: string
           mentee_user_id: string
           mentor_user_id: string
@@ -2735,6 +2739,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          deleted_at?: string | null
           id?: string
           mentee_user_id: string
           mentor_user_id: string
@@ -2744,6 +2749,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          deleted_at?: string | null
           id?: string
           mentee_user_id?: string
           mentor_user_id?: string
