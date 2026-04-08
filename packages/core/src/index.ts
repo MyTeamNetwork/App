@@ -39,3 +39,31 @@ export {
   formatRelativeDate,
   formatAnnouncementDate,
 } from "./formatters/index";
+
+// Marketing - Shared landing-page copy and demo data
+export {
+  BRAND_TAGLINE,
+  HERO_SUB_COPY,
+  DEMO_ORG,
+  FEATURES,
+  type MarketingFeature,
+  type DemoOrgRow,
+  type DemoOrgStats,
+  type DemoOrg,
+} from "./marketing/index";
+
+// Mentorship - Shared pairing and presentation rules
+export {
+  MENTORSHIP_MENTOR_ROLES,
+  MENTORSHIP_MENTEE_ROLES,
+  memberDisplayLabel,
+  partitionPairableOrgMembers,
+  getMentorshipSectionOrder,
+  getVisibleMentorshipPairs,
+  isUserInMentorshipPair,
+  normalizeMentorshipStatus,
+  type MentorshipStatus,
+  type MentorshipPairSummary,
+  type PairableOrgMember,
+  type PairableOrgMemberRow,
+} from "./mentorship/index";
