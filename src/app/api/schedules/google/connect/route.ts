@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       .from("user_calendar_connections")
       .select("id, status")
       .eq("user_id", user.id)
+      .eq("provider", "google")
       .eq("status", "connected")
       .maybeSingle();
 
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
         source_url: sourceUrl,
         title: body.title ?? null,
         connected_user_id: user.id,
-        google_calendar_id: body.googleCalendarId,
+        external_calendar_id: body.googleCalendarId,
       })
       .select("id, org_id, vendor_id, source_url, status, last_synced_at, last_error, title, connected_user_id")
       .single();

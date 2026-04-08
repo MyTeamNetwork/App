@@ -17,7 +17,7 @@ export interface SyncPreferences {
 }
 
 interface CalendarConnection {
-  googleEmail: string;
+  providerEmail: string;
   status: "connected" | "disconnected" | "error";
   lastSyncAt: string | null;
 }
@@ -296,7 +296,7 @@ export function GoogleCalendarSyncPanel({
         <div className="space-y-1 text-sm">
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">{tGCal("account")}</span>
-            <span className="font-medium text-foreground">{connection?.googleEmail}</span>
+            <span className="font-medium text-foreground">{connection?.providerEmail}</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">{tGCal("lastSynced")}</span>

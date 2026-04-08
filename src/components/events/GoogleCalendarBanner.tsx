@@ -131,7 +131,7 @@ export function GoogleCalendarBanner({ orgId, orgSlug, orgName }: GoogleCalendar
                 Synced to Google Calendar
               </span>
               <span className="text-sm text-muted-foreground truncate hidden sm:inline">
-                {gcal.connection?.googleEmail}
+                {gcal.connection?.providerEmail}
               </span>
               {gcal.connection?.lastSyncAt && (
                 <span className="text-xs text-muted-foreground hidden md:inline">

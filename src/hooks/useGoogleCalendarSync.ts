@@ -7,7 +7,7 @@ import type { SyncPreferences } from "@/components/settings/GoogleCalendarSyncPa
 import { resolveGoogleCalendarConnectionState } from "@/lib/google/calendar-connection-state";
 
 interface CalendarConnection {
-  googleEmail: string;
+  providerEmail: string;
   status: "connected" | "disconnected" | "error";
   lastSyncAt: string | null;
 }
@@ -100,13 +100,14 @@ export function useGoogleCalendarSync({
 
       const { data } = await supabase
         .from("user_calendar_connections")
-        .select("google_email, status, last_sync_at, target_calendar_id")
+        .select("provider_email, status, last_sync_at, target_calendar_id")
         .eq("user_id", user.id)
+        .eq("provider", "google")
         .maybeSingle();
 
       if (data) {
         setConnection({
-          googleEmail: data.google_email,
+          providerEmail: data.provider_email,
           status: data.status,
           lastSyncAt: data.last_sync_at,
         });

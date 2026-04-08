@@ -98,7 +98,7 @@ export function MediaStorageUsageBar({ orgId, isAdmin }: MediaStorageUsageBarPro
       role="status"
       aria-live="polite"
       aria-label={ariaLabel}
-      className={`fixed bottom-24 left-4 right-4 lg:bottom-4 lg:left-[17rem] lg:right-auto z-20 lg:z-40 w-auto max-w-[calc(100vw-2rem)] lg:w-[260px] lg:max-w-[260px] rounded-lg border ${borderTone} bg-card/95 backdrop-blur-sm px-4 py-3 shadow-lg pointer-events-auto`}
+      className={`fixed bottom-24 left-4 right-4 sm:bottom-4 sm:left-[17rem] sm:right-auto z-20 sm:z-40 w-auto max-w-[calc(100vw-2rem)] sm:w-[260px] sm:max-w-[260px] rounded-lg border ${borderTone} bg-card/95 backdrop-blur-sm px-4 py-3 shadow-lg pointer-events-auto`}
     >
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

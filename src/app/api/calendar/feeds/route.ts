@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { syncCalendarFeed } from "@/lib/calendar/icsSync";
-import { syncGoogleCalendarFeed } from "@/lib/calendar/googleSync";
 import type { CalendarFeedRow } from "@/lib/calendar/syncHelpers";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
@@ -253,7 +251,7 @@ async function handleIcsFeedCreate(
       organization_id: body.organizationId,
       scope: "personal",
     })
-    .select("id, user_id, feed_url, status, last_synced_at, last_error, provider, created_at, updated_at, organization_id, scope, connected_user_id, google_calendar_id")
+    .select("id, user_id, feed_url, status, last_synced_at, last_error, provider, created_at, updated_at, organization_id, scope, connected_user_id, external_calendar_id")
     .single();
 
   if (error || !feed) {
@@ -265,11 +263,12 @@ async function handleIcsFeedCreate(
   }
 
   const serviceClient = createServiceClient();
+  const { syncCalendarFeed } = await import("@/lib/calendar/icsSync");
   await syncCalendarFeed(serviceClient, feed);
 
   const { data: updatedFeed } = await serviceClient
     .from("calendar_feeds")
-    .select("id, user_id, feed_url, status, last_synced_at, last_error, provider, created_at, updated_at, organization_id, scope, connected_user_id, google_calendar_id")
+    .select("id, user_id, feed_url, status, last_synced_at, last_error, provider, created_at, updated_at, organization_id, scope, connected_user_id, external_calendar_id")
     .eq("id", feed.id)
     .single();
 
@@ -322,7 +321,7 @@ async function handleGoogleFeedCreate(
     .from("calendar_feeds")
     .select("id")
     .eq("user_id", user.id)
-    .eq("google_calendar_id", body.googleCalendarId)
+    .eq("external_calendar_id", body.googleCalendarId)
     .eq("organization_id", body.organizationId)
     .eq("scope", "personal")
     .eq("provider", "google")
@@ -346,7 +345,7 @@ async function handleGoogleFeedCreate(
       organization_id: body.organizationId,
       scope: "personal",
       connected_user_id: user.id,
-      google_calendar_id: body.googleCalendarId,
+      external_calendar_id: body.googleCalendarId,
     })
     .select("id, user_id, feed_url, status, last_synced_at, last_error, provider, created_at, updated_at, organization_id, scope")
     .single();
@@ -364,8 +363,9 @@ async function handleGoogleFeedCreate(
   const feedForSync: CalendarFeedRow = {
     ...(feed as CalendarFeedRow),
     connected_user_id: user.id,
-    google_calendar_id: body.googleCalendarId,
+    external_calendar_id: body.googleCalendarId,
   };
+  const { syncGoogleCalendarFeed } = await import("@/lib/calendar/googleSync");
   await syncGoogleCalendarFeed(serviceClient, feedForSync);
 
   const { data: updatedFeed } = await serviceClient

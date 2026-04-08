@@ -22,7 +22,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const { targetCalendarId } = body;
+    const { targetCalendarId, provider = "google" } = body;
 
     if (!targetCalendarId || typeof targetCalendarId !== "string") {
       return NextResponse.json(
@@ -34,7 +34,8 @@ export async function PUT(request: Request) {
     const { error } = await supabase
       .from("user_calendar_connections")
       .update({ target_calendar_id: targetCalendarId })
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .eq("provider", provider);
 
     if (error) {
       console.error("[calendar-target] Error updating target calendar:", error);
