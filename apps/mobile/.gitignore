@@ -4,3 +4,4 @@ android/
 ios.bak-*/
 android.bak-*/
 .env.local
+.claude/skills/
