@@ -45,6 +45,19 @@ const MICROSOFT_SCOPES = [
     "offline_access",
 ];
 
+/**
+ * Extracts error code from Microsoft token endpoint response.
+ * Logs the error details without exposing the full response body.
+ */
+function extractMicrosoftErrorCode(errorText: string): string {
+    try {
+        const parsed = JSON.parse(errorText);
+        return parsed.error || "unknown_error";
+    } catch {
+        return "parse_error";
+    }
+}
+
 export interface MicrosoftTokenResponse {
     accessToken: string;
     refreshToken: string;
@@ -105,8 +118,13 @@ export async function exchangeMicrosoftCodeForTokens(code: string): Promise<Micr
     });
 
     if (!tokenResponse.ok) {
-        const error = await tokenResponse.text();
-        throw new Error(`Token exchange failed: ${error}`);
+        const errorText = await tokenResponse.text();
+        const errorCode = extractMicrosoftErrorCode(errorText);
+        console.error("[microsoft-oauth] Token exchange failed", {
+            status: tokenResponse.status,
+            error: errorCode,
+        });
+        throw new Error(`Token exchange failed: ${errorCode}`);
     }
 
     const tokens = await tokenResponse.json() as {
@@ -313,8 +331,13 @@ export async function refreshAndStoreMicrosoftToken(
         });
 
         if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Token refresh failed: ${error}`);
+            const errorText = await response.text();
+            const errorCode = extractMicrosoftErrorCode(errorText);
+            console.error("[microsoft-oauth] Token refresh failed", {
+                status: response.status,
+                error: errorCode,
+            });
+            throw new Error(`Token refresh failed: ${errorCode}`);
         }
 
         const tokens = await response.json() as {

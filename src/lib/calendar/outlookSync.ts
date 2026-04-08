@@ -13,6 +13,16 @@ import type {
 } from "./syncHelpers";
 
 const MAX_RESULTS_PER_PAGE = 250;
+const MICROSOFT_GRAPH_BASE = "https://graph.microsoft.com/";
+
+/**
+ * Validates that a nextLink URL is safe to follow.
+ * Only allows URLs from Microsoft Graph to prevent SSRF attacks.
+ */
+function isValidGraphNextLink(nextLink: string | undefined): boolean {
+    if (!nextLink) return false;
+    return nextLink.startsWith(MICROSOFT_GRAPH_BASE);
+}
 
 // ---------- Microsoft Graph response types ----------
 
@@ -75,8 +85,19 @@ export async function fetchOutlookCalendarEvents(
       }
     }
 
-    // Paginate: use nextLink verbatim (never reconstruct)
-    url = data["@odata.nextLink"];
+    // Paginate: use nextLink verbatim (never reconstruct), but validate hostname for SSRF protection
+    const nextLink = data["@odata.nextLink"];
+    if (isValidGraphNextLink(nextLink)) {
+      url = nextLink;
+    } else if (nextLink) {
+      // nextLink points to an unexpected host — log and stop pagination
+      console.error("[outlook-sync] Unexpected nextLink host, stopping pagination", {
+        nextLink: nextLink.slice(0, 100),
+      });
+      break;
+    } else {
+      url = undefined;
+    }
   } while (url);
 
   return instances;

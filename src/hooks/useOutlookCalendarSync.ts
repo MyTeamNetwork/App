@@ -78,7 +78,7 @@ export function useOutlookCalendarSync({
     targetCalendarIdRef.current = targetCalendarId;
   }, [targetCalendarId]);
 
-  const oauthStatus = searchParams.get("outlook_calendar");
+  const oauthStatus = searchParams.get("calendar");
   const oauthError = searchParams.get("error");
   const oauthErrorMessage = searchParams.get("error_message");
 
