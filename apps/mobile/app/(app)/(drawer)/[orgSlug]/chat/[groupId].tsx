@@ -11,13 +11,17 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { ArrowLeft, ArrowUp } from "lucide-react-native";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrgRole } from "@/hooks/useOrgRole";
+import { Avatar } from "@/components/ui/Avatar";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
+import { APP_CHROME } from "@/lib/chrome";
 import { formatTimestamp } from "@/lib/date-format";
 import type {
   ChatGroup,
@@ -41,12 +45,15 @@ const CHAT_COLORS = {
 };
 
 type ChatMemberWithUser = ChatGroupMember & { users: User };
-type MessageWithAuthor = ChatMessage & { author?: User };
+type MessageWithAuthor = ChatMessage & {
+  author?: User;
+  isFirstInRun?: boolean;
+};
 
 export default function ChatRoomScreen() {
   const { groupId } = useLocalSearchParams<{ groupId: string }>();
   const resolvedGroupId = Array.isArray(groupId) ? groupId[0] : groupId;
-  const { orgId } = useOrg();
+  const { orgId, orgSlug } = useOrg();
   const { user } = useAuth();
   const { isAdmin } = useOrgRole();
   const router = useRouter();
@@ -292,6 +299,45 @@ export default function ChatRoomScreen() {
     };
   }, [resolvedGroupId, currentUserId, canModerate, fetchUnknownUsers, userMap, scrollToBottom]);
 
+  const pendingCount = useMemo(
+    () => messages.filter((m) => m.status === "pending").length,
+    [messages]
+  );
+
+  const visibleMessages = useMemo(() => {
+    if (!currentUserId) return [];
+    if (showPendingQueue) {
+      return messages.filter((m) => m.status === "pending");
+    }
+    return messages.filter(
+      (m) =>
+        m.status === "approved" ||
+        m.author_id === currentUserId ||
+        canModerate
+    );
+  }, [messages, showPendingQueue, currentUserId, canModerate]);
+
+  const groupedMessages = useMemo(() => {
+    return visibleMessages.map((msg, index) => {
+      const prev = visibleMessages[index - 1];
+      const sameAuthor = prev?.author_id === msg.author_id;
+      const within5Min = prev
+        ? new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() <
+          5 * 60 * 1000
+        : false;
+      return {
+        ...msg,
+        isFirstInRun: !sameAuthor || !within5Min,
+      };
+    });
+  }, [visibleMessages]);
+
+  useEffect(() => {
+    if (!showPendingQueue) {
+      setTimeout(scrollToBottom, 80);
+    }
+  }, [groupedMessages.length, showPendingQueue, scrollToBottom]);
+
   const handleSend = useCallback(async () => {
     if (!newMessage.trim() || sending || !group || !orgId || !currentUserId) return;
 
@@ -396,30 +442,6 @@ export default function ChatRoomScreen() {
     [currentUserId, loadMessages]
   );
 
-  const pendingCount = useMemo(
-    () => messages.filter((m) => m.status === "pending").length,
-    [messages]
-  );
-
-  const visibleMessages = useMemo(() => {
-    if (!currentUserId) return [];
-    if (showPendingQueue) {
-      return messages.filter((m) => m.status === "pending");
-    }
-    return messages.filter(
-      (m) =>
-        m.status === "approved" ||
-        m.author_id === currentUserId ||
-        canModerate
-    );
-  }, [messages, showPendingQueue, currentUserId, canModerate]);
-
-  useEffect(() => {
-    if (!showPendingQueue) {
-      setTimeout(scrollToBottom, 80);
-    }
-  }, [visibleMessages.length, showPendingQueue, scrollToBottom]);
-
   const listContentStyle = useMemo(
     () => [
       styles.listContent,
@@ -434,26 +456,44 @@ export default function ChatRoomScreen() {
       const isPending = item.status === "pending";
       const isRejected = item.status === "rejected";
       const authorName = item.author?.name || item.author?.email || "Unknown";
-      const initials = getInitials(authorName);
+      const isFirstInRun = item.isFirstInRun ?? false;
+
+      // Calculate bubble radius based on position in run
+      const bubbleRadius = isFirstInRun
+        ? isOwn
+          ? { borderTopLeftRadius: 14, borderTopRightRadius: 4, borderBottomLeftRadius: 14, borderBottomRightRadius: 14 }
+          : { borderTopLeftRadius: 4, borderTopRightRadius: 14, borderBottomLeftRadius: 14, borderBottomRightRadius: 14 }
+        : { borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomLeftRadius: 14, borderBottomRightRadius: 14 };
+
       return (
         <View style={[styles.messageRow, isOwn && styles.messageRowOwn]}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
-          </View>
-          <View style={styles.messageBody}>
-            <View style={styles.messageMetaRow}>
-              <Text style={styles.messageAuthor} numberOfLines={1}>
-                {authorName}
-              </Text>
-              <Text style={styles.messageTime}>
-                {formatTimestamp(item.created_at)}
-              </Text>
-              {isPending && <Text style={styles.pendingLabel}>Pending</Text>}
-              {isRejected && <Text style={styles.rejectedLabel}>Rejected</Text>}
+          {!isOwn && (
+            <View style={styles.messageColumn}>
+              {isFirstInRun ? (
+                <Avatar size="xs" name={authorName} />
+              ) : (
+                <View style={styles.avatarSpacer} />
+              )}
             </View>
+          )}
+
+          <View style={[styles.messageBody, isOwn && styles.messageBodyOwn]}>
+            {isFirstInRun && !isOwn && (
+              <View style={styles.messageMetaRow}>
+                <Text style={styles.messageAuthor} numberOfLines={1}>
+                  {authorName}
+                </Text>
+                <Text style={styles.messageTime}>{formatTimestamp(item.created_at)}</Text>
+              </View>
+            )}
+            {isFirstInRun && isOwn && (
+              <Text style={styles.messageTime}>{formatTimestamp(item.created_at)}</Text>
+            )}
+
             <View
               style={[
                 styles.messageBubble,
+                bubbleRadius,
                 isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther,
                 isPending && styles.messageBubblePending,
               ]}
@@ -467,6 +507,10 @@ export default function ChatRoomScreen() {
                 {item.body}
               </Text>
             </View>
+
+            {isPending && <Text style={styles.pendingLabel}>Pending</Text>}
+            {isRejected && <Text style={styles.rejectedLabel}>Rejected</Text>}
+
             {canModerate && isPending && !isOwn && (
               <View style={styles.moderationRow}>
                 <Pressable
@@ -501,7 +545,6 @@ export default function ChatRoomScreen() {
   if (loading && !group) {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <Stack.Screen options={{ title: "Chat" }} />
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={CHAT_COLORS.accent} />
         </View>
@@ -512,7 +555,6 @@ export default function ChatRoomScreen() {
   if (error || !group) {
     return (
       <SafeAreaView style={styles.container} edges={["bottom"]}>
-        <Stack.Screen options={{ title: "Chat" }} />
         <View style={styles.centered}>
           <Text style={styles.errorTitle}>Unable to load chat</Text>
           <Text style={styles.errorText}>{error || "Chat group not found."}</Text>
@@ -529,16 +571,48 @@ export default function ChatRoomScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["bottom"]}>
-      <Stack.Screen options={{ title: group.name }} />
+    <View style={styles.container}>
+      {/* Custom gradient header */}
+      <LinearGradient
+        colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]}
+        style={styles.headerGradient}
+      >
+        <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
+          <View style={styles.headerContent}>
+            <Pressable onPress={() => router.back()} style={styles.backButtonHeader}>
+              <ArrowLeft size={20} color={APP_CHROME.headerTitle} />
+            </Pressable>
+            <Avatar size="sm" name={group.name} />
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.headerTitle}>{group.name}</Text>
+              <Text style={styles.headerMeta}>
+                {members.length} member{members.length !== 1 ? "s" : ""}
+              </Text>
+            </View>
+            {canModerate && pendingCount > 0 && (
+              <Pressable
+                onPress={() => setShowPendingQueue((prev) => !prev)}
+                style={({ pressed }) => [
+                  styles.pendingToggle,
+                  pressed && styles.pendingTogglePressed,
+                ]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.pendingToggleText}>{pendingCount}</Text>
+              </Pressable>
+            )}
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
+
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 96 : 0}
       >
         <FlatList
           ref={listRef}
-          data={visibleMessages}
+          data={groupedMessages}
           keyExtractor={(item) => item.id}
           renderItem={renderMessage}
           contentContainerStyle={listContentStyle}
@@ -547,21 +621,6 @@ export default function ChatRoomScreen() {
               <Text style={styles.groupDescription}>
                 {group.description || `${members.length} member${members.length !== 1 ? "s" : ""}`}
               </Text>
-              {canModerate && pendingCount > 0 ? (
-                <Pressable
-                  onPress={() => setShowPendingQueue((prev) => !prev)}
-                  style={({ pressed }) => [
-                    styles.pendingToggle,
-                    pressed && styles.pendingTogglePressed,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Toggle pending queue"
-                >
-                  <Text style={styles.pendingToggleText}>
-                    {showPendingQueue ? "Show all" : `Pending (${pendingCount})`}
-                  </Text>
-                </Pressable>
-              ) : null}
             </View>
           }
           ListEmptyComponent={
@@ -578,53 +637,50 @@ export default function ChatRoomScreen() {
         />
 
         {!showPendingQueue && (
-          <View style={styles.composer}>
-            <TextInput
-              value={newMessage}
-              onChangeText={setNewMessage}
-              placeholder={
-                requiresApproval && !canModerate
-                  ? "Type a message (requires approval)..."
-                  : "Type a message..."
-              }
-              style={styles.input}
-              editable={!sending}
-              returnKeyType="send"
-              onSubmitEditing={handleSend}
-            />
-            <Pressable
-              onPress={handleSend}
-              disabled={!newMessage.trim() || sending}
-              style={({ pressed }) => [
-                styles.sendButton,
-                (!newMessage.trim() || sending) && styles.sendButtonDisabled,
-                pressed && styles.sendButtonPressed,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Send message"
-            >
-              <Text style={styles.sendButtonText}>
-                {sending ? "..." : "Send"}
-              </Text>
-            </Pressable>
-          </View>
+          <SafeAreaView edges={["bottom"]} style={styles.composerContainer}>
+            <View style={styles.composer}>
+              <TextInput
+                value={newMessage}
+                onChangeText={setNewMessage}
+                placeholder={
+                  requiresApproval && !canModerate
+                    ? "Type a message (requires approval)..."
+                    : "Type a message..."
+                }
+                style={styles.input}
+                editable={!sending}
+                returnKeyType="send"
+                onSubmitEditing={handleSend}
+                multiline
+              />
+              <Pressable
+                onPress={handleSend}
+                disabled={!newMessage.trim() || sending}
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  (!newMessage.trim() || sending) && styles.sendButtonDisabled,
+                  pressed && styles.sendButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Send message"
+              >
+                <ArrowUp
+                  size={20}
+                  color={!newMessage.trim() || sending ? CHAT_COLORS.muted : "#ffffff"}
+                />
+              </Pressable>
+            </View>
+          </SafeAreaView>
         )}
+
         {requiresApproval && !canModerate && !showPendingQueue && (
           <Text style={styles.approvalNote}>
             Messages in this group require moderator approval before being visible.
           </Text>
         )}
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
-}
-
-function getInitials(name: string) {
-  const trimmed = name.trim();
-  if (!trimmed) return "?";
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
 }
 
 const createStyles = () =>
@@ -632,6 +688,49 @@ const createStyles = () =>
     container: {
       flex: 1,
       backgroundColor: CHAT_COLORS.background,
+    },
+    headerGradient: {
+      paddingBottom: spacing.md,
+    },
+    headerSafeArea: {
+      // SafeAreaView handles top inset
+    },
+    headerContent: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      gap: spacing.sm,
+    },
+    backButtonHeader: {
+      padding: spacing.xs,
+    },
+    headerTextContainer: {
+      flex: 1,
+    },
+    headerTitle: {
+      fontSize: fontSize.base,
+      fontWeight: fontWeight.semibold,
+      color: APP_CHROME.headerTitle,
+    },
+    headerMeta: {
+      fontSize: fontSize.xs,
+      color: APP_CHROME.headerMeta,
+      marginTop: 2,
+    },
+    pendingToggle: {
+      backgroundColor: "rgba(245, 158, 11, 0.15)",
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: borderRadius.sm,
+    },
+    pendingTogglePressed: {
+      opacity: 0.7,
+    },
+    pendingToggleText: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.semibold,
+      color: CHAT_COLORS.pending,
     },
     centered: {
       flex: 1,
@@ -670,21 +769,6 @@ const createStyles = () =>
       fontSize: fontSize.sm,
       color: CHAT_COLORS.subtitle,
     },
-    pendingToggle: {
-      alignSelf: "flex-start",
-      backgroundColor: "rgba(245, 158, 11, 0.15)",
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 6,
-      borderRadius: borderRadius.sm,
-    },
-    pendingTogglePressed: {
-      opacity: 0.7,
-    },
-    pendingToggleText: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
-      color: CHAT_COLORS.pending,
-    },
     listContent: {
       paddingHorizontal: spacing.md,
       gap: spacing.sm,
@@ -697,28 +781,26 @@ const createStyles = () =>
     messageRowOwn: {
       flexDirection: "row-reverse",
     },
-    avatar: {
+    messageColumn: {
+      width: 32,
+      alignItems: "center",
+    },
+    avatarSpacer: {
       width: 32,
       height: 32,
-      borderRadius: 16,
-      backgroundColor: CHAT_COLORS.bubble,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarText: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.semibold,
-      color: CHAT_COLORS.subtitle,
     },
     messageBody: {
       flex: 1,
       gap: 4,
     },
+    messageBodyOwn: {
+      alignItems: "flex-end",
+    },
     messageMetaRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: spacing.xs,
-      flexWrap: "wrap",
+      paddingHorizontal: spacing.xs,
     },
     messageAuthor: {
       fontSize: fontSize.xs,
@@ -729,21 +811,9 @@ const createStyles = () =>
       fontSize: fontSize.xs,
       color: CHAT_COLORS.muted,
     },
-    pendingLabel: {
-      fontSize: fontSize.xs,
-      color: CHAT_COLORS.pending,
-      fontWeight: fontWeight.medium,
-    },
-    rejectedLabel: {
-      fontSize: fontSize.xs,
-      color: CHAT_COLORS.rejected,
-      fontWeight: fontWeight.medium,
-    },
     messageBubble: {
       paddingVertical: 10,
       paddingHorizontal: spacing.sm,
-      borderRadius: borderRadius.md,
-      borderCurve: "continuous",
       maxWidth: "85%",
     },
     messageBubbleOwn: {
@@ -761,18 +831,32 @@ const createStyles = () =>
     messageText: {
       fontSize: fontSize.sm,
       color: CHAT_COLORS.title,
+      lineHeight: 20,
     },
     messageTextOwn: {
       color: "#ffffff",
     },
+    pendingLabel: {
+      fontSize: fontSize.xs,
+      color: CHAT_COLORS.pending,
+      fontWeight: fontWeight.medium,
+      paddingHorizontal: spacing.xs,
+    },
+    rejectedLabel: {
+      fontSize: fontSize.xs,
+      color: CHAT_COLORS.rejected,
+      fontWeight: fontWeight.medium,
+      paddingHorizontal: spacing.xs,
+    },
     moderationRow: {
       flexDirection: "row",
-      gap: spacing.sm,
+      gap: spacing.xs,
       marginTop: spacing.xs,
+      paddingHorizontal: spacing.xs,
     },
     moderationButton: {
       paddingVertical: 6,
-      paddingHorizontal: spacing.sm,
+      paddingHorizontal: spacing.xs,
       borderRadius: borderRadius.sm,
     },
     moderationPressed: {
@@ -805,30 +889,35 @@ const createStyles = () =>
       color: CHAT_COLORS.subtitle,
       textAlign: "center",
     },
+    composerContainer: {
+      backgroundColor: CHAT_COLORS.card,
+      borderTopWidth: 1,
+      borderTopColor: CHAT_COLORS.border,
+    },
     composer: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-end",
       gap: spacing.sm,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: CHAT_COLORS.border,
-      backgroundColor: CHAT_COLORS.card,
     },
     input: {
       flex: 1,
       backgroundColor: CHAT_COLORS.bubble,
-      borderRadius: borderRadius.md,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.sm,
+      borderRadius: 999,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 10,
       fontSize: fontSize.sm,
       color: CHAT_COLORS.title,
+      maxHeight: 120,
     },
     sendButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: CHAT_COLORS.accent,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: borderRadius.md,
+      alignItems: "center",
+      justifyContent: "center",
     },
     sendButtonPressed: {
       opacity: 0.8,
@@ -836,16 +925,13 @@ const createStyles = () =>
     sendButtonDisabled: {
       opacity: 0.5,
     },
-    sendButtonText: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.semibold,
-      color: "#ffffff",
-    },
     approvalNote: {
       fontSize: fontSize.xs,
       color: CHAT_COLORS.muted,
       paddingHorizontal: spacing.md,
-      paddingBottom: spacing.sm,
+      paddingVertical: spacing.sm,
       backgroundColor: CHAT_COLORS.card,
+      borderTopWidth: 1,
+      borderTopColor: CHAT_COLORS.border,
     },
   });

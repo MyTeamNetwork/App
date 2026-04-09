@@ -12,15 +12,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { DrawerActions } from "@react-navigation/native";
 import { useRouter, useNavigation } from "expo-router";
-import { MessageCircle } from "lucide-react-native";
+import { MessageCircle, Pin, Lock, Plus } from "lucide-react-native";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
+import { Avatar } from "@/components/ui/Avatar";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import type { ChatGroup, ChatGroupMember } from "@teammeet/types";
+import type { Tables } from "@teammeet/types";
 
 const CHAT_COLORS = {
   background: "#ffffff",
@@ -38,6 +40,11 @@ type ChatGroupWithMembers = ChatGroup & {
   chat_group_members: Pick<ChatGroupMember, "id" | "user_id" | "role">[];
 };
 
+type DiscussionThread = Tables<"discussion_threads">;
+type ThreadWithAuthor = DiscussionThread & {
+  author?: { name: string } | null;
+};
+
 export default function ChatGroupsScreen() {
   const { orgId, orgSlug, orgName, orgLogoUrl } = useOrg();
   const { isAdmin } = useOrgRole();
@@ -47,7 +54,7 @@ export default function ChatGroupsScreen() {
   const styles = useMemo(() => createStyles(neutral.surface), [neutral.surface]);
   const isMountedRef = useRef(true);
 
-  // Safe drawer toggle - only dispatch if drawer is available
+  // Safe drawer toggle
   const handleDrawerToggle = useCallback(() => {
     try {
       if (navigation && typeof (navigation as any).dispatch === "function") {
@@ -57,11 +64,21 @@ export default function ChatGroupsScreen() {
       // Drawer not available - no-op
     }
   }, [navigation]);
+
+  // Channels state (existing)
   const [groups, setGroups] = useState<ChatGroupWithMembers[]>([]);
   const [pendingCounts, setPendingCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Threads state (new)
+  const [threads, setThreads] = useState<ThreadWithAuthor[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(true);
+  const [threadsError, setThreadsError] = useState<string | null>(null);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<"channels" | "threads">("channels");
 
   const fetchGroups = useCallback(async () => {
     if (!orgId) {
@@ -121,15 +138,55 @@ export default function ChatGroupsScreen() {
     }
   }, [orgId, isAdmin]);
 
+  const fetchThreads = useCallback(async () => {
+    if (!orgId) {
+      if (isMountedRef.current) {
+        setThreads([]);
+        setThreadsLoading(false);
+        setThreadsError(null);
+      }
+      return;
+    }
+
+    try {
+      setThreadsLoading(true);
+      const { data, error: threadsErr } = await supabase
+        .from("discussion_threads")
+        .select("*, author:users!discussion_threads_author_id_fkey(name)")
+        .eq("organization_id", orgId)
+        .is("deleted_at", null)
+        .order("is_pinned", { ascending: false })
+        .order("last_activity_at", { ascending: false })
+        .limit(50);
+
+      if (threadsErr) throw threadsErr;
+
+      if (isMountedRef.current) {
+        setThreads((data || []) as ThreadWithAuthor[]);
+        setThreadsError(null);
+      }
+    } catch (e) {
+      if (isMountedRef.current) {
+        setThreadsError((e as Error).message);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setThreadsLoading(false);
+      }
+    }
+  }, [orgId]);
+
   useEffect(() => {
     isMountedRef.current = true;
     fetchGroups();
+    fetchThreads();
 
     return () => {
       isMountedRef.current = false;
     };
-  }, [fetchGroups]);
+  }, [fetchGroups, fetchThreads]);
 
+  // Channels realtime subscriptions
   useEffect(() => {
     if (!orgId) return;
     const groupsChannel = supabase
@@ -170,6 +227,7 @@ export default function ChatGroupsScreen() {
     };
   }, [orgId, fetchGroups]);
 
+  // Pending messages subscription (admin only)
   useEffect(() => {
     if (!orgId || !isAdmin) return;
     const pendingChannel = supabase
@@ -193,11 +251,35 @@ export default function ChatGroupsScreen() {
     };
   }, [orgId, isAdmin, fetchGroups]);
 
+  // Threads realtime subscription
+  useEffect(() => {
+    if (!orgId) return;
+    const threadsChannel = supabase
+      .channel(`discussion_threads:${orgId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "discussion_threads",
+          filter: `organization_id=eq.${orgId}`,
+        },
+        () => {
+          fetchThreads();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(threadsChannel);
+    };
+  }, [orgId, fetchThreads]);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchGroups();
+    await Promise.all([fetchGroups(), fetchThreads()]);
     setRefreshing(false);
-  }, [fetchGroups]);
+  }, [fetchGroups, fetchThreads]);
 
   const handleOpenGroup = useCallback(
     (groupId: string) => {
@@ -206,20 +288,33 @@ export default function ChatGroupsScreen() {
     [router, orgSlug]
   );
 
+  const handleOpenThread = useCallback(
+    (threadId: string) => {
+      router.push(`/(app)/${orgSlug}/chat/threads/${threadId}`);
+    },
+    [router, orgSlug]
+  );
+
+  const handleNewThread = useCallback(() => {
+    router.push(`/(app)/${orgSlug}/chat/threads/new`);
+  }, [router, orgSlug]);
+
   const renderGroup = useCallback(
     ({ item }: { item: ChatGroupWithMembers }) => {
       const memberCount = item.chat_group_members?.length || 0;
       const pendingCount = pendingCounts[item.id] || 0;
+
       return (
         <Pressable
           onPress={() => handleOpenGroup(item.id)}
-          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           accessibilityRole="button"
           accessibilityLabel={`Open ${item.name}`}
         >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardTitleRow}>
-              <Text style={styles.cardTitle} numberOfLines={1}>
+          <Avatar size="lg" name={item.name} />
+          <View style={styles.rowContent}>
+            <View style={styles.rowHeader}>
+              <Text style={styles.rowTitle} numberOfLines={1}>
                 {item.name}
               </Text>
               {item.is_default && (
@@ -228,34 +323,61 @@ export default function ChatGroupsScreen() {
                 </View>
               )}
             </View>
-            <MessageCircle size={18} color={CHAT_COLORS.muted} />
-          </View>
-          {item.description ? (
-            <Text style={styles.cardDescription} numberOfLines={2}>
-              {item.description}
+            <Text style={styles.rowSubtitle} numberOfLines={1}>
+              {item.description || `${memberCount} member${memberCount !== 1 ? "s" : ""}`}
             </Text>
+          </View>
+          {pendingCount > 0 ? (
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>{pendingCount}</Text>
+            </View>
           ) : null}
-          <View style={styles.cardFooter}>
-            <Text style={styles.cardMeta}>
-              {memberCount} member{memberCount !== 1 ? "s" : ""}
-              {item.require_approval ? " · Approval required" : ""}
-            </Text>
-            {pendingCount > 0 ? (
-              <View style={styles.pendingBadge}>
-                <Text style={styles.pendingBadgeText}>{pendingCount} pending</Text>
-              </View>
-            ) : null}
-          </View>
         </Pressable>
       );
     },
     [handleOpenGroup, pendingCounts, styles]
   );
 
-  if (loading && groups.length === 0) {
+  const renderThread = useCallback(
+    ({ item }: { item: ThreadWithAuthor }) => {
+      const authorName = item.author?.name || "Unknown";
+      const formattedTime = formatRelativeTime(item.last_activity_at);
+
+      return (
+        <Pressable
+          onPress={() => handleOpenThread(item.id)}
+          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`Open thread: ${item.title}`}
+        >
+          <View style={styles.threadIconContainer}>
+            {item.is_pinned && <Pin size={14} color={CHAT_COLORS.pending} />}
+            {item.is_locked && <Lock size={14} color={CHAT_COLORS.muted} />}
+            {!item.is_pinned && !item.is_locked && (
+              <MessageCircle size={14} color={CHAT_COLORS.muted} />
+            )}
+          </View>
+          <View style={styles.rowContent}>
+            <Text style={styles.rowTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            <Text style={styles.rowSubtitle} numberOfLines={1}>
+              {authorName} · {formattedTime}
+            </Text>
+          </View>
+          {item.reply_count > 0 ? (
+            <Text style={styles.replyCount}>{item.reply_count} replies</Text>
+          ) : null}
+        </Pressable>
+      );
+    },
+    [handleOpenThread, styles]
+  );
+
+  // Loading state
+  if ((loading || threadsLoading) && groups.length === 0 && threads.length === 0) {
     return (
       <View style={styles.container}>
-        {/* Custom Gradient Header */}
         <LinearGradient
           colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]}
           style={styles.headerGradient}
@@ -264,7 +386,12 @@ export default function ChatGroupsScreen() {
             <View style={styles.headerContent}>
               <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
                 {orgLogoUrl ? (
-                  <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
+                  <Image
+                    source={orgLogoUrl}
+                    style={styles.orgLogo}
+                    contentFit="contain"
+                    transition={200}
+                  />
                 ) : (
                   <View style={styles.orgAvatar}>
                     <Text style={styles.orgAvatarText}>{orgName?.[0]}</Text>
@@ -278,7 +405,6 @@ export default function ChatGroupsScreen() {
           </SafeAreaView>
         </LinearGradient>
 
-        {/* Content Sheet */}
         <View style={styles.contentSheet}>
           <View style={styles.skeletonContainer}>
             <SkeletonList type="chat" count={6} />
@@ -288,10 +414,10 @@ export default function ChatGroupsScreen() {
     );
   }
 
-  if (error && groups.length === 0) {
+  // Error state
+  if ((error || threadsError) && groups.length === 0 && threads.length === 0) {
     return (
       <View style={styles.container}>
-        {/* Custom Gradient Header */}
         <LinearGradient
           colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]}
           style={styles.headerGradient}
@@ -300,7 +426,12 @@ export default function ChatGroupsScreen() {
             <View style={styles.headerContent}>
               <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
                 {orgLogoUrl ? (
-                  <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
+                  <Image
+                    source={orgLogoUrl}
+                    style={styles.orgLogo}
+                    contentFit="contain"
+                    transition={200}
+                  />
                 ) : (
                   <View style={styles.orgAvatar}>
                     <Text style={styles.orgAvatarText}>{orgName?.[0]}</Text>
@@ -314,14 +445,13 @@ export default function ChatGroupsScreen() {
           </SafeAreaView>
         </LinearGradient>
 
-        {/* Content Sheet */}
         <View style={styles.contentSheet}>
           <View style={styles.centered}>
             <Text style={styles.errorTitle}>Unable to load chat</Text>
-            <Text style={styles.errorText}>{error}</Text>
+            <Text style={styles.errorText}>{error || threadsError}</Text>
             <Pressable
               style={styles.retryButton}
-              onPress={fetchGroups}
+              onPress={handleRefresh}
               accessibilityRole="button"
             >
               <Text style={styles.retryButtonText}>Retry</Text>
@@ -332,9 +462,12 @@ export default function ChatGroupsScreen() {
     );
   }
 
+  const displayData = activeTab === "channels" ? groups : threads;
+  const isLoading = activeTab === "channels" ? loading : threadsLoading;
+  const displayError = activeTab === "channels" ? error : threadsError;
+
   return (
     <View style={styles.container}>
-      {/* Custom Gradient Header */}
       <LinearGradient
         colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]}
         style={styles.headerGradient}
@@ -343,7 +476,12 @@ export default function ChatGroupsScreen() {
           <View style={styles.headerContent}>
             <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
               {orgLogoUrl ? (
-                <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
+                <Image
+                  source={orgLogoUrl}
+                  style={styles.orgLogo}
+                  contentFit="contain"
+                  transition={200}
+                />
               ) : (
                 <View style={styles.orgAvatar}>
                   <Text style={styles.orgAvatarText}>{orgName?.[0]}</Text>
@@ -352,41 +490,134 @@ export default function ChatGroupsScreen() {
             </Pressable>
             <View style={styles.headerTextContainer}>
               <Text style={styles.headerTitle}>Chat</Text>
-              <Text style={styles.headerMeta}>{groups.length} {groups.length === 1 ? "group" : "groups"}</Text>
+              <Text style={styles.headerMeta}>
+                {displayData.length}{" "}
+                {activeTab === "channels"
+                  ? displayData.length === 1
+                    ? "channel"
+                    : "channels"
+                  : displayData.length === 1
+                    ? "thread"
+                    : "threads"}
+              </Text>
             </View>
           </View>
         </SafeAreaView>
       </LinearGradient>
 
-      {/* Content Sheet */}
-      <View style={styles.contentSheet}>
-        <FlatList
-          data={groups}
-          keyExtractor={(item) => item.id}
-          renderItem={renderGroup}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={CHAT_COLORS.accent} />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIcon}>
-                <MessageCircle size={28} color={CHAT_COLORS.muted} />
-              </View>
-              <Text style={styles.emptyTitle}>No chat groups yet</Text>
-              <Text style={styles.emptyText}>
-                Chat groups will appear here once they are created.
-              </Text>
-            </View>
-          }
-          initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          removeClippedSubviews={true}
-        />
+      {/* Segmented control */}
+      <View style={styles.segmentedControl}>
+        <Pressable
+          onPress={() => setActiveTab("channels")}
+          style={[styles.segment, activeTab === "channels" && styles.segmentActive]}
+        >
+          <Text
+            style={[
+              styles.segmentText,
+              activeTab === "channels" && styles.segmentTextActive,
+            ]}
+          >
+            Channels
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => setActiveTab("threads")}
+          style={[styles.segment, activeTab === "threads" && styles.segmentActive]}
+        >
+          <Text
+            style={[
+              styles.segmentText,
+              activeTab === "threads" && styles.segmentTextActive,
+            ]}
+          >
+            Threads
+          </Text>
+        </Pressable>
       </View>
+
+      <View style={styles.contentSheet}>
+        {activeTab === "channels" ? (
+          <FlatList
+            data={groups}
+            keyExtractor={(item) => item.id}
+            renderItem={renderGroup}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIcon}>
+                  <MessageCircle size={28} color={CHAT_COLORS.muted} />
+                </View>
+                <Text style={styles.emptyTitle}>No channels yet</Text>
+                <Text style={styles.emptyText}>
+                  Chat channels will appear here once they are created.
+                </Text>
+              </View>
+            }
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews={true}
+          />
+        ) : (
+          <FlatList
+            data={threads}
+            keyExtractor={(item) => item.id}
+            renderItem={renderThread}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIcon}>
+                  <MessageCircle size={28} color={CHAT_COLORS.muted} />
+                </View>
+                <Text style={styles.emptyTitle}>No threads yet</Text>
+                <Text style={styles.emptyText}>
+                  Start a discussion thread to begin.
+                </Text>
+              </View>
+            }
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews={true}
+          />
+        )}
+      </View>
+
+      {/* FAB for new thread */}
+      {activeTab === "threads" && (
+        <Pressable
+          style={styles.fab}
+          onPress={handleNewThread}
+          accessibilityRole="button"
+          accessibilityLabel="Create new thread"
+        >
+          <Plus size={24} color="#ffffff" />
+        </Pressable>
+      )}
     </View>
   );
+}
+
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 const createStyles = (surfaceColor: string) =>
@@ -395,7 +626,6 @@ const createStyles = (surfaceColor: string) =>
       flex: 1,
       backgroundColor: CHAT_COLORS.background,
     },
-    // Gradient header styles
     headerGradient: {
       paddingBottom: spacing.md,
     },
@@ -445,13 +675,43 @@ const createStyles = (surfaceColor: string) =>
       color: APP_CHROME.headerMeta,
       marginTop: 2,
     },
+    segmentedControl: {
+      flexDirection: "row",
+      backgroundColor: "#f1f5f9",
+      marginHorizontal: spacing.md,
+      marginVertical: spacing.md,
+      padding: 2,
+      borderRadius: borderRadius.xl,
+      gap: 2,
+    },
+    segment: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: borderRadius.lg,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    segmentActive: {
+      backgroundColor: "#ffffff",
+      boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+    },
+    segmentText: {
+      fontSize: fontSize.sm,
+      fontWeight: fontWeight.normal,
+      color: CHAT_COLORS.muted,
+    },
+    segmentTextActive: {
+      fontWeight: fontWeight.semibold,
+      color: CHAT_COLORS.title,
+    },
     contentSheet: {
       flex: 1,
       backgroundColor: surfaceColor,
     },
     listContent: {
       padding: spacing.md,
-      gap: spacing.sm,
+      gap: 0,
     },
     centered: {
       flex: 1,
@@ -463,33 +723,28 @@ const createStyles = (surfaceColor: string) =>
     skeletonContainer: {
       padding: spacing.md,
     },
-    card: {
-      backgroundColor: CHAT_COLORS.card,
-      borderRadius: borderRadius.lg,
-      borderCurve: "continuous",
-      borderWidth: 1,
-      borderColor: CHAT_COLORS.border,
-      padding: spacing.md,
-      gap: spacing.xs,
-      boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
-    },
-    cardPressed: {
-      opacity: 0.85,
-    },
-    cardHeader: {
+    row: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: spacing.sm,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      gap: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: CHAT_COLORS.border,
     },
-    cardTitleRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.xs,
+    rowPressed: {
+      backgroundColor: "#f8fafc",
+    },
+    rowContent: {
       flex: 1,
-      paddingRight: spacing.sm,
+      gap: 4,
     },
-    cardTitle: {
+    rowHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.xs,
+    },
+    rowTitle: {
       fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
       color: CHAT_COLORS.title,
@@ -506,26 +761,29 @@ const createStyles = (surfaceColor: string) =>
       fontWeight: fontWeight.medium,
       color: CHAT_COLORS.accent,
     },
-    cardDescription: {
+    rowSubtitle: {
       fontSize: fontSize.sm,
       color: CHAT_COLORS.subtitle,
-      lineHeight: 20,
     },
-    cardFooter: {
-      flexDirection: "row",
+    threadIconContainer: {
+      width: 24,
+      height: 24,
       alignItems: "center",
-      justifyContent: "space-between",
-      gap: spacing.sm,
+      justifyContent: "center",
     },
-    cardMeta: {
+    replyCount: {
       fontSize: fontSize.xs,
       color: CHAT_COLORS.muted,
+      minWidth: 70,
+      textAlign: "right",
     },
     pendingBadge: {
       backgroundColor: "rgba(245, 158, 11, 0.15)",
-      paddingVertical: 2,
+      paddingVertical: 4,
       paddingHorizontal: 8,
       borderRadius: borderRadius.sm,
+      minWidth: 40,
+      alignItems: "center",
     },
     pendingBadgeText: {
       fontSize: fontSize.xs,
@@ -576,5 +834,17 @@ const createStyles = (surfaceColor: string) =>
       fontSize: fontSize.sm,
       color: CHAT_COLORS.subtitle,
       textAlign: "center",
+    },
+    fab: {
+      position: "absolute",
+      bottom: spacing.xl,
+      right: spacing.xl,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: CHAT_COLORS.accent,
+      alignItems: "center",
+      justifyContent: "center",
+      boxShadow: "0 2px 8px rgba(5, 150, 105, 0.3)",
     },
   });
