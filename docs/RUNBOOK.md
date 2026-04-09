@@ -31,16 +31,33 @@ bun typecheck
 ```bash
 cd apps/mobile
 
-# Build for iOS (EAS Build)
-eas build --platform ios
+# Verify types before building
+bun run typecheck
 
-# Build for Android (EAS Build)
+# Regenerate native projects (required after native dep changes)
+bun run prebuild:clean
+
+# Local builds
+bun run run:ios            # Build + run on iOS simulator/device
+bun run run:android        # Build + run on Android emulator/device
+
+# Cloud builds (EAS Build)
+eas build --platform ios
 eas build --platform android
 
 # Submit to stores
 eas submit --platform ios
 eas submit --platform android
+
+# OTA update (JS-only changes, no native module changes)
+eas update --branch production --message "description of change"
 ```
+
+**EAS Build profiles** (see `apps/mobile/eas.json`):
+- `development` — Dev client, internal distribution
+- `development-simulator` — Dev client for iOS simulator
+- `preview` — Internal testing distribution
+- `production` — Store submission (auto-increments version)
 
 ### Database Migrations
 

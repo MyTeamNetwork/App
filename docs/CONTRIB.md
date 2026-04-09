@@ -74,9 +74,17 @@ TeamMeet/
 | Command | Description |
 |---------|-------------|
 | `bun run start` | Start Expo dev server (web at localhost:8081) |
-| `bun run ios` | Start and open in iOS Simulator |
-| `bun run android` | Start and open in Android Emulator |
+| `bun run start:dev-client` | Expo dev server for custom dev client builds |
+| `bun run ios` | Start + open in iOS Simulator (dev client) |
+| `bun run android` | Start + open in Android Emulator (dev client, auto-detects SDK) |
 | `bun run web` | Start Expo web mode |
+| `bun run prebuild` | Generate native projects (`android/`, `ios/`) |
+| `bun run prebuild:clean` | Regenerate native projects from scratch |
+| `bun run run:ios` | Build and run on iOS device/simulator |
+| `bun run run:android` | Build and run on Android device/emulator |
+| `bun run config` | Print resolved Expo config (public) |
+| `bun run config:introspect` | Print full introspected Expo config |
+| `bun run android:doctor` | Verify Android SDK, Java, and adb setup |
 | `bun run typecheck` | TypeScript type checking |
 | `bun run test` | Run Jest tests |
 | `bun run test:watch` | Run Jest in watch mode |
@@ -135,13 +143,26 @@ bun test                   # Run tests
 ### Mobile Development
 
 ```bash
-bun dev:mobile             # Start Expo dev server
+bun dev:mobile             # Start Expo dev server (from repo root)
 # Press 'i' for iOS, 'a' for Android, 'w' for web
 
 # Or run directly on platform:
 cd apps/mobile
-bun run ios                # iOS Simulator
-bun run android            # Android Emulator
+bun run ios                # iOS Simulator (dev client)
+bun run android            # Android Emulator (dev client, auto-detects SDK/Java)
+bun run web                # Web mode at localhost:8081
+
+# Verify Android toolchain is configured:
+bun run android:doctor
+
+# Custom native builds (needed for native modules not in Expo Go):
+bun run prebuild:clean     # Regenerate android/ and ios/
+bun run run:ios            # Build + install on iOS
+bun run run:android        # Build + install on Android
+
+# Cloud builds (EAS):
+eas build --platform ios
+eas build --platform android
 ```
 
 ### Stripe Webhook Testing (Local)

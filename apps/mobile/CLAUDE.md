@@ -4,22 +4,57 @@ Self-contained reference for `apps/mobile/`. Root `CLAUDE.md` covers web app, pa
 
 ## Commands
 
+All commands run from `apps/mobile/`.
+
+### Development
+
 ```bash
-bun run start            # Expo dev server (web at localhost:8081)
-bun run ios              # iOS simulator
-bun run android          # Android emulator
-bun run typecheck        # tsc --noEmit
-bun test                 # All Jest tests
-bun test -- --watch      # Watch mode
-bun test -- --coverage   # Coverage report
+bun run start                # Expo dev server (web at localhost:8081)
+bun run start:dev-client     # Expo dev server for custom dev client builds
+bun run ios                  # Start + open iOS Simulator (dev client)
+bun run android              # Start + open Android Emulator (dev client, auto-detects SDK)
+bun run web                  # Start Expo web mode
+```
+
+### Building
+
+```bash
+bun run prebuild             # Generate native projects (android/, ios/)
+bun run prebuild:clean       # Regenerate native projects from scratch
+bun run run:ios              # Build and run on iOS device/simulator
+bun run run:android          # Build and run on Android device/emulator
+eas build --platform ios     # Cloud build for iOS (EAS)
+eas build --platform android # Cloud build for Android (EAS)
+eas submit --platform ios    # Submit to App Store
+eas submit --platform android # Submit to Play Store
+```
+
+### Quality
+
+```bash
+bun run typecheck            # tsc --noEmit
+bun test                     # All Jest tests
+bun test -- --watch          # Watch mode
+bun test -- --coverage       # Coverage report
+bun test -- --ci             # CI runner with coverage
+```
+
+### Diagnostics
+
+```bash
+bun run config               # Print resolved Expo config (public)
+bun run config:introspect    # Print full introspected Expo config
+bun run android:doctor       # Verify Android SDK, Java, and adb setup
 ```
 
 ## Architecture
 
 **Stack:** Expo SDK 54, React Native 0.81, React 19, Expo Router 6
 **Auth:** Supabase with AsyncStorage (not cookies)
-**Styling:** React Native `StyleSheet` (not Tailwind/NativeWind)
+**Styling:** `useThemedStyles` hook + `TYPOGRAPHY` + `SPACING`/`RADIUS` from design-tokens (not Tailwind/NativeWind)
 **State:** React Context + hooks (no Redux/Zustand)
+**Icons:** `lucide-react-native`
+**Animations:** `react-native-reanimated` (FadeIn, FadeInDown, etc.)
 
 **Provider hierarchy:**
 ```
@@ -44,14 +79,42 @@ Drawer = secondary nav (org logo tap). Tabs = primary nav.
 
 ## Styling
 
-Use `StyleSheet.create()` for all styling. Design tokens in `src/lib/design-tokens.ts`:
+Use the `useThemedStyles` hook (dark-mode-ready) for screen styles. Typography from `src/lib/typography.ts`, tokens from `src/lib/design-tokens.ts`.
 
-- **NEUTRAL** — surface, background, foreground, border (app chrome)
-- **SEMANTIC** — success, warning, error, info
+```typescript
+import { useThemedStyles } from "@/hooks/useThemedStyles";
+import { SPACING, RADIUS, SEMANTIC } from "@/lib/design-tokens";
+import { TYPOGRAPHY } from "@/lib/typography";
+
+const styles = useThemedStyles((n, s) => ({
+  card: {
+    backgroundColor: n.surface,
+    borderRadius: RADIUS.lg,
+    borderCurve: "continuous" as const,
+    borderWidth: 1,
+    borderColor: n.border,
+    padding: SPACING.md,
+    boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+  },
+  title: {
+    ...TYPOGRAPHY.titleLarge,
+    color: n.foreground,
+  },
+}));
+```
+
+**Design tokens** (`src/lib/design-tokens.ts`):
+- **NEUTRAL / NEUTRAL_DARK** — surface, background, foreground, border, muted (app chrome)
+- **SEMANTIC / SEMANTIC_DARK** — success, warning, error, info
 - **ENERGY** — live indicators, achievements
-- Also: `ROLE_COLORS`, `RSVP_COLORS`, `SPACING` (8pt grid), `RADIUS`, `SHADOWS`, `AVATAR_SIZES`
+- **SPACING** (8pt grid), **RADIUS**, **SHADOWS**, **AVATAR_SIZES**
+- Also: `ROLE_COLORS`, `RSVP_COLORS`
+
+**Typography** (`src/lib/typography.ts`): `displayLarge/Medium`, `headlineLarge/Medium/Small`, `titleLarge/Medium/Small`, `bodyLarge/Medium/Small`, `labelLarge/Medium/Small`, `caption`, `overline`, `tabLabel`.
 
 **APP_CHROME** (`src/lib/chrome.ts`): Fixed header gradient (`#0f172a` → `#020617`) and tab bar colors.
+
+**Legacy:** `src/lib/theme.ts` (`spacing`, `fontSize`, `fontWeight`, `borderRadius`) is still used by some screens but new screens should use `design-tokens.ts` + `typography.ts` + `useThemedStyles`.
 
 **Brand wordmark** (`assets/brand-logo.png`, `@2x.png`, `@3x.png`): Product logo sourced from the web app (`apps/web/public/TeamNetwor.png`). Use via `require()` with `expo-image`, `contentFit="contain"`, `transition={0}`, `cachePolicy="memory"`. Intended for dark surfaces only (`#0a0a0a`–`#0f172a` range) — the type is light-colored. NOT for use as launcher icon or splash; those are separate assets in `android/app/src/main/res/` and `assets/splash.png`.
 
@@ -139,7 +202,19 @@ PostHog (product analytics) + Sentry (error tracking). Abstraction in `src/lib/a
 
 ## Environment Variables
 
-In `.env.local` (never commit): `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_POSTHOG_KEY`, `EXPO_PUBLIC_SENTRY_DSN`, `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
+Copy `.env.example` to `.env.local` (never commit `.env.local`).
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `EXPO_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
+| `EXPO_PUBLIC_WEB_URL` | No | Web app URL for API calls (default: `https://www.myteamnetwork.com`) |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | No | Google OAuth web client ID (native Google Sign-In) |
+| `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | No | Google OAuth iOS client ID |
+| `EXPO_PUBLIC_POSTHOG_KEY` | No | PostHog product analytics key |
+| `EXPO_PUBLIC_SENTRY_DSN` | No | Sentry error tracking DSN |
+| `EXPO_PUBLIC_HCAPTCHA_SITE_KEY` | No | hCaptcha site key (donations/Stripe) |
+| `EXPO_PUBLIC_HCAPTCHA_BASE_URL` | No | hCaptcha base URL |
 
 ## Testing
 
@@ -170,12 +245,20 @@ import { baseSchemas, z } from "@teammeet/validation";
 | `app/_layout.tsx` | Root layout, auth, Stripe, analytics init |
 | `app/(app)/(drawer)/[orgSlug]/(tabs)/_layout.tsx` | Tab navigator |
 | `app/(app)/(drawer)/[orgSlug]/(tabs)/index.tsx` | Home screen (reference impl) |
+| `app/(app)/(drawer)/[orgSlug]/_layout.tsx` | Org stack — registers all feature screens |
 | `src/contexts/AuthContext.tsx` | Auth state |
 | `src/contexts/OrgContext.tsx` | Org scope |
+| `src/contexts/NetworkContext.tsx` | Online/offline state |
+| `src/contexts/ColorSchemeContext.tsx` | Light/dark mode, provides `neutral`/`semantic` |
+| `src/hooks/useThemedStyles.ts` | Dark-mode-ready StyleSheet factory |
 | `src/navigation/DrawerContent.tsx` | Drawer sections |
-| `src/lib/design-tokens.ts` | Design tokens |
+| `src/lib/design-tokens.ts` | Colors, spacing, radius, shadows |
+| `src/lib/typography.ts` | Typography scale |
 | `src/lib/chrome.ts` | Header/tab bar colors |
+| `app.json` | Expo config (authoritative — prebuild-only) |
+| `eas.json` | EAS Build profiles |
 | `metro.config.js` | Metro monorepo config |
+| `scripts/with-android-env.sh` | Auto-detects Android SDK/Java for `bun run android` |
 
 ## Coding Conventions
 
