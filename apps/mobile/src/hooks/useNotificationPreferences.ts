@@ -51,7 +51,7 @@ export function useNotificationPreferences(
 
       const { data, error: fetchError } = await supabase
         .from("notification_preferences")
-        .select("id, email_address, email_enabled, push_enabled")
+        .select("id, email_address, email_enabled")
         .eq("organization_id", orgId)
         .eq("user_id", userId)
         .maybeSingle();
@@ -64,7 +64,7 @@ export function useNotificationPreferences(
             id: data.id,
             email_address: data.email_address,
             email_enabled: data.email_enabled ?? true,
-            push_enabled: data.push_enabled ?? true,
+            push_enabled: true,
           });
         } else {
           // Return defaults if no preferences exist yet
@@ -147,11 +147,9 @@ export function useNotificationPreferences(
       const previousPrefs = prefs;
       const emailAddress = updates.email_address ?? prefs?.email_address ?? userEmail;
       const emailEnabled = updates.email_enabled ?? prefs?.email_enabled ?? true;
-      const pushEnabled = updates.push_enabled ?? prefs?.push_enabled ?? true;
       const writePayload = {
         email_address: emailAddress,
         email_enabled: emailEnabled,
-        push_enabled: pushEnabled,
       };
       // Optimistic update
       setPrefs((prev) => (prev ? { ...prev, ...updates } : prev));

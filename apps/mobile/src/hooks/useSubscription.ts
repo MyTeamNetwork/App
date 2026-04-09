@@ -44,8 +44,7 @@ export function useSubscription(organizationId: string | null): UseSubscriptionR
           .select("id", { count: "exact", head: true })
           .eq("organization_id", organizationId)
           .eq("role", "alumni")
-          .eq("status", "active")
-          .is("deleted_at", null),
+          .eq("status", "active"),
       ]);
 
       if (subRes.error) throw subRes.error;
