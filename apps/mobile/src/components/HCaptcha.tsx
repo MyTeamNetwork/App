@@ -6,10 +6,10 @@ import type { ThemeColors } from "@/lib/theme";
 
 // Get site key from environment or use hCaptcha's test key
 const HCAPTCHA_SITE_KEY = process.env.EXPO_PUBLIC_HCAPTCHA_SITE_KEY || "10000000-ffff-ffff-ffff-000000000001";
+import { getWebAppUrl } from "@/lib/web-api";
+
 const HCAPTCHA_BASE_URL =
-  process.env.EXPO_PUBLIC_HCAPTCHA_BASE_URL ||
-  process.env.EXPO_PUBLIC_WEB_URL ||
-  "https://www.myteamnetwork.com";
+  process.env.EXPO_PUBLIC_HCAPTCHA_BASE_URL || getWebAppUrl();
 
 export interface HCaptchaRef {
   show: () => void;

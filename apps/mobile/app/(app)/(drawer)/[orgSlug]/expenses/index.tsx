@@ -18,6 +18,7 @@ import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useExpenses } from "@/hooks/useExpenses";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { formatMonthDayYearSafe } from "@/lib/date-format";
@@ -83,7 +84,7 @@ export default function ExpensesScreen() {
         label: "Open in Web",
         icon: <ExternalLink size={20} color={EXPENSES_COLORS.primaryCTA} />,
         onPress: () => {
-          const webUrl = `https://www.myteamnetwork.com/${orgSlug}/expenses`;
+          const webUrl = getWebPath(orgSlug, "expenses");
           Linking.openURL(webUrl);
         },
       },

@@ -251,7 +251,7 @@ export default function NewCompetitionScreen() {
     },
   }));
 
-  const [name, setName] = useState("Intersquad Competition");
+  const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [season, setSeason] = useState(String(new Date().getFullYear()));
   const [audience, setAudience] = useState<Audience>("both");

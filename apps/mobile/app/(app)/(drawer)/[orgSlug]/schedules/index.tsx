@@ -32,6 +32,7 @@ import { useScheduleFiles } from "@/hooks/useScheduleFiles";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
 import { AvailabilityGrid } from "@/components/schedules/AvailabilityGrid";
 import { ScheduleFileUpload } from "@/components/schedules/ScheduleFileUpload";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { formatDefaultDateFromString } from "@/lib/date-format";
@@ -113,7 +114,7 @@ export default function SchedulesScreen() {
         label: "Open in Web",
         icon: <ExternalLink size={20} color={SCHEDULES_COLORS.primaryCTA} />,
         onPress: () => {
-          const webUrl = `https://www.myteamnetwork.com/${orgSlug}/schedules`;
+          const webUrl = getWebPath(orgSlug, "schedules");
           Linking.openURL(webUrl);
         },
       },

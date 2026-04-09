@@ -19,6 +19,7 @@ import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useRecords } from "@/hooks/useRecords";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import type { Record } from "@teammeet/types";
@@ -92,7 +93,7 @@ export default function RecordsScreen() {
         label: "Open in Web",
         icon: <ExternalLink size={20} color={RECORDS_COLORS.primaryCTA} />,
         onPress: () => {
-          const webUrl = `https://www.myteamnetwork.com/${orgSlug}/records`;
+          const webUrl = getWebPath(orgSlug, "records");
           Linking.openURL(webUrl);
         },
       },

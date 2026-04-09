@@ -18,6 +18,7 @@ import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useDonations } from "@/hooks/useDonations";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { formatMonthDay } from "@/lib/date-format";
@@ -82,7 +83,7 @@ export default function DonationsScreen() {
         label: "Open in Web",
         icon: <ExternalLink size={20} color={DONATIONS_COLORS.primaryCTA} />,
         onPress: () => {
-          const webUrl = `https://www.myteamnetwork.com/${orgSlug}/donations`;
+          const webUrl = getWebPath(orgSlug, "donations");
           Linking.openURL(webUrl);
         },
       },

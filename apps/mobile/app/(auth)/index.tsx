@@ -6,6 +6,7 @@ import { DEMO_ORG, FEATURES } from "@teammeet/core";
 import { LandingHero } from "@/components/landing/LandingHero";
 import { LandingDemoCard } from "@/components/landing/LandingDemoCard";
 import { LandingFeatures } from "@/components/landing/LandingFeatures";
+import { getWebAppUrl } from "@/lib/web-api";
 import { SPACING } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 
@@ -25,13 +26,13 @@ export default function LandingScreen() {
   };
 
   const handleTermsPress = () => {
-    Linking.openURL("https://www.myteamnetwork.com/terms").catch(() => {
+    Linking.openURL(`${getWebAppUrl()}/terms`).catch(() => {
       // No-op: failing to open the browser shouldn't crash the auth screen.
     });
   };
 
   const handlePrivacyPress = () => {
-    Linking.openURL("https://www.myteamnetwork.com/privacy").catch(() => {
+    Linking.openURL(`${getWebAppUrl()}/privacy`).catch(() => {
       // No-op: failing to open the browser shouldn't crash the auth screen.
     });
   };

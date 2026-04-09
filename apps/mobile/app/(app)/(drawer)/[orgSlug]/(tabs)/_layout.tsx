@@ -7,6 +7,7 @@ import { TabBar } from "@/components/TabBar";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useUnreadAnnouncementCount } from "@/hooks/useUnreadAnnouncementCount";
+import { getWebPath } from "@/lib/web-api";
 import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 
 // Determine if running in Expo Go
@@ -90,7 +91,7 @@ export default function TabsLayout() {
   }, [orgSlug, router, handleCloseSheet]);
 
   const handleShareOrg = useCallback(async () => {
-    const orgUrl = `https://www.myteamnetwork.com/${orgSlug}`;
+    const orgUrl = getWebPath(orgSlug);
     const shareMessage = orgName
       ? `Check out ${orgName} on TeamMeet: ${orgUrl}`
       : `Check out this organization on TeamMeet: ${orgUrl}`;

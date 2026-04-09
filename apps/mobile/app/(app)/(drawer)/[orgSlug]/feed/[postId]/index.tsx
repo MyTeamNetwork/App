@@ -29,6 +29,7 @@ import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
 import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
 import { formatRelativeTime } from "@/lib/date-format";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
@@ -332,7 +333,7 @@ export default function PostDetailScreen() {
       label: "Open in Web",
       icon: <ExternalLink size={20} color={neutral.foreground} />,
       onPress: () => {
-        Linking.openURL(`https://www.myteamnetwork.com/${orgSlug}/feed/${postId}`);
+        Linking.openURL(getWebPath(orgSlug, `feed/${postId}`));
       },
     });
 

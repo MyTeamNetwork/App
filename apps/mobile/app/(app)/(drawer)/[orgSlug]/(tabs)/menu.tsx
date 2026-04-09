@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { DrawerActions } from "@react-navigation/native";
 import { useRouter, useFocusEffect, useNavigation } from "expo-router";
+import { getWebAppUrl } from "@/lib/web-api";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import {
@@ -509,7 +510,7 @@ export default function MenuScreen() {
         { text: "OK", style: "default" },
         {
           text: "Learn More",
-          onPress: () => Linking.openURL("https://www.myteamnetwork.com/about"),
+          onPress: () => Linking.openURL(`${getWebAppUrl()}/about`),
         },
       ]
     );
@@ -519,7 +520,7 @@ export default function MenuScreen() {
     {
       icon: <HelpCircle size={20} color={neutral.muted} />,
       label: "Help & Support",
-      onPress: () => Linking.openURL("https://www.myteamnetwork.com/help"),
+      onPress: () => Linking.openURL(`${getWebAppUrl()}/help`),
     },
     {
       icon: <Info size={20} color={neutral.muted} />,

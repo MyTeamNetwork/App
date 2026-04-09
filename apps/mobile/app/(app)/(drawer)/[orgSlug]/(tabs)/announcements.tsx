@@ -23,6 +23,7 @@ import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
 import type { Announcement } from "@teammeet/types";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
@@ -174,7 +175,7 @@ export default function AnnouncementsScreen() {
         label: "Open in Web",
         icon: <ExternalLink size={20} color={neutral.foreground} />,
         onPress: () => {
-          const webUrl = `https://www.myteamnetwork.com/${orgSlug}/announcements`;
+          const webUrl = getWebPath(orgSlug, "announcements");
           Linking.openURL(webUrl);
         },
       },

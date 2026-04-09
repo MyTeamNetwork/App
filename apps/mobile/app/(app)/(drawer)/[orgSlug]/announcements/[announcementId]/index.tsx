@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
@@ -320,7 +321,7 @@ export default function AnnouncementDetailScreen() {
   };
 
   const handleOpenInWeb = () => {
-    const webUrl = `https://www.myteamnetwork.com/${orgSlug}/announcements/${announcementId}`;
+    const webUrl = getWebPath(orgSlug, `announcements/${announcementId}`);
     Linking.openURL(webUrl);
   };
 

@@ -24,6 +24,7 @@ import { useNotifications, type Notification } from "@/hooks/useNotifications";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
@@ -298,7 +299,7 @@ export default function NotificationsScreen() {
         label: "Open in Web",
         icon: <ExternalLink size={20} color={neutral.foreground} />,
         onPress: () => {
-          const webUrl = `https://www.myteamnetwork.com/${orgSlug}/notifications`;
+          const webUrl = getWebPath(orgSlug, "notifications");
           Linking.openURL(webUrl);
         },
       });

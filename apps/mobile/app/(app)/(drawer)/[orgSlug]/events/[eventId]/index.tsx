@@ -10,6 +10,7 @@ import { track } from "@/lib/analytics";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import type { Event } from "@/hooks/useEvents";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS, RSVP_COLORS } from "@/lib/design-tokens";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
@@ -141,7 +142,7 @@ export default function EventDetailScreen() {
   }, [orgId, eventId, router]);
 
   const handleOpenInWeb = useCallback(() => {
-    const webUrl = `https://www.myteamnetwork.com/${orgSlug}/events/${eventId}`;
+    const webUrl = getWebPath(orgSlug, `events/${eventId}`);
     Linking.openURL(webUrl);
   }, [orgSlug, eventId]);
 

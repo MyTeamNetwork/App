@@ -18,6 +18,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { SourceFilterChips } from "@/components/calendar/source-filter-chips";
 import { UnifiedCalendarFeed } from "@/components/calendar/unified-calendar-feed";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
@@ -130,7 +131,7 @@ export default function CalendarScreen() {
         label: "Open in Web",
         icon: <ExternalLink size={20} color={neutral.foreground} />,
         onPress: () => {
-          const webUrl = `https://www.myteamnetwork.com/${orgSlug}/calendar`;
+          const webUrl = getWebPath(orgSlug, "calendar");
           Linking.openURL(webUrl);
         },
       },

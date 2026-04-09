@@ -20,6 +20,7 @@ import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
 import type { Form, FormDocument } from "@teammeet/types";
+import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
@@ -96,7 +97,7 @@ export default function FormsScreen() {
         label: "Open in Web",
         icon: <ExternalLink size={20} color={FORMS_COLORS.primaryText} />,
         onPress: () => {
-          const webUrl = `https://www.myteamnetwork.com/${orgSlug}/forms`;
+          const webUrl = getWebPath(orgSlug, "forms");
           Linking.openURL(webUrl);
         },
       },
