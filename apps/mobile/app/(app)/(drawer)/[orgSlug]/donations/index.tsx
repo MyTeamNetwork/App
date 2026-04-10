@@ -3,7 +3,6 @@ import {
   View,
   Text,
   FlatList,
-  StyleSheet,
   RefreshControl,
   Pressable,
 } from "react-native";
@@ -14,53 +13,216 @@ import { DrawerActions } from "@react-navigation/native";
 import { useFocusEffect, useRouter, useNavigation } from "expo-router";
 import { DollarSign, ExternalLink, Plus } from "lucide-react-native";
 import * as Linking from "expo-linking";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useDonations } from "@/hooks/useDonations";
 import { useNetwork } from "@/contexts/NetworkContext";
 import { useAutoRefetchOnReconnect } from "@/hooks/useAutoRefetchOnReconnect";
-import { ErrorState } from "@/components/ui";
+import { useThemedStyles } from "@/hooks/useThemedStyles";
+import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
+import { ErrorState, SkeletonList } from "@/components/ui";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
 import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
-import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
+import { SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
+import { TYPOGRAPHY } from "@/lib/typography";
 import { formatMonthDay } from "@/lib/date-format";
 import type { OrganizationDonation } from "@teammeet/types";
-
-// Local colors for donations screen
-const DONATIONS_COLORS = {
-  // Backgrounds
-  background: "#ffffff",
-  sectionBackground: "#f8fafc",
-
-  // Text
-  primaryText: "#0f172a",
-  secondaryText: "#64748b",
-  mutedText: "#94a3b8",
-
-  // Borders & surfaces
-  border: "#e2e8f0",
-  card: "#ffffff",
-
-  // CTAs
-  primaryCTA: "#059669",
-  primaryCTAText: "#ffffff",
-
-  // Status colors
-  success: "#10b981",
-  successBg: "#d1fae5",
-  error: "#ef4444",
-  errorBg: "#fee2e2",
-  pending: "#f59e0b",
-  pendingBg: "#fef3c7",
-};
 
 export default function DonationsScreen() {
   const { orgSlug, orgName, orgLogoUrl } = useOrg();
   const router = useRouter();
   const navigation = useNavigation();
   const { isAdmin, permissions } = useOrgRole();
-  const styles = useMemo(() => createStyles(), []);
+  const { semantic } = useAppColorScheme();
+  const styles = useThemedStyles((n, s) => ({
+    container: {
+      flex: 1,
+      backgroundColor: n.surface,
+    },
+    headerGradient: {
+      paddingBottom: SPACING.xs,
+    },
+    headerSafeArea: {},
+    navHeader: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.xs,
+      minHeight: 40,
+      gap: SPACING.sm,
+    },
+    orgLogoButton: { width: 36, height: 36 },
+    orgLogo: { width: 36, height: 36, borderRadius: 18 },
+    orgAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: APP_CHROME.avatarBackground,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
+    orgAvatarText: {
+      ...TYPOGRAPHY.titleSmall,
+      fontWeight: "700" as const,
+      color: APP_CHROME.avatarText,
+    },
+    headerTextContainer: { flex: 1 },
+    headerTitle: { ...TYPOGRAPHY.titleLarge, color: APP_CHROME.headerTitle },
+    headerMeta: {
+      ...TYPOGRAPHY.caption,
+      color: APP_CHROME.headerMeta,
+      marginTop: 2,
+    },
+    listContent: {
+      padding: SPACING.md,
+      paddingBottom: 40,
+      flexGrow: 1,
+    },
+    headerContent: {
+      gap: SPACING.md,
+      marginBottom: SPACING.md,
+    },
+    statsRow: {
+      flexDirection: "row" as const,
+      gap: SPACING.sm,
+    },
+    statCard: {
+      flex: 1,
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.lg,
+      borderCurve: "continuous" as const,
+      borderWidth: 1,
+      borderColor: n.border,
+      padding: SPACING.sm,
+      alignItems: "center" as const,
+      ...SHADOWS.sm,
+    },
+    statLabel: {
+      ...TYPOGRAPHY.labelSmall,
+      color: n.secondary,
+      marginBottom: 4,
+    },
+    statValue: {
+      ...TYPOGRAPHY.titleLarge,
+      color: n.foreground,
+      fontVariant: ["tabular-nums"] as const,
+    },
+    donateButton: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      backgroundColor: s.success,
+      borderRadius: RADIUS.lg,
+      borderCurve: "continuous" as const,
+      paddingVertical: SPACING.sm,
+      gap: SPACING.xs,
+    },
+    donateButtonText: {
+      ...TYPOGRAPHY.titleSmall,
+      color: "#ffffff",
+    },
+    purposeSection: {
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.lg,
+      borderCurve: "continuous" as const,
+      borderWidth: 1,
+      borderColor: n.border,
+      padding: SPACING.md,
+      ...SHADOWS.sm,
+    },
+    sectionTitle: {
+      ...TYPOGRAPHY.titleSmall,
+      color: n.foreground,
+      marginBottom: SPACING.sm,
+    },
+    purposeList: { gap: SPACING.sm },
+    purposeRow: {
+      flexDirection: "row" as const,
+      justifyContent: "space-between" as const,
+      alignItems: "center" as const,
+      backgroundColor: n.background,
+      borderRadius: RADIUS.md,
+      padding: SPACING.sm,
+    },
+    purposeLabel: {
+      ...TYPOGRAPHY.bodySmall,
+      color: n.foreground,
+      flex: 1,
+    },
+    purposeAmount: {
+      ...TYPOGRAPHY.labelMedium,
+      fontWeight: "600" as const,
+      color: n.foreground,
+      fontVariant: ["tabular-nums"] as const,
+    },
+    donationCard: {
+      backgroundColor: n.surface,
+      borderRadius: RADIUS.lg,
+      borderCurve: "continuous" as const,
+      borderWidth: 1,
+      borderColor: n.border,
+      padding: SPACING.md,
+      marginBottom: SPACING.sm,
+      ...SHADOWS.sm,
+    },
+    donationHeader: {
+      flexDirection: "row" as const,
+      justifyContent: "space-between" as const,
+      alignItems: "flex-start" as const,
+      marginBottom: SPACING.xs,
+    },
+    donorInfo: { flex: 1, marginRight: SPACING.sm },
+    donorName: { ...TYPOGRAPHY.titleMedium, color: n.foreground },
+    donorEmail: { ...TYPOGRAPHY.bodySmall, color: n.secondary, marginTop: 2 },
+    donationAmount: {
+      ...TYPOGRAPHY.titleMedium,
+      fontWeight: "700" as const,
+      color: n.foreground,
+      fontVariant: ["tabular-nums"] as const,
+    },
+    donationFooter: {
+      flexDirection: "row" as const,
+      justifyContent: "space-between" as const,
+      alignItems: "center" as const,
+    },
+    donationPurpose: { ...TYPOGRAPHY.bodySmall, color: n.secondary, flex: 1 },
+    donationMeta: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: SPACING.sm,
+    },
+    donationDate: { ...TYPOGRAPHY.caption, color: n.muted },
+    statusBadge: {
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 2,
+      borderRadius: RADIUS.sm,
+    },
+    statusText: {
+      ...TYPOGRAPHY.labelSmall,
+      fontWeight: "600" as const,
+      textTransform: "capitalize" as const,
+    },
+    emptyState: {
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      paddingVertical: 48,
+      paddingHorizontal: SPACING.md,
+    },
+    emptyTitle: {
+      ...TYPOGRAPHY.titleMedium,
+      color: n.foreground,
+      marginTop: SPACING.md,
+    },
+    emptySubtitle: {
+      ...TYPOGRAPHY.bodySmall,
+      color: n.secondary,
+      marginTop: SPACING.xs,
+      textAlign: "center" as const,
+    },
+    skeletonContainer: { padding: SPACING.md },
+  }));
   const { isOffline } = useNetwork();
   const { donations, stats, loading, error, refetch, refetchIfStale } = useDonations(orgSlug || "");
   const [refreshing, setRefreshing] = useState(false);
@@ -85,14 +247,14 @@ export default function DonationsScreen() {
       {
         id: "open-in-web",
         label: "Open in Web",
-        icon: <ExternalLink size={20} color={DONATIONS_COLORS.primaryCTA} />,
+        icon: <ExternalLink size={20} color={semantic.success} />,
         onPress: () => {
           const webUrl = getWebPath(orgSlug, "donations");
           Linking.openURL(webUrl);
         },
       },
     ];
-  }, [permissions.canUseAdminActions, orgSlug]);
+  }, [permissions.canUseAdminActions, orgSlug, semantic.success]);
 
   // Refetch on screen focus if data is stale
   useFocusEffect(
@@ -154,11 +316,11 @@ export default function DonationsScreen() {
   const getStatusStyle = (status: string) => {
     switch (status) {
       case "succeeded":
-        return { bg: DONATIONS_COLORS.successBg, text: DONATIONS_COLORS.success };
+        return { bg: semantic.successLight, text: semantic.success };
       case "failed":
-        return { bg: DONATIONS_COLORS.errorBg, text: DONATIONS_COLORS.error };
+        return { bg: semantic.errorLight, text: semantic.error };
       default:
-        return { bg: DONATIONS_COLORS.pendingBg, text: DONATIONS_COLORS.pending };
+        return { bg: semantic.warningLight, text: semantic.warning };
     }
   };
 
@@ -216,7 +378,7 @@ export default function DonationsScreen() {
 
       {/* Make a Donation Button */}
       <Pressable style={({ pressed }) => [styles.donateButton, pressed && { opacity: 0.7 }]} onPress={handleMakeDonation}>
-        <Plus size={20} color={DONATIONS_COLORS.primaryCTAText} />
+        <Plus size={20} color="#ffffff" />
         <Text style={styles.donateButtonText}>Make a Donation</Text>
       </Pressable>
 
@@ -244,7 +406,7 @@ export default function DonationsScreen() {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <DollarSign size={40} color={DONATIONS_COLORS.mutedText} />
+      <DollarSign size={40} color={semantic.success} />
       <Text style={styles.emptyTitle}>No donations yet</Text>
       <Text style={styles.emptySubtitle}>
         Donations will appear here after payments are completed via Stripe.
@@ -252,30 +414,52 @@ export default function DonationsScreen() {
     </View>
   );
 
+  const renderNavHeader = () => (
+    <LinearGradient
+      colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]}
+      style={styles.headerGradient}
+    >
+      <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
+        <View style={styles.navHeader}>
+          <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
+            {orgLogoUrl ? (
+              <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
+            ) : (
+              <View style={styles.orgAvatar}>
+                <Text style={styles.orgAvatarText}>{orgName?.[0] || "D"}</Text>
+              </View>
+            )}
+          </Pressable>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Donations</Text>
+            <Text style={styles.headerMeta}>
+              {donationCount} {donationCount === 1 ? "contribution" : "contributions"} · $
+              {formatCurrency(totalAmount * 100)}
+            </Text>
+          </View>
+          {adminMenuItems.length > 0 && (
+            <OverflowMenu items={adminMenuItems} accessibilityLabel="Donation options" />
+          )}
+        </View>
+      </SafeAreaView>
+    </LinearGradient>
+  );
+
+  if (loading && donations.length === 0) {
+    return (
+      <View style={styles.container}>
+        {renderNavHeader()}
+        <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.skeletonContainer}>
+          <SkeletonList type="event" count={4} />
+        </Animated.View>
+      </View>
+    );
+  }
+
   if (error && donations.length === 0) {
     return (
       <View style={styles.container}>
-        <LinearGradient
-          colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]}
-          style={styles.headerGradient}
-        >
-          <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
-            <View style={styles.navHeader}>
-              <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
-                {orgLogoUrl ? (
-                  <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
-                ) : (
-                  <View style={styles.orgAvatar}>
-                    <Text style={styles.orgAvatarText}>{orgName?.[0] || "D"}</Text>
-                  </View>
-                )}
-              </Pressable>
-              <View style={styles.headerTextContainer}>
-                <Text style={styles.headerTitle}>Donations</Text>
-              </View>
-            </View>
-          </SafeAreaView>
-        </LinearGradient>
+        {renderNavHeader()}
         <ErrorState
           onRetry={handleRefresh}
           title="Unable to load donations"
@@ -287,42 +471,7 @@ export default function DonationsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Gradient Header */}
-      <LinearGradient
-        colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]}
-        style={styles.headerGradient}
-      >
-        <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
-          <View style={styles.navHeader}>
-            {/* Logo */}
-            <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
-              {orgLogoUrl ? (
-                <Image source={orgLogoUrl} style={styles.orgLogo} contentFit="contain" transition={200} />
-              ) : (
-                <View style={styles.orgAvatar}>
-                  <Text style={styles.orgAvatarText}>{orgName?.[0] || "D"}</Text>
-                </View>
-              )}
-            </Pressable>
-
-            {/* Text */}
-            <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle}>Donations</Text>
-              <Text style={styles.headerMeta}>
-                {donationCount} {donationCount === 1 ? "contribution" : "contributions"} · $
-                {formatCurrency(totalAmount * 100)}
-              </Text>
-            </View>
-
-            {/* Admin menu */}
-            {adminMenuItems.length > 0 && (
-              <OverflowMenu items={adminMenuItems} accessibilityLabel="Donation options" />
-            )}
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
-
-      {/* Content */}
+      {renderNavHeader()}
       <FlatList
         data={donations}
         renderItem={renderDonationItem}
@@ -334,7 +483,7 @@ export default function DonationsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={DONATIONS_COLORS.primaryCTA}
+            tintColor={semantic.success}
           />
         }
         initialNumToRender={10}
@@ -346,239 +495,3 @@ export default function DonationsScreen() {
   );
 }
 
-const createStyles = () =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: DONATIONS_COLORS.background,
-    },
-    // Header styles
-    headerGradient: {
-      paddingBottom: spacing.xs,
-    },
-    headerSafeArea: {},
-    navHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.xs,
-      minHeight: 40,
-      gap: spacing.sm,
-    },
-    orgLogoButton: {
-      width: 36,
-      height: 36,
-    },
-    orgLogo: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-    },
-    orgAvatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: APP_CHROME.avatarBackground,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    orgAvatarText: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.bold,
-      color: APP_CHROME.avatarText,
-    },
-    headerTextContainer: {
-      flex: 1,
-    },
-    headerTitle: {
-      fontSize: fontSize.lg,
-      fontWeight: fontWeight.semibold,
-      color: APP_CHROME.headerTitle,
-    },
-    headerMeta: {
-      fontSize: fontSize.xs,
-      color: APP_CHROME.headerMeta,
-      marginTop: 2,
-    },
-    // List content
-    listContent: {
-      padding: spacing.md,
-      paddingBottom: 40,
-      flexGrow: 1,
-    },
-    headerContent: {
-      gap: spacing.md,
-      marginBottom: spacing.md,
-    },
-    // Stats cards
-    statsRow: {
-      flexDirection: "row",
-      gap: spacing.sm,
-    },
-    statCard: {
-      flex: 1,
-      backgroundColor: DONATIONS_COLORS.card,
-      borderRadius: borderRadius.md,
-      borderWidth: 1,
-      borderColor: DONATIONS_COLORS.border,
-      padding: spacing.sm,
-      alignItems: "center",
-    },
-    statLabel: {
-      fontSize: fontSize.xs,
-      color: DONATIONS_COLORS.secondaryText,
-      marginBottom: 4,
-    },
-    statValue: {
-      fontSize: fontSize.lg,
-      fontWeight: fontWeight.bold,
-      color: DONATIONS_COLORS.primaryText,
-      fontVariant: ["tabular-nums"],
-    },
-    // Donate button
-    donateButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: DONATIONS_COLORS.primaryCTA,
-      borderRadius: borderRadius.md,
-      paddingVertical: spacing.sm,
-      gap: spacing.xs,
-    },
-    donateButtonText: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-      color: DONATIONS_COLORS.primaryCTAText,
-    },
-    // Purpose section
-    purposeSection: {
-      backgroundColor: DONATIONS_COLORS.card,
-      borderRadius: borderRadius.md,
-      borderWidth: 1,
-      borderColor: DONATIONS_COLORS.border,
-      padding: spacing.md,
-    },
-    sectionTitle: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-      color: DONATIONS_COLORS.primaryText,
-      marginBottom: spacing.sm,
-    },
-    purposeList: {
-      gap: spacing.sm,
-    },
-    purposeRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      backgroundColor: DONATIONS_COLORS.sectionBackground,
-      borderRadius: borderRadius.sm,
-      padding: spacing.sm,
-    },
-    purposeLabel: {
-      fontSize: fontSize.sm,
-      color: DONATIONS_COLORS.primaryText,
-      flex: 1,
-    },
-    purposeAmount: {
-      fontSize: fontSize.sm,
-      fontWeight: fontWeight.semibold,
-      color: DONATIONS_COLORS.primaryText,
-      fontVariant: ["tabular-nums"],
-    },
-    // Donation card
-    donationCard: {
-      backgroundColor: DONATIONS_COLORS.card,
-      borderRadius: borderRadius.md,
-      borderWidth: 1,
-      borderColor: DONATIONS_COLORS.border,
-      padding: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    donationHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
-      marginBottom: spacing.xs,
-    },
-    donorInfo: {
-      flex: 1,
-      marginRight: spacing.sm,
-    },
-    donorName: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.medium,
-      color: DONATIONS_COLORS.primaryText,
-    },
-    donorEmail: {
-      fontSize: fontSize.sm,
-      color: DONATIONS_COLORS.secondaryText,
-      marginTop: 2,
-    },
-    donationAmount: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.bold,
-      color: DONATIONS_COLORS.primaryText,
-      fontVariant: ["tabular-nums"],
-    },
-    donationFooter: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    donationPurpose: {
-      fontSize: fontSize.sm,
-      color: DONATIONS_COLORS.secondaryText,
-      flex: 1,
-    },
-    donationMeta: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.sm,
-    },
-    donationDate: {
-      fontSize: fontSize.sm,
-      color: DONATIONS_COLORS.mutedText,
-    },
-    statusBadge: {
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-      borderRadius: borderRadius.sm,
-    },
-    statusText: {
-      fontSize: fontSize.xs,
-      fontWeight: fontWeight.medium,
-      textTransform: "capitalize",
-    },
-    // Empty state
-    emptyState: {
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: 48,
-      paddingHorizontal: spacing.md,
-    },
-    emptyTitle: {
-      fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-      color: DONATIONS_COLORS.primaryText,
-      marginTop: spacing.md,
-    },
-    emptySubtitle: {
-      fontSize: fontSize.sm,
-      color: DONATIONS_COLORS.secondaryText,
-      marginTop: spacing.xs,
-      textAlign: "center",
-    },
-    // Error state
-    errorContainer: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      padding: spacing.md,
-    },
-    errorText: {
-      color: DONATIONS_COLORS.error,
-      textAlign: "center",
-      fontSize: fontSize.base,
-    },
-  });
