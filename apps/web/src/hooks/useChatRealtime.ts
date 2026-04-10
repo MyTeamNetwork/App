@@ -2,7 +2,7 @@
 
 import { useEffect, useCallback, useRef } from "react";
 import type { SupabaseClient, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
-import type { ChatMessage, ChatPollVote, ChatFormResponse, User } from "@/types/database";
+import type { ChatMessage, ChatMessageLike, ChatPollVote, ChatFormResponse, User } from "@/types/database";
 
 interface UseChatRealtimeOptions {
   supabase: SupabaseClient;
@@ -12,6 +12,7 @@ interface UseChatRealtimeOptions {
   userMap: Map<string, User>;
   fetchUnknownUsers: (ids: string[]) => Promise<Map<string, User>>;
   setMessages: React.Dispatch<React.SetStateAction<(ChatMessage & { author?: User })[]>>;
+  setMessageLikesMap?: React.Dispatch<React.SetStateAction<Map<string, { count: number; likedByUser: boolean }>>>;
   setPollVotesMap: React.Dispatch<React.SetStateAction<Map<string, ChatPollVote[]>>>;
   setFormResponsesMap: React.Dispatch<React.SetStateAction<Map<string, ChatFormResponse[]>>>;
   scrollToBottom: () => void;
@@ -26,6 +27,7 @@ export function useChatRealtime({
   userMap,
   fetchUnknownUsers,
   setMessages,
+  setMessageLikesMap,
   setPollVotesMap,
   setFormResponsesMap,
   scrollToBottom,
@@ -97,12 +99,26 @@ export function useChatRealtime({
               : m
           );
         });
+        setMessageLikesMap?.((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(updated.id);
+          next.set(updated.id, {
+            count: updated.like_count ?? existing?.count ?? 0,
+            likedByUser: existing?.likedByUser ?? false,
+          });
+          return next;
+        });
       } else if (payload.eventType === "DELETE") {
         const deleted = payload.old as { id: string };
         setMessages((prev) => prev.filter((m) => m.id !== deleted.id));
+        setMessageLikesMap?.((prev) => {
+          const next = new Map(prev);
+          next.delete(deleted.id);
+          return next;
+        });
       }
     },
-    [currentUserId, canModerate, scrollToBottom, fetchUnknownUsers, setMessages]
+    [currentUserId, canModerate, scrollToBottom, fetchUnknownUsers, setMessages, setMessageLikesMap]
   );
 
   // Subscribe to messages, poll votes, form responses, and member changes
@@ -173,6 +189,46 @@ export function useChatRealtime({
       )
       .subscribe();
 
+    const likesChannel = supabase
+      .channel(`chat_message_likes:${groupId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_message_likes",
+          filter: `chat_group_id=eq.${groupId}`,
+        },
+        (payload: RealtimePostgresChangesPayload<ChatMessageLike>) => {
+          if (payload.eventType === "INSERT") {
+            const like = payload.new as ChatMessageLike;
+            if (like.user_id !== currentUserId) return;
+            setMessageLikesMap?.((prev) => {
+              const next = new Map(prev);
+              const existing = next.get(like.message_id);
+              next.set(like.message_id, {
+                count: existing?.count ?? 0,
+                likedByUser: true,
+              });
+              return next;
+            });
+          } else if (payload.eventType === "DELETE") {
+            const like = payload.old as ChatMessageLike;
+            if (like.user_id !== currentUserId) return;
+            setMessageLikesMap?.((prev) => {
+              const next = new Map(prev);
+              const existing = next.get(like.message_id);
+              next.set(like.message_id, {
+                count: existing?.count ?? 0,
+                likedByUser: false,
+              });
+              return next;
+            });
+          }
+        }
+      )
+      .subscribe();
+
     // Channel for form responses
     const responsesChannel = supabase
       .channel(`chat_form_responses:${groupId}`)
@@ -215,9 +271,10 @@ export function useChatRealtime({
 
     return () => {
       supabase.removeChannel(messagesChannel);
+      supabase.removeChannel(likesChannel);
       supabase.removeChannel(votesChannel);
       supabase.removeChannel(responsesChannel);
       supabase.removeChannel(membersChannel);
     };
-  }, [groupId, supabase, handleMessageChange, setPollVotesMap, setFormResponsesMap, onMemberChange]);
+  }, [groupId, supabase, handleMessageChange, currentUserId, setMessageLikesMap, setPollVotesMap, setFormResponsesMap, onMemberChange]);
 }

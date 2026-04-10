@@ -298,6 +298,7 @@ export function ChatRoom({
       organization_id: organizationId,
       author_id: currentUserId,
       body: messageBody,
+      like_count: 0,
       message_type: null,
       metadata: null,
       status: initialStatus,

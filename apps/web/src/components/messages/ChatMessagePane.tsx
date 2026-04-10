@@ -10,6 +10,7 @@ import { AttachmentMenu } from "@/components/chat/AttachmentMenu";
 import { PollComposer } from "@/components/chat/PollComposer";
 import { FormComposer } from "@/components/chat/FormComposer";
 import { MessageTopBar } from "@/components/messages/MessageTopBar";
+import { MessageLikeButton } from "@/components/messages/MessageLikeButton";
 import { useChatRealtime } from "@/hooks/useChatRealtime";
 import type { ChatGroup, ChatGroupMember, ChatMessage, ChatPollVote, ChatFormResponse, User, ChatMessageStatus } from "@/types/database";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
@@ -30,6 +31,11 @@ interface ChatMessagePaneProps {
 
 type MessageWithAuthor = ChatMessage & {
   author?: User;
+};
+
+type MessageLikeState = {
+  count: number;
+  likedByUser: boolean;
 };
 
 export function ChatMessagePane({
@@ -54,6 +60,7 @@ export function ChatMessagePane({
   const [members, setMembers] = useState(initialMembers);
   const [userCache, setUserCache] = useState<Map<string, User>>(new Map());
   const [composerMode, setComposerMode] = useState<"text" | "poll" | "form">("text");
+  const [messageLikesMap, setMessageLikesMap] = useState<Map<string, MessageLikeState>>(new Map());
   const [pollVotesMap, setPollVotesMap] = useState<Map<string, ChatPollVote[]>>(new Map());
   const [formResponsesMap, setFormResponsesMap] = useState<Map<string, ChatFormResponse[]>>(new Map());
   const [isCreatingPoll, setIsCreatingPoll] = useState(false);
@@ -137,11 +144,32 @@ export function ChatMessagePane({
       if (!error && data) {
         const authorIds = [...new Set(data.map(msg => msg.author_id))];
         const resolvedMap = await fetchUnknownUsers(authorIds);
+        const messageIds = data.map((msg) => msg.id);
 
         setMessages(data.map((msg) => ({
           ...msg,
           author: resolvedMap.get(msg.author_id),
         })));
+
+        if (messageIds.length > 0) {
+          const { data: ownLikes } = await supabase
+            .from("chat_message_likes")
+            .select("message_id")
+            .eq("user_id", currentUserId)
+            .in("message_id", messageIds);
+
+          const likedMessageIds = new Set((ownLikes || []).map((like) => like.message_id));
+          const likesMap = new Map<string, MessageLikeState>();
+          data.forEach((msg) => {
+            likesMap.set(msg.id, {
+              count: msg.like_count ?? 0,
+              likedByUser: likedMessageIds.has(msg.id),
+            });
+          });
+          setMessageLikesMap(likesMap);
+        } else {
+          setMessageLikesMap(new Map());
+        }
 
         const pollMessageIds = data.filter((msg) => msg.message_type === "poll").map((msg) => msg.id);
         const formMessageIds = data.filter((msg) => msg.message_type === "form").map((msg) => msg.id);
@@ -229,11 +257,45 @@ export function ChatMessagePane({
     userMap,
     fetchUnknownUsers,
     setMessages,
+    setMessageLikesMap,
     setPollVotesMap,
     setFormResponsesMap,
     scrollToBottom,
     onMemberChange,
   });
+
+  const handleToggleLike = useCallback(async (messageId: string) => {
+    const current = messageLikesMap.get(messageId) ?? { count: 0, likedByUser: false };
+
+    setMessageLikesMap((prev) => {
+      const next = new Map(prev);
+      next.set(messageId, {
+        count: current.likedByUser ? Math.max(current.count - 1, 0) : current.count + 1,
+        likedByUser: !current.likedByUser,
+      });
+      return next;
+    });
+
+    try {
+      const response = await fetch(`/api/chat/${group.id}/messages/${messageId}/like`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        setMessageLikesMap((prev) => {
+          const next = new Map(prev);
+          next.set(messageId, current);
+          return next;
+        });
+      }
+    } catch {
+      setMessageLikesMap((prev) => {
+        const next = new Map(prev);
+        next.set(messageId, current);
+        return next;
+      });
+    }
+  }, [group.id, messageLikesMap]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -254,6 +316,7 @@ export function ChatMessagePane({
       body: messageBody,
       message_type: null,
       metadata: null,
+      like_count: 0,
       status: initialStatus,
       approved_by: null,
       approved_at: null,
@@ -266,6 +329,11 @@ export function ChatMessagePane({
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
+    setMessageLikesMap((prev) => {
+      const next = new Map(prev);
+      next.set(tempId, { count: 0, likedByUser: false });
+      return next;
+    });
     setTimeout(scrollToBottom, 50);
 
     let responseData: { message?: ChatMessage; error?: string } | null = null;
@@ -286,6 +354,11 @@ export function ChatMessagePane({
           error_code: "send_failed",
         }, organizationId);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        setMessageLikesMap((prev) => {
+          const next = new Map(prev);
+          next.delete(tempId);
+          return next;
+        });
         setNewMessage(messageBody);
         setIsSending(false);
         return;
@@ -299,6 +372,11 @@ export function ChatMessagePane({
         error_code: "send_failed",
       }, organizationId);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setMessageLikesMap((prev) => {
+        const next = new Map(prev);
+        next.delete(tempId);
+        return next;
+      });
       setNewMessage(messageBody);
       setIsSending(false);
       return;
@@ -314,6 +392,12 @@ export function ChatMessagePane({
         m.id === tempId ? { ...responseData.message!, author: currentUser } : m
       )
     );
+    setMessageLikesMap((prev) => {
+      const next = new Map(prev);
+      next.delete(tempId);
+      next.set(responseData.message!.id, { count: responseData.message!.like_count ?? 0, likedByUser: false });
+      return next;
+    });
     setIsSending(false);
   };
 
@@ -525,6 +609,10 @@ export function ChatMessagePane({
                 const isOwn = message.author_id === currentUserId;
                 const isPending = message.status === "pending";
                 const isRejected = message.status === "rejected";
+                const likeState = messageLikesMap.get(message.id) ?? {
+                  count: message.like_count ?? 0,
+                  likedByUser: false,
+                };
 
                 // Message grouping: collapse avatar/name if same author within 5 min
                 const prevMessage = index > 0 ? visibleMessages[index - 1] : null;
@@ -592,6 +680,13 @@ export function ChatMessagePane({
                           onFormSubmit={handleFormSubmit}
                         />
                       </div>
+                      {!isPending && !isRejected && (
+                        <MessageLikeButton
+                          count={likeState.count}
+                          liked={likeState.likedByUser}
+                          onToggle={() => handleToggleLike(message.id)}
+                        />
+                      )}
 
                       {canModerate && isPending && !isOwn && (
                         <div className="flex gap-2 mt-2">

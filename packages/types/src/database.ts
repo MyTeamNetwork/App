@@ -711,6 +711,7 @@ export type Database = {
           deleted_at: string | null
           edited_at: string | null
           id: string
+          like_count: number
           message_type: string | null
           metadata: Json | null
           organization_id: string
@@ -728,6 +729,7 @@ export type Database = {
           deleted_at?: string | null
           edited_at?: string | null
           id?: string
+          like_count?: number
           message_type?: string | null
           metadata?: Json | null
           organization_id: string
@@ -745,6 +747,7 @@ export type Database = {
           deleted_at?: string | null
           edited_at?: string | null
           id?: string
+          like_count?: number
           message_type?: string | null
           metadata?: Json | null
           organization_id?: string
@@ -762,6 +765,55 @@ export type Database = {
           },
           {
             foreignKeyName: "chat_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_message_likes: {
+        Row: {
+          chat_group_id: string
+          created_at: string
+          id: string
+          message_id: string
+          organization_id: string
+          user_id: string
+        }
+        Insert: {
+          chat_group_id: string
+          created_at?: string
+          id?: string
+          message_id: string
+          organization_id: string
+          user_id: string
+        }
+        Update: {
+          chat_group_id?: string
+          created_at?: string
+          id?: string
+          message_id?: string
+          organization_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_message_likes_chat_group_id_fkey"
+            columns: ["chat_group_id"]
+            isOneToOne: false
+            referencedRelation: "chat_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_message_likes_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "chat_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_message_likes_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1051,6 +1103,7 @@ export type Database = {
           created_at: string
           deleted_at: string | null
           id: string
+          like_count: number
           organization_id: string
           thread_id: string
           updated_at: string
@@ -1061,6 +1114,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           id?: string
+          like_count?: number
           organization_id: string
           thread_id: string
           updated_at?: string
@@ -1071,6 +1125,7 @@ export type Database = {
           created_at?: string
           deleted_at?: string | null
           id?: string
+          like_count?: number
           organization_id?: string
           thread_id?: string
           updated_at?: string
@@ -1092,6 +1147,55 @@ export type Database = {
           },
           {
             foreignKeyName: "discussion_replies_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "discussion_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      discussion_reply_likes: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          reply_id: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          reply_id: string
+          thread_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          reply_id?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discussion_reply_likes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "discussion_reply_likes_reply_id_fkey"
+            columns: ["reply_id"]
+            isOneToOne: false
+            referencedRelation: "discussion_replies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "discussion_reply_likes_thread_id_fkey"
             columns: ["thread_id"]
             isOneToOne: false
             referencedRelation: "discussion_threads"
@@ -4967,8 +5071,12 @@ export type Announcement = Tables<"announcements">;
 export type ChatGroup = Tables<"chat_groups">;
 export type ChatGroupMember = Tables<"chat_group_members">;
 export type ChatMessage = Tables<"chat_messages">;
+export type ChatMessageLike = Tables<"chat_message_likes">;
 export type ChatPollVote = Tables<"chat_poll_votes">;
 export type ChatFormResponse = Tables<"chat_form_responses">;
+export type DiscussionReply = Tables<"discussion_replies">;
+export type DiscussionReplyLike = Tables<"discussion_reply_likes">;
+export type DiscussionThread = Tables<"discussion_threads">;
 export type Expense = Tables<"expenses">;
 export type Event = Tables<"events">;
 export type Form = Tables<"forms">;

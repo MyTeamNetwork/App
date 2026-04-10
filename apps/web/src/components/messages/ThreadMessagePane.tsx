@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
 import { MessageTopBar } from "@/components/messages/MessageTopBar";
+import { MessageLikeButton } from "@/components/messages/MessageLikeButton";
 import type { Database } from "@/types/database";
 
 type ThreadType = Database["public"]["Tables"]["discussion_threads"]["Row"] & {
@@ -13,6 +14,7 @@ type ThreadType = Database["public"]["Tables"]["discussion_threads"]["Row"] & {
 
 type ReplyType = Database["public"]["Tables"]["discussion_replies"]["Row"] & {
   author: { name: string } | null;
+  liked_by_user?: boolean;
 };
 
 interface ThreadMessagePaneProps {
@@ -53,6 +55,23 @@ export function ThreadMessagePane({ thread, replies, isAdmin, orgSlug }: ThreadM
   const [replyBody, setReplyBody] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [replyLikes, setReplyLikes] = useState<Record<string, { count: number; liked: boolean }>>(() =>
+    Object.fromEntries(
+      replies.map((reply) => [
+        reply.id,
+        {
+          count: reply.like_count ?? 0,
+          liked: !!reply.liked_by_user,
+        },
+      ]),
+    ),
+  );
+
+  const replyLikeState = useMemo(
+    () => (replyId: string, fallbackCount: number, fallbackLiked: boolean) =>
+      replyLikes[replyId] ?? { count: fallbackCount, liked: fallbackLiked },
+    [replyLikes],
+  );
 
   const togglePin = async () => {
     setIsUpdating(true);
@@ -134,6 +153,40 @@ export function ThreadMessagePane({ thread, replies, isAdmin, orgSlug }: ThreadM
     }
   };
 
+  const handleToggleReplyLike = async (replyId: string, currentCount: number, currentLiked: boolean) => {
+    setReplyLikes((prev) => ({
+      ...prev,
+      [replyId]: {
+        count: currentLiked ? Math.max(currentCount - 1, 0) : currentCount + 1,
+        liked: !currentLiked,
+      },
+    }));
+
+    try {
+      const response = await fetch(`/api/discussions/${thread.id}/replies/${replyId}/like`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        setReplyLikes((prev) => ({
+          ...prev,
+          [replyId]: {
+            count: currentCount,
+            liked: currentLiked,
+          },
+        }));
+      }
+    } catch {
+      setReplyLikes((prev) => ({
+        ...prev,
+        [replyId]: {
+          count: currentCount,
+          liked: currentLiked,
+        },
+      }));
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <MessageTopBar
@@ -179,6 +232,7 @@ export function ThreadMessagePane({ thread, replies, isAdmin, orgSlug }: ThreadM
                 prevReply &&
                 prevReply.author_id === reply.author_id &&
                 new Date(reply.created_at).getTime() - new Date(prevReply.created_at).getTime() < 5 * 60 * 1000;
+              const likeState = replyLikeState(reply.id, reply.like_count ?? 0, !!reply.liked_by_user);
 
               return (
                 <div key={reply.id} className={`flex gap-3 ${isGrouped ? "mt-0.5" : "mt-3"}`}>
@@ -204,6 +258,12 @@ export function ThreadMessagePane({ thread, replies, isAdmin, orgSlug }: ThreadM
                     <div className="bg-muted rounded-lg px-3 py-2 inline-block max-w-[85%]">
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{reply.body}</p>
                     </div>
+                    <MessageLikeButton
+                      count={likeState.count}
+                      liked={likeState.liked}
+                      label="reply"
+                      onToggle={() => handleToggleReplyLike(reply.id, likeState.count, likeState.liked)}
+                    />
                   </div>
                 </div>
               );
