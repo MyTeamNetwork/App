@@ -16,9 +16,12 @@ import Animated, { FadeIn } from "react-native-reanimated";
 import { Users, Calendar, Trophy } from "lucide-react-native";
 import { useOnboarding } from "@/hooks/useOnboarding";
 
+/** Lucide RN icons share the same component shape; use typeof for a precise match. */
+type WelcomeIcon = typeof Users;
+
 interface Page {
   key: string;
-  Icon: React.ComponentType<{ size: number; color: string }>;
+  Icon: WelcomeIcon;
   title: string;
   subtitle: string;
   gradientColors: [string, string, string];

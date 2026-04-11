@@ -1,4 +1,4 @@
-import { describe, it, before, after } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 /**
@@ -15,8 +15,6 @@ import assert from "node:assert/strict";
 // Since debugLog is a no-op unless NEXT_PUBLIC_DEBUG=true, we need to
 // intercept the actual calls. We'll use a module-level override approach:
 // replace the module registry entry for @/lib/debug before importing sync.
-
-const debugCalls: Array<{ tag: string; args: unknown[] }> = [];
 
 // We patch require/import resolution by overriding the debug module
 // before importing sync. In Node's test runner with ESM-via-loader,

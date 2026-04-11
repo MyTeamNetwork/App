@@ -48,6 +48,7 @@ export const HCaptcha = forwardRef<HCaptchaRef, HCaptchaProps>(
     const captchaRef = useRef<ReactHCaptcha>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [timedOut, setTimedOut] = useState(false);
 
     // Use provided siteKey or fall back to environment variable
     const resolvedSiteKey = siteKey || HCAPTCHA_SITE_KEY;
@@ -86,8 +87,6 @@ export const HCaptcha = forwardRef<HCaptchaRef, HCaptchaProps>(
       setIsLoading(false);
       setTimedOut(false);
     }, []);
-
-    const [timedOut, setTimedOut] = useState(false);
 
     useEffect(() => {
       const timer = setTimeout(() => {

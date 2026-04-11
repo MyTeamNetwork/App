@@ -10,6 +10,7 @@
     "lint": "ESLINT_USE_FLAT_CONFIG=true eslint .",
     "typecheck": "tsc --noEmit",
     "test": "bun run test:unit && bun run test:security && bun run test:payments && bun run test:mobile",
+    "test:bun": "bun test ./src/curated-suite.test.ts",
     "test:fast": "node scripts/run-fast-tests.js",
     "test:check-orphans": "node scripts/check-orphaned-tests.js",
     "test:unit": "node --test --loader ./tests/ts-loader.js tests/middleware.testing123.test.ts tests/cancel-subscription.test.ts tests/grace-period.test.ts tests/subscription.test.ts tests/calendar-ics-sync.test.ts tests/schedule-connectors.test.ts tests/alumni-edit-roles.test.ts tests/forgot-password.test.ts tests/auth-callback.test.ts tests/auth-oauth-regressions.test.ts tests/invite-redirect.test.ts tests/oauth-signup-callback-url.test.ts tests/alumni-linkedin-url.test.ts tests/linkedin-*.test.ts tests/enterprise/*.test.ts tests/enterprise-quantity-pricing.test.ts tests/embed-url-policy.test.ts tests/mentorship-presentation.test.ts tests/mentorship-pairable-members.test.ts",
@@ -27,7 +28,7 @@
     "analyze": "ANALYZE=true npm run build",
     "gen:types": "npx supabase gen types --lang=typescript --project-id rytsziwekhtjdqzzpdso > src/types/database.ts && node scripts/append-database-compat.js",
     "test:auth": "node --test --loader ./tests/ts-loader.js tests/middleware.testing123.test.ts",
-    "test:mobile": "node --test --loader ./tests/ts-loader.js tests/mobile-permissions.test.ts tests/mobile-routing.test.ts tests/mobile-parity-menu.test.ts"
+    "test:mobile": "node --test --loader ./tests/ts-loader.js tests/mobile-*.test.ts"
   },
   "dependencies": {
     "@hcaptcha/react-hcaptcha": "^1.17.4",
@@ -64,7 +65,11 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.1.0",
+    "@next/bundle-analyzer": "^14.2.35",
+    "@playwright/test": "^1.58.0",
+    "@types/animejs": "^3.1.13",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",
@@ -72,10 +77,6 @@
     "fast-check": "^4.5.3",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5",
-    "@next/bundle-analyzer": "^14.2.35",
-    "@playwright/test": "^1.58.0",
-    "@types/animejs": "^3.1.13",
-    "@types/qrcode": "^1.5.6"
+    "typescript": "^5"
   }
 }

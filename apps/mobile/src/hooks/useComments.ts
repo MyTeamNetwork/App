@@ -69,13 +69,15 @@ export function useComments(postId: string | undefined, orgId: string | null): U
 
         // Optimistic insert so comment appears instantly
         const optimisticId = `optimistic-${Date.now()}`;
+        const now = new Date().toISOString();
         const optimistic: FeedComment = {
           id: optimisticId,
           post_id: postId,
           organization_id: orgId,
           author_id: user.id,
           body: trimmed,
-          created_at: new Date().toISOString(),
+          created_at: now,
+          updated_at: now,
           deleted_at: null,
           author: {
             id: user.id,
