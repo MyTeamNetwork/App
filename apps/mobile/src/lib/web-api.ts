@@ -28,10 +28,17 @@ export async function fetchWithAuth(path: string, options: RequestInit) {
   if (sessionData.session) {
     const expiresAt = sessionData.session.expires_at ?? 0;
     const nowSeconds = Math.floor(Date.now() / 1000);
-    if (expiresAt - nowSeconds < 30) {
-      const { data: refreshed } = await supabase.auth.refreshSession();
+    const timeUntilExpiry = expiresAt - nowSeconds;
+
+    if (timeUntilExpiry < 30) {
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError) {
+        throw new Error(`Session refresh failed: ${refreshError.message}`);
+      }
       if (refreshed.session) {
         sessionData = refreshed;
+      } else {
+        throw new Error("Session refresh returned no session");
       }
     }
   }

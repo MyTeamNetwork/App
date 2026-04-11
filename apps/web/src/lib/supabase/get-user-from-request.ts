@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "./server";
+import { createServiceClient } from "./service";
 import type { User } from "@supabase/supabase-js";
 
 /**
@@ -23,7 +24,13 @@ export async function getUserFromRequest(
 
   if (token) {
     const { data: tokenAuth } = await supabase.auth.getUser(token);
-    return { user: tokenAuth.user, supabase };
+    if (tokenAuth.user) {
+      // For Bearer token auth, use service client. We've already validated the user via the token,
+      // so we can safely use admin access for subsequent queries. Routes must still validate
+      // user permissions (e.g., org membership, role) before returning data.
+      const serviceSupabase = createServiceClient();
+      return { user: tokenAuth.user, supabase: serviceSupabase as any };
+    }
   }
 
   return { user: null, supabase };
