@@ -6,7 +6,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { DrawerActions } from "@react-navigation/native";
 import { useFocusEffect, useNavigation, useRouter } from "expo-router";
 import * as Linking from "expo-linking";
-import { ExternalLink, Plus } from "lucide-react-native";
+import { ExternalLink, Plus, Settings, ShieldCheck } from "lucide-react-native";
 
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
@@ -27,6 +27,10 @@ import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
+import {
+  getScheduleMySettingsPath,
+  getScheduleSourcesPath,
+} from "@/lib/schedules/mobile-schedule-settings";
 
 function getWeekDates(date: Date): Date[] {
   const d = new Date(date);
@@ -150,9 +154,31 @@ export default function CalendarScreen() {
     }
   }, [navigation]);
 
-  const adminMenuItems: OverflowMenuItem[] = useMemo(() => {
-    if (!permissions.canUseAdminActions) return [];
-    return [
+  const menuItems: OverflowMenuItem[] = useMemo(() => {
+    const items: OverflowMenuItem[] = [
+      {
+        id: "my-schedule-settings",
+        label: "My Schedule Settings",
+        icon: <Settings size={20} color={neutral.foreground} />,
+        onPress: () => {
+          router.push(getScheduleMySettingsPath(orgSlug));
+        },
+      },
+    ];
+
+    if (!permissions.canUseAdminActions) {
+      return items;
+    }
+
+    items.push(
+      {
+        id: "manage-sources",
+        label: "Manage Sources",
+        icon: <ShieldCheck size={20} color={neutral.foreground} />,
+        onPress: () => {
+          router.push(getScheduleSourcesPath(orgSlug));
+        },
+      },
       {
         id: "create-event",
         label: "Create Event",
@@ -170,7 +196,9 @@ export default function CalendarScreen() {
           Linking.openURL(webUrl);
         },
       },
-    ];
+    );
+
+    return items;
   }, [
     permissions.canUseAdminActions,
     orgSlug,
@@ -237,9 +265,9 @@ export default function CalendarScreen() {
             </Text>
             <Text style={styles.headerMeta}>{titleSubtitle}</Text>
           </View>
-          {adminMenuItems.length > 0 && (
+          {menuItems.length > 0 && (
             <OverflowMenu
-              items={adminMenuItems}
+              items={menuItems}
               accessibilityLabel="Calendar options"
             />
           )}

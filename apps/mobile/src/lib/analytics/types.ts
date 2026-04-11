@@ -20,7 +20,7 @@ export interface UserProperties {
   currentOrgSlug?: string;
   currentOrgId?: string;
   // Normalized, low-cardinality role for analytics
-  role?: "admin" | "member" | "alumni" | "unknown";
+  role?: "admin" | "member" | "alumni" | "parent" | "unknown";
   [key: string]: PropertyValue;
 }
 

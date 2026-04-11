@@ -10,9 +10,17 @@ export type ViewerContext = {
   userId: string | null;
 };
 
+export type AnnouncementAudienceTarget = Pick<
+  Announcement,
+  "audience" | "audience_user_ids"
+>;
+
 const isActive = (status: MembershipStatus | null) => status === "active";
 
-const canViewAnnouncement = (announcement: Announcement, ctx: ViewerContext) => {
+export function canViewAnnouncement(
+  announcement: AnnouncementAudienceTarget,
+  ctx: ViewerContext
+) {
   if (!ctx.role || !isActive(ctx.status)) return false;
   if (ctx.role === "admin") return true;
 
@@ -23,13 +31,13 @@ const canViewAnnouncement = (announcement: Announcement, ctx: ViewerContext) => 
     case "active_members":
       return ctx.role === "active_member";
     case "alumni":
-      return ctx.role === "alumni";
+      return ctx.role === "alumni" || ctx.role === "parent";
     case "individuals":
       return !!ctx.userId && (announcement.audience_user_ids || []).includes(ctx.userId);
     default:
       return false;
   }
-};
+}
 
 /**
  * Filters announcements based on user role and audience targeting.

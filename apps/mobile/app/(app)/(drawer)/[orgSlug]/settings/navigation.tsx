@@ -50,6 +50,7 @@ import {
 const NAV_ITEMS = [
   { href: "", label: "Dashboard", icon: Home, configurable: true },
   { href: "/members", label: "Members", icon: Users, configurable: true },
+  { href: "/parents", label: "Parents", icon: Users, configurable: true },
   { href: "/chat", label: "Chat", icon: MessageCircle, configurable: true },
   { href: "/alumni", label: "Alumni", icon: GraduationCap, configurable: true },
   { href: "/mentorship", label: "Mentorship", icon: Handshake, configurable: true },
@@ -67,7 +68,7 @@ const NAV_ITEMS = [
 ];
 
 const CONFIGURABLE_ITEMS = NAV_ITEMS.filter((item) => item.configurable !== false);
-const ALLOWED_ROLES: OrgRole[] = ["admin", "active_member", "alumni"];
+const ALLOWED_ROLES: OrgRole[] = ["admin", "active_member", "alumni", "parent"];
 
 // Get config key for nav item (Dashboard has empty href)
 const getConfigKey = (href: string) => (href === "" ? "dashboard" : href);
@@ -791,4 +792,3 @@ export default function NavigationSettingsScreen() {
     </View>
   );
 }
-

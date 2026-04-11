@@ -25,6 +25,7 @@ import {
   Settings,
   SlidersHorizontal,
   Trophy,
+  Users,
 } from "lucide-react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/contexts/OrgContext";
@@ -59,8 +60,8 @@ export function DrawerContent(props: DrawerContentComponentProps) {
   const { top: topInset, bottom: bottomInset } = useSafeAreaInsets();
   const { orgSlug } = useGlobalSearchParams<{ orgSlug?: string }>();
   const { user } = useAuth();
-  const { permissions } = useOrgRole();
-  const { orgName, orgLogoUrl } = useOrg();
+  const { permissions, role } = useOrgRole();
+  const { orgName, orgLogoUrl, hasParentsAccess } = useOrg();
   const slug = typeof orgSlug === "string" ? orgSlug : "";
   const orgInitial = (orgName ?? slug ?? "").trim().charAt(0).toUpperCase() || "O";
   const userMeta = (user?.user_metadata ?? {}) as { name?: string; avatar_url?: string };
@@ -87,6 +88,13 @@ export function DrawerContent(props: DrawerContentComponentProps) {
       { label: "Home", href: `/(app)/${slug}`, icon: Home },
       { label: "Chat", href: `/(app)/${slug}/chat`, icon: MessageCircle },
     ];
+
+    if (
+      hasParentsAccess &&
+      (role === "admin" || role === "active_member" || role === "parent")
+    ) {
+      mainItems.push({ label: "Parents", href: `/(app)/${slug}/parents`, icon: Users });
+    }
 
     if (permissions.canViewAlumni) {
       mainItems.push({ label: "Alumni", href: `/(app)/${slug}/alumni`, icon: GraduationCap });
@@ -137,7 +145,7 @@ export function DrawerContent(props: DrawerContentComponentProps) {
     );
 
     return sections;
-  }, [slug, permissions.canViewAlumni]);
+  }, [slug, permissions.canViewAlumni, hasParentsAccess, role]);
 
   // Pinned footer items
   const pinnedItems = useMemo<NavItem[]>(() => {

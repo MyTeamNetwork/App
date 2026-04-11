@@ -95,9 +95,9 @@
         "@supabase/auth-helpers-nextjs": "^0.15.0",
         "@supabase/ssr": "^0.8.0",
         "@supabase/supabase-js": "^2.86.2",
-        "@teammeet/core": "*",
-        "@teammeet/types": "*",
-        "@teammeet/validation": "*",
+        "@teammeet/core": "workspace:*",
+        "@teammeet/types": "workspace:*",
+        "@teammeet/validation": "workspace:*",
         "@types/animejs": "^3.1.13",
         "animejs": "^4.2.2",
         "googleapis": "^170.0.0",
@@ -159,6 +159,9 @@
         "typescript": "^5.9.2",
       },
     },
+  },
+  "patchedDependencies": {
+    "expo-image-picker@55.0.12": "patches/expo-image-picker@55.0.12.patch",
   },
   "packages": {
     "@0no-co/graphql.web": ["@0no-co/graphql.web@1.2.0", "", { "peerDependencies": { "graphql": "^14.0.0 || ^15.0.0 || ^16.0.0" }, "optionalPeers": ["graphql"] }, "sha512-/1iHy9TTr63gE1YcR5idjx8UREz1s0kFhydf3bBLCXyqjhkIc6igAzTOx3zPifCwFR87tsh/4Pa9cNts6d2otw=="],

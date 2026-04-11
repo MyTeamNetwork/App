@@ -10,7 +10,7 @@ import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { DrawerActions } from "@react-navigation/native";
-import { useFocusEffect, useRouter, useNavigation } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter, useNavigation } from "expo-router";
 import {
   Bell,
   BellOff,
@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   Circle,
   ExternalLink,
+  Send,
 } from "lucide-react-native";
 import * as Linking from "expo-linking";
 import { useNotifications, type Notification } from "@/hooks/useNotifications";
@@ -34,6 +35,7 @@ import { useNetwork } from "@/contexts/NetworkContext";
 import { useAutoRefetchOnReconnect } from "@/hooks/useAutoRefetchOnReconnect";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui";
+import { getNotificationComposerPath } from "@/lib/schedules/mobile-schedule-settings";
 
 // Relative time formatter
 function formatRelativeTime(dateString: string | null): string {
@@ -59,6 +61,7 @@ function formatRelativeTime(dateString: string | null): string {
 
 export default function NotificationsScreen() {
   const { orgSlug, orgId, orgName, orgLogoUrl } = useOrg();
+  const params = useLocalSearchParams<{ refresh?: string }>();
   const router = useRouter();
   const navigation = useNavigation();
   const { permissions } = useOrgRole();
@@ -299,6 +302,14 @@ export default function NotificationsScreen() {
 
     if (permissions.canUseAdminActions) {
       items.push({
+        id: "send-notification",
+        label: "Send Notification",
+        icon: <Send size={20} color={neutral.foreground} />,
+        onPress: () => {
+          router.push(getNotificationComposerPath(orgSlug));
+        },
+      });
+      items.push({
         id: "open-in-web",
         label: "Open in Web",
         icon: <ExternalLink size={20} color={neutral.foreground} />,
@@ -310,13 +321,17 @@ export default function NotificationsScreen() {
     }
 
     return items;
-  }, [permissions.canUseAdminActions, orgSlug, unreadCount, markAllAsRead]);
+  }, [permissions.canUseAdminActions, orgSlug, unreadCount, markAllAsRead, neutral.foreground, router]);
 
-  // Refetch on screen focus if stale
+  // Refetch on screen focus if stale, or always after a composer redirect.
   useFocusEffect(
     useCallback(() => {
+      if (params.refresh === "1") {
+        refetch();
+        return;
+      }
       refetchIfStale();
-    }, [refetchIfStale])
+    }, [params.refresh, refetch, refetchIfStale])
   );
 
   useAutoRefetchOnReconnect(refetch);

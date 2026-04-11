@@ -27,7 +27,12 @@ export {
 } from "./pricing/index";
 
 // Announcements - Audience filtering
-export { filterAnnouncementsForUser, type ViewerContext } from "./announcements/index";
+export {
+  canViewAnnouncement,
+  filterAnnouncementsForUser,
+  type AnnouncementAudienceTarget,
+  type ViewerContext,
+} from "./announcements/index";
 
 // Formatters - Display formatting utilities
 export {

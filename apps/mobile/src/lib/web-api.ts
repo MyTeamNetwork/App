@@ -22,7 +22,20 @@ export function getWebPath(orgSlug: string, path?: string): string {
 }
 
 export async function fetchWithAuth(path: string, options: RequestInit) {
-  const { data: sessionData } = await supabase.auth.getSession();
+  let { data: sessionData } = await supabase.auth.getSession();
+
+  // If the access token is expired or expiring within 30 s, refresh it.
+  if (sessionData.session) {
+    const expiresAt = sessionData.session.expires_at ?? 0;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (expiresAt - nowSeconds < 30) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      if (refreshed.session) {
+        sessionData = refreshed;
+      }
+    }
+  }
+
   const accessToken = sessionData?.session?.access_token;
 
   if (!accessToken) {

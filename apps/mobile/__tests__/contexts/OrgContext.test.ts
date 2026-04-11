@@ -57,6 +57,11 @@ describe("OrgContext", () => {
       expect(result).toBe("alumni");
     });
 
+    it("should return 'parent' for parent role", () => {
+      const result = toAnalyticsRole("parent" as OrgRole);
+      expect(result).toBe("parent");
+    });
+
     it("should pass through other role types unchanged", () => {
       // Testing edge case where a role doesn't match any condition
       // This tests the fallback return statement
@@ -71,11 +76,13 @@ describe("OrgContext", () => {
       const admin: AnalyticsRole = "admin";
       const member: AnalyticsRole = "member";
       const alumni: AnalyticsRole = "alumni";
+      const parent: AnalyticsRole = "parent";
       const unknown: AnalyticsRole = "unknown";
 
       expect(admin).toBe("admin");
       expect(member).toBe("member");
       expect(alumni).toBe("alumni");
+      expect(parent).toBe("parent");
       expect(unknown).toBe("unknown");
     });
   });

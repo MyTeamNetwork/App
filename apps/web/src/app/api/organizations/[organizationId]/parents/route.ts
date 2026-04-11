@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { validateJson, ValidationError, baseSchemas, sanitizeIlikeInput } from "@/lib/security/validation";
 import { newParentSchema } from "@/lib/schemas";
 import { getOrgMemberRole } from "@/lib/parents/auth";
+import { getUserFromRequest } from "@/lib/supabase/get-user-from-request";
 
 const parentsQuerySchema = z.object({
   search: z.string().max(200).optional(),
@@ -31,8 +31,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await getUserFromRequest(req as any);
 
   const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,
@@ -129,8 +128,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await getUserFromRequest(req as any);
 
   const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,

@@ -11,6 +11,14 @@ export default function NotificationsLayout() {
           presentation: "card",
         }}
       />
+      <Stack.Screen
+        name="new"
+        options={{
+          headerShown: false,
+          title: "Send Notification",
+          presentation: "card",
+        }}
+      />
     </Stack>
   );
 }

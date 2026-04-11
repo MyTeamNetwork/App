@@ -75,6 +75,12 @@ function OrgLayoutInner() {
           presentation: "card",
         }}
       />
+      <Stack.Screen
+        name="parents"
+        options={{
+          headerShown: false,
+        }}
+      />
       {/* Folders with their own _layout.tsx - just register the folder name */}
       <Stack.Screen
         name="chat"

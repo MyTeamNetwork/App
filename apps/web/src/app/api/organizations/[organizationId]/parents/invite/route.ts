@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { validateJson, ValidationError, baseSchemas } from "@/lib/security/validation";
 import { getOrgMemberRole } from "@/lib/parents/auth";
+import { getUserFromRequest } from "@/lib/supabase/get-user-from-request";
 
 const createInviteSchema = z.object({
   expires_at: z
@@ -25,6 +25,56 @@ interface RouteParams {
   params: Promise<{ organizationId: string }>;
 }
 
+export async function GET(req: Request, { params }: RouteParams) {
+  const { organizationId } = await params;
+
+  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
+  if (!orgIdParsed.success) {
+    return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
+  }
+
+  const { user, supabase } = await getUserFromRequest(req as any);
+
+  const rateLimit = checkRateLimit(req, {
+    userId: user?.id ?? null,
+    feature: "org parents invite list",
+    limitPerIp: 30,
+    limitPerUser: 20,
+  });
+
+  if (!rateLimit.ok) {
+    return buildRateLimitResponse(rateLimit);
+  }
+
+  const respond = (payload: unknown, status = 200) =>
+    NextResponse.json(payload, { status, headers: rateLimit.headers });
+
+  if (!user) {
+    return respond({ error: "Unauthorized" }, 401);
+  }
+
+  const role = await getOrgMemberRole(supabase, user.id, organizationId);
+  if (role !== "admin") {
+    return respond({ error: "Forbidden" }, 403);
+  }
+
+  const serviceSupabase = createServiceClient();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: invites, error } = await (serviceSupabase as any)
+    .from("parent_invites")
+    .select("id,code,expires_at,status,created_at")
+    .eq("organization_id", organizationId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[org/parents/invite GET] DB error:", error);
+    return respond({ error: "Failed to load invites" }, 500);
+  }
+
+  return respond({ invites: invites ?? [] });
+}
+
 export async function POST(req: Request, { params }: RouteParams) {
   const { organizationId } = await params;
 
@@ -33,8 +83,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user, supabase } = await getUserFromRequest(req as any);
 
   const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,

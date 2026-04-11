@@ -19,7 +19,7 @@ const enabledFlags: FeatureFlags = {
   formsEnabled: true,
 };
 
-const roles = ["admin", "active_member", "alumni"] as const;
+const roles = ["admin", "active_member", "alumni", "parent"] as const;
 
 describe("Permission Helpers", () => {
   describe("canViewAlumni", () => {
@@ -45,6 +45,7 @@ describe("Permission Helpers", () => {
       expect(canUseAdminActions("admin")).toBe(true);
       expect(canUseAdminActions("active_member")).toBe(false);
       expect(canUseAdminActions("alumni")).toBe(false);
+      expect(canUseAdminActions("parent")).toBe(false);
       expect(canUseAdminActions(null)).toBe(false);
     });
   });
@@ -117,6 +118,10 @@ describe("Permission Helpers", () => {
       expect(canManageInvites("alumni")).toBe(false);
       expect(canManageBilling("alumni")).toBe(false);
 
+      expect(canAccessSettings("parent")).toBe(false);
+      expect(canManageInvites("parent")).toBe(false);
+      expect(canManageBilling("parent")).toBe(false);
+
       expect(canAccessSettings(null)).toBe(false);
       expect(canManageInvites(null)).toBe(false);
       expect(canManageBilling(null)).toBe(false);
@@ -186,6 +191,20 @@ describe("Permission Helpers", () => {
       expect(permissions.canViewDonations).toBe(false);
       expect(permissions.canViewRecords).toBe(false);
       expect(permissions.canViewForms).toBe(false);
+    });
+
+    it("returns feature permissions for parents", () => {
+      const permissions = getPermissions("parent", enabledFlags);
+      expect(permissions).toEqual({
+        canViewAlumni: true,
+        canUseAdminActions: false,
+        canViewDonations: true,
+        canViewRecords: true,
+        canViewForms: true,
+        canAccessSettings: false,
+        canManageInvites: false,
+        canManageBilling: false,
+      });
     });
   });
 

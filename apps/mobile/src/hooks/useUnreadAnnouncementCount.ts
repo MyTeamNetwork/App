@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
-import { ViewerContext, normalizeRole } from "@teammeet/core";
+import { canViewAnnouncement, type AnnouncementAudienceTarget, type ViewerContext, normalizeRole } from "@teammeet/core";
 
 const STORAGE_KEY_PREFIX = "announcement_last_viewed_";
 
@@ -23,35 +23,9 @@ const markAsReadEmitter = {
 };
 const STALE_TIME_MS = 30_000; // 30 seconds
 
-// Minimal announcement data needed for audience filtering
-interface MinimalAnnouncement {
+type MinimalAnnouncement = AnnouncementAudienceTarget & {
   id: string;
-  audience: string | null;
-  audience_user_ids: string[] | null;
-}
-
-/**
- * Check if a user can view an announcement based on audience targeting.
- * Simplified version of canViewAnnouncement from @teammeet/core.
- */
-function canViewAnnouncement(announcement: MinimalAnnouncement, ctx: ViewerContext): boolean {
-  if (!ctx.role || ctx.status !== "active") return false;
-  if (ctx.role === "admin") return true;
-
-  switch (announcement.audience) {
-    case "all":
-      return true;
-    case "members":
-    case "active_members":
-      return ctx.role === "active_member";
-    case "alumni":
-      return ctx.role === "alumni";
-    case "individuals":
-      return !!ctx.userId && (announcement.audience_user_ids || []).includes(ctx.userId);
-    default:
-      return false;
-  }
-}
+};
 
 interface UseUnreadAnnouncementCountReturn {
   unreadCount: number;

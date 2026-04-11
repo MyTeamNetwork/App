@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { setUserProperties, captureException } from "@/lib/analytics";
 import { normalizeRole, type OrgRole } from "@teammeet/core";
 
-export type AnalyticsRole = "admin" | "member" | "alumni" | "unknown";
+export type AnalyticsRole = "admin" | "member" | "alumni" | "parent" | "unknown";
 export type OrgAccessStatus =
   | "loading"
   | "ready"
@@ -27,6 +27,7 @@ interface OrgContextValue {
   orgLogoUrl: string | null;
   orgPrimaryColor: string | null;
   orgSecondaryColor: string | null;
+  hasParentsAccess: boolean;
   userRole: NormalizedRole;
   status: OrgAccessStatus;
   isLoading: boolean;
@@ -42,6 +43,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const [orgLogoUrl, setOrgLogoUrl] = useState<string | null>(null);
   const [orgPrimaryColor, setOrgPrimaryColor] = useState<string | null>(null);
   const [orgSecondaryColor, setOrgSecondaryColor] = useState<string | null>(null);
+  const [hasParentsAccess, setHasParentsAccess] = useState(false);
   const [userRole, setUserRole] = useState<NormalizedRole>(null);
   const [status, setStatus] = useState<OrgAccessStatus>("loading");
   const [isLoading, setIsLoading] = useState(true);
@@ -89,31 +91,46 @@ export function OrgProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const { data: roleData, error: roleError } = await supabase
+        const [roleResult, subscriptionResult] = await Promise.all([
+          supabase
             .from("user_organization_roles")
             .select("role")
             .eq("organization_id", fetchedOrgId)
             .eq("user_id", currentUser.id)
             .eq("status", "active")
-            .maybeSingle();
+            .maybeSingle(),
+          supabase
+            .rpc("get_subscription_status", { p_org_id: fetchedOrgId })
+            .maybeSingle(),
+        ]);
 
         if (!isMounted) return;
 
-        if (roleError) {
-          throw roleError;
+        if (roleResult.error) {
+          throw roleResult.error;
         }
 
-        if (!roleData?.role) {
+        if (subscriptionResult.error && subscriptionResult.error.code !== "PGRST116") {
+          throw subscriptionResult.error;
+        }
+
+        if (!roleResult.data?.role) {
           setStatus("unauthorized");
           return;
         }
+
+        const subscriptionData = subscriptionResult.data;
+        const parentsEnabled =
+          subscriptionData?.status === "enterprise_managed" ||
+          (subscriptionData?.parents_bucket != null && subscriptionData.parents_bucket !== "none");
 
         setOrgId(fetchedOrgId);
         setOrgName(orgResult.data.name ?? null);
         setOrgLogoUrl(orgResult.data.logo_url ?? null);
         setOrgPrimaryColor(orgResult.data.primary_color ?? null);
         setOrgSecondaryColor(orgResult.data.secondary_color ?? null);
-        setUserRole(normalizeRole(roleData.role));
+        setHasParentsAccess(parentsEnabled);
+        setUserRole(normalizeRole(roleResult.data.role));
         setStatus("ready");
       } catch (err) {
         if (isMounted) {
@@ -141,6 +158,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     setOrgLogoUrl(null);
     setOrgPrimaryColor(null);
     setOrgSecondaryColor(null);
+    setHasParentsAccess(false);
     fetchOrgData();
 
     return () => {
@@ -168,6 +186,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
         orgLogoUrl,
         orgPrimaryColor,
         orgSecondaryColor,
+        hasParentsAccess,
         userRole,
         status,
         isLoading,

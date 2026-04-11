@@ -4,6 +4,8 @@ export default function SchedulesLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
+      <Stack.Screen name="my-settings" />
+      <Stack.Screen name="sources" />
       <Stack.Screen
         name="new"
         options={{ headerShown: false, title: "New Schedule" }}
