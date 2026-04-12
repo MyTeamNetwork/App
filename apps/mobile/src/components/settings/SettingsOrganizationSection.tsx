@@ -6,8 +6,8 @@ import {
   TextInput,
   Pressable,
 } from "react-native";
-import { Image } from "expo-image";
-import { Building2, ChevronDown } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { Building2, ChevronDown, ChevronRight, Palette } from "lucide-react-native";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { buildSettingsColors } from "./settingsColors";
 import { useBaseStyles, fontSize, fontWeight, spacing } from "./settingsShared";
@@ -18,9 +18,11 @@ interface Props {
   orgLoading: boolean;
   updateName: (name: string) => Promise<{ success: boolean; error?: string }>;
   isAdmin: boolean;
+  orgSlug?: string;
 }
 
-export function SettingsOrganizationSection({ org, orgLoading, updateName, isAdmin }: Props) {
+export function SettingsOrganizationSection({ org, orgLoading, updateName, isAdmin, orgSlug }: Props) {
+  const router = useRouter();
   const { neutral, semantic } = useAppColorScheme();
   const colors = useMemo(() => buildSettingsColors(neutral, semantic), [neutral, semantic]);
   const baseStyles = useBaseStyles();
@@ -78,60 +80,17 @@ export function SettingsOrganizationSection({ org, orgLoading, updateName, isAdm
       fontSize: fontSize.base,
       fontWeight: fontWeight.semibold,
     },
-    hintText: {
-      fontSize: 13,
-      color: n.placeholder,
-      marginTop: spacing.sm,
-    },
-    brandingPreview: {
+    customizeRow: {
       flexDirection: "row" as const,
       alignItems: "center" as const,
       gap: 12,
-      padding: spacing.md,
-      borderRadius: 12,
-      marginBottom: 12,
+      paddingVertical: 8,
     },
-    logoPreview: {
-      width: 48,
-      height: 48,
-      borderRadius: 12,
-    },
-    logoPlaceholder: {
-      width: 48,
-      height: 48,
-      borderRadius: 12,
-      backgroundColor: "rgba(255,255,255,0.2)",
-      alignItems: "center" as const,
-      justifyContent: "center" as const,
-    },
-    brandingName: {
+    customizeLabel: {
+      flex: 1,
       fontSize: fontSize.base,
-      fontWeight: fontWeight.semibold,
-      color: "#fff",
-    },
-    brandingSlug: {
-      fontSize: fontSize.sm,
-      color: "rgba(255,255,255,0.8)",
-    },
-    colorRow: {
-      flexDirection: "row" as const,
-      gap: 24,
-    },
-    colorItem: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      gap: 8,
-    },
-    colorSwatch: {
-      width: 24,
-      height: 24,
-      borderRadius: 6,
-      borderWidth: 1,
-      borderColor: n.border,
-    },
-    colorLabel: {
-      fontSize: fontSize.sm,
-      color: n.muted,
+      fontWeight: fontWeight.medium,
+      color: n.foreground,
     },
   }));
 
@@ -198,35 +157,18 @@ export function SettingsOrganizationSection({ org, orgLoading, updateName, isAdm
 
               <View style={baseStyles.divider} />
 
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Branding</Text>
-                <View style={[styles.brandingPreview, { backgroundColor: org?.primary_color || colors.primary }]}>
-                  {org?.logo_url ? (
-                    <Image source={org.logo_url} style={styles.logoPreview} contentFit="contain" transition={200} />
-                  ) : (
-                    <View style={styles.logoPlaceholder}>
-                      <Building2 size={24} color="#fff" />
-                    </View>
-                  )}
-                  <View>
-                    <Text style={styles.brandingName}>{org?.name}</Text>
-                    <Text style={styles.brandingSlug}>/{org?.slug}</Text>
-                  </View>
-                </View>
-                <View style={styles.colorRow}>
-                  <View style={styles.colorItem}>
-                    <View style={[styles.colorSwatch, { backgroundColor: org?.primary_color || colors.primary }]} />
-                    <Text style={styles.colorLabel}>Primary</Text>
-                  </View>
-                  <View style={styles.colorItem}>
-                    <View style={[styles.colorSwatch, { backgroundColor: org?.secondary_color || colors.secondary }]} />
-                    <Text style={styles.colorLabel}>Secondary</Text>
-                  </View>
-                </View>
-                <Text style={styles.hintText}>
-                  To change logo and colors, visit settings on the web.
-                </Text>
-              </View>
+              <Pressable
+                style={styles.customizeRow}
+                onPress={() => {
+                  if (orgSlug) {
+                    router.push(`/(app)/${orgSlug}/settings/customization`);
+                  }
+                }}
+              >
+                <Palette size={20} color={colors.muted} />
+                <Text style={styles.customizeLabel}>Customize</Text>
+                <ChevronRight size={18} color={colors.mutedForeground} />
+              </Pressable>
             </>
           )}
         </View>
