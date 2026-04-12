@@ -3334,6 +3334,7 @@ export type Database = {
       organizations: {
         Row: {
           created_at: string | null
+          default_language: string
           description: string | null
           discussion_post_roles: string[]
           donation_embed_url: string | null
@@ -3344,6 +3345,7 @@ export type Database = {
           feed_post_roles: string[]
           id: string
           job_post_roles: string[]
+          linkedin_resync_enabled: boolean
           logo_url: string | null
           media_upload_roles: string[]
           name: string
@@ -3355,9 +3357,11 @@ export type Database = {
           secondary_color: string | null
           slug: string
           stripe_connect_account_id: string | null
+          timezone: string
         }
         Insert: {
           created_at?: string | null
+          default_language?: string
           description?: string | null
           discussion_post_roles?: string[]
           donation_embed_url?: string | null
@@ -3368,6 +3372,7 @@ export type Database = {
           feed_post_roles?: string[]
           id?: string
           job_post_roles?: string[]
+          linkedin_resync_enabled?: boolean
           logo_url?: string | null
           media_upload_roles?: string[]
           name: string
@@ -3379,9 +3384,11 @@ export type Database = {
           secondary_color?: string | null
           slug: string
           stripe_connect_account_id?: string | null
+          timezone?: string
         }
         Update: {
           created_at?: string | null
+          default_language?: string
           description?: string | null
           discussion_post_roles?: string[]
           donation_embed_url?: string | null
@@ -3392,6 +3399,7 @@ export type Database = {
           feed_post_roles?: string[]
           id?: string
           job_post_roles?: string[]
+          linkedin_resync_enabled?: boolean
           logo_url?: string | null
           media_upload_roles?: string[]
           name?: string
@@ -3403,6 +3411,7 @@ export type Database = {
           secondary_color?: string | null
           slug?: string
           stripe_connect_account_id?: string | null
+          timezone?: string
         }
         Relationships: [
           {
