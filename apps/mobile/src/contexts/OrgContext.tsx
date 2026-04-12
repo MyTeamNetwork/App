@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from "react";
 import { useGlobalSearchParams } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { setUserProperties, captureException } from "@/lib/analytics";
@@ -177,22 +177,22 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     });
   }, [orgSlug, orgId, userRole, isLoading, status]);
 
+  const value = useMemo<OrgContextValue>(() => ({
+    orgSlug: orgSlug ?? "",
+    orgId,
+    orgName,
+    orgLogoUrl,
+    orgPrimaryColor,
+    orgSecondaryColor,
+    hasParentsAccess,
+    userRole,
+    status,
+    isLoading,
+    error,
+  }), [orgSlug, orgId, orgName, orgLogoUrl, orgPrimaryColor, orgSecondaryColor, hasParentsAccess, userRole, status, isLoading, error]);
+
   return (
-    <OrgContext.Provider
-      value={{
-        orgSlug: orgSlug ?? "",
-        orgId,
-        orgName,
-        orgLogoUrl,
-        orgPrimaryColor,
-        orgSecondaryColor,
-        hasParentsAccess,
-        userRole,
-        status,
-        isLoading,
-        error,
-      }}
-    >
+    <OrgContext.Provider value={value}>
       {children}
     </OrgContext.Provider>
   );

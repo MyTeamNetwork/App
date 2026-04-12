@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 
 interface NetworkContextValue {
@@ -28,12 +28,12 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
     }
   }, [wasReconnected]);
 
-  const value: NetworkContextValue = {
+  const value = useMemo<NetworkContextValue>(() => ({
     isConnected,
     isInternetReachable,
     isOffline,
     registerReconnectCallback,
-  };
+  }), [isConnected, isInternetReachable, isOffline, registerReconnectCallback]);
 
   return (
     <NetworkContext.Provider value={value}>

@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import { Appearance, ColorSchemeName } from "react-native";
@@ -97,35 +98,28 @@ export function ColorSchemeProvider({ children }: { children: React.ReactNode })
   }, []);
 
   const colorScheme = resolveScheme(preference, systemColorScheme);
+  const preHydrateScheme = resolveScheme("system", systemColorScheme);
 
-  const value: ColorSchemeContextValue = {
+  const value = useMemo<ColorSchemeContextValue>(() => ({
     colorScheme,
     preference,
     setPreference,
     neutral: colorScheme === "dark" ? NEUTRAL_DARK : NEUTRAL,
     semantic: colorScheme === "dark" ? SEMANTIC_DARK : SEMANTIC,
-  };
+  }), [colorScheme, preference, setPreference]);
 
-  // Render children before AsyncStorage hydration finishes so the app can
-  // match the current system appearance without a light-theme flash.
-  if (!isHydrated) {
-    const preHydrateScheme = resolveScheme("system", systemColorScheme);
-    const preHydrateValue: ColorSchemeContextValue = {
-      colorScheme: preHydrateScheme,
-      preference: "system",
-      setPreference,
-      neutral: preHydrateScheme === "dark" ? NEUTRAL_DARK : NEUTRAL,
-      semantic: preHydrateScheme === "dark" ? SEMANTIC_DARK : SEMANTIC,
-    };
-    return (
-      <ColorSchemeContext.Provider value={preHydrateValue}>
-        {children}
-      </ColorSchemeContext.Provider>
-    );
-  }
+  // Pre-hydration value uses system scheme before AsyncStorage preference loads,
+  // avoiding a light-theme flash on dark-mode devices.
+  const preHydrateValue = useMemo<ColorSchemeContextValue>(() => ({
+    colorScheme: preHydrateScheme,
+    preference: "system" as const,
+    setPreference,
+    neutral: preHydrateScheme === "dark" ? NEUTRAL_DARK : NEUTRAL,
+    semantic: preHydrateScheme === "dark" ? SEMANTIC_DARK : SEMANTIC,
+  }), [preHydrateScheme, setPreference]);
 
   return (
-    <ColorSchemeContext.Provider value={value}>
+    <ColorSchemeContext.Provider value={isHydrated ? value : preHydrateValue}>
       {children}
     </ColorSchemeContext.Provider>
   );
