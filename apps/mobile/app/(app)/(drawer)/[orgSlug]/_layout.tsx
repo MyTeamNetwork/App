@@ -48,6 +48,14 @@ function OrgLayoutInner() {
         }}
       />
       <Stack.Screen
+        name="settings/customization"
+        options={{
+          headerShown: false,
+          title: "Customization",
+          presentation: "card",
+        }}
+      />
+      <Stack.Screen
         name="events"
         options={{
           headerShown: false,
