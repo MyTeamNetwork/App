@@ -2,6 +2,13 @@ import { useState, useRef, useCallback } from "react";
 import { fetchWithAuth } from "@/lib/web-api";
 import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
+import {
+  MAX_UPLOAD_FILE_SIZE_BYTES,
+  readBlobFromUri,
+  uploadToSignedUrl,
+  validateFileSize,
+  validateMimeType,
+} from "@/lib/uploads";
 
 export type UploadStatus = "idle" | "uploading" | "done" | "error";
 
@@ -15,7 +22,6 @@ export interface PendingImage {
   readonly error: string | null;
 }
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const MAX_IMAGES = 4;
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
@@ -29,15 +35,17 @@ export function validatePickedImage(asset: {
   mimeType?: string | null;
   fileSize?: number | null;
 }): string | null {
-  const mimeType = asset.mimeType ?? "";
-  if (!mimeType || !ALLOWED_MIME_TYPES.has(mimeType)) {
-    return "Only JPEG, PNG, WebP, and GIF images are supported";
-  }
-  const fileSize = asset.fileSize ?? 0;
-  if (fileSize > MAX_FILE_SIZE) {
-    return "Image must be under 10MB";
-  }
-  return null;
+  return (
+    validateMimeType(
+      asset.mimeType,
+      ALLOWED_MIME_TYPES,
+      "Only JPEG, PNG, WebP, and GIF images are supported"
+    ) ??
+    validateFileSize(asset.fileSize, {
+      maxBytes: MAX_UPLOAD_FILE_SIZE_BYTES,
+      message: "Image must be under 10MB",
+    })
+  );
 }
 
 interface ImagePickerAsset {
@@ -145,18 +153,8 @@ export function useMediaUpload(orgId: string | null) {
           const { mediaId, signedUrl } = await intentRes.json();
 
           // Step 2: Upload file to storage via signed URL
-          const fileResponse = await fetch(image.localUri);
-          const blob = await fileResponse.blob();
-
-          const putRes = await fetch(signedUrl, {
-            method: "PUT",
-            headers: { "Content-Type": image.mimeType },
-            body: blob,
-          });
-
-          if (!putRes.ok) {
-            throw new Error("Failed to upload image to storage");
-          }
+          const blob = await readBlobFromUri(image.localUri);
+          await uploadToSignedUrl(signedUrl, blob, image.mimeType);
 
           // Step 3: Finalize upload (magic bytes validation)
           const finalizeRes = await fetchWithAuth("/api/media/finalize", {

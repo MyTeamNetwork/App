@@ -3,6 +3,11 @@ import * as ImagePicker from "expo-image-picker";
 import { supabase } from "@/lib/supabase";
 import { validatePickedImage } from "@/hooks/useMediaUpload";
 import * as sentry from "@/lib/analytics/sentry";
+import {
+  buildCacheBustedUrl,
+  readBlobFromUri,
+  uploadToStorage,
+} from "@/lib/uploads";
 
 export interface AvatarUploadState {
   readonly isUploading: boolean;
@@ -57,25 +62,21 @@ export function useAvatarUpload(userId: string | undefined) {
       const ext = (asset.fileName?.split(".").pop() ?? "jpg").toLowerCase();
       const path = `${userId}/avatar.${ext}`;
 
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      const { error: uploadError } = await supabase.storage
-        .from("avatars")
-        .upload(path, blob, {
-          contentType: asset.mimeType ?? "image/jpeg",
-          upsert: true,
-        });
-
-      if (uploadError) {
-        throw uploadError;
-      }
+      const blob = await readBlobFromUri(uri);
+      await uploadToStorage({
+        storage: supabase.storage,
+        bucket: "avatars",
+        path,
+        body: blob,
+        contentType: asset.mimeType ?? "image/jpeg",
+        upsert: true,
+      });
 
       const { data: publicUrlData } = supabase.storage
         .from("avatars")
         .getPublicUrl(path);
 
-      const avatarUrl = `${publicUrlData.publicUrl}?t=${Date.now()}`;
+      const avatarUrl = buildCacheBustedUrl(publicUrlData.publicUrl);
 
       return avatarUrl;
     } catch (e) {

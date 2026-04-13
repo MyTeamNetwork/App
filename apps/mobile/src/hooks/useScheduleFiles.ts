@@ -2,6 +2,14 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { ScheduleFile, User } from "@teammeet/types";
 import * as sentry from "@/lib/analytics/sentry";
+import {
+  MAX_UPLOAD_FILE_SIZE_BYTES,
+  buildTimestampedUploadPath,
+  readBlobFromUri,
+  uploadToStorage,
+  validateFileSize,
+  validateMimeType,
+} from "@/lib/uploads";
 
 const STALE_TIME_MS = 30_000; // 30 seconds
 
@@ -204,33 +212,36 @@ export function useScheduleFiles(
 
       // Validate file type
       const allowedTypes = ["application/pdf", "image/png", "image/jpeg", "image/jpg"];
-      if (!allowedTypes.includes(file.mimeType)) {
-        return { success: false, error: "Please upload a PDF or image file" };
+      const typeError = validateMimeType(
+        file.mimeType,
+        allowedTypes,
+        "Please upload a PDF or image file"
+      );
+      if (typeError) {
+        return { success: false, error: typeError };
       }
 
       // Validate file size (10MB max)
-      if (file.size > 10 * 1024 * 1024) {
-        return { success: false, error: "File size must be under 10MB" };
+      const sizeError = validateFileSize(file.size, {
+        maxBytes: MAX_UPLOAD_FILE_SIZE_BYTES,
+        message: "File size must be under 10MB",
+      });
+      if (sizeError) {
+        return { success: false, error: sizeError };
       }
 
       try {
-        // Fetch the file as blob
-        const response = await fetch(file.uri);
-        const blob = await response.blob();
+        const blob = await readBlobFromUri(file.uri);
 
         // Upload to storage: {user_id}/{timestamp}_{filename}
-        const timestamp = Date.now();
-        const filePath = `${userId}/${timestamp}_${file.name}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("schedule-files")
-          .upload(filePath, blob, {
-            contentType: file.mimeType,
-          });
-
-        if (uploadError) {
-          return { success: false, error: uploadError.message };
-        }
+        const filePath = buildTimestampedUploadPath(userId, file.name);
+        await uploadToStorage({
+          storage: supabase.storage,
+          bucket: "schedule-files",
+          path: filePath,
+          body: blob,
+          contentType: file.mimeType,
+        });
 
         // Record in database
         const { error: dbError } = await supabase.from("schedule_files").insert({
@@ -268,7 +279,7 @@ export function useScheduleFiles(
           .remove([file.file_path]);
 
         if (storageError) {
-          console.error("Storage delete error:", storageError);
+          sentry.captureException(storageError);
           // Continue with DB delete even if storage fails
         }
 

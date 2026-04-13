@@ -39,6 +39,11 @@ import { TYPOGRAPHY } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { formatRelativeTime } from "@/lib/date-format";
 import {
+  buildCacheBustedUrl,
+  readBlobFromUri,
+  uploadToStorage,
+} from "@/lib/uploads";
+import {
   buildMobileDiscussionThreadRoute,
   buildMobileNewDiscussionThreadRoute,
   MOBILE_DISCUSSION_AUTHOR_SELECT,
@@ -567,22 +572,20 @@ export default function ChatGroupsScreen() {
       const path = `${orgId}/${groupId}.${ext}`;
 
       try {
-        const response = await fetch(asset.uri);
-        const blob = await response.blob();
-
-        const { error: uploadError } = await supabase.storage
-          .from("chat-group-avatars")
-          .upload(path, blob, {
-            contentType: asset.mimeType ?? "image/jpeg",
-            upsert: true,
-          });
-
-        if (uploadError) throw uploadError;
+        const blob = await readBlobFromUri(asset.uri);
+        await uploadToStorage({
+          storage: supabase.storage,
+          bucket: "chat-group-avatars",
+          path,
+          body: blob,
+          contentType: asset.mimeType ?? "image/jpeg",
+          upsert: true,
+        });
 
         const { data: urlData } = supabase.storage
           .from("chat-group-avatars")
           .getPublicUrl(path);
-        const bustedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+        const bustedUrl = buildCacheBustedUrl(urlData.publicUrl);
 
         // Optimistic update
         setLocalAvatarUrls((prev) => ({ ...prev, [groupId]: bustedUrl }));
@@ -597,9 +600,8 @@ export default function ChatGroupsScreen() {
       } catch (e) {
         // Rollback optimistic update
         setLocalAvatarUrls((prev) => {
-          const next = { ...prev };
-          delete next[groupId];
-          return next;
+          const { [groupId]: _, ...rest } = prev;
+          return rest;
         });
       } finally {
         if (isMountedRef.current) setUploadingGroupId(null);

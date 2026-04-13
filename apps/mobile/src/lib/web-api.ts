@@ -21,7 +21,16 @@ export function getWebPath(orgSlug: string, path?: string): string {
     : `${WEB_API_URL}/${normalizedOrgSlug}`;
 }
 
-export async function fetchWithAuth(path: string, options: RequestInit) {
+export function buildAuthorizedHeaders(
+  headers: HeadersInit | undefined,
+  accessToken: string
+): Headers {
+  const authorizedHeaders = new Headers(headers);
+  authorizedHeaders.set("Authorization", `Bearer ${accessToken}`);
+  return authorizedHeaders;
+}
+
+export async function fetchWithAuth(path: string, options: RequestInit = {}) {
   let { data: sessionData } = await supabase.auth.getSession();
 
   // If the access token is expired or expiring within 30 s, refresh it.
@@ -49,10 +58,7 @@ export async function fetchWithAuth(path: string, options: RequestInit) {
     throw new Error("Not authenticated");
   }
 
-  const headers = {
-    ...(options.headers as Record<string, string> | undefined),
-    Authorization: `Bearer ${accessToken}`,
-  };
+  const headers = buildAuthorizedHeaders(options.headers, accessToken);
 
   return fetch(`${WEB_API_URL}${path}`, {
     ...options,

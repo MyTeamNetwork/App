@@ -163,11 +163,8 @@ export function useOrgSettings(orgId: string | null): UseOrgSettingsReturn {
           formData.append("secondaryColor", data.secondaryColor);
         }
         if (data.logo) {
-          formData.append("logo", {
-            uri: data.logo.uri,
-            name: data.logo.name,
-            type: data.logo.type,
-          } as unknown as Blob);
+          // React Native FormData accepts file-like objects cast as Blob
+          formData.append("logo", { uri: data.logo.uri, name: data.logo.name, type: data.logo.type } as unknown as Blob);
         }
 
         const response = await fetchWithAuth(

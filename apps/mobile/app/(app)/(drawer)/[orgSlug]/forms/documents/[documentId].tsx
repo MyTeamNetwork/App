@@ -13,7 +13,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, Download, Upload, Check, FileText } from "lucide-react-native";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import type { FormDocument, FormDocumentSubmission } from "@teammeet/types";
@@ -21,6 +20,7 @@ import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { formatDefaultDateFromString } from "@/lib/date-format";
+import { buildTimestampedUploadPath, readBlobFromUri, uploadToStorage } from "@/lib/uploads";
 import { openHttpsUrl } from "@/lib/url-safety";
 
 const DOC_COLORS = {
@@ -193,31 +193,20 @@ export default function DocumentFormDetailScreen() {
         return;
       }
 
-      // Read file as base64
-      const fileUri = selectedFile.uri;
-      const base64 = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: "base64",
-      });
-
-      // Convert base64 to Uint8Array
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      // Upload file to storage
-      const timestamp = Date.now();
+      // Read file and upload to storage
+      const blob = await readBlobFromUri(selectedFile.uri);
       const fileName = selectedFile.name || "submission";
-      const filePath = `${document.organization_id}/submissions/${user.id}/${timestamp}_${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("form-documents")
-        .upload(filePath, bytes, {
-          contentType: selectedFile.mimeType || "application/octet-stream",
-        });
-
-      if (uploadError) throw uploadError;
+      const filePath = buildTimestampedUploadPath(
+        `${document.organization_id}/submissions/${user.id}`,
+        fileName
+      );
+      await uploadToStorage({
+        storage: supabase.storage,
+        bucket: "form-documents",
+        path: filePath,
+        body: blob,
+        contentType: selectedFile.mimeType || "application/octet-stream",
+      });
 
       // Create submission record
       const { error: dbError } = await supabase
