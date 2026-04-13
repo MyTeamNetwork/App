@@ -3,12 +3,27 @@
  * Configures testing environment and global mocks
  */
 
+// Mock react-native (bun test uses node env, not react-native)
+jest.mock("react-native", () => ({
+  Platform: { OS: "ios" },
+  StyleSheet: { create: (s) => s },
+  NativeModules: {},
+  NativeEventEmitter: jest.fn(() => ({
+    addListener: jest.fn(),
+    removeListeners: jest.fn(),
+  })),
+}));
+
 // Mock reanimated
-jest.mock("react-native-reanimated", () => {
-  const Reanimated = require("react-native-reanimated/mock");
-  Reanimated.default.call = () => {};
-  return Reanimated;
-});
+jest.mock("react-native-reanimated", () => ({
+  default: { call: jest.fn() },
+  useSharedValue: jest.fn(() => ({ value: 0 })),
+  useAnimatedStyle: jest.fn(() => ({})),
+  withTiming: jest.fn(),
+  withSpring: jest.fn(),
+  FadeIn: { duration: jest.fn().mockReturnThis() },
+  FadeInDown: { duration: jest.fn().mockReturnThis(), delay: jest.fn().mockReturnThis() },
+}));
 
 // Mock expo modules
 jest.mock("expo-notifications", () => ({

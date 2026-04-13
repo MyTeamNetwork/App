@@ -1,8 +1,11 @@
 module.exports = {
   testEnvironment: "node",
   transform: {
-    "^.+\\.(ts|tsx)$": ["babel-jest", { presets: ["babel-preset-expo"] }],
+    "^.+\\.(ts|tsx|js|jsx)$": ["babel-jest", { presets: ["babel-preset-expo"] }],
   },
+  transformIgnorePatterns: [
+    "node_modules/(?!(.bun/.*?/node_modules/)?(expo|@expo|expo-modules-core)/)",
+  ],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   testMatch: ["**/__tests__/**/*.test.ts?(x)", "**/*.test.ts?(x)"],
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
@@ -50,6 +53,7 @@ module.exports = {
   },
   coverageReporters: ["text", "lcov", "html"],
   moduleNameMapper: {
+    "^react-native$": "<rootDir>/__mocks__/react-native.js",
     "^@/(.*)$": "<rootDir>/src/$1",
     "^@babel/runtime/(.*)$": "<rootDir>/node_modules/@babel/runtime/$1",
     "^@teammeet/core$": "<rootDir>/../../packages/core/src",
