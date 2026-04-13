@@ -28,6 +28,7 @@ bun typecheck        # Type-check all packages in parallel
 ```
 
 ### Testing (Web)
+
 ```bash
 bun run test           # All suites (unit + security + payment + route)
 bun run test:unit      # Focused unit/integration
@@ -39,6 +40,7 @@ bun run test:e2e       # Playwright E2E
 ```
 
 ### Stripe Webhooks (Local)
+
 ```bash
 stripe listen --forward-to localhost:3000/api/stripe/webhook
 stripe listen --forward-connect-to localhost:3000/api/stripe/webhook-connect
@@ -60,6 +62,7 @@ stripe listen --forward-connect-to localhost:3000/api/stripe/webhook-connect
 Organizations are first-class entities identified by slugs (e.g., `/[orgSlug]/members`). Middleware validates org access on every request.
 
 ### Web Project Structure
+
 ```
 apps/web/src/
 ├── app/                    # Next.js App Router
@@ -76,27 +79,31 @@ apps/web/src/
 ```
 
 ### Supabase Client Wrappers (Web)
+
 - `lib/supabase/server.ts` — Server Components (cookies)
 - `lib/supabase/client.ts` — Client Components (browser)
 - `lib/supabase/middleware.ts` — Middleware (edge runtime)
 - `lib/supabase/service.ts` — Admin operations (service role key)
 
 ### Middleware Request Flow
+
 1. Parse auth cookies, validate JWT
 2. Refresh session if needed
 3. Check public vs. protected route
 4. Validate org membership for `[orgSlug]` routes
 5. Redirect revoked users to `/app`
-6. Enforce canonical domain (myteamnetwork.com → www.myteamnetwork.com)
+6. Enforce canonical domain (myteamnetwork.com → [www.myteamnetwork.com](http://www.myteamnetwork.com))
 
 Public routes: `/`, `/demos`, `/terms`, `/privacy`, `/app/parents-join`, `/auth/*`. Bypasses: webhook endpoints, `/api/auth/validate-age`, `/api/telemetry/error`, parent invite accept. Org existence and no-membership gating finalized in `src/app/[orgSlug]/layout.tsx`.
 
 ## Key Architectural Patterns
 
 ### Role-Based Access Control
+
 Three roles: **admin** (full access), **active_member** (most features), **alumni** (read-only, limited). Role normalization: `member` → `active_member`, `viewer` → `alumni`.
 
 ### Payment Idempotency
+
 - Client generates stable `idempotency_key` (localStorage)
 - Server creates `payment_attempts` row with unique constraint
 - Duplicates return existing attempt/checkout URL
@@ -104,21 +111,27 @@ Three roles: **admin** (full access), **active_member** (most features), **alumn
 - States: `initiated`, `processing`, `succeeded`, `failed`
 
 ### Organization Subscription Tiers
+
 Alumni quota tiers: 0-250 (+$10/mo), 251-500 (+$20), 501-1000 (+$35), 1001-2500 (+$60), 2500-5000 (+$100), 5000+ (sales-led). File: `packages/core/src/pricing/index.ts`
 
 ### Soft Delete Pattern
+
 Most tables use `deleted_at` timestamp. Always filter: `.is("deleted_at", null)`.
 
 ### Announcement Audience Targeting
+
 Audiences: `all`, `members`/`active_members`, `alumni`, `individuals` (specific user IDs). Server-side filtering in `src/lib/announcements.ts`.
 
 ### Stripe Connect Donations
+
 Funds route directly to org's connected Stripe account. Webhook updates `organization_donations` + rolls up to `organization_donation_stats`. See `docs/stripe-donations.md`.
 
 ### Membership Lifecycle
+
 States: **pending** (awaiting approval) → **active** (full access) → **revoked** (redirected to `/app`).
 
 ### Role-Based Navigation
+
 Nav items declare allowed roles in `src/lib/navigation/nav-items.tsx`. Orgs customize via `nav_config` JSONB column. Sidebar filters by user role.
 
 ## Shared Packages
@@ -172,9 +185,7 @@ Use `SKIP_STRIPE_VALIDATION=true` in dev to skip Stripe price ID validation.
 - Consider moving invite code generation to server-side RPC for security
 - RLS policies use helper functions: `is_org_admin()`, `is_org_member()`, `has_active_role()`
 
-## Plan Mode
 
-Sacrifice grammar at the sake of concision" is the stupidest advice possible. I saw opus thinking about this line and it took it to mean be efficient. Which meant building bullshit. Take it out of your stuff immediately.
 
 ## Browser Automation & Web Testing
 
