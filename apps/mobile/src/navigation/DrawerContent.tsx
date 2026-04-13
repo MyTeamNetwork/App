@@ -170,6 +170,11 @@ export function DrawerContent(props: DrawerContentComponentProps) {
     // Use replace for secondary screens to avoid stacking
     if (item.href === `/(app)/${slug}`) {
       router.push(item.href);
+    } else if (item.href === "/(app)/(drawer)/delete-account") {
+      router.push({
+        pathname: item.href as any,
+        params: slug ? { currentSlug: slug } : undefined,
+      } as any);
     } else if (item.href === "/(app)") {
       router.navigate({
         pathname: item.href as any,

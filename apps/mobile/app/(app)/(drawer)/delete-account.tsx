@@ -10,17 +10,17 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ChevronLeft, AlertTriangle, ShieldX } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { useAuth } from "@/hooks/useAuth";
 import { fetchWithAuth } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
+import { signOut } from "@/lib/supabase";
 
 const CONFIRMATION_TEXT = "DELETE MY ACCOUNT";
 const API_PATH = "/api/user/delete-account";
@@ -33,7 +33,7 @@ interface DeletionStatus {
 
 export default function DeleteAccountScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const params = useLocalSearchParams<{ currentSlug?: string }>();
   const { neutral, semantic } = useAppColorScheme();
   const isMountedRef = useRef(true);
 
@@ -262,8 +262,18 @@ export default function DeleteAccountScreen() {
   }, [fetchStatus]);
 
   const handleBack = useCallback(() => {
-    router.back();
-  }, [router]);
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    if (params.currentSlug) {
+      router.replace(`/(app)/${params.currentSlug}/(tabs)`);
+      return;
+    }
+
+    router.replace("/(app)");
+  }, [params.currentSlug, router]);
 
   const handleDelete = useCallback(async () => {
     if (!isConfirmed) return;
@@ -338,7 +348,12 @@ export default function DeleteAccountScreen() {
         <LinearGradient colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]} style={styles.headerGradient}>
           <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
             <View style={styles.headerContent}>
-              <Pressable onPress={handleBack} style={styles.backButton}>
+              <Pressable
+                onPress={handleBack}
+                style={styles.backButton}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+              >
                 <ChevronLeft size={28} color={APP_CHROME.headerTitle} />
               </Pressable>
               <Text style={styles.headerTitle}>Delete Account</Text>
@@ -361,7 +376,12 @@ export default function DeleteAccountScreen() {
       <LinearGradient colors={[APP_CHROME.gradientStart, APP_CHROME.gradientEnd]} style={styles.headerGradient}>
         <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
           <View style={styles.headerContent}>
-            <Pressable onPress={handleBack} style={styles.backButton}>
+            <Pressable
+              onPress={handleBack}
+              style={styles.backButton}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
               <ChevronLeft size={28} color={APP_CHROME.headerTitle} />
             </Pressable>
             <Text style={styles.headerTitle}>Delete Account</Text>
@@ -407,6 +427,8 @@ export default function DeleteAccountScreen() {
             <Pressable
               onPress={handleCancelDeletion}
               disabled={isSubmitting}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel account deletion"
               style={({ pressed }) => [
                 styles.cancelButton,
                 pressed && styles.cancelButtonPressed,
@@ -479,6 +501,8 @@ export default function DeleteAccountScreen() {
               <Pressable
                 onPress={handleDelete}
                 disabled={!isConfirmed || isSubmitting}
+                accessibilityRole="button"
+                accessibilityLabel="Delete my account"
                 style={({ pressed }) => [
                   styles.dangerButton,
                   pressed && styles.dangerButtonPressed,
