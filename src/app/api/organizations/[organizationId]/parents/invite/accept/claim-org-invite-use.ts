@@ -113,6 +113,7 @@ export async function claimOrgInviteUse(
     }
   }
 
+  // Claim loop exhausted due to contention — fetch current state to validate final response
   const { data: current, error: currentError } = await serviceSupabase
     .from("organization_invites")
     .select("organization_id,expires_at,revoked_at,uses_remaining")

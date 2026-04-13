@@ -31,9 +31,7 @@ interface RouteParams {
 interface EnterpriseInviteRow {
   id: string;
   organization_id: string | null;
-  email: string;
   role: string;
-  status: string;
   created_at: string;
   expires_at: string | null;
   code?: string;
@@ -66,10 +64,15 @@ export async function GET(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   // Get all organizations for this enterprise to map names
-  const { data: orgs } = await ctx.serviceSupabase
+  const { data: orgs, error: orgsError } = await ctx.serviceSupabase
     .from("organizations")
     .select("id, name")
     .eq("enterprise_id", ctx.enterpriseId);
+
+  if (orgsError) {
+    console.error("[enterprise/invites GET] Failed to fetch organizations:", orgsError);
+    return respond({ error: "Failed to fetch organizations" }, 500);
+  }
 
   const orgMap = new Map(orgs?.map((o) => [o.id, o.name]) ?? []);
 
@@ -84,12 +87,20 @@ export async function GET(req: Request, { params }: RouteParams) {
     return respond({ error: "Invalid cursor" }, 400);
   }
 
-  // Get paginated invites for this enterprise
+  // Get paginated invites for this enterprise. Token is included (admin-only endpoint);
+  // avoid logging the full invites array, log IDs only. Exclude revoked invites by default.
+  const includeRevoked = url.searchParams.get("include_revoked") === "true";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let inviteQuery = (ctx.serviceSupabase as any)
     .from("enterprise_invites")
-    .select("id, organization_id, email, role, status, created_at, expires_at, code, token, uses_remaining, revoked_at")
-    .eq("enterprise_id", ctx.enterpriseId)
+    .select("id, organization_id, role, created_at, expires_at, code, token, uses_remaining, revoked_at")
+    .eq("enterprise_id", ctx.enterpriseId);
+
+  if (!includeRevoked) {
+    inviteQuery = inviteQuery.is("revoked_at", null);
+  }
+
+  inviteQuery = inviteQuery
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(limit + 1);
