@@ -24,7 +24,6 @@ import {
   Receipt,
   Settings,
   SlidersHorizontal,
-  Trash2,
   Trophy,
   Users,
 } from "lucide-react-native";
@@ -49,11 +48,16 @@ interface NavSection {
   items: NavItem[];
 }
 
-// Pinned footer items (Settings, Navigation, Organizations, Delete Account, Sign Out)
+// Pinned footer items (Settings, Navigation, Organizations, Sign Out) — Delete Account is under profile in scroll
 const PINNED_ITEM_HEIGHT = 44;
-const PINNED_FOOTER_COUNT = 5;
+const PINNED_FOOTER_COUNT = 4;
 const FOOTER_PADDING = 16;
-const FOOTER_HEIGHT = PINNED_ITEM_HEIGHT * PINNED_FOOTER_COUNT + FOOTER_PADDING;
+/** Pinned strip (wordmark) + divider margins — keeps scroll clear of fixed footer */
+const BRAND_STRIP_HEIGHT = 104;
+const FOOTER_HEIGHT =
+  BRAND_STRIP_HEIGHT +
+  PINNED_ITEM_HEIGHT * PINNED_FOOTER_COUNT +
+  FOOTER_PADDING;
 
 export function DrawerContent(props: DrawerContentComponentProps) {
   const router = useRouter();
@@ -240,9 +244,9 @@ export function DrawerContent(props: DrawerContentComponentProps) {
         ]}
         scrollEnabled
       >
-        {/* Drawer header: org identity + product wordmark */}
-        <View style={styles.drawerHeader}>
-          {slug ? (
+        {/* Drawer header: org identity only */}
+        {slug ? (
+          <View style={styles.drawerHeader}>
             <View style={styles.orgIdentityRow}>
               <View style={styles.orgLogoContainer}>
                 {orgLogoUrl ? (
@@ -257,19 +261,13 @@ export function DrawerContent(props: DrawerContentComponentProps) {
                 )}
               </View>
               {orgName ? (
-                <Text style={styles.orgName} numberOfLines={1}>{orgName}</Text>
+                <Text style={styles.orgName} numberOfLines={1}>
+                  {orgName}
+                </Text>
               ) : null}
             </View>
-          ) : null}
-          <Image
-            source={require("../../assets/brand-logo.png")}
-            style={styles.brandLogo}
-            contentFit="contain"
-            transition={0}
-            cachePolicy="memory"
-            accessibilityLabel="TeamNetwork"
-          />
-        </View>
+          </View>
+        ) : null}
         {/* Profile Card */}
         <Pressable
           style={({ pressed }) => [styles.profileCard, pressed && styles.profileCardPressed]}
@@ -304,14 +302,23 @@ export function DrawerContent(props: DrawerContentComponentProps) {
         ))}
       </DrawerContentScrollView>
 
-      {/* Pinned Footer */}
+      {/* Pinned: TeamNetwork (always visible) + settings / account — does not scroll */}
       <View style={[styles.pinnedFooter, { paddingBottom: bottomInset }]}>
+        <View style={styles.brandPinned}>
+          <View style={styles.brandLogoFrame}>
+            <Image
+              source={require("../../assets/brand-logo.png")}
+              style={styles.brandLogoInline}
+              contentFit="contain"
+              transition={0}
+              cachePolicy="memory"
+              accessibilityLabel="TeamNetwork"
+              accessibilityRole="image"
+            />
+          </View>
+        </View>
         <View style={styles.divider} />
         {slug ? pinnedItems.map((item) => renderNavItem(item)) : null}
-        {renderNavItem(
-          { label: "Delete My Account", href: "/(app)/(drawer)/delete-account", icon: Trash2 },
-          { isDangerous: true }
-        )}
         {renderNavItem({ label: "Sign Out", href: "", icon: LogOut }, { isSignOut: true, isDangerous: true })}
       </View>
     </View>
@@ -327,10 +334,8 @@ const styles = StyleSheet.create({
     // paddingTop is set dynamically with safe area inset
   },
   drawerHeader: {
-    paddingTop: spacing.md,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
-    gap: spacing.md,
   },
   orgIdentityRow: {
     flexDirection: "row",
@@ -362,11 +367,31 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     color: NEUTRAL.surface,
   },
-  brandLogo: {
-    width: 100,
-    height: 20,
-    alignSelf: "flex-start",
-    opacity: 0.5,
+  /** Pinned footer strip — wordmark stays on screen while nav scrolls */
+  brandPinned: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    width: "100%" as const,
+    backgroundColor: NEUTRAL.dark950,
+  },
+  /** Fixed frame so Expo Image lays out at full size on web + native (avoids tiny absolute img) */
+  brandLogoFrame: {
+    width: "100%" as const,
+    maxWidth: 288,
+    height: 72,
+    minHeight: 72,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    alignSelf: "center" as const,
+  },
+  brandLogoInline: {
+    width: "100%" as const,
+    height: "100%" as const,
+    maxHeight: 72,
+    opacity: 0.68,
   },
   profileCard: {
     flexDirection: "row",
@@ -455,6 +480,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: NEUTRAL.dark950,
-    paddingTop: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255, 255, 255, 0.09)",
+    boxShadow: "0 -8px 24px rgba(0, 0, 0, 0.35)",
   },
 });
