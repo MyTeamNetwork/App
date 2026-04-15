@@ -2,8 +2,8 @@ import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import {
   View,
   Text,
-  FlatList,
-  ActivityIndicator,
+  SectionList,
+  StyleSheet,
   RefreshControl,
   Pressable,
 } from "react-native";
@@ -32,6 +32,24 @@ import { TYPOGRAPHY } from "@/lib/typography";
 import { AnnouncementCard, type AnnouncementCardAnnouncement } from "@/components/cards/AnnouncementCard";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui";
+
+function getAnnouncementSectionLabel(date: Date, now: Date): string {
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round(
+    (startToday.getTime() - startDate.getTime()) / 86400000
+  );
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays >= 2 && diffDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: "long" });
+  }
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
+}
 
 export default function AnnouncementsScreen() {
   const { orgSlug, orgId, orgName, orgLogoUrl } = useOrg();
@@ -107,13 +125,30 @@ export default function AnnouncementsScreen() {
       backgroundColor: n.surface,
     },
     listContent: {
-      padding: SPACING.md,
+      paddingTop: SPACING.sm,
       paddingBottom: 40,
       flexGrow: 1,
     },
-    // Cards
-    card: {
-      marginBottom: SPACING.md,
+    sectionHeader: {
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.md,
+      paddingBottom: SPACING.xs,
+      backgroundColor: n.surface,
+    },
+    sectionHeaderText: {
+      ...TYPOGRAPHY.labelSmall,
+      fontWeight: "600" as const,
+      color: n.muted,
+      letterSpacing: 0.5,
+      textTransform: "uppercase" as const,
+    },
+    separator: {
+      height: StyleSheet.hairlineWidth,
+      marginLeft: SPACING.md + 44 + SPACING.md,
+      backgroundColor: n.divider,
+    },
+    feedItem: {
+      paddingHorizontal: SPACING.md,
     },
     // Empty state
     emptyContainer: {
@@ -133,18 +168,60 @@ export default function AnnouncementsScreen() {
     },
   }));
 
-  // Sort announcements: pinned first, then by created_at descending
+  // Newest first (pinned get their own section via announcementSections)
   const sortedAnnouncements = useMemo(() => {
     return [...announcements].sort((a, b) => {
-      // Pinned announcements come first
-      if (a.is_pinned && !b.is_pinned) return -1;
-      if (!a.is_pinned && b.is_pinned) return 1;
-      // Within same pin status, sort by created_at descending (newest first)
       const dateA = new Date(a.created_at || 0).getTime();
       const dateB = new Date(b.created_at || 0).getTime();
       return dateB - dateA;
     });
   }, [announcements]);
+
+  const announcementSections = useMemo(() => {
+    const now = new Date();
+    const byLabel = new Map<string, Announcement[]>();
+    const labelOrder: string[] = [];
+
+    const pinned = sortedAnnouncements
+      .filter((a) => a.is_pinned)
+      .sort(
+        (a, b) =>
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
+      );
+
+    const rest = sortedAnnouncements.filter((a) => !a.is_pinned);
+
+    for (const a of rest) {
+      const d = new Date(a.created_at || 0);
+      const label = getAnnouncementSectionLabel(d, now);
+      if (!byLabel.has(label)) {
+        byLabel.set(label, []);
+        labelOrder.push(label);
+      }
+      byLabel.get(label)!.push(a);
+    }
+
+    for (const arr of byLabel.values()) {
+      arr.sort(
+        (a, b) =>
+          new Date(b.created_at || 0).getTime() -
+          new Date(a.created_at || 0).getTime()
+      );
+    }
+
+    const sections: { title: string; data: Announcement[] }[] = [];
+    if (pinned.length > 0) {
+      sections.push({ title: "Pinned", data: pinned });
+    }
+    for (const title of labelOrder) {
+      const data = byLabel.get(title);
+      if (data?.length) {
+        sections.push({ title, data });
+      }
+    }
+    return sections;
+  }, [sortedAnnouncements]);
 
   // Safe drawer toggle
   const handleDrawerToggle = useCallback(() => {
@@ -197,24 +274,43 @@ export default function AnnouncementsScreen() {
     }
   }, [refetch]);
 
-  const renderAnnouncement = ({ item }: { item: Announcement }) => {
-    const cardAnnouncement: AnnouncementCardAnnouncement = {
-      id: item.id,
-      title: item.title,
-      body: item.body,
-      created_at: item.created_at,
-      is_pinned: item.is_pinned,
-    };
+  const renderAnnouncement = useCallback(
+    ({ item }: { item: Announcement }) => {
+      const cardAnnouncement: AnnouncementCardAnnouncement = {
+        id: item.id,
+        title: item.title,
+        body: item.body,
+        created_at: item.created_at,
+        is_pinned: item.is_pinned,
+      };
 
-    return (
-      <AnnouncementCard
-        announcement={cardAnnouncement}
-        onPress={() => router.push(`/(app)/${orgSlug}/announcements/${item.id}`)}
-        style={styles.card}
-        maxBodyLines={4}
-      />
-    );
-  };
+      return (
+        <AnnouncementCard
+          variant="feed"
+          announcement={cardAnnouncement}
+          onPress={() =>
+            router.push(`/(app)/${orgSlug}/announcements/${item.id}`)
+          }
+          style={styles.feedItem}
+        />
+      );
+    },
+    [orgSlug, router, styles]
+  );
+
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: { title: string } }) => (
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionHeaderText}>{section.title}</Text>
+      </View>
+    ),
+    [styles]
+  );
+
+  const itemSeparator = useCallback(
+    () => <View style={styles.separator} />,
+    [styles]
+  );
 
   if (loading && announcements.length === 0) {
     return (
@@ -312,11 +408,13 @@ export default function AnnouncementsScreen() {
 
       {/* Content Sheet */}
       <View style={styles.contentSheet}>
-        <FlatList
-          data={sortedAnnouncements}
+        <SectionList
+          sections={announcementSections}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           renderItem={renderAnnouncement}
+          renderSectionHeader={renderSectionHeader}
+          ItemSeparatorComponent={itemSeparator}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -332,9 +430,9 @@ export default function AnnouncementsScreen() {
               </Text>
             </View>
           }
-          initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          windowSize={5}
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={7}
           removeClippedSubviews={true}
         />
       </View>
