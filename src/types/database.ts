@@ -613,6 +613,7 @@ export type Database = {
       alumni: {
         Row: {
           address_summary: string | null
+          birth_year: number | null
           created_at: string | null
           current_city: string | null
           current_company: string | null
@@ -647,6 +648,7 @@ export type Database = {
         }
         Insert: {
           address_summary?: string | null
+          birth_year?: number | null
           created_at?: string | null
           current_city?: string | null
           current_company?: string | null
@@ -681,6 +683,7 @@ export type Database = {
         }
         Update: {
           address_summary?: string | null
+          birth_year?: number | null
           created_at?: string | null
           current_city?: string | null
           current_company?: string | null
@@ -5922,6 +5925,10 @@ export type Database = {
       }
       get_alumni_quota: { Args: { p_org_id: string }; Returns: Json }
       get_dropdown_options: { Args: { p_org_id: string }; Returns: Json }
+      get_enterprise_alumni_stats: {
+        Args: { p_enterprise_id: string }
+        Returns: Json
+      }
       get_enterprise_member_counts: {
         Args: { enterprise_ids: string[] }
         Returns: {
