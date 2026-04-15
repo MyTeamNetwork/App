@@ -24,10 +24,12 @@ export function AppDrawer() {
     <Drawer
       screenOptions={{
         headerShown: false,
-        drawerType: Platform.OS === "web" ? "slide" : "front",
-        overlayColor: "rgba(0, 0, 0, 0.5)",
+        // "front" = drawer slides over the scene (no squashed / narrowed main content).
+        // "slide" shrinks the scene beside the drawer — avoid for a standard overlay drawer.
+        drawerType: "front",
+        overlayColor: "rgba(15, 23, 42, 0.52)",
         swipeEnabled: Platform.OS !== "web",
-        swipeEdgeWidth: 40,
+        swipeEdgeWidth: 48,
         drawerStyle: [
           styles.drawer,
           {
