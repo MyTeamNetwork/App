@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Badge, Button, Card, EmptyState, Input } from "@/components/ui";
+import { GoogleCalendarSyncPanel } from "@/components/settings/GoogleCalendarSyncPanel";
+import { OutlookCalendarSyncPanel } from "@/components/settings/OutlookCalendarSyncPanel";
+import { useGoogleCalendarSync } from "@/hooks/useGoogleCalendarSync";
+import { useOutlookCalendarSync } from "@/hooks/useOutlookCalendarSync";
 import { resolveActionLabel } from "@/lib/navigation/label-resolver";
 import type { AcademicSchedule } from "@/types/database";
 import type { NavConfig } from "@/lib/navigation/nav-items";
@@ -21,6 +25,7 @@ type FeedSummary = {
 type MyCalendarTabProps = {
   orgId: string;
   orgSlug: string;
+  orgName: string;
   mySchedules: AcademicSchedule[];
   navConfig: NavConfig | null;
   pageLabel: string;
@@ -52,7 +57,7 @@ function formatOccurrence(schedule: AcademicSchedule): string {
       return "Daily";
     case "weekly":
       if (schedule.day_of_week && schedule.day_of_week.length > 0) {
-        const labels = schedule.day_of_week.map((day) => DAYS[day]).join(", ");
+        const labels = schedule.day_of_week.map((day: number) => DAYS[day]).join(", ");
         return `Every ${labels}`;
       }
       return "Weekly";
@@ -87,10 +92,18 @@ function isLikelyIcsUrl(feedUrl: string) {
 export function MyCalendarTab({
   orgId,
   orgSlug,
+  orgName,
   mySchedules,
   navConfig,
   pageLabel,
 }: MyCalendarTabProps) {
+  // Google Calendar Sync hook
+  const gcal = useGoogleCalendarSync({ orgId, orgSlug });
+
+  // Outlook Calendar Sync hook
+  const ocal = useOutlookCalendarSync({ orgId, orgSlug });
+
+  // Personal calendar feed state
   const [feedUrl, setFeedUrl] = useState("");
   const [personalFeeds, setPersonalFeeds] = useState<FeedSummary[]>([]);
   const [loadingFeeds, setLoadingFeeds] = useState(true);
@@ -99,6 +112,12 @@ export function MyCalendarTab({
   const [disconnectingFeedId, setDisconnectingFeedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Google Calendar import state
+  const [selectedGoogleCalId, setSelectedGoogleCalId] = useState("");
+  const [importingGoogleCal, setImportingGoogleCal] = useState(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const refreshFeeds = useCallback(async () => {
     setLoadingFeeds(true);
@@ -223,10 +242,187 @@ export function MyCalendarTab({
     }
   };
 
+  const handleImportGoogleCalendar = async () => {
+    if (!selectedGoogleCalId) {
+      setImportError("Select a calendar to import.");
+      return;
+    }
+
+    setImportError(null);
+    setImportNotice(null);
+    setImportingGoogleCal(true);
+
+    try {
+      const response = await fetch("/api/calendar/feeds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "google",
+          googleCalendarId: selectedGoogleCalId,
+          organizationId: orgId,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || "Failed to import Google Calendar.");
+      }
+
+      setSelectedGoogleCalId("");
+      setImportNotice(data?.message || "Google Calendar imported and syncing.");
+      await refreshFeeds();
+      notifyAvailabilityRefresh();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Failed to import Google Calendar.");
+    } finally {
+      setImportingGoogleCal(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Section 1: Google Calendar Sync */}
       <section>
-        <h2 className="text-lg font-semibold text-foreground mb-4">Sync Personal Calendar</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-4">Google Calendar Sync</h2>
+
+        {/* OAuth callback banners */}
+        {gcal.oauthStatus === "connected" && (
+          <div className="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-sm text-green-700 dark:text-green-300">
+            Google Calendar connected successfully! Your events will now sync automatically.
+          </div>
+        )}
+        {gcal.oauthError && (
+          <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300">
+            {gcal.oauthError === "access_denied"
+              ? "You denied access to your Google Calendar. Please try again and allow access."
+              : gcal.oauthError === "invalid_code"
+              ? "The authorization code has expired. Please try connecting again."
+              : gcal.oauthError === "oauth_init_failed"
+              ? "Google Calendar integration is not configured. Please contact the administrator."
+              : gcal.oauthErrorMessage || "Failed to connect Google Calendar. Please try again."}
+          </div>
+        )}
+
+        <GoogleCalendarSyncPanel
+          orgName={orgName}
+          organizationId={orgId}
+          connection={gcal.connection}
+          isConnected={gcal.isConnected}
+          connectionLoading={gcal.connectionLoading}
+          calendars={gcal.calendars}
+          calendarsLoading={gcal.calendarsLoading}
+          targetCalendarId={gcal.targetCalendarId}
+          preferences={gcal.preferences}
+          preferencesLoading={gcal.preferencesLoading}
+          reconnectRequired={gcal.reconnectRequired}
+          onConnect={gcal.connect}
+          onDisconnect={gcal.disconnect}
+          onSync={gcal.syncNow}
+          onReconnect={gcal.reconnect}
+          onTargetCalendarChange={gcal.setTargetCalendar}
+          onPreferenceChange={gcal.updatePreferences}
+        />
+      </section>
+
+      {/* Section 1b: Outlook Calendar Sync */}
+      <section>
+        <h2 className="text-lg font-semibold text-foreground mb-4">Outlook Calendar Sync</h2>
+
+        {ocal.oauthStatus === "connected" && (
+          <div className="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-sm text-green-700 dark:text-green-300">
+            Outlook Calendar connected successfully! Your events will now sync automatically.
+          </div>
+        )}
+        {ocal.oauthError && (
+          <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300">
+            {ocal.oauthErrorMessage || "Failed to connect Outlook Calendar. Please try again."}
+          </div>
+        )}
+
+        <OutlookCalendarSyncPanel
+          orgName={orgName}
+          organizationId={orgId}
+          connection={ocal.connection}
+          isConnected={ocal.isConnected}
+          connectionLoading={ocal.connectionLoading}
+          calendars={ocal.calendars}
+          calendarsLoading={ocal.calendarsLoading}
+          targetCalendarId={ocal.targetCalendarId}
+          preferences={ocal.preferences}
+          preferencesLoading={ocal.preferencesLoading}
+          reconnectRequired={ocal.reconnectRequired}
+          onConnect={ocal.connect}
+          onDisconnect={ocal.disconnect}
+          onSync={ocal.syncNow}
+          onReconnect={ocal.reconnect}
+          onTargetCalendarChange={ocal.setTargetCalendar}
+          onPreferenceChange={ocal.updatePreferences}
+        />
+      </section>
+
+      {/* Section 1c: Import Google Calendar Events */}
+      <section>
+        <h2 className="text-lg font-semibold text-foreground mb-4">Import Google Calendar Events</h2>
+        <Card className="p-4 space-y-4">
+          {gcal.connectionLoading ? (
+            <p className="text-sm text-muted-foreground">Checking Google connection...</p>
+          ) : !gcal.isConnected ? (
+            <p className="text-sm text-muted-foreground">
+              Connect your Google account above to import calendar events into {orgName}.
+            </p>
+          ) : gcal.calendarsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading calendars...</p>
+          ) : gcal.calendars.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No calendars found in your Google account.</p>
+          ) : (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <label htmlFor="google-cal-import" className="block text-sm font-medium text-foreground mb-1">
+                  Google Calendar
+                </label>
+                <select
+                  id="google-cal-import"
+                  value={selectedGoogleCalId}
+                  onChange={(e) => {
+                    setSelectedGoogleCalId(e.target.value);
+                    setImportError(null);
+                    setImportNotice(null);
+                  }}
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+                >
+                  <option value="">Select a calendar...</option>
+                  {gcal.calendars.map((cal) => (
+                    <option key={cal.id} value={cal.id}>
+                      {cal.summary}{cal.primary ? " (Primary)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Import events from your Google Calendar into {orgName} so they appear alongside team events.
+                </p>
+              </div>
+              <Button onClick={handleImportGoogleCalendar} isLoading={importingGoogleCal}>
+                Import Calendar
+              </Button>
+            </div>
+          )}
+
+          {importNotice && (
+            <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-sm text-green-700 dark:text-green-300">
+              {importNotice}
+            </div>
+          )}
+          {importError && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-sm text-red-600 dark:text-red-400">
+              {importError}
+            </div>
+          )}
+        </Card>
+      </section>
+
+      {/* Section 2: Personal Calendar Feeds */}
+      <section>
+        <h2 className="text-lg font-semibold text-foreground mb-4">Personal Calendar Feeds</h2>
         <Card className="p-4 space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
@@ -246,66 +442,76 @@ export function MyCalendarTab({
               Add calendar link
             </Button>
           </div>
-          {notice && <p className="text-sm text-foreground">{notice}</p>}
-          {error && <p className="text-sm text-error">{error}</p>}
-        </Card>
-      </section>
-
-      <section>
-        <h2 className="text-lg font-semibold text-foreground mb-4">Connected Calendars</h2>
-        <Card className="p-4">
-          {loadingFeeds ? (
-            <p className="text-sm text-muted-foreground">Loading schedules...</p>
-          ) : personalFeeds.length === 0 ? (
-            <EmptyState
-              title="No connected schedules"
-              description="Connect a calendar feed to keep your availability in sync."
-            />
-          ) : (
-            <div className="space-y-3">
-              {personalFeeds.map((feed) => (
-                <div
-                  key={feed.id}
-                  className="flex flex-col gap-3 border border-border/60 rounded-xl p-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-foreground">ICS Feed</p>
-                      <Badge variant={statusVariant(feed.status)}>{feed.status}</Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{feed.maskedUrl}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Last sync: {feed.last_synced_at ? formatDateTime(feed.last_synced_at) : "Never"}
-                    </p>
-                    {feed.status === "error" && feed.last_error && (
-                      <p className="text-xs text-error">{feed.last_error}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      isLoading={syncingFeedId === feed.id}
-                      onClick={() => handleSyncNow(feed.id)}
-                    >
-                      Sync now
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      isLoading={disconnectingFeedId === feed.id}
-                      onClick={() => handleDisconnect(feed.id)}
-                    >
-                      Disconnect
-                    </Button>
-                  </div>
-                </div>
-              ))}
+          {notice && (
+            <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-sm text-green-700 dark:text-green-300">
+              {notice}
+            </div>
+          )}
+          {error && (
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-sm text-red-600 dark:text-red-400">
+              {error}
             </div>
           )}
         </Card>
+
+        <div className="mt-4">
+          <Card className="p-4">
+            {loadingFeeds ? (
+              <p className="text-sm text-muted-foreground">Loading schedules...</p>
+            ) : personalFeeds.length === 0 ? (
+              <EmptyState
+                title="No connected schedules"
+                description="Connect a calendar feed to keep your availability in sync."
+              />
+            ) : (
+              <div className="space-y-3">
+                {personalFeeds.map((feed) => (
+                  <div
+                    key={feed.id}
+                    className="flex flex-col gap-3 border border-border/60 rounded-xl p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-foreground">
+                          {feed.provider === "google" ? "Google Calendar" : "ICS Feed"}
+                        </p>
+                        <Badge variant={statusVariant(feed.status)}>{feed.status}</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{feed.maskedUrl}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Last sync: {feed.last_synced_at ? formatDateTime(feed.last_synced_at) : "Never"}
+                      </p>
+                      {feed.status === "error" && feed.last_error && (
+                        <p className="text-xs text-error">{feed.last_error}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        isLoading={syncingFeedId === feed.id}
+                        onClick={() => handleSyncNow(feed.id)}
+                      >
+                        Sync now
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        isLoading={disconnectingFeedId === feed.id}
+                        onClick={() => handleDisconnect(feed.id)}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
       </section>
 
+      {/* Section 3: My Schedules */}
       <section>
         <h2 className="text-lg font-semibold text-foreground mb-4">My {pageLabel}</h2>
         {mySchedules && mySchedules.length > 0 ? (
@@ -325,7 +531,7 @@ export function MyCalendarTab({
                       <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{schedule.notes}</p>
                     )}
                   </div>
-                  <Link href={`/${orgSlug}/schedules/${schedule.id}/edit`}>
+                  <Link href={`/${orgSlug}/calendar/${schedule.id}/edit`}>
                     <Button variant="ghost" size="sm">Edit</Button>
                   </Link>
                 </div>
@@ -338,8 +544,8 @@ export function MyCalendarTab({
               title={`No ${pageLabel.toLowerCase()} yet`}
               description={`Add your class ${pageLabel.toLowerCase()} so coaches can plan around your availability.`}
               action={
-                <Link href={`/${orgSlug}/schedules/new`}>
-                  <Button>{resolveActionLabel("/schedules", navConfig, "Add First")}</Button>
+                <Link href={`/${orgSlug}/calendar/new`}>
+                  <Button>{resolveActionLabel("/calendar", navConfig, "Add First")}</Button>
                 </Link>
               }
             />

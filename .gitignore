@@ -41,8 +41,8 @@ yarn-error.log*
 next-env.d.ts
 
 # audit artifacts (keep templates)
-audit/
-!audit/*.template.*
+/audit/
+!/audit/*.template.*
 
 # playwright
 playwright/.auth/state.json
@@ -61,3 +61,29 @@ opencode-auth/
 *.mov
 *.mp4
 .env*.local
+.worktrees
+
+# Gas Town (added by gt)
+.runtime/
+.claude/
+.beads/
+.logs/
+
+# Workspace apps and shared packages (separate projects)
+apps/
+packages/
+
+# Real CSV test data with PII
+teamnetwork_linkedin_import_real.csv
+
+# Obsidian (local docs vault)
+docs/.obsidian/
+
+# Local issue-tracker metadata
+.beads/
+
+# Claude Code agent tooling (local-only)
+.factory/
+.understand-anything/
+.agents/
+skills-lock.json

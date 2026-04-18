@@ -127,14 +127,12 @@ export function NewChatGroupForm({ orgSlug, organizationId, currentUserId }: New
       user_id: string;
       organization_id: string;
       role: "admin" | "moderator" | "member";
-      added_by: string;
     }> = [
       {
         chat_group_id: group.id,
         user_id: currentUserId,
         organization_id: organizationId,
         role: "admin",
-        added_by: currentUserId,
       },
     ];
 
@@ -146,7 +144,6 @@ export function NewChatGroupForm({ orgSlug, organizationId, currentUserId }: New
           user_id: member.user_id,
           organization_id: organizationId,
           role: "member",
-          added_by: currentUserId,
         });
       }
     }
@@ -156,22 +153,21 @@ export function NewChatGroupForm({ orgSlug, organizationId, currentUserId }: New
       .insert(memberInserts);
 
     if (membersError) {
-      console.error("Failed to add members:", membersError);
-      // Don't redirect if we couldn't add members - the user won't be able to see the group
-      setError("Failed to add members to the group. Please try again.");
+      console.error("[chat-members] Failed to add members:", membersError.message, membersError);
+      setError(`Failed to add members: ${membersError.message}`);
       setIsSubmitting(false);
       return;
     }
 
     // Use window.location for a hard navigation to ensure fresh data
-    window.location.href = `/${orgSlug}/chat/${group.id}`;
+    window.location.href = `/${orgSlug}/messages/chat/${group.id}`;
   };
 
   return (
     <div className="animate-fade-in">
       <PageHeader
-        title="New Chat Group"
-        description="Create a new group for your organization to communicate"
+        title="New Chat"
+        description="Create a new chat channel for your organization"
       />
 
       <Card className="p-6 mt-4 max-w-2xl">
@@ -324,7 +320,7 @@ export function NewChatGroupForm({ orgSlug, organizationId, currentUserId }: New
             <Button
               type="button"
               variant="secondary"
-              onClick={() => router.push(`/${orgSlug}/chat`)}
+              onClick={() => router.push(`/${orgSlug}/messages`)}
             >
               Cancel
             </Button>

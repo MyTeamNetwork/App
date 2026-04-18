@@ -44,15 +44,16 @@ export default async function CompetitionPage({ params }: CompetitionPageProps) 
 
   const competition = competitions?.[0];
 
-  const teams =
-    competition
-      ? (await supabase
-          .from("competition_teams")
-          .select("*")
-          .eq("competition_id", competition.id)
-          .is("deleted_at", null)
-          .order("name")).data ?? []
-      : [];
+  const { data: teamsData, error: teamsError } = competition
+    ? await supabase
+        .from("competition_teams")
+        .select("*")
+        .eq("competition_id", competition.id)
+        .is("deleted_at", null)
+        .order("name")
+    : { data: [], error: null };
+  if (teamsError) console.error("competition_teams fetch error:", teamsError);
+  const teams = teamsData ?? [];
 
   const points =
     competition
@@ -96,7 +97,7 @@ export default async function CompetitionPage({ params }: CompetitionPageProps) 
         description={competition?.description || "Track team standings and points"}
         actions={
           isAdmin && !competition && (
-            <Link href={`/${orgSlug}/competitions/new`}>
+            <Link href={`/${orgSlug}/competition/new`}>
               <Button variant="secondary">New Competition</Button>
             </Link>
           )
@@ -110,7 +111,7 @@ export default async function CompetitionPage({ params }: CompetitionPageProps) 
             description="Create a competition to start tracking standings."
             action={
               isAdmin && (
-                <Link href={`/${orgSlug}/competitions/new`}>
+                <Link href={`/${orgSlug}/competition/new`}>
                   <Button>Create Competition</Button>
                 </Link>
               )
@@ -131,8 +132,8 @@ export default async function CompetitionPage({ params }: CompetitionPageProps) 
                   </div>
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="live-indicator inline-block h-2 w-2 rounded-full bg-emerald-400"></span>
-                      <span className="text-xs font-medium uppercase tracking-wider text-emerald-400">Current Leader</span>
+                      <span className="live-indicator inline-block h-2 w-2 rounded-full bg-amber-400"></span>
+                      <span className="text-xs font-medium uppercase tracking-wider text-amber-400">Current Leader</span>
                     </div>
                     <h2 className="text-2xl md:text-3xl font-bold text-white font-display">{topTeam.name}</h2>
                   </div>
@@ -172,7 +173,7 @@ export default async function CompetitionPage({ params }: CompetitionPageProps) 
                     <div
                       key={team.name}
                       className={`leaderboard-row p-4 md:p-5 flex items-center gap-4 ${
-                        index === 0 ? "bg-amber-50/30 dark:bg-amber-900/10" : ""
+                        index === 0 ? "bg-amber-50/30 dark:bg-amber-900/10 border-l-2 border-amber-400" : "border-l-2 border-transparent"
                       }`}
                     >
                       {/* Rank Badge */}
@@ -190,7 +191,17 @@ export default async function CompetitionPage({ params }: CompetitionPageProps) 
                         <div className="standings-bar">
                           <div
                             className="standings-bar-fill"
-                            style={{ width: `${percentage}%` }}
+                            style={{
+                              width: `${percentage}%`,
+                              background: index === 0
+                                ? "linear-gradient(90deg, #d97706, #fbbf24)"
+                                : index === 1
+                                ? "linear-gradient(90deg, #64748b, #94a3b8)"
+                                : index === 2
+                                ? "linear-gradient(90deg, #92400e, #b45309)"
+                                : "linear-gradient(90deg, var(--color-org-secondary), var(--color-org-secondary-light))",
+                              opacity: index > 2 ? 0.65 : 1,
+                            }}
                           />
                         </div>
                       </div>

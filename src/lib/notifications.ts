@@ -10,6 +10,9 @@ const FROM_EMAIL = process.env.FROM_EMAIL || "noreply@myteamnetwork.com";
 
 export type DeliveryChannel = "email" | "sms";
 
+export type NotificationCategory =
+  | "announcement" | "discussion" | "event" | "workout" | "competition" | "mentorship";
+
 export interface NotificationTarget {
   email?: string | null;
   phone?: string | null;
@@ -26,6 +29,8 @@ export interface NotificationBlastInput {
   title: string;
   body: string;
   targetUserIds?: string[] | null;
+  /** Optional notification category for per-category preference filtering. */
+  category?: NotificationCategory;
   /** Optional custom email sender (e.g., Resend). Falls back to stub if not provided. */
   sendEmailFn?: (params: EmailParams) => Promise<NotificationResult>;
 }
@@ -133,8 +138,10 @@ export async function sendEmail(params: EmailParams): Promise<NotificationResult
   }
 }
 
-// TODO: Replace SMS stub with actual provider integration (e.g., Twilio, MessageBird)
-// SMS requires a separate provider as Resend only handles email
+// NOTE: SMS stub — no provider configured yet. When an SMS provider is selected
+// (e.g., Twilio, MessageBird), replace this stub with the real integration and
+// gate on an SMS_PROVIDER env var. The stub safely returns success so callers
+// can be written against the final interface today.
 export async function sendSMS(params: SMSParams): Promise<NotificationResult> {
   console.log("[STUB] Sending SMS (provider not configured):", {
     to: params.to,
@@ -145,6 +152,17 @@ export async function sendSMS(params: SMSParams): Promise<NotificationResult> {
 }
 
 type PreferenceRow = Database["public"]["Tables"]["notification_preferences"]["Row"];
+
+// mentorship_emails_enabled added in Phase 2 migration; cast to keyof for
+// forward compatibility with generated types that haven't been regenerated yet.
+const CATEGORY_PREF_COLUMN: Record<NotificationCategory, keyof PreferenceRow> = {
+  announcement: "announcement_emails_enabled",
+  discussion: "discussion_emails_enabled",
+  event: "event_emails_enabled",
+  workout: "workout_emails_enabled",
+  competition: "competition_emails_enabled",
+  mentorship: "mentorship_emails_enabled" as keyof PreferenceRow,
+};
 
 const getChannelsForContact = ({
   desired,
@@ -157,7 +175,7 @@ const getChannelsForContact = ({
 }) => {
   const channels: DeliveryChannel[] = [];
 
-  const emailEnabled = pref ? pref.email_enabled && !!pref.email_address : !!email;
+  const emailEnabled = pref ? pref.email_enabled && !!(pref.email_address || email) : !!email;
   const smsEnabled = pref ? pref.sms_enabled && !!pref.phone_number : false;
 
   if (desired.includes("email") && emailEnabled) channels.push("email");
@@ -175,8 +193,9 @@ export async function buildNotificationTargets(params: {
   audience: NotificationAudience;
   channel: NotificationChannel;
   targetUserIds?: string[] | null;
+  category?: NotificationCategory;
 }): Promise<{ targets: NotificationTarget[]; stats: { total: number; emailCount: number; smsCount: number; skippedMissingContact: number } }> {
-  const { supabase, organizationId, audience, channel, targetUserIds } = params;
+  const { supabase, organizationId, audience, channel, targetUserIds, category } = params;
   const desired = DESIRED_CHANNELS[channel];
 
   // Include legacy role aliases so older memberships still receive blasts
@@ -228,7 +247,7 @@ export async function buildNotificationTargets(params: {
   const [prefsRes, usersRes] = await Promise.all([
     supabase
       .from("notification_preferences")
-      .select("email_enabled,email_address,sms_enabled,phone_number,user_id,organization_id")
+      .select("email_enabled,email_address,sms_enabled,phone_number,user_id,organization_id,announcement_emails_enabled,discussion_emails_enabled,event_emails_enabled,workout_emails_enabled,competition_emails_enabled,mentorship_emails_enabled")
       .eq("organization_id", organizationId)
       .in("user_id", memberUserIds),
     supabase
@@ -264,6 +283,15 @@ export async function buildNotificationTargets(params: {
       email: user?.email || null,
     });
 
+    // Per-category opt-out: remove email channel if user disabled this email category
+    if (category && pref) {
+      const col = CATEGORY_PREF_COLUMN[category];
+      if (col && pref[col] === false) {
+        const emailIdx = channels.indexOf("email");
+        if (emailIdx !== -1) channels.splice(emailIdx, 1);
+      }
+    }
+
     if (channels.length === 0) {
       skippedMissingContact += 1;
       return;
@@ -293,13 +321,14 @@ export async function buildNotificationTargets(params: {
 }
 
 export async function sendNotificationBlast(input: NotificationBlastInput): Promise<NotificationBlastResult> {
-  const { supabase, organizationId, audience, channel, title, body, targetUserIds, sendEmailFn } = input;
+  const { supabase, organizationId, audience, channel, title, body, targetUserIds, category, sendEmailFn } = input;
   const { targets, stats } = await buildNotificationTargets({
     supabase,
     organizationId,
     audience,
     channel,
     targetUserIds: targetUserIds || undefined,
+    category,
   });
 
   const errors: string[] = [];

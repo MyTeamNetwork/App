@@ -1,60 +1,27 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState, useCallback } from "react";
-import Image from "next/image";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import { animate, stagger } from "animejs";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import type { NotificationPreference, UserRole } from "@/types/database";
 import { normalizeRole, type OrgRole } from "@/lib/auth/role-utils";
-import { Card, Button, Badge, Input } from "@/components/ui";
+import { Card, Button, Select } from "@/components/ui";
+import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
+import { PermissionRoleCard } from "@/components/ui/PermissionRoleCard";
 import { PageHeader } from "@/components/layout";
-import { validateOrgName } from "@/lib/validation/org-name";
-import { CalendarConnectionCard } from "@/components/settings/CalendarConnectionCard";
-import { SyncPreferencesForm, type SyncPreferences } from "@/components/settings/SyncPreferencesForm";
+import { OrgNameCard } from "@/components/settings/OrgNameCard";
+import { BrandingCard } from "@/components/settings/BrandingCard";
+import { NotificationPrefsCard } from "@/components/settings/NotificationPrefsCard";
+import { LOCALE_NAMES } from "@/i18n/config";
+import type { SupportedLocale } from "@/i18n/config";
+import { getCustomizationTimezoneOptions } from "@/lib/i18n/customization-timezones";
 
-interface CalendarConnection {
-  googleEmail: string;
-  status: "connected" | "disconnected" | "error";
-  lastSyncAt: string | null;
-}
-
-const GCAL_UI_ENABLED = true;
-
-function adjustColor(hex: string, amount: number): string {
-  const clamp = (num: number) => Math.min(255, Math.max(0, num));
-
-  let color = hex.replace("#", "");
-  if (color.length === 3) {
-    color = color
-      .split("")
-      .map((c) => c + c)
-      .join("");
-  }
-
-  const num = parseInt(color, 16);
-  const r = clamp((num >> 16) + amount);
-  const g = clamp(((num >> 8) & 0x00ff) + amount);
-  const b = clamp((num & 0x0000ff) + amount);
-
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
-}
-
-function isColorDark(hex: string): boolean {
-  let color = hex.replace("#", "");
-  if (color.length === 3) {
-    color = color
-      .split("")
-      .map((c) => c + c)
-      .join("");
-  }
-  const num = parseInt(color, 16);
-  const r = (num >> 16) & 255;
-  const g = (num >> 8) & 255;
-  const b = num & 255;
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance < 0.6;
-}
+const LANGUAGE_OPTIONS = (Object.entries(LOCALE_NAMES) as [SupportedLocale, string][]).map(
+  ([value, label]) => ({ value, label })
+);
 
 export default function OrgSettingsPage() {
   return (
@@ -67,15 +34,17 @@ export default function OrgSettingsPage() {
 function OrgSettingsLoading() {
   const params = useParams();
   const orgSlug = params.orgSlug as string;
-  
+  const tCustom = useTranslations("customization");
+  const tCommon = useTranslations("common");
+
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Customization"
-        description="Update your org brand and notifications in one place."
+        title={tCustom("title")}
+        description={tCustom("description")}
         backHref={`/${orgSlug}`}
       />
-      <Card className="p-5 text-muted-foreground text-sm">Loading settings…</Card>
+      <Card className="p-5 text-muted-foreground text-sm">{tCommon("loading")}</Card>
     </div>
   );
 }
@@ -83,109 +52,73 @@ function OrgSettingsLoading() {
 function OrgSettingsContent() {
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const orgSlug = params.orgSlug as string;
   const supabase = useMemo(() => createClient(), []);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const tCustom = useTranslations("customization");
+  const tCommon = useTranslations("common");
+  const timezoneOptions = useMemo(() => getCustomizationTimezoneOptions((key) => tCustom(key)), [tCustom]);
 
+  // Bootstrap state
   const [orgId, setOrgId] = useState<string | null>(null);
-  const [orgName, setOrgName] = useState<string>("");
-  const [editedOrgName, setEditedOrgName] = useState<string>("");
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [primaryColor, setPrimaryColor] = useState("#1e3a5f");
-  const [secondaryColor, setSecondaryColor] = useState("#10b981");
+  const [orgName, setOrgName] = useState("");
   const [role, setRole] = useState<OrgRole | null>(null);
-  const [email, setEmail] = useState("");
-  const [emailEnabled, setEmailEnabled] = useState(true);
-  const [prefId, setPrefId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [prefSaving, setPrefSaving] = useState(false);
-  const [brandSaving, setBrandSaving] = useState(false);
-  const [nameSaving, setNameSaving] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [prefError, setPrefError] = useState<string | null>(null);
-  const [prefSuccess, setPrefSuccess] = useState<string | null>(null);
-  const [brandError, setBrandError] = useState<string | null>(null);
-  const [brandSuccess, setBrandSuccess] = useState<string | null>(null);
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [nameSuccess, setNameSuccess] = useState<string | null>(null);
-  const [selectedLogo, setSelectedLogo] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
-  // Calendar connection state
-  const [calendarConnection, setCalendarConnection] = useState<CalendarConnection | null>(null);
-  const [calendarLoading, setCalendarLoading] = useState(true);
-  const [calendarPrefs, setCalendarPrefs] = useState<SyncPreferences>({
-    sync_general: true,
-    sync_game: true,
-    sync_meeting: true,
-    sync_social: true,
-    sync_fundraiser: true,
-    sync_philanthropy: true,
-  });
-  const [calendarPrefsLoading, setCalendarPrefsLoading] = useState(true);
+  // Initial data for child components
+  const [initialLogoUrl, setInitialLogoUrl] = useState<string | null>(null);
+  const [initialBaseColor, setInitialBaseColor] = useState("primary");
+  const [initialPrimaryColor, setInitialPrimaryColor] = useState("#1e3a5f");
+  const [initialSecondaryColor, setInitialSecondaryColor] = useState("#10b981");
+  const [initialPrefs, setInitialPrefs] = useState<{
+    prefId: string | null;
+    email: string;
+    emailEnabled: boolean;
+    announcementEnabled: boolean;
+    discussionEnabled: boolean;
+    eventEnabled: boolean;
+    workoutEnabled: boolean;
+    competitionEnabled: boolean;
+  } | null>(null);
 
-  // Check for OAuth callback status
-  const oauthStatus = searchParams.get("calendar");
-  const oauthError = searchParams.get("error");
+  // Permission role card state
+  const [feedPostRoles, setFeedPostRoles] = useState<string[]>(["admin", "active_member", "alumni"]);
+  const [feedSaving, setFeedSaving] = useState(false);
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [feedSuccess, setFeedSuccess] = useState<string | null>(null);
+  const [jobPostRoles, setJobPostRoles] = useState<string[]>(["admin", "alumni"]);
+  const [jobSaving, setJobSaving] = useState(false);
+  const [jobError, setJobError] = useState<string | null>(null);
+  const [jobSuccess, setJobSuccess] = useState<string | null>(null);
+  const [discussionPostRoles, setDiscussionPostRoles] = useState<string[]>(["admin", "active_member", "alumni", "parent"]);
+  const [discussionSaving, setDiscussionSaving] = useState(false);
+  const [discussionError, setDiscussionError] = useState<string | null>(null);
+  const [discussionSuccess, setDiscussionSuccess] = useState<string | null>(null);
+  const [mediaUploadRoles, setMediaUploadRoles] = useState<string[]>(["admin"]);
+  const [mediaSaving, setMediaSaving] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [mediaSuccess, setMediaSuccess] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!selectedLogo) return;
-    const previewUrl = URL.createObjectURL(selectedLogo);
-    setLogoPreview(previewUrl);
-    return () => URL.revokeObjectURL(previewUrl);
-  }, [selectedLogo]);
+  // Timezone state
+  const [timezone, setTimezone] = useState("America/New_York");
+  const [timezoneSaving, setTimezoneSaving] = useState(false);
+  const [timezoneError, setTimezoneError] = useState<string | null>(null);
+  const [timezoneSuccess, setTimezoneSuccess] = useState<string | null>(null);
 
-  // Load calendar connection status
-  const loadCalendarConnection = useCallback(async () => {
-    setCalendarLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setCalendarLoading(false);
-        return;
-      }
+  // Language state
+  const [defaultLanguage, setDefaultLanguage] = useState("en");
+  const [languageSaving, setLanguageSaving] = useState(false);
+  const [languageError, setLanguageError] = useState<string | null>(null);
+  const [languageSuccess, setLanguageSuccess] = useState<string | null>(null);
 
-      const { data: connection } = await supabase
-        .from("user_calendar_connections")
-        .select("google_email, status, last_sync_at")
-        .eq("user_id", user.id)
-        .single();
+  // LinkedIn resync toggle state
+  const [linkedinResyncEnabled, setLinkedinResyncEnabled] = useState(false);
+  const [linkedinResyncSaving, setLinkedinResyncSaving] = useState(false);
+  const [linkedinResyncError, setLinkedinResyncError] = useState<string | null>(null);
+  const [linkedinResyncSuccess, setLinkedinResyncSuccess] = useState<string | null>(null);
 
-      if (connection) {
-        setCalendarConnection({
-          googleEmail: connection.google_email,
-          status: connection.status,
-          lastSyncAt: connection.last_sync_at,
-        });
-      } else {
-        setCalendarConnection(null);
-      }
-    } catch {
-      // Error loading calendar connection - silently continue
-    } finally {
-      setCalendarLoading(false);
-    }
-  }, [supabase]);
-
-  // Load calendar sync preferences for the organization
-  const loadCalendarPreferences = useCallback(async (organizationId: string) => {
-    setCalendarPrefsLoading(true);
-    try {
-      const response = await fetch(`/api/calendar/preferences?organizationId=${organizationId}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.preferences) {
-          setCalendarPrefs(data.preferences);
-        }
-      }
-    } catch {
-      // Error loading calendar preferences - silently continue
-    } finally {
-      setCalendarPrefsLoading(false);
-    }
-  }, []);
-
+  // Bootstrap fetch
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -193,33 +126,42 @@ function OrgSettingsContent() {
 
       const { data: org, error: orgError } = await supabase
         .from("organizations")
-        .select("id, name, logo_url, primary_color, secondary_color")
+        .select("id, name, logo_url, base_color, primary_color, secondary_color, feed_post_roles, job_post_roles, discussion_post_roles, media_upload_roles, linkedin_resync_enabled, timezone, default_language")
         .eq("slug", orgSlug)
         .maybeSingle();
 
       if (!org || orgError) {
-        setPageError(orgError?.message || "Organization not found");
+        setPageError(orgError?.message || tCustom("errors.orgNotFound"));
         setLoading(false);
         return;
       }
 
       setOrgId(org.id);
-      setOrgName(org.name || "Organization");
-      setEditedOrgName(org.name || "Organization");
-      setLogoUrl(org.logo_url);
-      setPrimaryColor(org.primary_color || "#1e3a5f");
-      setSecondaryColor(org.secondary_color || "#10b981");
+      setOrgName(org.name || tCustom("fallbackOrgName"));
+      setInitialLogoUrl(org.logo_url);
+      setInitialBaseColor((org as Record<string, unknown>).base_color as string || "primary");
+      setInitialPrimaryColor(org.primary_color || "#1e3a5f");
+      setInitialSecondaryColor(org.secondary_color || "#10b981");
+      setFeedPostRoles((org as Record<string, unknown>).feed_post_roles as string[] || ["admin", "active_member", "alumni"]);
+      setJobPostRoles((org as Record<string, unknown>).job_post_roles as string[] || ["admin", "alumni"]);
+      setDiscussionPostRoles((org as Record<string, unknown>).discussion_post_roles as string[] || ["admin", "active_member", "alumni", "parent"]);
+      setMediaUploadRoles((org as Record<string, unknown>).media_upload_roles as string[] || ["admin"]);
+      setLinkedinResyncEnabled((org as Record<string, unknown>).linkedin_resync_enabled === true);
+      setTimezone(((org as Record<string, unknown>).timezone as string) || "America/New_York");
+      setDefaultLanguage(((org as Record<string, unknown>).default_language as string) || "en");
 
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       if (!user) {
-        setPageError("You must be signed in.");
+        setPageError(tCustom("errors.mustBeSignedIn"));
         setLoading(false);
         router.push(`/auth/login?redirect=/${orgSlug}/customization`);
         return;
       }
+
+      setUserId(user.id);
 
       const { data: membership } = await supabase
         .from("user_organization_roles")
@@ -231,7 +173,7 @@ function OrgSettingsContent() {
       const normalizedRole = normalizeRole((membership?.role as UserRole | null) ?? null);
 
       if (!membership || membership.status !== "active" || !normalizedRole) {
-        setPageError("You do not have access to this organization.");
+        setPageError(tCustom("errors.noAccess"));
         setLoading(false);
         return;
       }
@@ -246,24 +188,24 @@ function OrgSettingsContent() {
         .maybeSingle();
 
       const typedPref = pref as NotificationPreference | null;
-      setEmail(typedPref?.email_address || user.email || "");
-      setEmailEnabled(typedPref?.email_enabled ?? true);
-      setPrefId(typedPref?.id || null);
-      setLoading(false);
+      setInitialPrefs({
+        prefId: typedPref?.id || null,
+        email: typedPref?.email_address || user.email || "",
+        emailEnabled: typedPref?.email_enabled ?? true,
+        announcementEnabled: typedPref?.announcement_emails_enabled ?? true,
+        discussionEnabled: typedPref?.discussion_emails_enabled ?? true,
+        eventEnabled: typedPref?.event_emails_enabled ?? true,
+        workoutEnabled: typedPref?.workout_emails_enabled ?? true,
+        competitionEnabled: typedPref?.competition_emails_enabled ?? true,
+      });
 
-      // Load calendar connection and preferences
-      if (GCAL_UI_ENABLED) {
-        await loadCalendarConnection();
-        await loadCalendarPreferences(org.id);
-      } else {
-        setCalendarLoading(false);
-        setCalendarPrefsLoading(false);
-      }
+      setLoading(false);
     };
 
     load();
-  }, [orgSlug, router, supabase, loadCalendarConnection, loadCalendarPreferences]);
+  }, [orgSlug, router, supabase, tCustom]);
 
+  // Entrance animation
   useEffect(() => {
     if (loading) return;
     const animation = animate(".org-settings-card", {
@@ -279,563 +221,444 @@ function OrgSettingsContent() {
     };
   }, [loading]);
 
-  useEffect(() => {
-    if (loading) return;
-    animate(".org-brand-preview", {
-      scale: [0.98, 1],
-      opacity: [0.9, 1],
-      duration: 480,
-      easing: "easeOutQuad",
-    });
-  }, [primaryColor, secondaryColor, logoPreview, logoUrl, loading]);
-
-  const applyThemeLocally = (nextPrimary: string, nextSecondary: string) => {
-    const shell = document.querySelector<HTMLElement>("[data-org-shell]");
-    const target = shell || document.documentElement;
-    const primaryLight = adjustColor(nextPrimary, 20);
-    const primaryDark = adjustColor(nextPrimary, -20);
-    const secondaryLight = adjustColor(nextSecondary, 20);
-    const secondaryDark = adjustColor(nextSecondary, -20);
-    const isPrimaryDark = isColorDark(nextPrimary);
-    const isSecondaryDark = isColorDark(nextSecondary);
-    const baseForeground = isPrimaryDark ? "#f8fafc" : "#0f172a";
-    // Use black text on bright secondary colors for better readability
-    const secondaryForeground = isSecondaryDark ? "#ffffff" : "#0f172a";
-    const cardColor = isPrimaryDark ? adjustColor(nextPrimary, 18) : adjustColor(nextPrimary, -12);
-    const cardForeground = isColorDark(cardColor) ? "#f8fafc" : "#0f172a";
-    // For light themes, use a more visible muted color that provides better contrast
-    const muted = isPrimaryDark ? adjustColor(nextPrimary, 28) : adjustColor(nextPrimary, -35);
-    const mutedForeground = isColorDark(muted) ? "#e2e8f0" : "#475569";
-    // For light themes, use a darker border for better visibility
-    const borderColor = isPrimaryDark ? adjustColor(nextPrimary, 35) : adjustColor(nextPrimary, -45);
-
-    target.style.setProperty("--color-org-primary", nextPrimary);
-    target.style.setProperty("--color-org-primary-light", primaryLight);
-    target.style.setProperty("--color-org-primary-dark", primaryDark);
-    target.style.setProperty("--color-org-secondary", nextSecondary);
-    target.style.setProperty("--color-org-secondary-light", secondaryLight);
-    target.style.setProperty("--color-org-secondary-dark", secondaryDark);
-    target.style.setProperty("--color-org-secondary-foreground", secondaryForeground);
-    target.style.setProperty("--background", nextPrimary);
-    target.style.setProperty("--foreground", baseForeground);
-    target.style.setProperty("--card", cardColor);
-    target.style.setProperty("--card-foreground", cardForeground);
-    target.style.setProperty("--muted", muted);
-    target.style.setProperty("--muted-foreground", mutedForeground);
-    target.style.setProperty("--border", borderColor);
-    target.style.setProperty("--ring", nextSecondary);
-  };
-
-  const handlePreferenceSave = async () => {
-    if (!orgId) return;
-    setPrefSaving(true);
-    setPrefError(null);
-    setPrefSuccess(null);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setPrefError("You must be signed in.");
-      setPrefSaving(false);
-      return;
-    }
-
-    const { error: upsertError, data } = await supabase
-      .from("notification_preferences")
-      .upsert({
-        id: prefId || undefined,
-        organization_id: orgId,
-        user_id: user.id,
-        email_address: email.trim() || null,
-        email_enabled: emailEnabled,
-        phone_number: null,
-        sms_enabled: false,
-      })
-      .select("id")
-      .maybeSingle();
-
-    if (upsertError) {
-      setPrefError(upsertError.message);
-      setPrefSaving(false);
-      return;
-    }
-
-    setPrefId(data?.id || prefId);
-    setPrefSaving(false);
-    setPrefSuccess("Preferences saved for this organization.");
-  };
-
-  const handleBrandingSave = async () => {
-    if (!orgId) return;
-    if (role !== "admin") {
-      setBrandError("Only admins can update branding.");
-      return;
-    }
-
-    const colorPattern = /^#[0-9a-fA-F]{6}$/;
-    if (!colorPattern.test(primaryColor) || !colorPattern.test(secondaryColor)) {
-      setBrandError("Use 6-digit hex colors like #1e3a5f.");
-      return;
-    }
-
-    setBrandSaving(true);
-    setBrandError(null);
-    setBrandSuccess(null);
-
-    const formData = new FormData();
-    formData.append("primaryColor", primaryColor);
-    formData.append("secondaryColor", secondaryColor);
-    if (selectedLogo) {
-      formData.append("logo", selectedLogo);
-    }
-
-    try {
-      const res = await fetch(`/api/organizations/${orgId}/branding`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(data?.error || "Unable to save branding");
+  // Permission role save helpers
+  const makeRoleSaveHandler = (
+    field: string,
+    roles: string[],
+    setSaving: (v: boolean) => void,
+    setErr: (v: string | null) => void,
+    setSucc: (v: string | null) => void,
+    setRoles: (v: string[]) => void,
+    label: string,
+  ) => {
+    return async () => {
+      if (!orgId) return;
+      if (role !== "admin") {
+        setErr(tCustom("permissions.adminOnlyChange", { feature: label }));
+        return;
       }
 
-      const updatedOrg = (data?.organization || null) as {
-        logo_url?: string | null;
-        primary_color?: string | null;
-        secondary_color?: string | null;
-      } | null;
+      setSaving(true);
+      setErr(null);
+      setSucc(null);
 
-      const nextPrimary = updatedOrg?.primary_color || primaryColor;
-      const nextSecondary = updatedOrg?.secondary_color || secondaryColor;
+      try {
+        const res = await fetch(`/api/organizations/${orgId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [field]: roles }),
+        });
+        const data = await res.json().catch(() => null);
 
-      setLogoUrl(updatedOrg?.logo_url ?? logoUrl);
-      setPrimaryColor(nextPrimary);
-      setSecondaryColor(nextSecondary);
-      setBrandSuccess("Branding updated for this organization.");
-      setSelectedLogo(null);
-      setLogoPreview(null);
-      applyThemeLocally(nextPrimary, nextSecondary);
-      router.refresh();
-    } catch (err) {
-      setBrandError(err instanceof Error ? err.message : "Unable to save branding");
-    } finally {
-      setBrandSaving(false);
-    }
+        if (!res.ok) {
+          throw new Error(data?.error || tCustom("permissions.unableToUpdate", { feature: label }));
+        }
+
+        if (data?.[field]) {
+          setRoles(data[field]);
+        }
+        setSucc(tCustom("permissions.updated", { feature: label }));
+      } catch (err) {
+        setErr(err instanceof Error ? err.message : tCustom("permissions.unableToUpdate", { feature: label }));
+      } finally {
+        setSaving(false);
+      }
+    };
   };
 
-  const displayLogo = logoPreview || logoUrl;
-  const isAdmin = role === "admin";
+  const makeToggleHandler = (
+    setRoles: React.Dispatch<React.SetStateAction<string[]>>,
+    setSucc: (v: string | null) => void,
+  ) => {
+    return (toggleRole: string) => {
+      if (toggleRole === "admin") return;
+      setRoles((prev) =>
+        prev.includes(toggleRole) ? prev.filter((r) => r !== toggleRole) : [...prev, toggleRole],
+      );
+      setSucc(null);
+    };
+  };
 
-  const handleNameSave = async () => {
+  const handleFeedRolesSave = makeRoleSaveHandler("feed_post_roles", feedPostRoles, setFeedSaving, setFeedError, setFeedSuccess, setFeedPostRoles, tCustom("permissions.feedTitle"));
+  const toggleFeedRole = makeToggleHandler(setFeedPostRoles, setFeedSuccess);
+
+  const handleDiscussionRolesSave = makeRoleSaveHandler("discussion_post_roles", discussionPostRoles, setDiscussionSaving, setDiscussionError, setDiscussionSuccess, setDiscussionPostRoles, tCustom("permissions.discussionTitle"));
+  const toggleDiscussionRole = makeToggleHandler(setDiscussionPostRoles, setDiscussionSuccess);
+
+  const handleJobRolesSave = makeRoleSaveHandler("job_post_roles", jobPostRoles, setJobSaving, setJobError, setJobSuccess, setJobPostRoles, tCustom("permissions.jobTitle"));
+  const toggleJobRole = makeToggleHandler(setJobPostRoles, setJobSuccess);
+
+  const handleMediaRolesSave = makeRoleSaveHandler("media_upload_roles", mediaUploadRoles, setMediaSaving, setMediaError, setMediaSuccess, setMediaUploadRoles, tCustom("permissions.mediaTitle"));
+  const toggleMediaRole = makeToggleHandler(setMediaUploadRoles, setMediaSuccess);
+
+  const handleLinkedinResyncToggle = async (enabled: boolean) => {
     if (!orgId) return;
     if (role !== "admin") {
-      setNameError("Only admins can change the organization name.");
+      setLinkedinResyncError(tCustom("linkedin.adminOnly"));
       return;
     }
 
-    const validation = validateOrgName(editedOrgName);
-    if (!validation.valid) {
-      setNameError(validation.error || "Invalid organization name");
-      return;
-    }
-
-    setNameSaving(true);
-    setNameError(null);
-    setNameSuccess(null);
+    setLinkedinResyncEnabled(enabled);
+    setLinkedinResyncSaving(true);
+    setLinkedinResyncError(null);
+    setLinkedinResyncSuccess(null);
 
     try {
       const res = await fetch(`/api/organizations/${orgId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editedOrgName.trim() }),
+        body: JSON.stringify({ linkedin_resync_enabled: enabled }),
       });
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(data?.error || "Unable to update organization name");
+        setLinkedinResyncEnabled(!enabled); // revert
+        throw new Error(data?.error || tCustom("linkedin.unableToUpdate"));
       }
 
-      const updatedName = data?.name || editedOrgName.trim();
-      setOrgName(updatedName);
-      setEditedOrgName(updatedName);
-      setNameSuccess("Organization name updated successfully.");
+      if (typeof data?.linkedin_resync_enabled === "boolean") {
+        setLinkedinResyncEnabled(data.linkedin_resync_enabled);
+      }
+      setLinkedinResyncSuccess(enabled ? tCustom("linkedin.enabled") : tCustom("linkedin.disabled"));
     } catch (err) {
-      setNameError(err instanceof Error ? err.message : "Unable to update organization name");
+      setLinkedinResyncError(err instanceof Error ? err.message : tCustom("linkedin.unableToUpdate"));
     } finally {
-      setNameSaving(false);
+      setLinkedinResyncSaving(false);
     }
   };
 
-  const handleConnectCalendar = () => {
-    // Pass the current org slug so OAuth callback redirects back here
-    window.location.href = `/api/google/auth?redirect=/${orgSlug}/customization`;
-  };
-
-  const handleDisconnectCalendar = async () => {
-    const response = await fetch("/api/google/disconnect", { method: "POST" });
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.message || "Failed to disconnect");
-    }
-    setCalendarConnection(null);
-  };
-
-  const handleSyncCalendar = async () => {
-    const response = await fetch("/api/calendar/sync", { method: "POST" });
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.message || "Failed to sync");
-    }
-    // Reload connection to get updated last_sync_at
-    await loadCalendarConnection();
-  };
-
-  const handleCalendarPreferenceChange = async (preferences: SyncPreferences) => {
+  const handleTimezoneSave = async () => {
     if (!orgId) return;
-    const response = await fetch("/api/calendar/preferences", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ organizationId: orgId, preferences }),
-    });
-
-    if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.message || "Failed to save preferences");
+    if (role !== "admin") {
+      setTimezoneError(tCustom("timezone.adminOnly"));
+      return;
     }
 
-    setCalendarPrefs(preferences);
+    setTimezoneSaving(true);
+    setTimezoneError(null);
+    setTimezoneSuccess(null);
+
+    try {
+      const res = await fetch(`/api/organizations/${orgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || tCustom("timezone.unableToUpdate"));
+      }
+
+      if (data?.timezone) {
+        setTimezone(data.timezone);
+      }
+      setTimezoneSuccess(tCustom("timezone.saved"));
+    } catch (err) {
+      setTimezoneError(err instanceof Error ? err.message : tCustom("timezone.unableToUpdate"));
+    } finally {
+      setTimezoneSaving(false);
+    }
   };
 
-  const isCalendarConnected = calendarConnection?.status === "connected";
+  const handleLanguageSave = async () => {
+    if (!orgId) return;
+    if (role !== "admin") {
+      setLanguageError(tCustom("errors.adminOnlyLanguage"));
+      return;
+    }
+
+    setLanguageSaving(true);
+    setLanguageError(null);
+    setLanguageSuccess(null);
+
+    try {
+      const res = await fetch(`/api/organizations/${orgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ default_language: defaultLanguage }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || tCustom("errors.unableToUpdateLanguage"));
+      }
+
+      if (data?.default_language) {
+        setDefaultLanguage(data.default_language);
+      }
+
+      // Also clear the admin's personal language override so they immediately
+      // see the org default they just chose. Without this, their personal
+      // override (e.g. 'en') takes priority and the change appears to do nothing.
+      const supabase = (await import("@/lib/supabase/client")).createClient();
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        await supabase
+          .from("users")
+          .update({ language_override: null })
+          .eq("id", currentUser.id);
+      }
+
+      // Clear the cookie so middleware re-resolves the correct locale from DB.
+      const secure = window.location.protocol === "https:" ? ";secure" : "";
+      document.cookie = `NEXT_LOCALE=;path=/;max-age=0${secure}`;
+      // Also invalidate the sync timestamp so middleware re-reads DB.
+      document.cookie = `NEXT_LOCALE_SYNCED_AT=;path=/;max-age=0${secure}`;
+
+      // Full reload so next-intl's getRequestConfig re-reads the cookie and
+      // loads the correct message bundle. router.refresh() is insufficient
+      // because it doesn't re-run middleware or re-evaluate getRequestConfig.
+      window.location.reload();
+      return; // skip finally while reloading
+    } catch (err) {
+      setLanguageError(err instanceof Error ? err.message : tCustom("errors.unableToUpdateLanguage"));
+    } finally {
+      setLanguageSaving(false);
+    }
+  };
+
+  const isAdmin = role === "admin";
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Customization"
-        description="Update your org brand and notifications in one place."
+        title={tCustom("title")}
+        description={tCustom("description")}
         backHref={`/${orgSlug}`}
       />
 
       {loading ? (
-        <Card className="p-5 text-muted-foreground text-sm">Loading settings…</Card>
+        <Card className="p-5 text-muted-foreground text-sm">{tCommon("loading")}</Card>
       ) : pageError ? (
         <Card className="p-5 text-red-600 dark:text-red-400 text-sm">{pageError}</Card>
       ) : (
         <div className="grid gap-5 lg:grid-cols-2">
-          {/* Organization Name Card */}
-          <Card className="org-settings-card p-5 space-y-4 opacity-0 translate-y-2 lg:col-span-2">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold text-foreground">Organization name</p>
-                <p className="text-sm text-muted-foreground">
-                  Change your organization&apos;s display name.
-                </p>
+          <OrgNameCard
+            orgId={orgId!}
+            orgName={orgName}
+            isAdmin={isAdmin}
+            onNameUpdated={setOrgName}
+          />
+
+          <BrandingCard
+            orgId={orgId!}
+            orgSlug={orgSlug}
+            orgName={orgName}
+            isAdmin={isAdmin}
+            initialLogoUrl={initialLogoUrl}
+            initialBaseColor={initialBaseColor}
+            initialSidebarColor={initialPrimaryColor}
+            initialButtonColor={initialSecondaryColor}
+          />
+
+          {isAdmin && (
+            <Card className="org-settings-card p-5 space-y-3 opacity-0 translate-y-2">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-foreground" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
+                </svg>
+                <p className="font-semibold text-foreground">{tCustom("timezone.title")}</p>
               </div>
-              <Badge variant={isAdmin ? "muted" : "warning"}>{isAdmin ? "Admin" : "View only"}</Badge>
-            </div>
-
-            <div className="max-w-md space-y-4">
-              {isAdmin ? (
-                <Input
-                  label="Name"
-                  type="text"
-                  value={editedOrgName}
-                  onChange={(e) => {
-                    setEditedOrgName(e.target.value);
-                    setNameSuccess(null);
-                    setNameError(null);
-                  }}
-                  placeholder="Organization name"
-                  maxLength={100}
-                />
-              ) : (
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">Name</p>
-                  <p className="text-foreground">{orgName}</p>
-                </div>
-              )}
-            </div>
-
-            {nameSuccess && <div className="text-sm text-green-600 dark:text-green-400">{nameSuccess}</div>}
-            {nameError && <div className="text-sm text-red-600 dark:text-red-400">{nameError}</div>}
-            {!isAdmin && (
-              <div className="text-sm text-muted-foreground">
-                Only admins can change the organization name.
-              </div>
-            )}
-
-            {isAdmin && (
-              <div className="flex justify-end pt-1">
-                <Button
-                  onClick={handleNameSave}
-                  isLoading={nameSaving}
-                  disabled={editedOrgName.trim() === orgName}
-                >
-                  Save name
-                </Button>
-              </div>
-            )}
-          </Card>
-
-          <Card className="org-settings-card p-5 space-y-4 opacity-0 translate-y-2">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold text-foreground">Organization branding</p>
-                <p className="text-sm text-muted-foreground">
-                  Upload a logo and set the colors used across your org experience.
-                </p>
-              </div>
-              <Badge variant={isAdmin ? "muted" : "warning"}>{isAdmin ? "Admin" : "View only"}</Badge>
-            </div>
-
-            <div
-              className="org-brand-preview relative overflow-hidden rounded-2xl border border-border p-5 shadow-soft"
-              style={{
-                backgroundColor: primaryColor,
-              }}
-            >
-              <div className="absolute inset-0 bg-black/5 dark:bg-black/20" />
-              <div className="relative flex items-center gap-4">
-                {displayLogo ? (
-                  <div className="relative h-14 w-14 rounded-2xl overflow-hidden border border-white/40 shadow-lg">
-                    <Image
-                      src={displayLogo}
-                      alt={orgName}
-                      fill
-                      className="object-cover"
-                      sizes="56px"
-                    />
-                  </div>
-                ) : (
-                  <div className="h-14 w-14 rounded-2xl flex items-center justify-center text-white font-bold text-lg bg-white/20 shadow-lg">
-                    {orgName.charAt(0)}
-                  </div>
-                )}
-                <div>
-                  <p className="font-semibold text-white">{orgName}</p>
-                  <p className="text-sm text-white/80 truncate">/{orgSlug}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    setSelectedLogo(file);
-                    setBrandError(null);
-                    setBrandSuccess(null);
-                  }}
-                  disabled={!isAdmin}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={!isAdmin}
-                >
-                  Upload organization photo
-                </Button>
-                {selectedLogo && (
-                  <p className="text-sm text-muted-foreground truncate">
-                    {selectedLogo.name} ({Math.round(selectedLogo.size / 1024)} KB)
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-foreground">Primary color</p>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={primaryColor}
-                      onChange={(e) => {
-                        setPrimaryColor(e.target.value);
-                        setBrandSuccess(null);
-                      }}
-                      disabled={!isAdmin}
-                      className="h-11 w-16 rounded-xl border border-border cursor-pointer bg-card"
-                    />
-                    <Input
-                      type="text"
-                      value={primaryColor}
-                      onChange={(e) => {
-                        setPrimaryColor(e.target.value);
-                        setBrandSuccess(null);
-                      }}
-                      disabled={!isAdmin}
-                      placeholder="#1e3a5f"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Buttons and highlights will use this color.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-foreground">Secondary color</p>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={secondaryColor}
-                      onChange={(e) => {
-                        setSecondaryColor(e.target.value);
-                        setBrandSuccess(null);
-                      }}
-                      disabled={!isAdmin}
-                      className="h-11 w-16 rounded-xl border border-border cursor-pointer bg-card"
-                    />
-                    <Input
-                      type="text"
-                      value={secondaryColor}
-                      onChange={(e) => {
-                        setSecondaryColor(e.target.value);
-                        setBrandSuccess(null);
-                      }}
-                      disabled={!isAdmin}
-                      placeholder="#10b981"
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Accent surfaces and pills pull from this color.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {brandSuccess && <div className="text-sm text-green-600 dark:text-green-400">{brandSuccess}</div>}
-            {brandError && <div className="text-sm text-red-600 dark:text-red-400">{brandError}</div>}
-            {!isAdmin && (
-              <div className="text-sm text-muted-foreground">
-                Only admins can change branding. Ask an admin to update colors or the logo.
-              </div>
-            )}
-
-            <div className="flex justify-end pt-1">
-              <Button onClick={handleBrandingSave} isLoading={brandSaving} disabled={!isAdmin}>
-                Save branding
-              </Button>
-            </div>
-          </Card>
-
-          <Card className="org-settings-card p-5 space-y-4 opacity-0 translate-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="font-semibold text-foreground">Notification preferences</p>
-                <p className="text-sm text-muted-foreground">
-                  Applies only to {orgName}. Customize how you get alerts.
-                </p>
-              </div>
-              <Badge variant="muted">{orgName}</Badge>
-            </div>
-
-            <div className="max-w-md space-y-4">
-              <Input
-                label="Email"
-                type="email"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  setPrefSuccess(null);
-                }}
-                placeholder="you@example.com"
+              <p className="text-sm text-muted-foreground">
+                {tCustom("timezone.description")}
+              </p>
+              <Select
+                label={tCustom("timezone.label")}
+                options={timezoneOptions}
+                value={timezone}
+                onChange={(e) => { setTimezone(e.target.value); setTimezoneSuccess(null); }}
               />
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-border"
-                  checked={emailEnabled}
-                  onChange={(e) => {
-                    setEmailEnabled(e.target.checked);
-                    setPrefSuccess(null);
-                  }}
-                />
-                <div>
-                  <span className="font-medium text-sm text-foreground">Email notifications</span>
-                  <p className="text-xs text-muted-foreground">Send emails for this org.</p>
-                </div>
-              </label>
-            </div>
-
-            {prefSuccess && <div className="text-sm text-green-600 dark:text-green-400">{prefSuccess}</div>}
-            {prefError && <div className="text-sm text-red-600 dark:text-red-400">{prefError}</div>}
-
-            <div className="flex justify-end pt-1">
-              <Button onClick={handlePreferenceSave} isLoading={prefSaving}>
-                Save preferences
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleTimezoneSave}
+                disabled={timezoneSaving}
+              >
+                {timezoneSaving ? tCommon("saving") : tCommon("save")}
               </Button>
-            </div>
-          </Card>
-
-          {GCAL_UI_ENABLED && (
-            <Card className="org-settings-card p-5 space-y-4 opacity-0 translate-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <svg
-                    className="w-6 h-6 text-foreground"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                  >
-                    <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm-8 4H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z" />
-                  </svg>
-                  <div>
-                    <p className="font-semibold text-foreground">Google Calendar Sync</p>
-                    <p className="text-sm text-muted-foreground">
-                      Automatically sync organization events to your Google Calendar.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* OAuth callback messages */}
-              {oauthStatus === "connected" && (
-                <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-sm text-green-700 dark:text-green-300">
-                  Google Calendar connected successfully! Your events will now sync automatically.
-                </div>
+              {timezoneError && (
+                <p className="text-sm text-red-600 dark:text-red-400">{timezoneError}</p>
               )}
-              {oauthError && (
-                <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-sm text-red-700 dark:text-red-300">
-                  {oauthError === "access_denied"
-                    ? "You denied access to your Google Calendar. Please try again and allow access."
-                    : oauthError === "invalid_code"
-                    ? "The authorization code has expired. Please try connecting again."
-                    : oauthError === "oauth_init_failed"
-                    ? "Google Calendar integration is not configured. Please contact the administrator."
-                    : "Failed to connect Google Calendar. Please try again."}
-                </div>
-              )}
-
-              <CalendarConnectionCard
-                connection={calendarConnection}
-                isLoading={calendarLoading}
-                onConnect={handleConnectCalendar}
-                onDisconnect={handleDisconnectCalendar}
-                onSync={isCalendarConnected ? handleSyncCalendar : undefined}
-              />
-
-              {/* Sync Preferences - only show when connected */}
-              {isCalendarConnected && orgId && (
-                <SyncPreferencesForm
-                  organizationId={orgId}
-                  preferences={calendarPrefs}
-                  isLoading={calendarPrefsLoading}
-                  disabled={!isCalendarConnected}
-                  onPreferenceChange={handleCalendarPreferenceChange}
-                />
+              {timezoneSuccess && (
+                <p className="text-sm text-green-600 dark:text-green-400">{timezoneSuccess}</p>
               )}
             </Card>
           )}
+
+          {isAdmin && (
+            <Card className="org-settings-card p-5 space-y-3 opacity-0 translate-y-2">
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-foreground" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z" />
+                </svg>
+                <p className="font-semibold text-foreground">{tCustom("language.title")}</p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {tCustom("language.description")}
+              </p>
+              <Select
+                label={tCustom("language.title")}
+                options={LANGUAGE_OPTIONS}
+                value={defaultLanguage}
+                onChange={(e) => { setDefaultLanguage(e.target.value); setLanguageSuccess(null); }}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleLanguageSave}
+                disabled={languageSaving}
+              >
+                {languageSaving ? tCommon("saving") : tCommon("save")}
+              </Button>
+              {languageError && (
+                <p className="text-sm text-red-600 dark:text-red-400">{languageError}</p>
+              )}
+              {languageSuccess && (
+                <p className="text-sm text-green-600 dark:text-green-400">{languageSuccess}</p>
+              )}
+            </Card>
+          )}
+
+          {initialPrefs && userId && (
+            <NotificationPrefsCard
+              orgId={orgId!}
+              orgName={orgName}
+              userId={userId}
+              initialPrefs={initialPrefs}
+            />
+          )}
+
+          {/* Google Calendar Sync — redirect to My Calendar tab */}
+          <Card className="org-settings-card p-5 space-y-3 opacity-0 translate-y-2">
+            <div className="flex items-center gap-2">
+              <svg
+                className="w-5 h-5 text-foreground"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm-8 4H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z" />
+              </svg>
+              <p className="font-semibold text-foreground">{tCustom("googleCalendar.title")}</p>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {tCustom("googleCalendar.description")}
+            </p>
+            <Link href={`/${orgSlug}/calendar/my-settings`}>
+              <Button variant="secondary" size="sm">{tCustom("googleCalendar.goToSync")}</Button>
+            </Link>
+          </Card>
+
+          {/* Integrations — admin-only link to settings/integrations */}
+          {isAdmin && (
+            <Card className="org-settings-card p-5 space-y-3 opacity-0 translate-y-2">
+              <div className="flex items-center gap-2">
+                <svg
+                  className="w-5 h-5 text-foreground"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
+                </svg>
+                <p className="font-semibold text-foreground">{tCustom("integrations.title")}</p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {tCustom("integrations.description")}
+              </p>
+              <Link href={`/${orgSlug}/settings/integrations`}>
+                <Button variant="secondary" size="sm">{tCustom("integrations.manage")}</Button>
+              </Link>
+            </Card>
+          )}
+
+          {/* Posting & Upload Permission Cards (admin-only) */}
+          {isAdmin && (
+            <PermissionRoleCard
+              title={tCustom("permissions.feedTitle")}
+              description={tCustom("permissions.feedDescription")}
+              featureVerb={tCustom("permissions.feedVerb")}
+              roles={feedPostRoles}
+              onToggleRole={toggleFeedRole}
+              onSave={handleFeedRolesSave}
+              saving={feedSaving}
+              error={feedError}
+              success={feedSuccess}
+            />
+          )}
+
+          {isAdmin && (
+            <PermissionRoleCard
+              title={tCustom("permissions.discussionTitle")}
+              description={tCustom("permissions.discussionDescription")}
+              featureVerb={tCustom("permissions.discussionVerb")}
+              roles={discussionPostRoles}
+              onToggleRole={toggleDiscussionRole}
+              onSave={handleDiscussionRolesSave}
+              saving={discussionSaving}
+              error={discussionError}
+              success={discussionSuccess}
+            />
+          )}
+
+          {isAdmin && (
+            <PermissionRoleCard
+              title={tCustom("permissions.jobTitle")}
+              description={tCustom("permissions.jobDescription")}
+              featureVerb={tCustom("permissions.jobVerb")}
+              roles={jobPostRoles}
+              onToggleRole={toggleJobRole}
+              onSave={handleJobRolesSave}
+              saving={jobSaving}
+              error={jobError}
+              success={jobSuccess}
+            />
+          )}
+
+          {isAdmin && (
+            <PermissionRoleCard
+              title={tCustom("permissions.mediaTitle")}
+              description={tCustom("permissions.mediaDescription")}
+              featureVerb={tCustom("permissions.mediaVerb")}
+              roles={mediaUploadRoles}
+              onToggleRole={toggleMediaRole}
+              onSave={handleMediaRolesSave}
+              saving={mediaSaving}
+              error={mediaError}
+              success={mediaSuccess}
+            />
+          )}
+
+          {/* LinkedIn Profile Sync Toggle (admin-only) */}
+          {isAdmin && (
+            <Card className="org-settings-card p-5 space-y-4 opacity-0 translate-y-2">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 text-foreground" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182M2.985 14.652" />
+                    </svg>
+                    <p className="font-semibold text-foreground">{tCustom("linkedin.title")}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {tCustom("linkedin.description")}
+                  </p>
+                </div>
+                <ToggleSwitch
+                  checked={linkedinResyncEnabled}
+                  onChange={handleLinkedinResyncToggle}
+                  disabled={linkedinResyncSaving}
+                  size="md"
+                />
+              </div>
+              {linkedinResyncError && (
+                <p className="text-sm text-red-600 dark:text-red-400">{linkedinResyncError}</p>
+              )}
+              {linkedinResyncSuccess && (
+                <p className="text-sm text-green-600 dark:text-green-400">{linkedinResyncSuccess}</p>
+              )}
+            </Card>
+          )}
+
         </div>
       )}
     </div>

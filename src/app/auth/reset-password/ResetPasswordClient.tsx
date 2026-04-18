@@ -6,11 +6,14 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Card } from "@/components/ui";
+import { Button, Input, Card, InlineBanner } from "@/components/ui";
 import { sanitizeRedirectPath } from "@/lib/auth/redirect";
 import { resetPasswordSchema, type ResetPasswordForm } from "@/lib/schemas/auth";
+import { useTranslations } from "next-intl";
 
 function ResetPasswordFormComponent() {
+  const t = useTranslations("auth");
+  const tCommon = useTranslations("common");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -59,7 +62,7 @@ function ResetPasswordFormComponent() {
       return;
     }
 
-    setMessage("Password updated successfully! Redirecting...");
+    setMessage(t("passwordUpdatedRedirecting"));
     setIsLoading(false);
 
     setTimeout(() => {
@@ -72,8 +75,8 @@ function ResetPasswordFormComponent() {
     return (
       <Card className="p-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-muted rounded-xl" />
-          <div className="h-10 bg-muted rounded-xl" />
+          <div className="h-10 bg-white/5 rounded-xl" />
+          <div className="h-10 bg-white/5 rounded-xl" />
         </div>
       </Card>
     );
@@ -82,15 +85,15 @@ function ResetPasswordFormComponent() {
   if (sessionState === "error") {
     return (
       <Card className="p-6 text-center">
-        <p className="text-muted-foreground mb-4">
-          Something went wrong. Please check your connection and try again.
+        <p className="text-white/50 mb-4">
+          {t("somethingWentWrong")}
         </p>
         <Button className="w-full" onClick={checkSession}>
-          Try again
+          {tCommon("tryAgain")}
         </Button>
-        <div className="mt-4 text-sm text-muted-foreground">
-          <Link href="/auth/login" className="text-foreground font-medium hover:underline">
-            Back to sign in
+        <div className="mt-4 text-sm text-white/50">
+          <Link href="/auth/login" className="text-white font-medium hover:underline">
+            {t("backToSignIn")}
           </Link>
         </div>
       </Card>
@@ -100,15 +103,15 @@ function ResetPasswordFormComponent() {
   if (sessionState === "expired") {
     return (
       <Card className="p-6 text-center">
-        <p className="text-muted-foreground mb-4">
-          This password reset link is expired or invalid.
+        <p className="text-white/50 mb-4">
+          {t("resetLinkExpired")}
         </p>
         <Link href="/auth/forgot-password">
-          <Button className="w-full">Request a new reset link</Button>
+          <Button className="w-full">{t("requestNewLink")}</Button>
         </Link>
-        <div className="mt-4 text-sm text-muted-foreground">
-          <Link href="/auth/login" className="text-foreground font-medium hover:underline">
-            Back to sign in
+        <div className="mt-4 text-sm text-white/50">
+          <Link href="/auth/login" className="text-white font-medium hover:underline">
+            {t("backToSignIn")}
           </Link>
         </div>
       </Card>
@@ -118,31 +121,31 @@ function ResetPasswordFormComponent() {
   return (
     <Card className="p-6">
       {error && (
-        <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+        <InlineBanner variant="error" className="mb-4">
           {error}
-        </div>
+        </InlineBanner>
       )}
 
       {message && (
-        <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-sm">
+        <InlineBanner variant="success" className="mb-4">
           {message}
-        </div>
+        </InlineBanner>
       )}
 
       <form onSubmit={handleSubmit(onSubmit)}>
         <div className="space-y-4">
           <Input
-            label="New Password"
+            label={t("newPassword")}
             type="password"
-            placeholder="••••••••"
+            placeholder={t("passwordPlaceholder")}
             error={errors.password?.message}
             {...register("password")}
           />
 
           <Input
-            label="Confirm Password"
+            label={t("confirmPassword")}
             type="password"
-            placeholder="••••••••"
+            placeholder={t("passwordPlaceholder")}
             error={errors.confirmPassword?.message}
             {...register("confirmPassword")}
           />
@@ -152,14 +155,14 @@ function ResetPasswordFormComponent() {
             className="w-full"
             isLoading={isLoading}
           >
-            Update Password
+            {t("updatePassword")}
           </Button>
         </div>
       </form>
 
-      <div className="mt-6 text-center text-sm text-muted-foreground">
-        <Link href="/auth/login" className="text-foreground font-medium hover:underline">
-          Back to sign in
+      <div className="mt-6 text-center text-sm text-white/50">
+        <Link href="/auth/login" className="text-white font-medium hover:underline">
+          {t("backToSignIn")}
         </Link>
       </div>
     </Card>
@@ -171,8 +174,8 @@ export function ResetPasswordClient() {
     <Suspense fallback={
       <Card className="p-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-muted rounded-xl" />
-          <div className="h-10 bg-muted rounded-xl" />
+          <div className="h-10 bg-white/5 rounded-xl" />
+          <div className="h-10 bg-white/5 rounded-xl" />
         </div>
       </Card>
     }>

@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
-import { stripe } from "@/lib/stripe";
-import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { baseSchemas } from "@/lib/security/validation";
 import {
@@ -11,6 +8,12 @@ import {
   extractRequestContext,
 } from "@/lib/auth/dev-admin";
 import type { Database } from "@/types/database";
+import { getOrgMembership } from "@/lib/auth/api-helpers";
+import { extractSubscriptionPeriodEndIso } from "@/lib/stripe/subscription-period";
+import {
+  resolveRecoverableAttemptLookup,
+  type RecoverableAttempt,
+} from "@/lib/payments/reconcile-helpers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,7 +42,11 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
+  const { createClient } = await import("@/lib/supabase/server");
+  const { createServiceClient } = await import("@/lib/supabase/service");
+  const { stripe } = await import("@/lib/stripe");
   const supabase = await createClient();
+  const serviceSupabase = createServiceClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   const rateLimit = checkRateLimit(req, {
@@ -60,15 +67,16 @@ export async function POST(req: Request, { params }: RouteParams) {
     return respond({ error: "Unauthorized" }, 401);
   }
 
-  const { data: role } = await supabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", organizationId)
-    .maybeSingle();
+  let membership: { role: string } | null = null;
+  try {
+    membership = await getOrgMembership(serviceSupabase as never, user.id, organizationId);
+  } catch (error) {
+    console.error("[reconcile-subscription] Failed to fetch role:", error);
+    return respond({ error: "Unable to verify permissions" }, 500);
+  }
 
   const isDevAdminAllowed = canDevAdminPerform(user, "reconcile_subscription");
-  if (role?.role !== "admin" && !isDevAdminAllowed) {
+  if (membership?.role !== "admin" && !isDevAdminAllowed) {
     return respond({ error: "Forbidden" }, 403);
   }
 
@@ -83,9 +91,6 @@ export async function POST(req: Request, { params }: RouteParams) {
       ...extractRequestContext(req),
     });
   }
-
-  const serviceSupabase = createServiceClient();
-
   const { data: subscriptionRow } = await serviceSupabase
     .from("organization_subscriptions")
     .select("status, stripe_subscription_id, stripe_customer_id, current_period_end")
@@ -117,13 +122,13 @@ export async function POST(req: Request, { params }: RouteParams) {
   // If we have Stripe IDs but invalid status, fetch directly from Stripe to reconcile
   if (subscriptionRow.stripe_subscription_id) {
     try {
-      const subscription = (await stripe.subscriptions.retrieve(subscriptionRow.stripe_subscription_id)) as SubscriptionWithPeriod;
+      const subscription = (await stripe.subscriptions.retrieve(subscriptionRow.stripe_subscription_id, {
+        expand: ["items.data"],
+      })) as SubscriptionWithPeriod;
       const customerId = typeof subscription.customer === "string"
         ? subscription.customer
         : (subscription.customer as { id?: string })?.id || subscriptionRow.stripe_customer_id;
-      const currentPeriodEnd = subscription.current_period_end
-        ? new Date(subscription.current_period_end * 1000).toISOString()
-        : null;
+      const currentPeriodEnd = extractSubscriptionPeriodEndIso(subscription);
       const status = normalizeSubscriptionStatus({
         status: subscription.status,
         cancel_at_period_end: subscription.cancel_at_period_end,
@@ -137,10 +142,18 @@ export async function POST(req: Request, { params }: RouteParams) {
         updated_at: new Date().toISOString(),
       };
 
-      await serviceSupabase
+      const { error: updateError } = await serviceSupabase
         .from("organization_subscriptions")
         .update(payload)
         .eq("organization_id", organizationId);
+      if (updateError) {
+        console.error("[reconcile-subscription] Failed to persist reconciled subscription", {
+          organizationId,
+          code: updateError.code,
+          message: updateError.message,
+        });
+        return respond({ error: "Unable to persist reconciled subscription state" }, 500);
+      }
 
       return respond({ status, stripeSubscriptionId: subscriptionRow.stripe_subscription_id, stripeCustomerId: customerId });
     } catch (error) {
@@ -162,15 +175,48 @@ export async function POST(req: Request, { params }: RouteParams) {
     "complete", "completed",
   ];
   
-  const { data: paymentAttempts } = await serviceSupabase
-    .from("payment_attempts")
-    .select("id, stripe_checkout_session_id, status, organization_id, metadata")
-    .in("status", recoverableStatuses)
-    .or(`organization_id.eq.${organizationId},metadata->>pending_org_id.eq.${organizationId}`)
-    .order("created_at", { ascending: false })
-    .limit(1);
+  const [byOrgId, byPendingOrgId] = await Promise.all([
+    serviceSupabase
+      .from("payment_attempts")
+      .select("id, stripe_checkout_session_id, status, organization_id, metadata, created_at")
+      .eq("organization_id", organizationId)
+      .in("status", recoverableStatuses)
+      .order("created_at", { ascending: false })
+      .limit(1),
+    serviceSupabase
+      .from("payment_attempts")
+      .select("id, stripe_checkout_session_id, status, organization_id, metadata, created_at")
+      .eq("metadata->>pending_org_id", organizationId)
+      .in("status", recoverableStatuses)
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
 
-  const attempt = paymentAttempts?.[0];
+  const lookup = resolveRecoverableAttemptLookup({
+    byOrgId: {
+      data: byOrgId.data as RecoverableAttempt[] | null,
+      error: byOrgId.error ? { code: byOrgId.error.code, message: byOrgId.error.message } : null,
+    },
+    byPendingOrgId: {
+      data: byPendingOrgId.data as RecoverableAttempt[] | null,
+      error: byPendingOrgId.error
+        ? { code: byPendingOrgId.error.code, message: byPendingOrgId.error.message }
+        : null,
+    },
+  });
+
+  if (lookup.error) {
+    console.error("[reconcile-subscription] Failed payment_attempts lookup", {
+      organizationId,
+      byOrgIdError: byOrgId.error ? { code: byOrgId.error.code, message: byOrgId.error.message } : null,
+      byPendingOrgIdError: byPendingOrgId.error
+        ? { code: byPendingOrgId.error.code, message: byPendingOrgId.error.message }
+        : null,
+    });
+    return respond({ error: lookup.error }, 500);
+  }
+
+  const attempt = lookup.attempt;
   if (!attempt?.stripe_checkout_session_id) {
     return respond({ error: "No completed checkout session found for this organization." }, 404);
   }
@@ -191,10 +237,10 @@ export async function POST(req: Request, { params }: RouteParams) {
       return respond({ error: "Checkout session missing subscription or customer details." }, 400);
     }
 
-    const subscription = (await stripe.subscriptions.retrieve(subscriptionId)) as SubscriptionWithPeriod;
-    const currentPeriodEnd = subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000).toISOString()
-      : null;
+    const subscription = (await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["items.data"],
+    })) as SubscriptionWithPeriod;
+    const currentPeriodEnd = extractSubscriptionPeriodEndIso(subscription);
     const status = normalizeSubscriptionStatus({
       status: subscription.status,
       cancel_at_period_end: subscription.cancel_at_period_end,
@@ -208,16 +254,32 @@ export async function POST(req: Request, { params }: RouteParams) {
       updated_at: new Date().toISOString(),
     };
 
-    await serviceSupabase
+    const { error: updateError } = await serviceSupabase
       .from("organization_subscriptions")
       .update(payload)
       .eq("organization_id", organizationId);
+    if (updateError) {
+      console.error("[reconcile-subscription] Failed to persist recovered subscription", {
+        organizationId,
+        code: updateError.code,
+        message: updateError.message,
+      });
+      return respond({ error: "Unable to persist reconciled subscription state" }, 500);
+    }
 
     if (!attempt.organization_id) {
-      await serviceSupabase
+      const { error: attemptUpdateError } = await serviceSupabase
         .from("payment_attempts")
         .update({ organization_id: organizationId, updated_at: new Date().toISOString() })
         .eq("id", attempt.id);
+      if (attemptUpdateError) {
+        console.error("[reconcile-subscription] Failed to update payment attempt organization_id", {
+          attemptId: attempt.id,
+          organizationId,
+          code: attemptUpdateError.code,
+          message: attemptUpdateError.message,
+        });
+      }
     }
 
     return respond({ status, stripeSubscriptionId: subscriptionId, stripeCustomerId: customerId });

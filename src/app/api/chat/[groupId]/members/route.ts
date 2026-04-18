@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { baseSchemas } from "@/lib/security/validation";
+import { baseSchemas, validateJson, ValidationError } from "@/lib/security/validation";
 import { addChatMembersSchema, removeChatMemberSchema } from "@/lib/schemas/chat";
+import { getChatGroupContext } from "@/lib/auth/chat-helpers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,41 +13,9 @@ interface RouteParams {
 }
 
 /**
- * Loads the chat group and validates it exists and is not soft-deleted.
- * Returns the group or null.
- */
-async function loadGroup(supabase: Awaited<ReturnType<typeof createClient>>, groupId: string) {
-  const { data } = await supabase
-    .from("chat_groups")
-    .select("id, organization_id, deleted_at")
-    .eq("id", groupId)
-    .is("deleted_at", null)
-    .single();
-  return data;
-}
-
-/**
- * Checks if a user is a member of the chat group and returns their membership row.
- */
-async function getGroupMembership(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  groupId: string,
-  userId: string
-) {
-  const { data } = await supabase
-    .from("chat_group_members")
-    .select("id, role, joined_at")
-    .eq("chat_group_id", groupId)
-    .eq("user_id", userId)
-    .is("removed_at", null)
-    .maybeSingle();
-  return data;
-}
-
-/**
  * GET /api/chat/[groupId]/members
  * List current members of the group with user info.
- * Auth: must be group member OR org admin.
+ * Auth: must be active org member + (group member OR org admin).
  */
 export async function GET(_req: Request, { params }: RouteParams) {
   const { groupId } = await params;
@@ -72,25 +41,8 @@ export async function GET(_req: Request, { params }: RouteParams) {
 
   if (!user) return respond({ error: "Unauthorized" }, 401);
 
-  const group = await loadGroup(supabase, groupId);
-  if (!group) return respond({ error: "Group not found" }, 404);
-
-  // Check org membership
-  const { data: orgRole } = await supabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", group.organization_id)
-    .maybeSingle();
-
-  if (!orgRole) return respond({ error: "Forbidden" }, 403);
-
-  const isAdmin = orgRole.role === "admin";
-  const membership = await getGroupMembership(supabase, groupId, user.id);
-
-  if (!membership && !isAdmin) {
-    return respond({ error: "Forbidden" }, 403);
-  }
+  const ctx = await getChatGroupContext(supabase, user.id, groupId);
+  if (!ctx.ok) return respond({ error: ctx.error }, ctx.status);
 
   // Fetch all members with user info
   const { data: members, error: membersError } = await supabase
@@ -139,39 +91,22 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   if (!user) return respond({ error: "Unauthorized" }, 401);
 
-  // Parse body
-  let body: unknown;
+  let parsedBody;
   try {
-    body = await req.json();
-  } catch {
-    return respond({ error: "Invalid JSON body" }, 400);
+    parsedBody = await validateJson(req, addChatMembersSchema);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return respond({ error: err.message, details: err.details }, 400);
+    }
+    return respond({ error: "Invalid request" }, 400);
   }
 
-  const parsed = addChatMembersSchema.safeParse(body);
-  if (!parsed.success) {
-    return respond({ error: "Validation failed", details: parsed.error.flatten() }, 400);
-  }
+  const { user_ids } = parsedBody;
 
-  const { user_ids } = parsed.data;
+  const ctx = await getChatGroupContext(supabase, user.id, groupId);
+  if (!ctx.ok) return respond({ error: ctx.error }, ctx.status);
 
-  const group = await loadGroup(supabase, groupId);
-  if (!group) return respond({ error: "Group not found" }, 404);
-
-  // Check org membership and role
-  const { data: orgRole } = await supabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", group.organization_id)
-    .maybeSingle();
-
-  if (!orgRole) return respond({ error: "Forbidden" }, 403);
-
-  const isAdmin = orgRole.role === "admin";
-  const membership = await getGroupMembership(supabase, groupId, user.id);
-  const isGroupMod = membership?.role === "admin" || membership?.role === "moderator";
-
-  if (!isAdmin && !isGroupMod) {
+  if (!ctx.isOrgAdmin && !ctx.isGroupMod) {
     return respond({ error: "Forbidden" }, 403);
   }
 
@@ -179,7 +114,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   const { data: activeMembers } = await supabase
     .from("members")
     .select("user_id")
-    .eq("organization_id", group.organization_id)
+    .eq("organization_id", ctx.group.organization_id)
     .eq("status", "active")
     .is("deleted_at", null)
     .in("user_id", user_ids);
@@ -226,7 +161,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const inserts = newUserIds.map(uid => ({
       chat_group_id: groupId,
       user_id: uid,
-      organization_id: group.organization_id,
+      organization_id: ctx.group.organization_id,
       role: "member" as const,
     }));
 
@@ -275,46 +210,37 @@ export async function DELETE(req: Request, { params }: RouteParams) {
 
   if (!user) return respond({ error: "Unauthorized" }, 401);
 
-  // Parse body
-  let body: unknown;
+  let parsedBody;
   try {
-    body = await req.json();
-  } catch {
-    return respond({ error: "Invalid JSON body" }, 400);
+    parsedBody = await validateJson(req, removeChatMemberSchema);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      return respond({ error: err.message, details: err.details }, 400);
+    }
+    return respond({ error: "Invalid request" }, 400);
   }
 
-  const parsed = removeChatMemberSchema.safeParse(body);
-  if (!parsed.success) {
-    return respond({ error: "Validation failed", details: parsed.error.flatten() }, 400);
-  }
+  const { user_id: targetUserId } = parsedBody;
 
-  const { user_id: targetUserId } = parsed.data;
+  const ctx = await getChatGroupContext(supabase, user.id, groupId);
+  if (!ctx.ok) return respond({ error: ctx.error }, ctx.status);
 
-  const group = await loadGroup(supabase, groupId);
-  if (!group) return respond({ error: "Group not found" }, 404);
-
-  // Check org membership
-  const { data: orgRole } = await supabase
-    .from("user_organization_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("organization_id", group.organization_id)
-    .maybeSingle();
-
-  if (!orgRole) return respond({ error: "Forbidden" }, 403);
-
-  const isAdmin = orgRole.role === "admin";
-  const membership = await getGroupMembership(supabase, groupId, user.id);
-  const isGroupMod = membership?.role === "admin" || membership?.role === "moderator";
   const isSelf = user.id === targetUserId;
 
   // Authorization: org admin, group admin/moderator, or self
-  if (!isAdmin && !isGroupMod && !isSelf) {
+  if (!ctx.isOrgAdmin && !ctx.isGroupMod && !isSelf) {
     return respond({ error: "Forbidden" }, 403);
   }
 
   // Check that the target is actually a group member
-  const targetMembership = await getGroupMembership(supabase, groupId, targetUserId);
+  const { data: targetMembership } = await supabase
+    .from("chat_group_members")
+    .select("id, role, joined_at")
+    .eq("chat_group_id", groupId)
+    .eq("user_id", targetUserId)
+    .is("removed_at", null)
+    .maybeSingle();
+
   if (!targetMembership) {
     return respond({ error: "User is not a member of this group" }, 404);
   }

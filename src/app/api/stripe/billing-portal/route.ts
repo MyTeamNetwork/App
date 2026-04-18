@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe";
+import { getStripeOrigin } from "@/lib/stripe-origin";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import {
@@ -63,7 +64,7 @@ export async function POST(req: Request) {
     }
 
     const { organizationId, orgSlug } = await validateJson(req, requestSchema);
-    const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+    const origin = getStripeOrigin(req.url);
 
     const orgQuery = supabase
       .from("organizations")
@@ -131,7 +132,6 @@ export async function POST(req: Request) {
         );
         // If subscription doesn't exist in Stripe, clear it from database
         if (error instanceof Error && error.message.includes("No such subscription")) {
-          console.log("[billing-portal] Clearing invalid subscription ID for org:", organization.id);
           const serviceSupabase = createServiceClient();
           await serviceSupabase
             .from("organization_subscriptions")
@@ -223,10 +223,3 @@ export async function POST(req: Request) {
     throw error;
   }
 }
-
-
-
-
-
-
-

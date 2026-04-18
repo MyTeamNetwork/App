@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import DevEnterpriseModal from "./DevEnterpriseModal";
 
 interface DevPanelProps {
   organizationId: string;
@@ -21,6 +22,9 @@ interface Organization {
   slug: string;
   created_at: string;
   member_count: number;
+  enterprise_id: string | null;
+  enterprise_name: string | null;
+  enterprise_slug: string | null;
   subscription: {
     status: string;
     stripe_subscription_id: string | null;
@@ -43,9 +47,12 @@ export function DevPanel({
   const [isExpanded, setIsExpanded] = useState(false);
   const [isReconciling, setIsReconciling] = useState(false);
   const [reconcileResult, setReconcileResult] = useState<string | null>(null);
+  const [isSeedingMentors, setIsSeedingMentors] = useState(false);
+  const [seedMentorsResult, setSeedMentorsResult] = useState<string | null>(null);
   const [showAllOrgs, setShowAllOrgs] = useState(false);
   const [allOrgs, setAllOrgs] = useState<Organization[]>([]);
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
+  const [showEnterprises, setShowEnterprises] = useState(false);
   const isMountedRef = useRef(true);
   const reloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,6 +88,32 @@ export function DevPanel({
       setReconcileResult(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setIsReconciling(false);
+    }
+  };
+
+  const handleSeedMentors = async () => {
+    setIsSeedingMentors(true);
+    setSeedMentorsResult(null);
+    try {
+      const res = await fetch("/api/dev-admin/seed-mentors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: organizationId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSeedMentorsResult(`Error: ${data.error || res.statusText}`);
+        return;
+      }
+      setSeedMentorsResult(
+        `Seeded: inserted=${data.inserted}, skipped=${data.skipped}`
+      );
+    } catch (err) {
+      setSeedMentorsResult(
+        `Error: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+    } finally {
+      setIsSeedingMentors(false);
     }
   };
 
@@ -146,7 +179,7 @@ export function DevPanel({
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div className="fixed bottom-4 left-4 z-50">
       {/* Toggle button */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
@@ -159,7 +192,7 @@ export function DevPanel({
 
       {/* Expanded panel */}
       {isExpanded && (
-        <div className="absolute bottom-12 right-0 w-96 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl text-white text-xs overflow-hidden">
+        <div className="absolute bottom-12 left-0 w-96 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl text-white text-xs overflow-hidden">
           {/* Header */}
           <div className="bg-purple-600 px-4 py-2 flex items-center justify-between">
             <span className="font-semibold">Dev Admin Panel</span>
@@ -246,10 +279,28 @@ export function DevPanel({
                 >
                   {isLoadingOrgs ? "Loading..." : "View All Orgs"}
                 </button>
+                <button
+                  onClick={() => setShowEnterprises(true)}
+                  className="bg-purple-500 hover:bg-purple-600 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+                >
+                  View Enterprises
+                </button>
+                <button
+                  onClick={handleSeedMentors}
+                  disabled={isSeedingMentors}
+                  className="bg-pink-600 hover:bg-pink-700 disabled:opacity-50 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+                >
+                  {isSeedingMentors ? "Seeding..." : "Seed 5 Mentors"}
+                </button>
               </div>
               {reconcileResult && (
                 <div className={`mt-2 p-2 rounded text-xs ${reconcileResult.startsWith("Error") ? "bg-red-900/50" : "bg-green-900/50"}`}>
                   {reconcileResult}
+                </div>
+              )}
+              {seedMentorsResult && (
+                <div className={`mt-2 p-2 rounded text-xs ${seedMentorsResult.startsWith("Error") ? "bg-red-900/50" : "bg-green-900/50"}`}>
+                  {seedMentorsResult}
                 </div>
               )}
             </section>
@@ -284,6 +335,12 @@ export function DevPanel({
         </div>
       )}
 
+      {/* Enterprise Modal */}
+      <DevEnterpriseModal
+        isOpen={showEnterprises}
+        onClose={() => setShowEnterprises(false)}
+      />
+
       {/* All Orgs Modal */}
       {showAllOrgs && (
         <div
@@ -310,6 +367,7 @@ export function DevPanel({
                     <th className="text-left py-2 px-3 font-semibold">Name</th>
                     <th className="text-left py-2 px-3 font-semibold">Slug</th>
                     <th className="text-left py-2 px-3 font-semibold">Members</th>
+                    <th className="text-left py-2 px-3 font-semibold">Enterprise</th>
                     <th className="text-left py-2 px-3 font-semibold">Created</th>
                     <th className="text-left py-2 px-3 font-semibold">Subscription</th>
                   </tr>
@@ -327,6 +385,18 @@ export function DevPanel({
                         </a>
                       </td>
                       <td className="py-3 px-3">{org.member_count}</td>
+                      <td className="py-3 px-3">
+                        {org.enterprise_slug ? (
+                          <a
+                            href={`/enterprise/${org.enterprise_slug}`}
+                            className="text-purple-600 hover:text-purple-800 hover:underline"
+                          >
+                            {org.enterprise_name}
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">--</span>
+                        )}
+                      </td>
                       <td className="py-3 px-3">
                         {new Date(org.created_at).toLocaleDateString()}
                       </td>

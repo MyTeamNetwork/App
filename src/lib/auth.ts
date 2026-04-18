@@ -2,18 +2,13 @@ import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/database";
 import { normalizeRole } from "./auth/role-utils";
 
-export async function getCurrentUser() {
-  const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.user ?? null;
-}
+// Re-export the cached version from roles.ts — all callers get deduplication
+export { getCurrentUser } from "./auth/roles";
 
 export async function getUserProfile() {
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user;
-  
-  if (!user) return null;
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return null;
 
   const { data: profile } = await supabase
     .from("users")
@@ -26,17 +21,19 @@ export async function getUserProfile() {
 
 export async function getUserRoleForOrg(organizationId: string): Promise<UserRole | null> {
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user;
-  
-  if (!user) return null;
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return null;
 
-  const { data } = await supabase
+  const { data, error: roleError } = await supabase
     .from("user_organization_roles")
     .select("role,status")
     .eq("user_id", user.id)
     .eq("organization_id", organizationId)
     .maybeSingle();
+
+  if (roleError) {
+    throw new Error(`[getUserRoleForOrg] DB query failed: ${roleError.message}`);
+  }
 
   if (!data || data.status === "revoked") return null;
 

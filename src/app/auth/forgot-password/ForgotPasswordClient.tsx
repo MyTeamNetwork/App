@@ -6,16 +6,18 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Card, HCaptcha, HCaptchaRef } from "@/components/ui";
+import { Button, Input, Card, HCaptcha, HCaptchaRef, InlineBanner } from "@/components/ui";
 import { useCaptcha } from "@/hooks/useCaptcha";
 import { sanitizeRedirectPath, buildRecoveryRedirectTo } from "@/lib/auth/redirect";
 import { forgotPasswordSchema, type ForgotPasswordForm } from "@/lib/schemas/auth";
+import { useTranslations } from "next-intl";
 
 interface ForgotPasswordFormProps {
   hcaptchaSiteKey: string;
 }
 
 function ForgotPasswordFormComponent({ hcaptchaSiteKey }: ForgotPasswordFormProps) {
+  const t = useTranslations("auth");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -38,7 +40,7 @@ function ForgotPasswordFormComponent({ hcaptchaSiteKey }: ForgotPasswordFormProp
 
   const onSubmit = async (data: ForgotPasswordForm) => {
     if (!isVerified || !captchaToken) {
-      setError("Please complete the captcha verification");
+      setError(t("completeCaptcha"));
       return;
     }
 
@@ -58,7 +60,7 @@ function ForgotPasswordFormComponent({ hcaptchaSiteKey }: ForgotPasswordFormProp
       return;
     }
 
-    setMessage("Check your email for a password reset link!");
+    setMessage(t("checkEmailReset"));
     setIsLoading(false);
     captchaRef.current?.reset();
   };
@@ -66,23 +68,23 @@ function ForgotPasswordFormComponent({ hcaptchaSiteKey }: ForgotPasswordFormProp
   return (
     <Card className="p-6">
       {error && (
-        <div data-testid="forgot-password-error" className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+        <InlineBanner variant="error" data-testid="forgot-password-error" className="mb-4">
           {error}
-        </div>
+        </InlineBanner>
       )}
 
       {message && (
-        <div data-testid="forgot-password-success" className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-sm">
+        <InlineBanner variant="success" data-testid="forgot-password-success" className="mb-4">
           {message}
-        </div>
+        </InlineBanner>
       )}
 
       <form data-testid="forgot-password-form" onSubmit={handleSubmit(onSubmit)}>
         <div className="space-y-4">
           <Input
-            label="Email"
+            label={t("emailLabel")}
             type="email"
-            placeholder="you@example.com"
+            placeholder={t("emailPlaceholder")}
             error={errors.email?.message}
             data-testid="forgot-password-email"
             {...register("email")}
@@ -95,7 +97,7 @@ function ForgotPasswordFormComponent({ hcaptchaSiteKey }: ForgotPasswordFormProp
               onVerify={onVerify}
               onExpire={onExpire}
               onError={onError}
-              theme="light"
+              theme="dark"
             />
           </div>
 
@@ -106,15 +108,15 @@ function ForgotPasswordFormComponent({ hcaptchaSiteKey }: ForgotPasswordFormProp
             disabled={!isVerified}
             data-testid="forgot-password-submit"
           >
-            Send Reset Link
+            {t("sendResetLink")}
           </Button>
         </div>
       </form>
 
-      <div className="mt-6 text-center text-sm text-muted-foreground">
-        Remember your password?{" "}
-        <Link href="/auth/login" className="text-foreground font-medium hover:underline">
-          Sign in
+      <div className="mt-6 text-center text-sm text-white/50">
+        {t("rememberPassword")}{" "}
+        <Link href="/auth/login" className="text-white font-medium hover:underline">
+          {t("signIn")}
         </Link>
       </div>
     </Card>
@@ -126,8 +128,8 @@ export function ForgotPasswordClient({ hcaptchaSiteKey }: ForgotPasswordFormProp
     <Suspense fallback={
       <Card className="p-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-muted rounded-xl" />
-          <div className="h-10 bg-muted rounded-xl" />
+          <div className="h-10 bg-white/5 rounded-xl" />
+          <div className="h-10 bg-white/5 rounded-xl" />
         </div>
       </Card>
     }>

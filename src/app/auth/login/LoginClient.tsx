@@ -6,19 +6,33 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Card, HCaptcha, HCaptchaRef } from "@/components/ui";
+import { Button, Input, Card, HCaptcha, HCaptchaRef, InlineBanner } from "@/components/ui";
 import { FeedbackButton } from "@/components/feedback";
 import { useCaptcha } from "@/hooks/useCaptcha";
-import { sanitizeRedirectPath } from "@/lib/auth/redirect";
+import { sanitizeRedirectPath, buildAuthCallbackUrl, buildAuthLink } from "@/lib/auth/redirect";
 import { loginSchema, type LoginForm } from "@/lib/schemas/auth";
+import { LinkedInIcon } from "@/components/shared/LinkedInIcon";
+import { MicrosoftIcon } from "@/components/shared/MicrosoftIcon";
+import { LINKEDIN_OIDC_PROVIDER } from "@/lib/linkedin/config";
+import { MICROSOFT_SSO_PROVIDER } from "@/lib/microsoft/sso-config";
+import { useTranslations } from "next-intl";
 
 interface LoginFormProps {
   hcaptchaSiteKey: string;
+  linkedinOauthAvailable: boolean;
+  microsoftOauthAvailable: boolean;
 }
 
-function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
+function LoginFormComponent({
+  hcaptchaSiteKey,
+  linkedinOauthAvailable,
+  microsoftOauthAvailable,
+}: LoginFormProps) {
+  const t = useTranslations("auth");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isLinkedInLoading, setIsLinkedInLoading] = useState(false);
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [mode, setMode] = useState<"password" | "magic-link">("password");
@@ -42,28 +56,42 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
   const searchParams = useSearchParams();
   const redirectTo = sanitizeRedirectPath(searchParams.get("redirect"));
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "");
+  const isSocialLoading = isGoogleLoading || isLinkedInLoading || isMicrosoftLoading;
 
-  const handleGoogleLogin = async () => {
-    setIsGoogleLoading(true);
+  const handleSocialLogin = async (provider: "google" | typeof LINKEDIN_OIDC_PROVIDER | typeof MICROSOFT_SSO_PROVIDER) => {
+    if (!isVerified || !captchaToken) {
+      setError(t("completeCaptcha"));
+      return;
+    }
+
+    const setLoading =
+      provider === "google"
+        ? setIsGoogleLoading
+        : provider === MICROSOFT_SSO_PROVIDER
+          ? setIsMicrosoftLoading
+          : setIsLinkedInLoading;
+    setLoading(true);
     setError(null);
 
     const supabase = createClient()!;
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
+      provider,
       options: {
-        redirectTo: `${siteUrl}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
+        redirectTo: buildAuthCallbackUrl(siteUrl, redirectTo, "login"),
+        ...(provider === MICROSOFT_SSO_PROVIDER && { scopes: "openid profile email" }),
       },
     });
 
     if (error) {
       setError(error.message);
-      setIsGoogleLoading(false);
+      setLoading(false);
+      captchaRef.current?.reset();
     }
   };
 
   const onPasswordLogin = async (data: LoginForm) => {
     if (!isVerified || !captchaToken) {
-      setError("Please complete the captcha verification");
+      setError(t("completeCaptcha"));
       return;
     }
 
@@ -94,7 +122,7 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
     e.preventDefault();
 
     if (!isVerified || !captchaToken) {
-      setError("Please complete the captcha verification");
+      setError(t("completeCaptcha"));
       return;
     }
 
@@ -105,7 +133,7 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${siteUrl}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
+        emailRedirectTo: buildAuthCallbackUrl(siteUrl, redirectTo, "login"),
         captchaToken,
       },
     });
@@ -117,7 +145,7 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
       return;
     }
 
-    setMessage("Check your email for the magic link!");
+    setMessage(t("checkEmail"));
     setIsLoading(false);
     captchaRef.current?.reset();
   };
@@ -128,8 +156,9 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
         type="button"
         variant="secondary"
         className="w-full mb-6"
-        onClick={handleGoogleLogin}
+        onClick={() => handleSocialLogin("google")}
         isLoading={isGoogleLoading}
+        disabled={isSocialLoading}
         data-testid="login-google"
       >
         <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
@@ -150,30 +179,60 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
           />
         </svg>
-        Continue with Google
+        {t("continueWithGoogle")}
       </Button>
+
+      {linkedinOauthAvailable && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full mb-6"
+          onClick={() => handleSocialLogin(LINKEDIN_OIDC_PROVIDER)}
+          isLoading={isLinkedInLoading}
+          disabled={isSocialLoading}
+          data-testid="login-linkedin"
+        >
+          <LinkedInIcon className="h-5 w-5 mr-2" />
+          {t("continueWithLinkedIn")}
+        </Button>
+      )}
+
+      {microsoftOauthAvailable && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full mb-6"
+          onClick={() => handleSocialLogin(MICROSOFT_SSO_PROVIDER)}
+          isLoading={isMicrosoftLoading}
+          disabled={isSocialLoading}
+          data-testid="login-microsoft"
+        >
+          <MicrosoftIcon className="h-5 w-5 mr-2" />
+          {t("continueWithMicrosoft")}
+        </Button>
+      )}
 
       <div className="relative mb-6">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
+          <div className="w-full border-t border-white/10" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+          <span className="bg-[#1a1a1a] px-2 text-white/50">{t("orContinueWithEmail")}</span>
         </div>
       </div>
 
-      <div className="flex rounded-xl bg-muted p-1 mb-6">
+      <div className="flex rounded-xl bg-white/5 p-1 mb-6">
         <button
           type="button"
           onClick={() => setMode("password")}
           data-testid="login-mode-password"
           className={`flex-1 py-2 px-4 text-sm font-medium rounded-lg transition-all ${
             mode === "password"
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-[#0a0a0a] text-white shadow-sm"
+              : "text-white/50 hover:text-white"
           }`}
         >
-          Password
+          {t("passwordLabel")}
         </button>
         <button
           type="button"
@@ -181,35 +240,35 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
           data-testid="login-mode-magic"
           className={`flex-1 py-2 px-4 text-sm font-medium rounded-lg transition-all ${
             mode === "magic-link"
-              ? "bg-card text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+              ? "bg-[#0a0a0a] text-white shadow-sm"
+              : "text-white/50 hover:text-white"
           }`}
         >
-          Magic Link
+          {t("magicLink")}
         </button>
       </div>
 
       {error && (
-        <div data-testid="login-error" className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+        <InlineBanner variant="error" data-testid="login-error" className="mb-4">
           {error}
           <div className="mt-2 flex justify-end">
             <FeedbackButton context="login" trigger="login_error" />
           </div>
-        </div>
+        </InlineBanner>
       )}
 
       {message && (
-        <div data-testid="login-success" className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-sm">
+        <InlineBanner variant="success" data-testid="login-success" className="mb-4">
           {message}
-        </div>
+        </InlineBanner>
       )}
 
       <form data-testid="login-form" onSubmit={mode === "password" ? handleSubmit(onPasswordLogin) : handleMagicLink}>
         <div className="space-y-4">
           <Input
-            label="Email"
+            label={t("emailLabel")}
             type="email"
-            placeholder="you@example.com"
+            placeholder={t("emailPlaceholder")}
             data-testid="login-email"
             error={errors.email?.message}
             {...register("email")}
@@ -218,9 +277,9 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
           {mode === "password" && (
             <>
               <Input
-                label="Password"
+                label={t("passwordLabel")}
                 type="password"
-                placeholder="••••••••"
+                placeholder={t("passwordPlaceholder")}
                 data-testid="login-password"
                 error={errors.password?.message}
                 {...register("password")}
@@ -228,9 +287,9 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
               <div className="text-right">
                 <Link
                   href={`/auth/forgot-password?redirect=${encodeURIComponent(redirectTo)}`}
-                  className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+                  className="text-sm text-white/50 hover:text-white hover:underline"
                 >
-                  Forgot password?
+                  {t("forgotPassword")}
                 </Link>
               </div>
             </>
@@ -243,7 +302,7 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
               onVerify={onVerify}
               onExpire={onExpire}
               onError={onError}
-              theme="light"
+              theme="dark"
             />
           </div>
 
@@ -254,33 +313,41 @@ function LoginFormComponent({ hcaptchaSiteKey }: LoginFormProps) {
             disabled={!isVerified}
             data-testid="login-submit"
           >
-            {mode === "password" ? "Sign In" : "Send Magic Link"}
+            {mode === "password" ? t("signIn") : t("sendMagicLink")}
           </Button>
         </div>
       </form>
 
-      <div className="mt-6 text-center text-sm text-muted-foreground">
-        Don&apos;t have an account?{" "}
-        <Link href="/auth/signup" className="text-foreground font-medium hover:underline">
-          Sign up
+      <div className="mt-6 text-center text-sm text-white/50">
+        {t("noAccount")}{" "}
+        <Link href={buildAuthLink("/auth/signup", redirectTo)} className="text-white font-medium hover:underline">
+          {t("signUp")}
         </Link>
       </div>
     </Card>
   );
 }
 
-export function LoginClient({ hcaptchaSiteKey }: LoginFormProps) {
+export function LoginClient({
+  hcaptchaSiteKey,
+  linkedinOauthAvailable,
+  microsoftOauthAvailable,
+}: LoginFormProps) {
   return (
     <Suspense fallback={
       <Card className="p-6">
         <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-muted rounded-xl" />
-          <div className="h-10 bg-muted rounded-xl" />
-          <div className="h-10 bg-muted rounded-xl" />
+          <div className="h-10 bg-white/5 rounded-xl" />
+          <div className="h-10 bg-white/5 rounded-xl" />
+          <div className="h-10 bg-white/5 rounded-xl" />
         </div>
       </Card>
     }>
-      <LoginFormComponent hcaptchaSiteKey={hcaptchaSiteKey} />
+      <LoginFormComponent
+        hcaptchaSiteKey={hcaptchaSiteKey}
+        linkedinOauthAvailable={linkedinOauthAvailable}
+        microsoftOauthAvailable={microsoftOauthAvailable}
+      />
     </Suspense>
   );
 }

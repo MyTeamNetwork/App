@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { detectConnector } from "@/lib/schedule-connectors/registry";
 import { maskUrl, normalizeUrl } from "@/lib/schedule-connectors/fetch";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { validateJson, ValidationError, validationErrorResponse } from "@/lib/security/validation";
 import { schedulePreviewSchema } from "@/lib/schemas";
+import { getOrgMembership } from "@/lib/auth/api-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -47,14 +47,8 @@ export async function POST(request: Request) {
 
     const body = await validateJson(request, schedulePreviewSchema);
 
-    const { data: membership } = await supabase
-      .from("user_organization_roles")
-      .select("role,status")
-      .eq("user_id", user.id)
-      .eq("organization_id", body.orgId)
-      .maybeSingle();
-
-    if (membership?.status === "revoked" || membership?.role !== "admin") {
+    const membership = await getOrgMembership(supabase, user.id, body.orgId);
+    if (!membership || membership.role !== "admin") {
       return NextResponse.json(
         { error: "Forbidden", message: "Only admins can preview schedules." },
         { status: 403, headers: rateLimit.headers }
@@ -71,6 +65,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const { detectConnector } = await import("@/lib/schedule-connectors/registry");
     const { connector } = await detectConnector(normalizedUrl, { orgId: body.orgId });
     const preview = await connector.preview({ url: normalizedUrl, orgId: body.orgId });
 

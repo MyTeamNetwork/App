@@ -38,7 +38,11 @@ export const baseSchemas = {
 };
 
 export const safeString = (max: number, min = 1) =>
-  z.string().trim().min(min, "Value is required").max(max, `Must be ${max} characters or fewer`);
+  z
+    .string()
+    .trim()
+    .min(min, min <= 1 ? "Value is required" : `Must be at least ${min} characters`)
+    .max(max, `Must be ${max} characters or fewer`);
 
 export const optionalSafeString = (max: number) =>
   z
@@ -92,3 +96,43 @@ export function validationErrorResponse(error: ValidationError) {
     { status: 400 },
   );
 }
+
+export function sanitizeIlikeInput(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\") // backslash first (escape order matters)
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
+}
+
+/**
+ * Allowed hostnames for image URLs used in next/image.
+ * Must match remotePatterns in next.config.mjs.
+ */
+export const ALLOWED_IMAGE_HOSTS = [
+  "lh3.googleusercontent.com",
+  "avatars.githubusercontent.com",
+  "rytsziwekhtjdqzzpdso.supabase.co",
+  "media.licdn.com",
+] as const;
+
+/**
+ * Validates that a URL is from an allowed image host.
+ * Use this for any image URL that will be rendered with next/image.
+ */
+export const allowedImageUrl = z
+  .string()
+  .url()
+  .max(500)
+  .refine(
+    (url) => {
+      try {
+        const hostname = new URL(url).hostname;
+        return ALLOWED_IMAGE_HOSTS.includes(hostname as typeof ALLOWED_IMAGE_HOSTS[number]);
+      } catch {
+        return false;
+      }
+    },
+    {
+      message: "External image links aren't supported. Please download the image to your computer first, then upload it here.",
+    }
+  );

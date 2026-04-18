@@ -49,11 +49,12 @@ export default function FillFormPage() {
           .select("*")
           .eq("form_id", formId)
           .eq("user_id", user.id)
+          .is("deleted_at", null)
           .maybeSingle();
 
         if (submission) {
           setExistingSubmission(submission as FormSubmission);
-          setResponses((submission.data as Record<string, unknown>) || {});
+          setResponses((((submission as FormSubmission & { data?: unknown }).data) as Record<string, unknown>) || {});
         }
       }
 
@@ -70,7 +71,7 @@ export default function FillFormPage() {
     setIsLoading(true);
     setError(null);
 
-    const fields = (form.fields || []) as FormField[];
+    const fields = (form.fields || []) as unknown as FormField[];
 
     // Validate required fields
     for (const field of fields) {
@@ -138,12 +139,12 @@ export default function FillFormPage() {
 
   if (!form) return null;
 
-  const fields = (form.fields || []) as FormField[];
+  const fields = (form.fields || []) as unknown as FormField[];
 
   if (success) {
     return (
       <div className="animate-fade-in">
-        <PageHeader title={form.title} backHref={`/${orgSlug}/forms`} />
+        <PageHeader title={form.title} backHref={`/${orgSlug}/forms`} translateTitle />
         <Card className="p-8 text-center max-w-xl mx-auto">
           <div className="text-green-500 mb-4">
             <svg className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -166,6 +167,8 @@ export default function FillFormPage() {
         title={form.title}
         description={form.description || undefined}
         backHref={`/${orgSlug}/forms`}
+        translateTitle
+        translateDescription={Boolean(form.description)}
       />
 
       <Card className="max-w-2xl">
@@ -233,7 +236,9 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
           onChange={(e) => onChange(e.target.value)}
           options={[
             { label: "Select...", value: "" },
-            ...(field.options || []).map((opt) => ({ label: opt, value: opt })),
+            ...(field.options || []).map((opt) =>
+              typeof opt === "string" ? { label: opt, value: opt } : opt
+            ),
           ]}
         />
       );
@@ -243,18 +248,22 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">{label}</label>
           <div className="space-y-2">
-            {(field.options || []).map((opt) => (
-              <label key={opt} className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  name={field.name}
-                  checked={value === opt}
-                  onChange={() => onChange(opt)}
-                  className="h-4 w-4"
-                />
-                <span className="text-foreground">{opt}</span>
-              </label>
-            ))}
+            {(field.options || []).map((opt) => {
+              const optValue = typeof opt === "string" ? opt : opt.value;
+              const optLabel = typeof opt === "string" ? opt : opt.label;
+              return (
+                <label key={optValue} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name={field.name}
+                    checked={value === optValue}
+                    onChange={() => onChange(optValue)}
+                    className="h-4 w-4"
+                  />
+                  <span className="text-foreground">{optLabel}</span>
+                </label>
+              );
+            })}
           </div>
         </div>
       );
@@ -265,23 +274,27 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         <div className="space-y-2">
           <label className="block text-sm font-medium text-foreground">{label}</label>
           <div className="space-y-2">
-            {(field.options || []).map((opt) => (
-              <label key={opt} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={checkedValues.includes(opt)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      onChange([...checkedValues, opt]);
-                    } else {
-                      onChange(checkedValues.filter((v) => v !== opt));
-                    }
-                  }}
-                  className="h-4 w-4 rounded"
-                />
-                <span className="text-foreground">{opt}</span>
-              </label>
-            ))}
+            {(field.options || []).map((opt) => {
+              const optValue = typeof opt === "string" ? opt : opt.value;
+              const optLabel = typeof opt === "string" ? opt : opt.label;
+              return (
+                <label key={optValue} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={checkedValues.includes(optValue)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        onChange([...checkedValues, optValue]);
+                      } else {
+                        onChange(checkedValues.filter((v) => v !== optValue));
+                      }
+                    }}
+                    className="h-4 w-4 rounded"
+                  />
+                  <span className="text-foreground">{optLabel}</span>
+                </label>
+              );
+            })}
           </div>
         </div>
       );

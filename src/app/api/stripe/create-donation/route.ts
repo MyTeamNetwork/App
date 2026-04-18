@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { stripe, getConnectAccountStatus } from "@/lib/stripe";
+import { getStripeOrigin } from "@/lib/stripe-origin";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import {
@@ -41,6 +42,7 @@ const donationSchema = z
     mode: z.enum(["checkout", "payment_intent"]).optional(),
     idempotencyKey: baseSchemas.idempotencyKey.optional(),
     paymentAttemptId: baseSchemas.uuid.optional(),
+    anonymous: z.boolean().optional(),
     captchaToken: z.string().min(1, "Captcha verification required"),
     // SECURITY: platformFeeAmountCents is accepted but IGNORED - fee is calculated server-side
     // This field is deprecated and will be removed in a future version
@@ -132,6 +134,9 @@ export async function POST(req: Request) {
   }
 
   const connectStatus = await getConnectAccountStatus(org.stripe_connect_account_id);
+  if (connectStatus.lookupFailed) {
+    return respond({ error: "Unable to verify Stripe connection. Please try again." }, 503);
+  }
   if (!connectStatus.isReady) {
     return respond({ error: "Stripe onboarding is not completed for this organization" }, 400);
   }
@@ -149,7 +154,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+  const origin = getStripeOrigin(req.url);
   const donorName = body.donorName?.trim();
   const donorEmail = body.donorEmail?.trim();
   const purpose = body.purpose?.trim();
@@ -181,6 +186,10 @@ export async function POST(req: Request) {
   const paymentAttemptMetadata: Record<string, string> = { ...metadata };
   if (donorName) paymentAttemptMetadata.donor_name = donorName;
   if (donorEmail) paymentAttemptMetadata.donor_email = donorEmail;
+  if (body.anonymous) paymentAttemptMetadata.anonymous = "true";
+
+  let resolvedAttemptId: string | undefined;
+  let stripeResourceCreated = false;
 
   try {
     const { attempt } = await ensurePaymentAttempt({
@@ -196,6 +205,7 @@ export async function POST(req: Request) {
       metadata: paymentAttemptMetadata, // Includes donor PII for webhook retrieval
     });
 
+    resolvedAttemptId = attempt.id;
     metadata.payment_attempt_id = attempt.id;
 
     const { attempt: claimedAttempt, claimed } = await claimPaymentAttempt({
@@ -276,6 +286,8 @@ export async function POST(req: Request) {
         { idempotencyKey: claimedAttempt.idempotency_key, ...stripeOptions },
       );
 
+      stripeResourceCreated = true;
+
       await updatePaymentAttempt(supabase, claimedAttempt.id, {
         stripe_payment_intent_id: paymentIntent.id,
         status: "processing",
@@ -321,6 +333,8 @@ export async function POST(req: Request) {
       { idempotencyKey: claimedAttempt.idempotency_key, ...stripeOptions },
     );
 
+    stripeResourceCreated = true;
+
     if (session.payment_intent && typeof session.payment_intent === "string") {
       await stripe.paymentIntents.update(
         session.payment_intent,
@@ -351,12 +365,15 @@ export async function POST(req: Request) {
     }
 
     const message = error instanceof Error ? error.message : "Unable to start donation checkout";
-    if (paymentAttemptId) {
-      await supabase.from("payment_attempts").update({ last_error: message }).eq("id", paymentAttemptId);
-    } else if (idempotencyKey) {
-      await supabase.from("payment_attempts").update({ last_error: message }).eq("idempotency_key", idempotencyKey);
+    if (resolvedAttemptId) {
+      const errorUpdate: { last_error: string; status?: string } = { last_error: message };
+      if (!stripeResourceCreated) {
+        errorUpdate.status = "initiated";
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await supabase.from("payment_attempts").update(errorUpdate as any).eq("id", resolvedAttemptId);
     }
     console.error("[create-donation] Error:", message);
-    return respond({ error: message }, 400);
+    return respond({ error: "Unable to start donation checkout" }, 400);
   }
 }

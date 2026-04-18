@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getAlumniLimit, normalizeBucket } from "@/lib/alumni-quota";
+import { getAlumniCapacitySnapshot } from "@/lib/alumni/capacity";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import {
   baseSchemas,
@@ -16,6 +17,8 @@ import { canEditNavItem } from "@/lib/navigation/permissions";
 import { normalizeRole } from "@/lib/auth/role-utils";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import type { UserRole } from "@/types/database";
+import { canDevAdminPerform, logDevAdminAction, extractRequestContext } from "@/lib/auth/dev-admin";
+import { extractSubscriptionPeriodEndIso } from "@/lib/stripe/subscription-period";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -42,7 +45,6 @@ async function clearInvalidSubscription(
   organizationId: string,
   serviceSupabase: ReturnType<typeof createServiceClient>
 ) {
-  console.log("[subscription] Clearing invalid subscription ID for org:", organizationId);
   await serviceSupabase
     .from("organization_subscriptions")
     .update({
@@ -91,11 +93,17 @@ async function ensureStripePlan(params: {
   currentBaseInterval: SubscriptionInterval;
   organizationId: string;
   serviceSupabase: ReturnType<typeof createServiceClient>;
-}): Promise<{ bucket: AlumniBucket; baseInterval: SubscriptionInterval; subscriptionInvalid: boolean }> {
+}): Promise<{
+  bucket: AlumniBucket;
+  baseInterval: SubscriptionInterval;
+  currentPeriodEnd: string | null;
+  subscriptionInvalid: boolean;
+}> {
   if (!params.stripeSubscriptionId) {
     return {
       bucket: params.currentBucket,
       baseInterval: params.currentBaseInterval,
+      currentPeriodEnd: null,
       subscriptionInvalid: false,
     };
   }
@@ -140,17 +148,21 @@ async function ensureStripePlan(params: {
 
     const bucket = detectedBucket ?? params.currentBucket;
     const baseInterval = detectedInterval ?? params.currentBaseInterval;
+
+    const currentPeriodEnd = extractSubscriptionPeriodEndIso(subscription as { current_period_end?: number | null; items?: { data?: Array<{ current_period_end?: number | null }> } | null; });
+
     await params.serviceSupabase
       .from("organization_subscriptions")
       .update({
         alumni_bucket: bucket,
-        base_plan_interval: baseInterval,
+        base_plan_interval: baseInterval ?? undefined,
         alumni_plan_interval: bucket === "none" ? null : baseInterval,
+        ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq("organization_id", params.organizationId);
 
-    return { bucket, baseInterval, subscriptionInvalid: false };
+    return { bucket, baseInterval, currentPeriodEnd, subscriptionInvalid: false };
   } catch (error) {
     console.error("[subscription] Unable to backfill plan details", error);
     if (isInvalidSubscriptionError(error)) {
@@ -158,12 +170,14 @@ async function ensureStripePlan(params: {
       return {
         bucket: params.currentBucket,
         baseInterval: params.currentBaseInterval,
+        currentPeriodEnd: null,
         subscriptionInvalid: true,
       };
     }
     return {
       bucket: params.currentBucket,
       baseInterval: params.currentBaseInterval,
+      currentPeriodEnd: null,
       subscriptionInvalid: false,
     };
   }
@@ -172,6 +186,7 @@ async function ensureStripePlan(params: {
 const postSchema = z
   .object({
     alumniBucket: z.enum(["none", "0-250", "251-500", "501-1000", "1001-2500", "2500-5000", "5000+"]),
+    interval: z.enum(["month", "year"]).optional(),
   })
   .strict();
 
@@ -179,7 +194,7 @@ async function requireAdmin(
   req: Request,
   orgId: string,
   rateLimitLabel: string,
-  options?: { allowNavEditPath?: string }
+  options?: { allowNavEditPath?: string; allowDevAdmin?: boolean }
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -202,18 +217,25 @@ async function requireAdmin(
     return { error: respond({ error: "Unauthorized" }, 401) };
   }
 
-  const { data: roleData } = await supabase
+  const serviceSupabase = createServiceClient();
+  const { data: roleData, error: roleError } = await serviceSupabase
     .from("user_organization_roles")
-    .select("role")
+    .select("role, status")
     .eq("organization_id", orgId)
     .eq("user_id", user.id)
+    .eq("status", "active")
     .maybeSingle();
 
-  const isAdmin = roleData?.role === "admin";
+  if (roleError) {
+    console.error("[requireAdmin] Failed to fetch role:", roleError);
+    return { error: respond({ error: "Unable to verify permissions" }, 500) };
+  }
 
-  if (!isAdmin) {
+  const isAdmin = roleData?.role === "admin";
+  const isDevAdminAllowed = options?.allowDevAdmin === true && canDevAdminPerform(user, "view_billing");
+
+  if (!isAdmin && !isDevAdminAllowed) {
     if (options?.allowNavEditPath) {
-      const serviceSupabase = createServiceClient();
       const { data: org } = await serviceSupabase
         .from("organizations")
         .select("nav_config")
@@ -230,7 +252,18 @@ async function requireAdmin(
     return { error: respond({ error: "Forbidden" }, 403) };
   }
 
-  return { supabase, user, respond, rateLimit, isAdmin };
+  if (isDevAdminAllowed && !isAdmin) {
+    logDevAdminAction({
+      adminUserId: user.id,
+      adminEmail: user.email ?? "",
+      action: "view_billing",
+      targetType: "subscription",
+      targetId: orgId,
+      ...extractRequestContext(req),
+    });
+  }
+
+  return { supabase, user, respond, rateLimit, isAdmin: isAdmin || isDevAdminAllowed };
 }
 
 function buildQuotaResponse(params: {
@@ -238,6 +271,7 @@ function buildQuotaResponse(params: {
   alumniLimit: number | null;
   alumniCount: number;
   status: string;
+  isEnterpriseManaged?: boolean;
   stripeSubscriptionId: string | null;
   stripeCustomerId: string | null;
   currentPeriodEnd: string | null;
@@ -250,6 +284,7 @@ function buildQuotaResponse(params: {
     alumniCount: params.alumniCount,
     remaining,
     status: params.status,
+    isEnterpriseManaged: params.isEnterpriseManaged ?? false,
   };
   if (params.includeStripeDetails === true) {
     payload.stripeSubscriptionId = params.stripeSubscriptionId;
@@ -268,6 +303,7 @@ export async function GET(req: Request, { params }: RouteParams) {
 
   const auth = await requireAdmin(req, organizationId, "subscription lookup", {
     allowNavEditPath: "/alumni",
+    allowDevAdmin: true,
   });
   if ("error" in auth) return auth.error;
 
@@ -297,6 +333,29 @@ export async function GET(req: Request, { params }: RouteParams) {
   );
   const baseInterval: SubscriptionInterval =
     sub?.base_plan_interval === "year" ? "year" : "month";
+
+  // Enterprise-managed orgs pool capacity across the enterprise. Their
+  // organization_subscriptions.alumni_bucket is "none" (billing lives on the
+  // enterprise subscription), so return pooled limit + pooled count instead.
+  if ((sub?.status as string | undefined) === "enterprise_managed") {
+    try {
+      const snap = await getAlumniCapacitySnapshot(organizationId, serviceSupabase);
+      return buildQuotaResponse({
+        bucket,
+        alumniLimit: snap.alumniLimit,
+        alumniCount: snap.currentAlumniCount,
+        status: "enterprise_managed",
+        isEnterpriseManaged: true,
+        stripeSubscriptionId: null,
+        stripeCustomerId: null,
+        currentPeriodEnd: null,
+        includeStripeDetails: false,
+      }, respond);
+    } catch (e) {
+      console.error("[subscription] enterprise capacity snapshot failed", e);
+      return respond({ error: "Unable to load enterprise capacity" }, 500);
+    }
+  }
 
   // Non-admin callers: return cached DB state only (no Stripe API calls or backfill writes)
   if (!isAdmin) {
@@ -338,6 +397,7 @@ export async function GET(req: Request, { params }: RouteParams) {
 
   const alumniLimit = getAlumniLimit(planDetails.bucket);
   const status = (sub?.status as string | undefined) ?? "none";
+  const resolvedCurrentPeriodEnd = planDetails.currentPeriodEnd ?? (sub?.current_period_end as string | null) ?? null;
   const customerResult = await ensureStripeCustomerId({
     stripeSubscriptionId: sub?.stripe_subscription_id as string | null,
     stripeCustomerId: sub?.stripe_customer_id as string | null,
@@ -366,7 +426,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     status,
     stripeSubscriptionId: (sub?.stripe_subscription_id as string | null) ?? null,
     stripeCustomerId: customerResult.customerId,
-    currentPeriodEnd: (sub?.current_period_end as string | null) ?? null,
+    currentPeriodEnd: resolvedCurrentPeriodEnd,
     includeStripeDetails: isAdmin,
   }, respond);
 }
@@ -471,7 +531,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         status: (sub?.status as string | undefined) ?? "active",
         stripeSubscriptionId: sub.stripe_subscription_id as string,
         stripeCustomerId: customerResult.customerId,
-        currentPeriodEnd: (sub?.current_period_end as string | null) ?? null,
+        currentPeriodEnd: planDetails.currentPeriodEnd ?? (sub?.current_period_end as string | null) ?? null,
         includeStripeDetails: true,
       }, respond);
     }
@@ -526,7 +586,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         updateItems.push({ id: addOnItem.id, deleted: true });
       }
 
-      await stripe.subscriptions.update(sub.stripe_subscription_id, {
+      const updatedSubscription = await stripe.subscriptions.update(sub.stripe_subscription_id, {
         items: updateItems,
         metadata: {
           ...(subscription.metadata || {}),
@@ -535,12 +595,15 @@ export async function POST(req: Request, { params }: RouteParams) {
         proration_behavior: "create_prorations",
       });
 
+      const currentPeriodEnd = extractSubscriptionPeriodEndIso(updatedSubscription as { current_period_end?: number | null; items?: { data?: Array<{ current_period_end?: number | null }> } | null; });
+
       const alumniPlanInterval = targetBucket === "none" ? null : interval;
       await serviceSupabase
         .from("organization_subscriptions")
         .update({
           alumni_bucket: targetBucket,
           alumni_plan_interval: alumniPlanInterval,
+          current_period_end: currentPeriodEnd,
           updated_at: new Date().toISOString(),
         })
         .eq("organization_id", organizationId);
@@ -552,7 +615,7 @@ export async function POST(req: Request, { params }: RouteParams) {
         status: (sub?.status as string | undefined) ?? "active",
         stripeSubscriptionId: sub.stripe_subscription_id as string,
         stripeCustomerId: sub.stripe_customer_id as string,
-        currentPeriodEnd: (sub?.current_period_end as string | null) ?? null,
+        currentPeriodEnd,
         includeStripeDetails: true,
       }, respond);
     } catch (error) {

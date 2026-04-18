@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { OrgSidebar } from "./OrgSidebar";
@@ -11,15 +11,34 @@ interface MobileNavProps {
   organization: Organization;
   role: OrgRole | null;
   isDevAdmin?: boolean;
+  hasAlumniAccess?: boolean;
+  hasParentsAccess?: boolean;
+  currentProfileHref?: string;
+  currentProfileName?: string;
+  currentProfileAvatar?: string | null;
+  pendingApprovalsCount?: number;
 }
 
-export function MobileNav({ organization, role, isDevAdmin = false }: MobileNavProps) {
+export function MobileNav({ organization, role, isDevAdmin = false, hasAlumniAccess = false, hasParentsAccess = false, currentProfileHref, currentProfileName, currentProfileAvatar, pendingApprovalsCount }: MobileNavProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [hasEverOpened, setHasEverOpened] = useState(false);
   const basePath = `/${organization.slug}`;
-
   // Prevent caching issues by forcing re-render of menu when open state changes
   const toggleMenu = () => setIsOpen(!isOpen);
   const closeMenu = () => setIsOpen(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) setHasEverOpened(true);
+  }, [isOpen]);
 
   return (
     <>
@@ -52,11 +71,12 @@ export function MobileNav({ organization, role, isDevAdmin = false }: MobileNavP
           </div>
         </Link>
 
-        <button
-          onClick={toggleMenu}
-          className="p-2 -mr-2 text-muted-foreground hover:text-foreground"
-          aria-label="Toggle menu"
-        >
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleMenu}
+            className="p-2 -mr-2 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-lg"
+            aria-label="Toggle menu"
+          >
           {isOpen ? (
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -66,7 +86,8 @@ export function MobileNav({ organization, role, isDevAdmin = false }: MobileNavP
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
           )}
-        </button>
+          </button>
+        </div>
       </header>
 
       {/* Drawer Overlay */}
@@ -80,17 +101,34 @@ export function MobileNav({ organization, role, isDevAdmin = false }: MobileNavP
 
       {/* Slide-out Drawer */}
       <div
-        className={`fixed top-0 bottom-0 left-0 w-64 bg-card z-50 transform transition-transform duration-300 ease-in-out lg:hidden ${
+        style={{
+          "--foreground": "var(--sidebar-foreground)",
+          "--muted": "var(--sidebar-muted)",
+          "--muted-foreground": "var(--sidebar-muted-foreground)",
+          "--card": "var(--sidebar-bg)",
+          "--card-foreground": "var(--sidebar-foreground)",
+        } as React.CSSProperties}
+        className={`fixed top-0 bottom-0 left-0 w-64 bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] z-50 transform transition-transform duration-300 ease-in-out lg:hidden overscroll-contain ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <OrgSidebar 
-          organization={organization} 
-          role={role} 
-          isDevAdmin={isDevAdmin}
-          className="h-full border-r border-border" 
-          onClose={closeMenu}
-        />
+        {hasEverOpened && (
+          <OrgSidebar
+            organization={organization}
+            role={role}
+            isDevAdmin={isDevAdmin}
+            hasAlumniAccess={hasAlumniAccess}
+            hasParentsAccess={hasParentsAccess}
+            currentProfileHref={currentProfileHref}
+            currentProfileName={currentProfileName}
+            currentProfileAvatar={currentProfileAvatar}
+            pendingApprovalsCount={pendingApprovalsCount}
+            className="h-full"
+            onClose={closeMenu}
+            forceExpanded
+            layout="static"
+          />
+        )}
       </div>
     </>
   );

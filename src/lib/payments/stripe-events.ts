@@ -31,17 +31,39 @@ export async function registerStripeEvent(params: {
       throw error;
     }
 
-    const { data: existing } = await supabase
+    // M9 fix: check error on secondary SELECT
+    const { data: existing, error: selectError } = await supabase
       .from("stripe_events")
       .select("*")
       .eq("event_id", eventId)
       .maybeSingle();
 
-    if (!existing) {
-      throw error;
+    if (selectError || !existing) {
+      throw selectError ?? error;
     }
 
-    return { eventRow: existing, alreadyProcessed: Boolean(existing.processed_at) };
+    // Already fully processed — skip
+    if (existing.processed_at) {
+      return { eventRow: existing, alreadyProcessed: true };
+    }
+
+    // Attempt atomic lease claim via RPC — only succeeds if lease is stale (>5 min)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: claimed, error: claimError } = await (supabase as any)
+      .rpc("claim_stale_stripe_event", { p_event_id: eventId });
+
+    if (claimError) {
+      throw claimError;
+    }
+
+    const claimedRows = claimed as unknown as StripeEventRow[];
+    if (!claimedRows || claimedRows.length === 0) {
+      // Lease is still active (another worker is processing) — skip
+      return { eventRow: existing, alreadyProcessed: true };
+    }
+
+    // Successfully claimed stale lease — allow re-processing
+    return { eventRow: claimedRows[0], alreadyProcessed: false };
   }
 
   return { eventRow: data, alreadyProcessed: false };

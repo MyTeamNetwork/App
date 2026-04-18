@@ -1,4 +1,5 @@
 {
+  "regions": ["iad1"],
   "crons": [
     {
       "path": "/api/cron/error-baselines",
@@ -6,6 +7,58 @@
     },
     {
       "path": "/api/cron/graduation-check",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/analytics-purge",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/analytics-rate-limit-cleanup",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/calendar-sync",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/schedules-sync",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/media-cleanup",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/ai-cache-purge",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/ai-embed-process",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/graph-sync-process",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/enrichment-process",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/linkedin-bulk-sync",
+      "schedule": "0 2 1 1,4,7,10 *"
+    },
+    {
+      "path": "/api/cron/account-deletion",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/audit-log-retention",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/mentor-match-expire",
       "schedule": "0 8 * * *"
     }
   ]

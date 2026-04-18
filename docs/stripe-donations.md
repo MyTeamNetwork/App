@@ -17,7 +17,7 @@ The Stripe CLI can forward webhook events from Stripe to your local development 
 ### 1. Start webhook forwarding
 
 ```bash
-stripe listen --forward-to localhost:3000/api/stripe/webhook
+stripe listen --forward-connect-to localhost:3000/api/stripe/webhook-connect
 ```
 
 When you run this command, the CLI will output a webhook signing secret like:
@@ -30,7 +30,7 @@ Ready! Your webhook signing secret is whsec_xxxxxxxxxxxxx
 Copy the webhook signing secret and add it to your `.env.local`:
 
 ```env
-STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET_CONNECT=whsec_xxxxxxxxxxxxx
 ```
 
 > **Note:** The webhook secret from `stripe listen` is different from your dashboard's webhook secret. Use the CLI-provided secret when testing locally.
@@ -93,13 +93,20 @@ See [Stripe Testing Documentation](https://stripe.com/docs/testing) for more tes
 
 1. Ensure `stripe listen` is running and connected
 2. Check the terminal output for forwarded events
-3. Verify `STRIPE_WEBHOOK_SECRET` matches the CLI output
+3. Verify `STRIPE_WEBHOOK_SECRET_CONNECT` matches the CLI output
 
 ### Connect onboarding fails
 
 1. Ensure you're in Stripe test mode
 2. Check that your platform has Connect enabled
 3. Look for errors in the server console
+
+### Console errors about CSP or frame-ancestors
+
+1. Stripe-hosted pages (for example, `stripe.com`, `connect.stripe.com`, `docs.stripe.com`) cannot be embedded in iframes by design.
+2. If a Stripe URL is added as an embed, the browser console may show `frame-ancestors` / CSP violations.
+3. Use Link mode for Stripe URLs instead of iframe embeds.
+4. `chrome-extension://...` console errors come from browser extensions and are not TeamNetwork app failures.
 
 ### Donation checkout fails
 
@@ -117,6 +124,8 @@ STRIPE_SECRET_KEY=sk_test_xxxxx
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_xxxxx
 STRIPE_WEBHOOK_SECRET=whsec_xxxxx
 
-# No additional variables needed for Connect donations
-# The same webhook endpoint handles both subscription and donation events
+# Required for Connect donation webhooks (separate endpoint from subscriptions)
+STRIPE_WEBHOOK_SECRET_CONNECT=whsec_xxxxx
 ```
+
+> **Important:** Donations use a separate webhook endpoint (`/api/stripe/webhook-connect`) from subscriptions (`/api/stripe/webhook`). You must configure a Connect webhook in Stripe pointing to `/api/stripe/webhook-connect` and set `STRIPE_WEBHOOK_SECRET_CONNECT` to its signing secret. Without this, donation events return 503 and are never recorded.

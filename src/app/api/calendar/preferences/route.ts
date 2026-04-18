@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +13,8 @@ const VALID_EVENT_TYPES = [
     "sync_social",
     "sync_fundraiser",
     "sync_philanthropy",
+    "sync_practice",
+    "sync_workout",
 ] as const;
 
 type EventTypePreference = typeof VALID_EVENT_TYPES[number];
@@ -25,6 +26,8 @@ interface SyncPreferences {
     sync_social: boolean;
     sync_fundraiser: boolean;
     sync_philanthropy: boolean;
+    sync_practice: boolean;
+    sync_workout: boolean;
 }
 
 /**
@@ -79,7 +82,7 @@ export async function GET(request: Request) {
             .select("id")
             .eq("user_id", user.id)
             .eq("organization_id", organizationId)
-            .single();
+            .maybeSingle();
 
         if (!membership) {
             return respond(
@@ -94,10 +97,9 @@ export async function GET(request: Request) {
             .select("*")
             .eq("user_id", user.id)
             .eq("organization_id", organizationId)
-            .single();
+            .maybeSingle();
 
-        if (prefError && prefError.code !== "PGRST116") {
-            // PGRST116 = no rows returned, which is fine
+        if (prefError) {
             console.error("[calendar-preferences] Error fetching preferences:", prefError);
             return respond(
                 { error: "Database error", message: "Failed to fetch preferences." },
@@ -113,6 +115,8 @@ export async function GET(request: Request) {
             sync_social: true,
             sync_fundraiser: true,
             sync_philanthropy: true,
+            sync_practice: true,
+            sync_workout: true,
         };
 
         const responsePreferences: SyncPreferences = preferences
@@ -123,6 +127,8 @@ export async function GET(request: Request) {
                 sync_social: preferences.sync_social ?? true,
                 sync_fundraiser: preferences.sync_fundraiser ?? true,
                 sync_philanthropy: preferences.sync_philanthropy ?? true,
+                sync_practice: preferences.sync_practice ?? true,
+                sync_workout: preferences.sync_workout ?? true,
             }
             : defaultPreferences;
 
@@ -227,7 +233,7 @@ export async function PUT(request: Request) {
             .select("id")
             .eq("user_id", user.id)
             .eq("organization_id", organizationId)
-            .single();
+            .maybeSingle();
 
         if (!membership) {
             return respond(
@@ -235,13 +241,6 @@ export async function PUT(request: Request) {
                 403
             );
         }
-
-        // Block mutations if org is in grace period (read-only mode)
-        const { isReadOnly } = await checkOrgReadOnly(organizationId);
-        if (isReadOnly) {
-            return respond(readOnlyResponse(), 403);
-        }
-
         // Use service client for upsert (may need to bypass RLS for insert)
         const serviceClient = createServiceClient();
 
@@ -275,6 +274,8 @@ export async function PUT(request: Request) {
             sync_social: updatedPreferences.sync_social ?? true,
             sync_fundraiser: updatedPreferences.sync_fundraiser ?? true,
             sync_philanthropy: updatedPreferences.sync_philanthropy ?? true,
+            sync_practice: updatedPreferences.sync_practice ?? true,
+            sync_workout: updatedPreferences.sync_workout ?? true,
         };
 
         return respond({

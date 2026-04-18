@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getPriceIds } from "@/lib/stripe";
+import { getStripeOrigin } from "@/lib/stripe-origin";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import {
   baseSchemas,
@@ -54,12 +55,17 @@ export async function POST(req: Request, { params }: RouteParams) {
 
     if (!user) return respond({ error: "Unauthorized" }, 401);
 
-    const { data: role } = await supabase
+    const { data: role, error: roleError } = await serviceSupabase
       .from("user_organization_roles")
-      .select("role")
+      .select("role, status")
       .eq("organization_id", organizationId)
       .eq("user_id", user.id)
+      .eq("status", "active")
       .maybeSingle();
+    if (roleError) {
+      console.error("[start-checkout] Failed to fetch role:", roleError);
+      return respond({ error: "Unable to verify permissions" }, 500);
+    }
     if (role?.role !== "admin") return respond({ error: "Forbidden" }, 403);
 
     let body: z.infer<typeof bodySchema>;
@@ -115,7 +121,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       .eq("organization_id", organizationId);
 
     const { stripe } = await import("@/lib/stripe");
-    const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+    const origin = getStripeOrigin(req.url);
 
     const metadata = {
       organization_id: org.id,

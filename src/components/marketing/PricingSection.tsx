@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { ButtonLink } from "@/components/ui";
 import {
   BASE_PRICES,
@@ -10,6 +11,14 @@ import {
   formatPrice,
 } from "@/lib/pricing";
 import type { AlumniBucket, SubscriptionInterval } from "@/types/database";
+
+const EnterprisePricingModal = dynamic(
+  () =>
+    import("@/components/marketing/EnterprisePricingModal").then(
+      (mod) => mod.EnterprisePricingModal
+    ),
+  { ssr: false }
+);
 
 const ALUMNI_TIERS: Exclude<AlumniBucket, "none">[] = [
   "0-250",
@@ -22,12 +31,13 @@ const ALUMNI_TIERS: Exclude<AlumniBucket, "none">[] = [
 
 export function PricingSection({ showCta = true }: { showCta?: boolean }) {
   const [interval, setInterval] = useState<SubscriptionInterval>("month");
+  const [enterpriseOpen, setEnterpriseOpen] = useState(false);
 
   return (
-    <section id="pricing" className="relative z-10 py-24 px-6">
+    <section id="pricing" className="relative z-10 py-24 px-6" suppressHydrationWarning>
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-16">
-          <div className="scroll-reveal inline-block px-4 py-1.5 rounded-full bg-landing-cream/5 text-landing-cream/60 text-xs uppercase tracking-[0.2em] mb-6">
+          <div suppressHydrationWarning className="scroll-reveal inline-block px-4 py-1.5 rounded-full bg-landing-cream/5 text-landing-cream/60 text-xs uppercase tracking-[0.2em] mb-6">
             Pricing
           </div>
           <h2 className="scroll-reveal font-display text-4xl sm:text-5xl font-bold text-landing-cream mb-6">
@@ -38,9 +48,10 @@ export function PricingSection({ showCta = true }: { showCta?: boolean }) {
           </p>
 
           {/* Toggle */}
-          <div className="scroll-reveal inline-flex items-center bg-landing-navy-light rounded-full p-1.5 border border-landing-cream/10">
+          <div suppressHydrationWarning role="group" aria-label="Billing interval" className="scroll-reveal inline-flex items-center bg-landing-navy-light rounded-full p-1.5 border border-landing-cream/10">
             <button
               onClick={() => setInterval("month")}
+              aria-pressed={interval === "month"}
               className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all ${interval === "month"
                 ? "bg-landing-green-dark text-white shadow-lg"
                 : "text-landing-cream/60 hover:text-landing-cream"
@@ -50,6 +61,7 @@ export function PricingSection({ showCta = true }: { showCta?: boolean }) {
             </button>
             <button
               onClick={() => setInterval("year")}
+              aria-pressed={interval === "year"}
               className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all flex items-center gap-2 ${interval === "year"
                 ? "bg-landing-green-dark text-white shadow-lg"
                 : "text-landing-cream/60 hover:text-landing-cream"
@@ -68,7 +80,7 @@ export function PricingSection({ showCta = true }: { showCta?: boolean }) {
 
         <div className="grid md:grid-cols-2 gap-8 mb-12">
           {/* Base Plan */}
-          <div className="pricing-card rounded-2xl p-8 pt-10 relative overflow-hidden">
+          <div className="pricing-card rounded-2xl p-8 pt-10 relative">
             {/* Pick badge */}
             <div className="pick-badge">Starter Pick</div>
 
@@ -122,9 +134,9 @@ export function PricingSection({ showCta = true }: { showCta?: boolean }) {
           </div>
 
           {/* Alumni Add-on */}
-          <div className="pricing-card pricing-card-featured holo-border rounded-2xl p-8 pt-10 relative overflow-hidden pulse-glow">
+          <div className="pricing-card pricing-card-featured holo-border rounded-2xl p-8 pt-10 relative pulse-glow">
             {/* Pick badge */}
-            <div className="pick-badge" style={{ background: "linear-gradient(135deg, #059669 0%, #34d399 100%)" }}>Pro Pick</div>
+            <div className="pick-badge" style={{ background: "linear-gradient(135deg, #15803d 0%, #22c55e 100%)" }}>Pro Pick</div>
 
             {/* Featured badge */}
             <div className="absolute top-14 right-6">
@@ -144,7 +156,7 @@ export function PricingSection({ showCta = true }: { showCta?: boolean }) {
                 return (
                   <div key={tier} className="flex justify-between items-center text-sm py-1">
                     <span className="text-landing-cream/60">{ALUMNI_BUCKET_LABELS[tier]}</span>
-                    <span className="font-mono font-semibold text-landing-cream">
+                    <span className="font-semibold text-landing-cream">
                       {prices ? (
                         <>+{formatPrice(prices[interval], interval)}</>
                       ) : (
@@ -173,16 +185,75 @@ export function PricingSection({ showCta = true }: { showCta?: boolean }) {
           </div>
         </div>
 
+        {/* Enterprise Teaser */}
+        <div suppressHydrationWarning className="scroll-reveal mb-8">
+          <button
+            onClick={() => setEnterpriseOpen(true)}
+            className="w-full pricing-card enterprise-card rounded-2xl p-6 relative text-left group"
+            aria-label="View Enterprise Pricing"
+          >
+            {/* Amber corner accent */}
+            <div className="absolute top-0 right-0 w-24 h-24 overflow-hidden rounded-2xl pointer-events-none">
+              <div className="absolute inset-0 bg-gradient-to-bl from-green-500/10 to-transparent" />
+            </div>
+
+            <div className="relative flex items-center justify-between gap-6">
+              {/* Left: label + stats */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="px-3 py-1 rounded-full bg-landing-green/15 text-landing-green text-xs font-semibold uppercase tracking-wider">
+                    Enterprise
+                  </span>
+                </div>
+                <h3 className="font-display text-lg font-bold text-landing-cream mb-3">
+                  Managing multiple teams?
+                </h3>
+                <div className="flex flex-wrap gap-x-6 gap-y-1.5">
+                  <span className="text-landing-cream/50 text-sm">
+                    <span className="text-landing-green font-semibold">3 free orgs per alumni bucket</span>
+                  </span>
+                  <span className="text-landing-cream/50 text-sm">
+                    <span className="font-semibold text-landing-cream">$150/yr</span> per additional org
+                  </span>
+                  <span className="text-landing-cream/50 text-sm">
+                    <span className="font-semibold text-landing-cream">$500/yr</span> per 2,500 alumni
+                  </span>
+                </div>
+              </div>
+
+              {/* Right: CTA */}
+              <div className="flex-shrink-0 flex items-center gap-2 text-landing-green group-hover:text-landing-green/80 transition-colors text-sm font-semibold whitespace-nowrap">
+                Explore Enterprise
+                <svg
+                  className="w-4 h-4 group-hover:translate-x-1 transition-transform"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </div>
+          </button>
+        </div>
+
         {/* Example calculation */}
-        <div className="scroll-reveal text-center p-6 rounded-xl bg-landing-navy-light/50 border border-landing-cream/10">
+        <div suppressHydrationWarning className="scroll-reveal text-center p-6 rounded-xl bg-landing-navy-light/50 border border-landing-cream/10">
           <p className="text-landing-cream/60">
             <span className="text-landing-cream font-semibold">Example:</span> Active Team + 251–500 alumni ={" "}
-            <span className="font-mono font-bold text-landing-cream text-lg">
+            <span className="font-bold text-landing-cream text-lg">
               {formatPrice(getTotalPrice(interval, "251-500")!, interval)}
             </span>
           </p>
         </div>
       </div>
+
+      <EnterprisePricingModal
+        open={enterpriseOpen}
+        onClose={() => setEnterpriseOpen(false)}
+        interval={interval}
+      />
     </section>
   );
 }

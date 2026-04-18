@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
-import { getConnectorById } from "./registry";
-import type { SyncResult, VendorId } from "./types";
+import type { ScheduleConnector, SyncResult, VendorId } from "./types";
 import { debugLog } from "@/lib/debug";
 
 export type SyncOutcome = SyncResult & { ok: boolean; error?: string };
@@ -14,14 +13,19 @@ export async function syncScheduleSource(
       org_id: string;
       vendor_id: string;
       source_url: string;
+      connected_user_id?: string | null;
     };
     window: { from: Date; to: Date };
     now?: Date;
+    getConnectorById?: (vendorId: VendorId) => ScheduleConnector | null;
   }
 ): Promise<SyncOutcome> {
   const now = input.now ?? new Date();
   const vendorId = input.source.vendor_id as VendorId;
-  const connector = getConnectorById(vendorId);
+  const resolveConnector =
+    input.getConnectorById ??
+    (await import("./registry")).getConnectorById;
+  const connector = resolveConnector(vendorId);
 
   if (!connector) {
     const message = `Unsupported vendor: ${input.source.vendor_id}`;
@@ -39,6 +43,9 @@ export async function syncScheduleSource(
       orgId: input.source.org_id,
       url: input.source.source_url,
       window: input.window,
+      // Pass through for Google Calendar connector (ignored by others)
+      userId: input.source.connected_user_id ?? undefined,
+      supabase,
     });
 
     await supabase

@@ -4,8 +4,10 @@ type TableName =
   | "payment_attempts"
   | "stripe_events"
   | "organizations"
+  | "enterprises"
   | "user_organization_roles"
   | "organization_subscriptions"
+  | "organization_donations"
   | "calendar_feeds"
   | "calendar_events"
   | "schedule_allowed_domains"
@@ -17,12 +19,33 @@ type TableName =
   | "google_tokens"
   | "alumni"
   | "members"
+  | "mentorship_pairs"
+  | "graph_sync_queue"
   | "donations"
   | "philanthropy_events"
   | "users"
   | "chat_groups"
   | "chat_group_members"
-  | "chat_messages";
+  | "chat_messages"
+  | "user_calendar_connections"
+  | "event_calendar_entries"
+  | "events"
+  | "discussion_threads"
+  | "discussion_replies"
+  | "job_postings"
+  | "mentor_profiles"
+  | "feed_posts"
+  | "feed_comments"
+  | "feed_likes"
+  | "media_uploads"
+  | "user_linkedin_connections"
+  | "parents"
+  | "parent_invites"
+  | "chat_poll_votes"
+  | "chat_form_responses"
+  | "enterprise_subscriptions"
+  | "enterprise_adoption_requests"
+  | "user_enterprise_roles";
 
 type Row = Record<string, unknown>;
 
@@ -36,12 +59,16 @@ type CountResponse = {
   error: { code?: string; message: string } | null;
 };
 
-const uniqueKeys: Record<TableName, string[]> = {
+type UniqueConstraint = string | string[];
+
+const uniqueKeys: Record<TableName, UniqueConstraint[]> = {
   payment_attempts: ["idempotency_key", "stripe_payment_intent_id", "stripe_checkout_session_id"],
   stripe_events: ["event_id"],
   organizations: ["slug"],
+  enterprises: ["slug"],
   user_organization_roles: [],
   organization_subscriptions: ["organization_id"],
+  organization_donations: ["stripe_payment_intent_id", "stripe_checkout_session_id"],
   calendar_feeds: [],
   calendar_events: [],
   schedule_allowed_domains: ["hostname"],
@@ -53,12 +80,33 @@ const uniqueKeys: Record<TableName, string[]> = {
   google_tokens: ["user_id"],
   alumni: [],
   members: [],
+  mentorship_pairs: [],
+  graph_sync_queue: [],
   donations: [],
   philanthropy_events: [],
   users: [],
   chat_groups: [],
   chat_group_members: [],
   chat_messages: [],
+  user_calendar_connections: ["user_id"],
+  event_calendar_entries: [],
+  events: [],
+  discussion_threads: [],
+  discussion_replies: [],
+  job_postings: [],
+  mentor_profiles: [],
+  feed_posts: [],
+  feed_comments: [],
+  feed_likes: ["post_id", "user_id"],
+  media_uploads: [],
+  user_linkedin_connections: ["user_id"],
+  parents: [],
+  parent_invites: ["code"],
+  chat_poll_votes: [["message_id", "user_id"]],
+  chat_form_responses: [["message_id", "user_id"]],
+  enterprise_subscriptions: ["enterprise_id"],
+  enterprise_adoption_requests: [],
+  user_enterprise_roles: [["user_id", "enterprise_id"]],
 };
 
 function nowIso() {
@@ -70,8 +118,10 @@ export function createSupabaseStub() {
     payment_attempts: [],
     stripe_events: [],
     organizations: [],
+    enterprises: [],
     user_organization_roles: [],
     organization_subscriptions: [],
+    organization_donations: [],
     calendar_feeds: [],
     calendar_events: [],
     schedule_allowed_domains: [],
@@ -83,16 +133,40 @@ export function createSupabaseStub() {
     google_tokens: [],
     alumni: [],
     members: [],
+    mentorship_pairs: [],
+    graph_sync_queue: [],
     donations: [],
     philanthropy_events: [],
     users: [],
     chat_groups: [],
     chat_group_members: [],
     chat_messages: [],
+    user_calendar_connections: [],
+    event_calendar_entries: [],
+    events: [],
+    discussion_threads: [],
+    discussion_replies: [],
+    job_postings: [],
+    mentor_profiles: [],
+    feed_posts: [],
+    feed_comments: [],
+    feed_likes: [],
+    media_uploads: [],
+    user_linkedin_connections: [],
+    parents: [],
+    parent_invites: [],
+    chat_poll_votes: [],
+    chat_form_responses: [],
+    enterprise_subscriptions: [],
+    enterprise_adoption_requests: [],
+    user_enterprise_roles: [],
   };
 
   // RPC handler registry
-  const rpcHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {};
+  const rpcHandlers: Record<string, (params: Record<string, unknown>) => unknown | Promise<unknown>> = {};
+
+  // Track which tables should fail with an error
+  const errorSimulation: Partial<Record<TableName, { code?: string; message: string }>> = {};
 
   const applyFilters = (rows: Row[], filters: ((row: Row) => boolean)[]) =>
     filters.reduce((current, filter) => current.filter(filter), rows);
@@ -115,12 +189,19 @@ export function createSupabaseStub() {
 
         const uniques = uniqueKeys[table] || [];
         const conflict = storage[table].find((existing) =>
-          uniques.some(
-            (field) =>
-              row[field] !== undefined &&
-              row[field] !== null &&
-              existing[field] === row[field],
-          ),
+          uniques.some((constraint) => {
+            if (Array.isArray(constraint)) {
+              const allPresent = constraint.every(
+                (field) => row[field] !== undefined && row[field] !== null,
+              );
+              return allPresent && constraint.every((field) => existing[field] === row[field]);
+            }
+            return (
+              row[constraint] !== undefined &&
+              row[constraint] !== null &&
+              existing[constraint] === row[constraint]
+            );
+          }),
         );
         if (conflict) {
           error = { code: "23505", message: "duplicate key value" };
@@ -135,12 +216,23 @@ export function createSupabaseStub() {
         select: () => builder,
         single: (): SupabaseResponse<Row> => ({ data: inserted[0] ?? null, error }),
         maybeSingle: (): SupabaseResponse<Row> => ({ data: inserted[0] ?? null, error }),
+        then(resolve: (value: SupabaseResponse<Row[]>) => void) {
+          resolve({ data: error ? null : clone(inserted), error });
+        },
       };
 
       return builder;
     },
 
     upsert: (payload: Row | Row[], options?: { onConflict?: string }) => {
+      if (errorSimulation[table]) {
+        return {
+          then(resolve: (value: SupabaseResponse<null>) => void) {
+            resolve({ data: null, error: errorSimulation[table] ?? null });
+          },
+        };
+      }
+
       const records = Array.isArray(payload) ? payload : [payload];
       const conflictColumns = options?.onConflict?.split(",").map((c) => c.trim()) ?? [];
 
@@ -183,6 +275,9 @@ export function createSupabaseStub() {
       const filters: ((row: Row) => boolean)[] = [];
 
       const applyUpdate = () => {
+        if (errorSimulation[table]) {
+          return { rows: [] as Row[], error: errorSimulation[table] ?? null };
+        }
         const rows = applyFilters(storage[table], filters);
         for (const target of rows) {
           Object.entries(updates).forEach(([key, value]) => {
@@ -194,7 +289,7 @@ export function createSupabaseStub() {
             target.updated_at = nowIso();
           }
         }
-        return rows;
+        return { rows, error: null };
       };
 
       const builder = {
@@ -224,11 +319,26 @@ export function createSupabaseStub() {
           }
           return builder;
         },
+        gte(column: string, value: unknown) {
+          filters.push((row) => (row[column] as number) >= (value as number));
+          return builder;
+        },
+        gt(column: string, value: unknown) {
+          filters.push((row) => (row[column] as number) > (value as number));
+          return builder;
+        },
+        lte(column: string, value: unknown) {
+          filters.push((row) => (row[column] as number) <= (value as number));
+          return builder;
+        },
         select() {
           return builder;
         },
         maybeSingle(): SupabaseResponse<Row> {
-          const rows = applyUpdate();
+          const { rows, error } = applyUpdate();
+          if (error) {
+            return { data: null, error };
+          }
           if (!rows.length) {
             return { data: null, error: { code: "PGRST116", message: "No rows found" } };
           }
@@ -238,8 +348,8 @@ export function createSupabaseStub() {
           return builder.maybeSingle();
         },
         then(resolve: (value: SupabaseResponse<Row[]>) => void) {
-          const rows = applyUpdate();
-          resolve({ data: clone(rows), error: null });
+          const { rows, error } = applyUpdate();
+          resolve({ data: error ? null : clone(rows), error });
         },
       };
 
@@ -291,8 +401,34 @@ export function createSupabaseStub() {
           filters.push((row) => (row[column] as number) >= (value as number));
           return builder;
         },
+        lt(column: string, value: unknown) {
+          filters.push((row) => (row[column] as string) < (value as string));
+          return builder;
+        },
         lte(column: string, value: unknown) {
           filters.push((row) => (row[column] as number) <= (value as number));
+          return builder;
+        },
+        or(filterString: string) {
+          // Parse simple PostgREST-style OR filters, e.g. "col.is.null,col.lt.value"
+          const parts = filterString.split(",");
+          const orPredicates: ((row: Row) => boolean)[] = [];
+          for (const part of parts) {
+            const [col, op, ...rest] = part.trim().split(".");
+            const val = rest.join(".");
+            if (op === "is" && val === "null") {
+              orPredicates.push((row) => row[col] === null || row[col] === undefined);
+            } else if (op === "lt") {
+              orPredicates.push((row) => (row[col] as string) < val);
+            } else if (op === "gt") {
+              orPredicates.push((row) => (row[col] as string) > val);
+            } else if (op === "eq") {
+              orPredicates.push((row) => String(row[col]) === val);
+            }
+          }
+          if (orPredicates.length > 0) {
+            filters.push((row) => orPredicates.some((pred) => pred(row)));
+          }
           return builder;
         },
         order(column: string, opts?: { ascending?: boolean }) {
@@ -305,6 +441,9 @@ export function createSupabaseStub() {
           return builder;
         },
         maybeSingle(): SupabaseResponse<Row> {
+          if (errorSimulation[table]) {
+            return { data: null, error: errorSimulation[table] ?? null };
+          }
           let rows = applyFilters(storage[table], filters);
           if (sortColumn) {
             const col = sortColumn;
@@ -319,6 +458,9 @@ export function createSupabaseStub() {
           return { data: clone(rows[0] ?? null), error: null };
         },
         single(): SupabaseResponse<Row> {
+          if (errorSimulation[table]) {
+            return { data: null, error: errorSimulation[table] ?? null };
+          }
           let rows = applyFilters(storage[table], filters);
           if (sortColumn) {
             const col = sortColumn;
@@ -336,6 +478,15 @@ export function createSupabaseStub() {
           return { data: clone(rows[0]), error: null };
         },
         then(resolve: (value: SupabaseResponse<Row[]> | CountResponse) => void) {
+          if (errorSimulation[table]) {
+            if (options?.count === "exact" && options.head) {
+              resolve({ count: null, error: errorSimulation[table] ?? null });
+            } else {
+              resolve({ data: null, error: errorSimulation[table] ?? null });
+            }
+            return;
+          }
+
           let rows = applyFilters(storage[table], filters);
           if (sortColumn) {
             const col = sortColumn;
@@ -367,6 +518,10 @@ export function createSupabaseStub() {
       const builder = {
         eq(column: string, value: unknown) {
           filters.push((row) => row[column] === value);
+          return builder;
+        },
+        in(column: string, values: unknown[]) {
+          filters.push((row) => values.includes(row[column]));
           return builder;
         },
         is(column: string, value: unknown) {
@@ -419,7 +574,10 @@ export function createSupabaseStub() {
   /**
    * Register an RPC handler for testing.
    */
-  const registerRpc = (name: string, handler: (params: Record<string, unknown>) => unknown) => {
+  const registerRpc = (
+    name: string,
+    handler: (params: Record<string, unknown>) => unknown | Promise<unknown>,
+  ) => {
     rpcHandlers[name] = handler;
   };
 
@@ -432,12 +590,24 @@ export function createSupabaseStub() {
       return { data: null, error: { code: "42883", message: `function ${name}() does not exist` } };
     }
     try {
-      const result = handler(params);
+      const result = await handler(params);
       return { data: result, error: null };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       return { data: null, error: { message } };
     }
+  };
+
+  const simulateError = (table: TableName, error: { code?: string; message: string }) => {
+    errorSimulation[table] = error;
+  };
+
+  const clearError = (table: TableName) => {
+    delete errorSimulation[table];
+  };
+
+  const getError = (table: TableName) => {
+    return errorSimulation[table];
   };
 
   return {
@@ -447,5 +617,8 @@ export function createSupabaseStub() {
     seed,
     clear,
     registerRpc,
+    simulateError,
+    clearError,
+    getError,
   };
 }

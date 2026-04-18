@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
 import { baseSchemas } from "@/lib/security/validation";
+import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
+import { escapeCsvCell } from "@/lib/export/spreadsheet";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ type DonationRow = {
   events?: { title?: string | null } | null;
 };
 
-export async function GET(_request: Request, { params }: RouteParams) {
+export async function GET(request: Request, { params }: RouteParams) {
   const { organizationId } = await params;
   const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
   if (!orgIdParsed.success) {
@@ -37,6 +38,14 @@ export async function GET(_request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Unauthorized", message: "You must be logged in to export donations." }, { status: 401 });
   }
 
+  const rateLimit = checkRateLimit(request, {
+    limitPerIp: 10,
+    limitPerUser: 5,
+    userId: user.id,
+    feature: "donations export",
+  });
+  if (!rateLimit.ok) return buildRateLimitResponse(rateLimit);
+
   const { data: role } = await supabase
     .from("user_organization_roles")
     .select("role,status")
@@ -48,11 +57,11 @@ export async function GET(_request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Forbidden", message: "Only admins can export donations." }, { status: 403 });
   }
 
-  const serviceClient = createServiceClient();
-  const { data: donations, error } = await serviceClient
+  const { data: donations, error } = await supabase
     .from("organization_donations")
     .select("id, donor_name, donor_email, amount_cents, currency, purpose, status, created_at, event_id, events(title)")
     .eq("organization_id", organizationId)
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -116,14 +125,7 @@ function formatCurrency(amountCents: number, currency: string) {
 
 function buildCsv(headers: string[], rows: string[][]) {
   return [
-    headers.map(escapeCsv).join(","),
-    ...rows.map((row) => row.map(escapeCsv).join(",")),
+    headers.map(escapeCsvCell).join(","),
+    ...rows.map((row) => row.map(escapeCsvCell).join(",")),
   ].join("\n");
-}
-
-function escapeCsv(value: string) {
-  if (value.includes(",") || value.includes("\"") || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }

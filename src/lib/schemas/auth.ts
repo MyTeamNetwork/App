@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { baseSchemas } from "@/lib/security/validation";
-import { isStrongPassword, PASSWORD_REQUIREMENTS } from "@/lib/auth/password";
+import { PASSWORD_REQUIREMENTS, isStrongPassword } from "@/lib/auth/password";
 
 // Reusable strong password schema for signup and reset flows
+// Uses isStrongPassword (which checks PASSWORD_MIN_LENGTH) as single source of truth
 const strongPasswordSchema = z
   .string()
-  .min(12, "Password must be at least 12 characters")
+  .min(1, "Password is required")
   .refine(isStrongPassword, { message: PASSWORD_REQUIREMENTS });
 
 // Forgot password form
@@ -38,6 +39,9 @@ export const signupSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100, "Name is too long"),
   email: baseSchemas.email,
   password: strongPasswordSchema,
+  tosAccepted: z.boolean().refine((val) => val === true, {
+    message: "You must accept the Terms of Service and Privacy Policy",
+  }),
 });
 export type SignupForm = z.infer<typeof signupSchema>;
 

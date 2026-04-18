@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, EmptyState } from "@/components/ui";
 
-const UPCOMING_DAYS = 90;
+const UPCOMING_DAYS = 365;
 
 type CalendarEventSummary = {
   id: string;
@@ -18,35 +18,58 @@ type CalendarEventSummary = {
 
 type UpcomingEventsTabProps = {
   orgId: string;
+  timeZone?: string;
 };
 
-function formatEventTime(event: CalendarEventSummary) {
+function formatEventTime(event: CalendarEventSummary, timeZone?: string) {
   const start = new Date(event.start_at);
 
   if (event.all_day) {
-    return `${start.toLocaleDateString()} (All day)`;
+    return "All day";
   }
 
-  const startLabel = start.toLocaleString();
+  const timeOpts: Intl.DateTimeFormatOptions = {
+    hour: "numeric",
+    minute: "2-digit",
+  };
+  if (timeZone) timeOpts.timeZone = timeZone;
+
+  const startTime = start.toLocaleTimeString("en-US", timeOpts);
 
   if (!event.end_at) {
-    return startLabel;
+    return startTime;
   }
 
   const end = new Date(event.end_at);
-  const endLabel = end.toLocaleString();
-  return `${startLabel} - ${endLabel}`;
+
+  // Same day: "11:30 AM – 11:50 AM"
+  if (start.toDateString() === end.toDateString()) {
+    const endTime = end.toLocaleTimeString("en-US", timeOpts);
+    return `${startTime} – ${endTime}`;
+  }
+
+  // Multi-day: "Feb 12, 11:30 AM – Feb 13, 2:00 PM"
+  const dateTimeOpts: Intl.DateTimeFormatOptions = {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  };
+  if (timeZone) dateTimeOpts.timeZone = timeZone;
+  return `${start.toLocaleDateString("en-US", dateTimeOpts)} – ${end.toLocaleDateString("en-US", dateTimeOpts)}`;
 }
 
-function groupEventsByDate(events: CalendarEventSummary[]): Map<string, CalendarEventSummary[]> {
+function groupEventsByDate(events: CalendarEventSummary[], timeZone?: string): Map<string, CalendarEventSummary[]> {
   const grouped = new Map<string, CalendarEventSummary[]>();
 
   events.forEach((event) => {
-    const dateKey = new Date(event.start_at).toLocaleDateString("en-US", {
+    const opts: Intl.DateTimeFormatOptions = {
       weekday: "long",
       month: "short",
       day: "numeric",
-    });
+    };
+    if (timeZone) opts.timeZone = timeZone;
+    const dateKey = new Date(event.start_at).toLocaleDateString("en-US", opts);
     const existing = grouped.get(dateKey) || [];
     existing.push(event);
     grouped.set(dateKey, existing);
@@ -55,8 +78,9 @@ function groupEventsByDate(events: CalendarEventSummary[]): Map<string, Calendar
   return grouped;
 }
 
-export function UpcomingEventsTab({ orgId }: UpcomingEventsTabProps) {
+export function UpcomingEventsTab({ orgId, timeZone }: UpcomingEventsTabProps) {
   const [events, setEvents] = useState<CalendarEventSummary[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,6 +111,7 @@ export function UpcomingEventsTab({ orgId }: UpcomingEventsTabProps) {
       }
 
       setEvents(data.events || []);
+      setTruncated(data.meta?.truncated === true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load events.");
     } finally {
@@ -111,7 +136,7 @@ export function UpcomingEventsTab({ orgId }: UpcomingEventsTabProps) {
     };
   }, [fetchEvents]);
 
-  const groupedEvents = useMemo(() => groupEventsByDate(events), [events]);
+  const groupedEvents = useMemo(() => groupEventsByDate(events, timeZone), [events, timeZone]);
 
   return (
     <div className="space-y-6">
@@ -131,6 +156,13 @@ export function UpcomingEventsTab({ orgId }: UpcomingEventsTabProps) {
             />
           ) : (
             <div className="space-y-6">
+              {truncated && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    Showing first {events.length} events. Some events may not be displayed.
+                  </p>
+                </div>
+              )}
               {Array.from(groupedEvents.entries()).map(([dateLabel, dayEvents]) => (
                 <div key={dateLabel}>
                   <h3 className="text-sm font-medium text-muted-foreground mb-2">{dateLabel}</h3>
@@ -138,7 +170,7 @@ export function UpcomingEventsTab({ orgId }: UpcomingEventsTabProps) {
                     {dayEvents.map((event) => (
                       <div key={event.id} className="py-3">
                         <p className="font-medium text-foreground">{event.title || "Untitled event"}</p>
-                        <p className="text-sm text-muted-foreground">{formatEventTime(event)}</p>
+                        <p className="text-sm text-muted-foreground">{formatEventTime(event, timeZone)}</p>
                         {event.location && (
                           <p className="text-sm text-muted-foreground">{event.location}</p>
                         )}

@@ -96,10 +96,25 @@ export const graduationYearSchema = z
   .refine(
     (val) => {
       if (!val) return true; // Allow empty
+      if (!/^\d{4}$/.test(val)) return false;
       const num = parseInt(val, 10);
-      return !isNaN(num) && num >= 1900 && num <= 2100;
+      return num >= 1900 && num <= 2100;
     },
     { message: "Graduation year must be between 1900 and 2100" }
+  )
+  .optional();
+
+// Birth year validation (1900 to current year) - keeps as string for form handling
+export const birthYearSchema = z
+  .string()
+  .refine(
+    (val) => {
+      if (!val) return true;
+      if (!/^\d{4}$/.test(val)) return false;
+      const num = parseInt(val, 10);
+      return num >= 1900 && num <= new Date().getFullYear();
+    },
+    { message: "Birth year must be between 1900 and the current year" }
   )
   .optional();
 
@@ -116,11 +131,11 @@ export const hexColorSchema = z
   .regex(/^#[0-9a-fA-F]{6}$/, { message: "Color must be a 6 character hex code (e.g., #1e3a5f)" });
 
 // Member status
-export const memberStatusSchema = z.enum(["active", "inactive"]);
+export const memberStatusSchema = z.enum(["active", "inactive", "pending"]);
 export type MemberStatus = z.infer<typeof memberStatusSchema>;
 
 // Event types
-export const eventTypeSchema = z.enum(["general", "philanthropy", "game", "meeting", "social", "fundraiser"]);
+export const eventTypeSchema = z.enum(["general", "philanthropy", "game", "practice", "meeting", "social", "workout", "fundraiser", "class"]);
 export type EventType = z.infer<typeof eventTypeSchema>;
 
 // Occurrence types for schedules

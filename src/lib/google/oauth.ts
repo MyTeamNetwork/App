@@ -1,7 +1,11 @@
 import { google } from "googleapis";
-import crypto from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
+import { getAppUrl } from "@/lib/url";
+import {
+    encryptToken as sharedEncrypt,
+    decryptToken as sharedDecrypt,
+} from "@/lib/crypto/token-encryption";
 
 // Environment variable helpers
 function getGoogleClientId(): string {
@@ -21,20 +25,15 @@ function getGoogleClientSecret(): string {
 }
 
 function getGoogleRedirectUri(): string {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    return `${appUrl}/api/google/callback`;
+    return `${getAppUrl()}/api/google/callback`;
 }
 
-function getEncryptionKey(): Buffer {
+function getGoogleEncryptionKey(): string {
     const key = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
     if (!key || key.trim() === "") {
         throw new Error("Missing required environment variable: GOOGLE_TOKEN_ENCRYPTION_KEY");
     }
-    // Key should be 32 bytes (64 hex characters) for AES-256
-    if (key.length !== 64) {
-        throw new Error("GOOGLE_TOKEN_ENCRYPTION_KEY must be 64 hex characters (32 bytes)");
-    }
-    return Buffer.from(key, "hex");
+    return key;
 }
 
 // OAuth configuration
@@ -59,9 +58,10 @@ export interface OAuthError {
     message: string;
 }
 
-// Required scopes - only calendar.events as per requirement 7.4
+// Required scopes for Google Calendar integration
 const GOOGLE_CALENDAR_SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
 ];
 
@@ -119,48 +119,21 @@ export function parseAuthorizationUrl(url: string): {
 }
 
 /**
- * Encrypts a token using AES-256-GCM
+ * Encrypts a token using AES-256-GCM (delegates to shared crypto module)
  * @param token - The plaintext token to encrypt
  * @returns The encrypted token as a base64 string (iv:authTag:ciphertext)
  */
 export function encryptToken(token: string): string {
-    const key = getEncryptionKey();
-    const iv = crypto.randomBytes(12); // 96-bit IV for GCM
-
-    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-    let encrypted = cipher.update(token, "utf8", "base64");
-    encrypted += cipher.final("base64");
-
-    const authTag = cipher.getAuthTag();
-
-    // Format: iv:authTag:ciphertext (all base64)
-    return `${iv.toString("base64")}:${authTag.toString("base64")}:${encrypted}`;
+    return sharedEncrypt(token, getGoogleEncryptionKey());
 }
 
 /**
- * Decrypts a token encrypted with encryptToken
+ * Decrypts a token encrypted with encryptToken (delegates to shared crypto module)
  * @param encryptedToken - The encrypted token string
  * @returns The decrypted plaintext token
  */
 export function decryptToken(encryptedToken: string): string {
-    const key = getEncryptionKey();
-    const parts = encryptedToken.split(":");
-
-    if (parts.length !== 3) {
-        throw new Error("Invalid encrypted token format");
-    }
-
-    const [ivBase64, authTagBase64, ciphertext] = parts;
-    const iv = Buffer.from(ivBase64, "base64");
-    const authTag = Buffer.from(authTagBase64, "base64");
-
-    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
-    decipher.setAuthTag(authTag);
-
-    let decrypted = decipher.update(ciphertext, "base64", "utf8");
-    decrypted += decipher.final("utf8");
-
-    return decrypted;
+    return sharedDecrypt(encryptedToken, getGoogleEncryptionKey());
 }
 
 /**
@@ -267,7 +240,9 @@ export function getOAuthErrorMessage(error: string): string {
         temporarily_unavailable: "Google's servers are temporarily unavailable. Please try again later.",
     };
 
-    return errorMessages[error] || "An unexpected error occurred. Please try again.";
+    return Object.hasOwn(errorMessages, error)
+        ? errorMessages[error]
+        : "An unexpected error occurred. Please try again.";
 }
 
 
@@ -290,14 +265,15 @@ export async function storeCalendarConnection(
         .from("user_calendar_connections")
         .upsert({
             user_id: userId,
-            google_email: tokens.email,
+            provider: "google",
+            provider_email: tokens.email,
             access_token_encrypted: encryptedAccessToken,
             refresh_token_encrypted: encryptedRefreshToken,
             token_expires_at: tokens.expiresAt.toISOString(),
             status: "connected",
             last_sync_at: new Date().toISOString(),
         }, {
-            onConflict: "user_id",
+            onConflict: "user_id,provider",
         });
 
     if (error) {
@@ -319,32 +295,40 @@ export async function getCalendarConnection(
     userId: string
 ): Promise<{
     id: string;
-    googleEmail: string;
+    providerEmail: string;
     accessToken: string;
     refreshToken: string;
     expiresAt: Date;
     status: "connected" | "disconnected" | "error";
+    targetCalendarId: string | null;
     lastSyncAt: Date | null;
 } | null> {
     const { data, error } = await supabase
         .from("user_calendar_connections")
         .select("*")
         .eq("user_id", userId)
-        .single();
+        .eq("provider", "google")
+        .maybeSingle();
 
     if (error || !data) {
         return null;
     }
 
-    return {
-        id: data.id,
-        googleEmail: data.google_email,
-        accessToken: decryptToken(data.access_token_encrypted),
-        refreshToken: decryptToken(data.refresh_token_encrypted),
-        expiresAt: new Date(data.token_expires_at),
-        status: data.status,
-        lastSyncAt: data.last_sync_at ? new Date(data.last_sync_at) : null,
-    };
+    try {
+        return {
+            id: data.id,
+            providerEmail: data.provider_email,
+            accessToken: decryptToken(data.access_token_encrypted),
+            refreshToken: decryptToken(data.refresh_token_encrypted),
+            expiresAt: new Date(data.token_expires_at),
+            status: data.status as "connected" | "disconnected" | "error",
+            targetCalendarId: data.target_calendar_id,
+            lastSyncAt: data.last_sync_at ? new Date(data.last_sync_at) : null,
+        };
+    } catch (decryptError) {
+        console.error("[google-oauth] Failed to decrypt tokens for user:", userId, decryptError);
+        return null;
+    }
 }
 
 /**
@@ -361,7 +345,8 @@ export async function updateConnectionStatus(
     await supabase
         .from("user_calendar_connections")
         .update({ status })
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("provider", "google");
 }
 
 /**
@@ -386,7 +371,8 @@ export async function updateStoredTokens(
             token_expires_at: expiresAt.toISOString(),
             status: "connected",
         })
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("provider", "google");
 }
 
 /**
@@ -401,7 +387,8 @@ export async function removeCalendarConnection(
     await supabase
         .from("user_calendar_connections")
         .delete()
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("provider", "google");
 }
 
 
@@ -487,11 +474,20 @@ export async function disconnectCalendar(
     // Remove the connection from the database regardless of revocation result
     await removeCalendarConnection(supabase, userId);
 
-    // Also clean up any event calendar entries for this user
+    // Also clean up any event calendar entries for this user (Google only)
     await supabase
         .from("event_calendar_entries")
         .delete()
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("provider", "google");
+
+    // Clean up personal Google Calendar feeds for this user (cascades to calendar_events)
+    await supabase
+        .from("calendar_feeds")
+        .delete()
+        .eq("connected_user_id", userId)
+        .eq("provider", "google")
+        .eq("scope", "personal");
 
     return { success: true };
 }

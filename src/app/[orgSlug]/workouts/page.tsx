@@ -5,6 +5,7 @@ import { Card, Badge, Button, EmptyState } from "@/components/ui";
 import { getOrgContext } from "@/lib/auth/roles";
 import { WorkoutLogEditor } from "@/components/workouts/WorkoutLogEditor";
 import { resolveLabel, resolveActionLabel } from "@/lib/navigation/label-resolver";
+import { getLocale, getTranslations } from "next-intl/server";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import type { WorkoutLog } from "@/types/database";
 
@@ -21,29 +22,32 @@ export default async function WorkoutsPage({ params }: WorkoutsPageProps) {
 
   const orgId = orgCtx.organization.id;
 
-  const { data: workouts } = await supabase
-    .from("workouts")
-    .select("*")
-    .eq("organization_id", orgId)
-    .order("workout_date", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false });
-
-  const { data: userLogs } =
+  // Parallelize workout + user logs queries (independent of each other)
+  const [{ data: workouts }, { data: userLogs }] = await Promise.all([
+    supabase
+      .from("workouts")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("workout_date", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false }),
     orgCtx.userId && orgCtx.role
-      ? await supabase
+      ? supabase
           .from("workout_logs")
           .select("*")
           .eq("organization_id", orgId)
           .eq("user_id", orgCtx.userId)
-      : { data: [] };
+      : Promise.resolve({ data: [] as never[] }),
+  ]);
 
   const userLogsList: WorkoutLog[] = (userLogs as WorkoutLog[]) || [];
   const logByWorkout = new Map<string, WorkoutLog>();
   userLogsList.forEach((log) => logByWorkout.set(log.workout_id, log));
 
   const navConfig = orgCtx.organization.nav_config as NavConfig | null;
-  const pageLabel = resolveLabel("/workouts", navConfig);
-  const actionLabel = resolveActionLabel("/workouts", navConfig, "Post");
+  const [tNav, locale] = await Promise.all([getTranslations("nav.items"), getLocale()]);
+  const t = (key: string) => tNav(key);
+  const pageLabel = resolveLabel("/workouts", navConfig, t, locale);
+  const actionLabel = resolveActionLabel("/workouts", navConfig, "Post", t, locale);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -141,7 +145,7 @@ export default async function WorkoutsPage({ params }: WorkoutsPageProps) {
             action={
               orgCtx.isAdmin && (
                 <Link href={`/${orgSlug}/workouts/new`}>
-                  <Button>{resolveActionLabel("/workouts", navConfig, "Post First")}</Button>
+                  <Button>{resolveActionLabel("/workouts", navConfig, "Post First", t, locale)}</Button>
                 </Link>
               )
             }

@@ -1,3 +1,20 @@
+/**
+ * In-memory rate limiter using a global Map.
+ *
+ * IMPORTANT — Serverless limitation:
+ * This store does NOT persist across serverless function instances.
+ * Under multi-instance deployments (Vercel auto-scaling), the effective
+ * rate limit per user/IP is `configured_limit × active_instances`.
+ *
+ * This provides per-instance burst protection, not distributed rate limiting.
+ * For strict enforcement, migrate to Vercel KV or an external Redis store.
+ *
+ * NOTE — Database-level correctness:
+ * For the enterprise invites system, database constraints (advisory locks,
+ * CHECK constraints) provide the real enforcement layer. The rate limiter
+ * slows down attack attempts per instance, but the database prevents
+ * exceeding the 12-admin cap and alumni quota even under parallel creation.
+ */
 import { NextResponse, type NextRequest } from "next/server";
 
 type RequestLike = Request | NextRequest;
@@ -28,9 +45,11 @@ export type RateLimitResult = {
 type RateLimitConfig = {
   limitPerIp?: number;
   limitPerUser?: number;
+  limitPerOrg?: number;
   windowMs?: number;
   pathOverride?: string;
   userId?: string | null;
+  orgId?: string | null;
   feature?: string;
 };
 
@@ -153,11 +172,13 @@ export function checkRateLimit(request: RequestLike, config: RateLimitConfig = {
   const windowMs = config.windowMs ?? DEFAULT_WINDOW_MS;
   const maxPerIp = config.limitPerIp ?? DEFAULT_IP_LIMIT;
   const maxPerUser = config.limitPerUser ?? DEFAULT_USER_LIMIT;
+  const maxPerOrg = config.limitPerOrg ?? 0;
   const ip = deriveClientIp(request) || "unknown";
   const userId = config.userId?.trim() || null;
+  const orgId = config.orgId?.trim() || null;
   const feature = config.feature || "this endpoint";
 
-  const results: Array<ConsumeResult & { scope: "ip" | "user" }> = [];
+  const results: Array<ConsumeResult & { scope: "ip" | "user" | "org" }> = [];
 
   if (maxPerIp > 0) {
     results.push({
@@ -170,6 +191,13 @@ export function checkRateLimit(request: RequestLike, config: RateLimitConfig = {
     results.push({
       scope: "user",
       ...consume(`user:${path}:${userId}`, maxPerUser, windowMs, now),
+    });
+  }
+
+  if (orgId && maxPerOrg > 0) {
+    results.push({
+      scope: "org",
+      ...consume(`org:${path}:${orgId}`, maxPerOrg, windowMs, now),
     });
   }
 

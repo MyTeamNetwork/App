@@ -6,11 +6,19 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
-import { Button, Input, Card, HCaptcha, HCaptchaRef } from "@/components/ui";
+import { Button, Input, Card, HCaptcha, HCaptchaRef, InlineBanner } from "@/components/ui";
 import { useCaptcha } from "@/hooks/useCaptcha";
 import { signupSchema, type SignupForm, type AgeBracket } from "@/lib/schemas/auth";
+import { PASSWORD_REQUIREMENTS } from "@/lib/auth/password";
+import { buildOAuthSignupCallbackUrl, buildEmailSignupCallbackUrl, buildAuthLink } from "@/lib/auth/redirect";
+import { shouldResumeSignupRegistration } from "@/lib/auth/signup-flow";
 import { AgeGate } from "@/components/auth/AgeGate";
 import { FeedbackButton } from "@/components/feedback";
+import { LinkedInIcon } from "@/components/shared/LinkedInIcon";
+import { MicrosoftIcon } from "@/components/shared/MicrosoftIcon";
+import { LINKEDIN_OIDC_PROVIDER } from "@/lib/linkedin/config";
+import { MICROSOFT_SSO_PROVIDER } from "@/lib/microsoft/sso-config";
+import { useTranslations } from "next-intl";
 
 type SignupStep = "age_gate" | "registration";
 
@@ -22,11 +30,30 @@ interface AgeGateData {
   token: string;
 }
 
-interface SignupClientProps {
-  hcaptchaSiteKey: string;
+function clearAgeGateData() {
+  try {
+    sessionStorage.removeItem(AGE_GATE_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
 }
 
-export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
+interface SignupClientProps {
+  hcaptchaSiteKey: string;
+  linkedinOauthAvailable: boolean;
+  microsoftOauthAvailable: boolean;
+  redirectTo?: string;
+  initialError?: string | null;
+}
+
+export function SignupClient({
+  hcaptchaSiteKey,
+  linkedinOauthAvailable,
+  microsoftOauthAvailable,
+  redirectTo = "/app",
+  initialError = null,
+}: SignupClientProps) {
+  const t = useTranslations("auth");
   const router = useRouter();
   const [step, setStep] = useState<SignupStep>("age_gate");
   const [ageBracket, setAgeBracket] = useState<AgeBracket | null>(null);
@@ -34,26 +61,34 @@ export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
   const [ageToken, setAgeToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isLinkedInLoading, setIsLinkedInLoading] = useState(false);
+  const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
   const [message, setMessage] = useState<string | null>(null);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "");
+  const isSocialLoading = isGoogleLoading || isLinkedInLoading || isMicrosoftLoading;
 
   // Restore age gate data from sessionStorage on mount
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem(AGE_GATE_STORAGE_KEY);
-      if (stored) {
+      if (shouldResumeSignupRegistration({
+        initialError,
+        hasStoredAgeGateData: Boolean(stored),
+      }) && stored) {
         const data: AgeGateData = JSON.parse(stored);
         setAgeBracket(data.ageBracket);
         setIsMinor(data.isMinor);
         setAgeToken(data.token);
         setStep("registration");
+      } else if (stored) {
+        clearAgeGateData();
       }
     } catch {
       // Ignore storage errors
     }
-  }, []);
+  }, [initialError]);
 
   const {
     register,
@@ -65,6 +100,7 @@ export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
       name: "",
       email: "",
       password: "",
+      tosAccepted: false,
     },
   });
 
@@ -126,53 +162,54 @@ export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
     }
   };
 
-  const clearAgeGateData = () => {
-    try {
-      sessionStorage.removeItem(AGE_GATE_STORAGE_KEY);
-    } catch {
-      // Ignore storage errors
-    }
-  };
-
-  const handleGoogleSignup = async () => {
-    if (!ageBracket || isMinor === null || !ageToken) {
-      setError("Please complete the date of birth step first");
+  const handleSocialSignup = async (provider: "google" | typeof LINKEDIN_OIDC_PROVIDER | typeof MICROSOFT_SSO_PROVIDER) => {
+    if (!isVerified || !captchaToken) {
+      setError(t("completeCaptcha"));
       return;
     }
 
-    setIsGoogleLoading(true);
+    if (!ageBracket || isMinor === null || !ageToken) {
+      setError(t("completeDobFirst"));
+      return;
+    }
+
+    const setLoading =
+      provider === "google"
+        ? setIsGoogleLoading
+        : provider === MICROSOFT_SSO_PROVIDER
+          ? setIsMicrosoftLoading
+          : setIsLinkedInLoading;
+    setLoading(true);
     setError(null);
 
     const supabase = createClient()!;
+    const callbackUrl = buildOAuthSignupCallbackUrl(siteUrl, redirectTo, ageBracket, isMinor, ageToken);
+
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
+      provider,
       options: {
-        redirectTo: `${siteUrl}/auth/callback?redirect=/app`,
-        queryParams: {
-          // Pass age data as query params to be handled in callback
-          age_bracket: ageBracket,
-          is_minor: String(isMinor),
-          age_token: ageToken,
-        },
+        redirectTo: callbackUrl,
+        ...(provider === MICROSOFT_SSO_PROVIDER && { scopes: "openid profile email" }),
       },
     });
 
     if (error) {
       setError(error.message);
-      setIsGoogleLoading(false);
-    } else {
-      clearAgeGateData();
+      setLoading(false);
+      captchaRef.current?.reset();
     }
+    // Don't clear age gate data here — user may be bounced back if OAuth fails.
+    // The useEffect at mount restores age gate state from sessionStorage.
   };
 
   const onSubmit = async (data: SignupForm) => {
     if (!isVerified || !captchaToken) {
-      setError("Please complete the captcha verification");
+      setError(t("completeCaptcha"));
       return;
     }
 
     if (!ageBracket || isMinor === null || !ageToken) {
-      setError("Please complete the date of birth step first");
+      setError(t("completeDobFirst"));
       return;
     }
 
@@ -190,7 +227,7 @@ export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
           is_minor: isMinor,
           age_validation_token: ageToken,
         },
-        emailRedirectTo: `${siteUrl}/auth/callback?redirect=/app`,
+        emailRedirectTo: buildEmailSignupCallbackUrl(siteUrl, redirectTo),
         captchaToken,
       },
     });
@@ -203,7 +240,7 @@ export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
     }
 
     clearAgeGateData();
-    setMessage("Check your email to confirm your account!");
+    setMessage(t("checkEmailConfirm"));
     setIsLoading(false);
     captchaRef.current?.reset();
   };
@@ -226,8 +263,9 @@ export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
         type="button"
         variant="secondary"
         className="w-full mb-6"
-        onClick={handleGoogleSignup}
+        onClick={() => handleSocialSignup("google")}
         isLoading={isGoogleLoading}
+        disabled={isSocialLoading}
         data-testid="signup-google"
       >
         <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
@@ -248,62 +286,115 @@ export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
           />
         </svg>
-        Continue with Google
+        {t("continueWithGoogle")}
       </Button>
+
+      {linkedinOauthAvailable && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full mb-6"
+          onClick={() => handleSocialSignup(LINKEDIN_OIDC_PROVIDER)}
+          isLoading={isLinkedInLoading}
+          disabled={isSocialLoading}
+          data-testid="signup-linkedin"
+        >
+          <LinkedInIcon className="h-5 w-5 mr-2" />
+          {t("continueWithLinkedIn")}
+        </Button>
+      )}
+
+      {microsoftOauthAvailable && (
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full mb-6"
+          onClick={() => handleSocialSignup(MICROSOFT_SSO_PROVIDER)}
+          isLoading={isMicrosoftLoading}
+          disabled={isSocialLoading}
+          data-testid="signup-microsoft"
+        >
+          <MicrosoftIcon className="h-5 w-5 mr-2" />
+          {t("continueWithMicrosoft")}
+        </Button>
+      )}
 
       <div className="relative mb-6">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
+          <div className="w-full border-t border-white/10" />
         </div>
         <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-2 text-muted-foreground">Or continue with email</span>
+          <span className="bg-[#1a1a1a] px-2 text-white/50">{t("orContinueWithEmail")}</span>
         </div>
       </div>
 
       {error && (
-        <div data-testid="signup-error" className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
+        <InlineBanner variant="error" data-testid="signup-error" className="mb-4">
           {error}
           <div className="mt-2 flex justify-end">
             <FeedbackButton context="signup" trigger="signup_error" />
           </div>
-        </div>
+        </InlineBanner>
       )}
 
       {message && (
-        <div data-testid="signup-success" className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 text-sm">
+        <InlineBanner variant="success" data-testid="signup-success" className="mb-4">
           {message}
-        </div>
+        </InlineBanner>
       )}
 
       <form data-testid="signup-form" onSubmit={handleSubmit(onSubmit)}>
         <div className="space-y-4">
           <Input
-            label="Full Name"
+            label={t("fullNameLabel")}
             type="text"
-            placeholder="John Doe"
+            placeholder={t("fullNamePlaceholder")}
             data-testid="signup-name"
             error={errors.name?.message}
             {...register("name")}
           />
 
           <Input
-            label="Email"
+            label={t("emailLabel")}
             type="email"
-            placeholder="you@example.com"
+            placeholder={t("emailPlaceholder")}
             data-testid="signup-email"
             error={errors.email?.message}
             {...register("email")}
           />
 
           <Input
-            label="Password"
+            label={t("passwordLabel")}
             type="password"
-            placeholder="••••••••"
-            helperText="Must be at least 6 characters"
+            placeholder={t("passwordPlaceholder")}
+            helperText={PASSWORD_REQUIREMENTS}
             data-testid="signup-password"
             error={errors.password?.message}
             {...register("password")}
           />
+
+          <div className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              id="tosAccepted"
+              className="mt-1 h-4 w-4 rounded border-white/20 bg-white/5 text-[#22c55e] focus:ring-[#22c55e]"
+              data-testid="signup-tos"
+              {...register("tosAccepted")}
+            />
+            <label htmlFor="tosAccepted" className="text-sm text-white/50">
+              I agree to the{" "}
+              <Link href="/terms" target="_blank" className="text-white underline hover:text-white/80">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" target="_blank" className="text-white underline hover:text-white/80">
+                Privacy Policy
+              </Link>
+            </label>
+          </div>
+          {errors.tosAccepted && (
+            <p className="text-sm text-red-400">{errors.tosAccepted.message}</p>
+          )}
 
           <div className="flex justify-center">
             <HCaptcha
@@ -312,7 +403,7 @@ export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
               onVerify={onVerify}
               onExpire={onExpire}
               onError={onCaptchaError}
-              theme="light"
+              theme="dark"
             />
           </div>
 
@@ -323,15 +414,15 @@ export function SignupClient({ hcaptchaSiteKey }: SignupClientProps) {
             disabled={!isVerified}
             data-testid="signup-submit"
           >
-            Create Account
+            {t("createAccountBtn")}
           </Button>
         </div>
       </form>
 
-      <div className="mt-6 text-center text-sm text-muted-foreground">
-        Already have an account?{" "}
-        <Link href="/auth/login" className="text-foreground font-medium hover:underline">
-          Sign in
+      <div className="mt-6 text-center text-sm text-white/50">
+        {t("haveAccount")}{" "}
+        <Link href={buildAuthLink("/auth/login", redirectTo)} className="text-white font-medium hover:underline">
+          {t("signIn")}
         </Link>
       </div>
     </Card>

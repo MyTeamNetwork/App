@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
+import { sanitizeIlikeInput } from "@/lib/security/validation";
 
 export const dynamic = "force-dynamic";
 
@@ -122,7 +123,7 @@ export async function POST(
     const { data: sources, error: sourcesError } = await serviceClient
       .from("schedule_sources")
       .select("id,source_url")
-      .ilike("source_url", `%${domain.hostname}%`);
+      .ilike("source_url", `%${sanitizeIlikeInput(domain.hostname)}%`);
 
     if (sourcesError) {
       console.error("[schedule-domains] Failed to find sources for blocked domain:", sourcesError);

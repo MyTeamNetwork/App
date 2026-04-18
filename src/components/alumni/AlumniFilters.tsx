@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Button, Select } from "@/components/ui";
 import { uniqueStringsCaseInsensitive } from "@/lib/string-utils";
+import { trackBehavioralEvent } from "@/lib/analytics/events";
 
 interface FilterOption {
   value: string;
@@ -11,7 +12,9 @@ interface FilterOption {
 }
 
 interface AlumniFiltersProps {
+  orgId: string;
   years: (number | null)[];
+  birthYears: (number | null)[];
   industries: (string | null)[];
   companies: (string | null)[];
   cities: (string | null)[];
@@ -19,7 +22,9 @@ interface AlumniFiltersProps {
 }
 
 export function AlumniFilters({
+  orgId,
   years,
+  birthYears,
   industries,
   companies,
   cities,
@@ -28,9 +33,11 @@ export function AlumniFilters({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const didMountRef = useRef(false);
 
   const [filters, setFilters] = useState({
     year: searchParams.get("year") || "",
+    birthYear: searchParams.get("birthYear") || "",
     industry: searchParams.get("industry") || "",
     company: searchParams.get("company") || "",
     city: searchParams.get("city") || "",
@@ -42,6 +49,7 @@ export function AlumniFilters({
   const updateURL = useCallback(() => {
     const params = new URLSearchParams();
     if (filters.year) params.set("year", filters.year);
+    if (filters.birthYear) params.set("birthYear", filters.birthYear);
     if (filters.industry) params.set("industry", filters.industry);
     if (filters.company) params.set("company", filters.company);
     if (filters.city) params.set("city", filters.city);
@@ -54,13 +62,26 @@ export function AlumniFilters({
   useEffect(() => {
     const debounce = setTimeout(() => {
       updateURL();
+      if (!didMountRef.current) {
+        didMountRef.current = true;
+        return;
+      }
+      const filterKeys = Object.entries(filters)
+        .filter(([, value]) => value)
+        .map(([key]) => key);
+      trackBehavioralEvent("directory_filter_apply", {
+        directory_type: "alumni",
+        filter_keys: filterKeys,
+        filters_count: filterKeys.length,
+      }, orgId);
     }, 300);
     return () => clearTimeout(debounce);
-  }, [filters, updateURL]);
+  }, [filters, orgId, updateURL]);
 
   const clearFilters = () => {
     setFilters({
       year: "",
+      birthYear: "",
       industry: "",
       company: "",
       city: "",
@@ -79,6 +100,14 @@ export function AlumniFilters({
       .filter((y): y is number => y !== null)
       .sort((a, b) => b - a)
       .map((y) => ({ value: y.toString(), label: `Class of ${y}` })),
+  ];
+
+  const birthYearOptions: FilterOption[] = [
+    { value: "", label: "All Years" },
+    ...birthYears
+      .filter((y): y is number => y !== null)
+      .sort((a, b) => b - a)
+      .map((y) => ({ value: y.toString(), label: y.toString() })),
   ];
 
   const industryOptions: FilterOption[] = [
@@ -110,6 +139,14 @@ export function AlumniFilters({
             value={filters.year}
             onChange={(e) => setFilters({ ...filters, year: e.target.value })}
             options={yearOptions}
+          />
+        </div>
+        <div className="w-full sm:w-auto sm:flex-1 sm:min-w-[140px]">
+          <Select
+            label="Year of Birth"
+            value={filters.birthYear}
+            onChange={(e) => setFilters({ ...filters, birthYear: e.target.value })}
+            options={birthYearOptions}
           />
         </div>
         <div className="w-full sm:w-auto sm:flex-1 sm:min-w-[140px]">

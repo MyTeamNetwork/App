@@ -11,6 +11,8 @@ import {
   timeStringSchema,
   optionalTimeStringSchema,
   optionalHttpsUrlSchema,
+  dayOfWeekSchema,
+  dayOfMonthSchema,
 } from "./common";
 
 // Announcement form
@@ -23,6 +25,55 @@ export const newAnnouncementSchema = z.object({
 });
 export type NewAnnouncementForm = z.infer<typeof newAnnouncementSchema>;
 
+export const createAnnouncementSchema = newAnnouncementSchema.extend({
+  audience_user_ids: z.array(z.string().uuid()).optional().nullable(),
+}).superRefine((value, ctx) => {
+  if (value.audience === "individuals" && (!value.audience_user_ids || value.audience_user_ids.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["audience_user_ids"],
+      message: "Select at least one recipient for individual announcements",
+    });
+  }
+});
+export type CreateAnnouncementForm = z.infer<typeof createAnnouncementSchema>;
+
+export const assistantAnnouncementDraftSchema = z.object({
+  title: safeString(200).optional(),
+  body: optionalSafeString(5000),
+  is_pinned: z.boolean().optional(),
+  audience: announcementAudienceSchema.optional(),
+  send_notification: z.boolean().optional(),
+  audience_user_ids: z.array(z.string().uuid()).optional(),
+}).superRefine((value, ctx) => {
+  if (value.audience === "individuals" && (!value.audience_user_ids || value.audience_user_ids.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["audience_user_ids"],
+      message: "Select at least one recipient for individual announcements",
+    });
+  }
+});
+export type AssistantAnnouncementDraft = z.infer<typeof assistantAnnouncementDraftSchema>;
+
+export const assistantPreparedAnnouncementSchema = z.object({
+  title: safeString(200),
+  body: optionalSafeString(5000),
+  is_pinned: z.boolean(),
+  audience: announcementAudienceSchema,
+  send_notification: z.boolean(),
+  audience_user_ids: z.array(z.string().uuid()).optional(),
+}).superRefine((value, ctx) => {
+  if (value.audience === "individuals" && (!value.audience_user_ids || value.audience_user_ids.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["audience_user_ids"],
+      message: "Select at least one recipient for individual announcements",
+    });
+  }
+});
+export type AssistantPreparedAnnouncement = z.infer<typeof assistantPreparedAnnouncementSchema>;
+
 // Edit announcement form - no send_notification (already sent)
 export const editAnnouncementSchema = z.object({
   title: safeString(200),
@@ -31,6 +82,35 @@ export const editAnnouncementSchema = z.object({
   audience: announcementAudienceSchema,
 });
 export type EditAnnouncementForm = z.infer<typeof editAnnouncementSchema>;
+
+// ─── Recurrence schemas ───────────────────────────────────────────────
+
+export const recurrenceOccurrenceSchema = z.enum(["daily", "weekly", "monthly"]);
+export type RecurrenceOccurrence = z.infer<typeof recurrenceOccurrenceSchema>;
+
+export const recurrenceRuleSchema = z.discriminatedUnion("occurrence_type", [
+  z.object({
+    occurrence_type: z.literal("daily"),
+    recurrence_end_date: optionalDateStringSchema,
+  }),
+  z.object({
+    occurrence_type: z.literal("weekly"),
+    day_of_week: dayOfWeekSchema,
+    recurrence_end_date: optionalDateStringSchema,
+  }),
+  z.object({
+    occurrence_type: z.literal("monthly"),
+    day_of_month: dayOfMonthSchema,
+    recurrence_end_date: optionalDateStringSchema,
+  }),
+]);
+export type RecurrenceRuleForm = z.infer<typeof recurrenceRuleSchema>;
+
+export const editScopeSchema = z.enum(["this_only", "this_and_future"]);
+export type EditScope = z.infer<typeof editScopeSchema>;
+
+export const deleteScopeSchema = z.enum(["this_only", "this_and_future", "all_in_series"]);
+export type DeleteScope = z.infer<typeof deleteScopeSchema>;
 
 // Event form
 export const newEventSchema = z
@@ -47,6 +127,8 @@ export const newEventSchema = z
     audience: audienceSchema,
     send_notification: z.boolean(),
     channel: channelSchema,
+    is_recurring: z.boolean(),
+    recurrence: recurrenceRuleSchema.optional(),
   })
   .refine(
     (data) => {
@@ -61,6 +143,17 @@ export const newEventSchema = z
     {
       message: "End date/time must be after start date/time",
       path: ["end_date"],
+    }
+  )
+  .refine(
+    (data) => {
+      // If recurring, recurrence rule is required
+      if (data.is_recurring && !data.recurrence) return false;
+      return true;
+    },
+    {
+      message: "Recurrence settings are required for recurring events",
+      path: ["recurrence"],
     }
   );
 export type NewEventForm = z.infer<typeof newEventSchema>;

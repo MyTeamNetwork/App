@@ -21,6 +21,13 @@ import {
   updatePaymentAttempt,
   waitForExistingStripeResource,
 } from "@/lib/payments/idempotency";
+import {
+  buildOrgCheckoutFingerprintPayload,
+  getOrgFreeTrialRequestError,
+  getOrgTrialMetadataValue,
+  ORG_TRIAL_DAYS,
+} from "@/lib/subscription/org-trial";
+import { getStripeOrigin } from "@/lib/stripe-origin";
 import { z } from "zod";
 import type { AlumniBucket, SubscriptionInterval } from "@/types/database";
 
@@ -35,6 +42,7 @@ const createOrgSchema = z
     primaryColor: baseSchemas.hexColor.optional(),
     billingInterval: z.enum(["month", "year"]),
     alumniBucket: z.enum(["none", "0-250", "251-500", "501-1000", "1001-2500", "2500-5000", "5000+"]),
+    withTrial: z.boolean().optional(),
     idempotencyKey: baseSchemas.idempotencyKey.optional(),
     paymentAttemptId: baseSchemas.uuid.optional(),
   })
@@ -42,7 +50,6 @@ const createOrgSchema = z
 
 export async function POST(req: Request) {
   try {
-    console.log("[create-org-checkout] Starting...");
     const supabase = await createClient();
     const serviceSupabase = createServiceClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -62,10 +69,8 @@ export async function POST(req: Request) {
       NextResponse.json(payload, { status, headers: rateLimit.headers });
 
     if (!user) {
-      console.log("[create-org-checkout] Unauthorized - no user");
       return respond({ error: "Unauthorized" }, 401);
     }
-    console.log("[create-org-checkout] User:", user.id, user.email);
 
     const body = await validateJson(req, createOrgSchema, { maxBodyBytes: 32_000 });
     const {
@@ -75,6 +80,7 @@ export async function POST(req: Request) {
       primaryColor,
       billingInterval,
       alumniBucket,
+      withTrial: requestedTrial,
       idempotencyKey: rawIdempotencyKey,
       paymentAttemptId,
     } = body;
@@ -82,6 +88,17 @@ export async function POST(req: Request) {
     const idempotencyKey = rawIdempotencyKey ?? null;
     const interval: SubscriptionInterval = billingInterval === "year" ? "year" : "month";
     const bucket: AlumniBucket = alumniBucket;
+    const withTrial = requestedTrial === true;
+
+    const trialError = getOrgFreeTrialRequestError({
+      withTrial,
+      billingInterval: interval,
+      alumniBucket: bucket,
+    });
+
+    if (trialError) {
+      return respond({ error: trialError }, 400);
+    }
 
     const { data: existing } = await supabase
       .from("organizations")
@@ -162,35 +179,61 @@ export async function POST(req: Request) {
         });
 
         if (organizationId) {
-          console.log("[create-org-checkout] Cleaning up org:", organizationId);
           await supabase.from("organization_subscriptions").delete().eq("organization_id", organizationId);
           await supabase.from("user_organization_roles").delete().eq("organization_id", organizationId).eq("user_id", user.id);
           await supabase.from("organizations").delete().eq("id", organizationId);
         }
 
-        const message = error instanceof Error ? error.message : "Unable to start checkout";
-        return respond({ error: message }, 400);
+        return respond({ error: "Unable to start checkout" }, 400);
       }
     }
 
+    let resolvedAttemptId: string | undefined;
+    let stripeResourceCreated = false;
+
     try {
+      if (withTrial) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: existingTrial, error: existingTrialError } = await (serviceSupabase as any)
+          .from("payment_attempts")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("is_trial", true)
+          .not("organization_id", "is", null)
+          .limit(1);
+
+        if (existingTrialError) {
+          throw existingTrialError;
+        }
+
+        if ((existingTrial?.length ?? 0) > 0) {
+          return respond({ error: "Free trial has already been used on this admin account." }, 409);
+        }
+      }
+
       const { basePrice, alumniPrice } = getPriceIds(interval, bucket);
-      const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+      const origin = getStripeOrigin(req.url);
       const pendingOrgIdSeed = randomUUID();
-      const fingerprint = hashFingerprint({
-        userId: user.id,
-        name,
-        slug,
-        interval,
-        bucket,
-        primaryColor,
-      });
+      const fingerprint = hashFingerprint(
+        buildOrgCheckoutFingerprintPayload({
+          userId: user.id,
+          name,
+          slug,
+          interval,
+          bucket,
+          primaryColor,
+          withTrial,
+        }),
+      );
+
+      const trialMetadataValue = getOrgTrialMetadataValue(withTrial);
 
       const attemptMetadata = {
         pending_org_id: pendingOrgIdSeed,
         slug,
         alumni_bucket: bucket,
         billing_interval: interval,
+        is_trial: trialMetadataValue,
       };
 
       const { attempt } = await ensurePaymentAttempt({
@@ -202,8 +245,11 @@ export async function POST(req: Request) {
         currency: "usd",
         userId: user.id,
         requestFingerprint: fingerprint,
+        isTrial: withTrial,
         metadata: attemptMetadata,
       });
+
+      resolvedAttemptId = attempt.id;
 
       const storedMetadata = (attempt.metadata as Record<string, string> | null) ?? {};
       const pendingOrgId = storedMetadata.pending_org_id || pendingOrgIdSeed;
@@ -217,6 +263,7 @@ export async function POST(req: Request) {
         created_by: user.id,
         base_interval: interval,
         payment_attempt_id: attempt.id,
+        is_trial: trialMetadataValue,
       };
 
       const { attempt: claimedAttempt, claimed } = await claimPaymentAttempt({
@@ -261,8 +308,6 @@ export async function POST(req: Request) {
         );
       }
 
-      console.log("[create-org-checkout] Creating Stripe session with prices:", { basePrice, alumniPrice, origin, pendingOrgId });
-
       const session = await stripe.checkout.sessions.create(
         {
           mode: "subscription",
@@ -273,6 +318,7 @@ export async function POST(req: Request) {
           ],
           subscription_data: {
             metadata,
+            ...(withTrial ? { trial_period_days: ORG_TRIAL_DAYS } : {}),
           },
           metadata,
           success_url: `${origin}/app?org=${slug}&checkout=success`,
@@ -281,13 +327,14 @@ export async function POST(req: Request) {
         { idempotencyKey: claimedAttempt.idempotency_key },
       );
 
+      stripeResourceCreated = true;
+
       await updatePaymentAttempt(serviceSupabase, claimedAttempt.id, {
         stripe_checkout_session_id: session.id,
         checkout_url: session.url,
         status: "processing",
       });
 
-      console.log("[create-org-checkout] Success! Checkout URL:", session.url);
       return respond({
         url: session.url,
         idempotencyKey: claimedAttempt.idempotency_key,
@@ -316,14 +363,16 @@ export async function POST(req: Request) {
       });
 
       const lastError = stripeErr?.message || stripeErr?.raw?.message || "checkout_failed";
-      if (paymentAttemptId) {
-        await serviceSupabase.from("payment_attempts").update({ last_error: lastError }).eq("id", paymentAttemptId);
-      } else if (idempotencyKey) {
-        await serviceSupabase.from("payment_attempts").update({ last_error: lastError }).eq("idempotency_key", idempotencyKey);
+      if (resolvedAttemptId) {
+        const errorUpdate: { last_error: string; status?: string } = { last_error: lastError };
+        if (!stripeResourceCreated) {
+          errorUpdate.status = "initiated";
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await serviceSupabase.from("payment_attempts").update(errorUpdate as any).eq("id", resolvedAttemptId);
       }
 
-      const message = error instanceof Error ? error.message : "Unable to start checkout";
-      return respond({ error: message }, 400);
+      return respond({ error: "Unable to start checkout" }, 400);
     }
   } catch (error) {
     if (error instanceof ValidationError) {

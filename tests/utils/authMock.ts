@@ -10,7 +10,7 @@ export interface MockUser {
 
 export interface MockMembership {
   organization_id: string;
-  role: "admin" | "active_member" | "alumni";
+  role: "admin" | "active_member" | "alumni" | "parent";
   status: "active" | "pending" | "revoked";
 }
 
@@ -120,6 +120,13 @@ export const AuthPresets = {
     createAuthContext({
       user: { id: "alumni-user", email: "alumni@example.com" },
       memberships: [{ organization_id: orgId, role: "alumni", status: "active" }],
+    }),
+
+  /** Parent member in org-1 */
+  orgParent: (orgId: string = "org-1") =>
+    createAuthContext({
+      user: { id: "parent-user", email: "parent@example.com" },
+      memberships: [{ organization_id: orgId, role: "parent", status: "active" }],
     }),
 
   /** Revoked user in org-1 */

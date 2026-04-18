@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
+import { getStripeOrigin } from "@/lib/stripe-origin";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import {
@@ -91,13 +92,18 @@ export async function POST(req: Request) {
         }, { idempotencyKey: accountKey });
         accountId = account.id;
 
-        await supabase
+        const { error: updateError } = await supabase
           .from("organizations")
           .update({ stripe_connect_account_id: accountId })
           .eq("id", org.id);
+
+        if (updateError) {
+          console.error("[connect-onboarding] Failed to save Stripe account ID:", updateError.message);
+          return respond({ error: "Failed to save Stripe connection. Please try again." }, 500);
+        }
       }
 
-      const origin = req.headers.get("origin") ?? new URL(req.url).origin;
+      const origin = getStripeOrigin(req.url);
       const refreshUrl = `${origin}/${org.slug}/philanthropy?onboarding=refresh`;
       const returnUrl = `${origin}/${org.slug}/philanthropy?onboarding=success`;
 
@@ -112,7 +118,7 @@ export async function POST(req: Request) {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to start Stripe onboarding";
       console.error("[connect-onboarding] Error:", message);
-      return respond({ error: message }, 400);
+      return respond({ error: "Unable to start Stripe onboarding" }, 400);
     }
   } catch (error) {
     if (error instanceof ValidationError) {

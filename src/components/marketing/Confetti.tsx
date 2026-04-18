@@ -24,10 +24,10 @@ interface Particle {
 }
 
 const DEFAULT_COLORS = [
-  "#34d399", // landing-green
-  "#10b981", // landing-green-dark
-  "#f1f5f9", // landing-cream
-  "#e2e8f0", // landing-cream-muted
+  "#22c55e", // landing-green
+  "#16a34a", // landing-green-dark
+  "#ffffff", // landing-cream
+  "#e5e5e5", // landing-cream-muted
 ];
 
 export function Confetti({
@@ -37,6 +37,7 @@ export function Confetti({
   const containerRef = useRef<HTMLDivElement>(null);
   const [particles, setParticles] = useState<Particle[]>([]);
   const hasTriggered = useRef(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -73,7 +74,7 @@ export function Confetti({
             setParticles(newParticles);
 
             // Clear particles after animation completes
-            setTimeout(() => {
+            timeoutRef.current = setTimeout(() => {
               setParticles([]);
             }, 4000);
 
@@ -86,7 +87,10 @@ export function Confetti({
 
     observer.observe(containerRef.current);
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, [colors, particleCount]);
 
   return (

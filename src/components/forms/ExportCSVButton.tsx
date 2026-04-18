@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui";
-import { debugLog } from "@/lib/debug";
+import { escapeCsvCell } from "@/lib/export/spreadsheet";
 import type { Form, FormSubmission, FormField, User } from "@/types/database";
 
 interface ExportCSVButtonProps {
@@ -11,19 +11,13 @@ interface ExportCSVButtonProps {
 
 export function ExportCSVButton({ form, submissions }: ExportCSVButtonProps) {
   const handleExport = () => {
-    const fields = (form.fields || []) as FormField[];
+    const fields = (form.fields || []) as unknown as FormField[];
 
     // Build CSV headers
     const headers = ["Submitted By", "Email", "Date", ...fields.map((f) => f.label)];
 
-    // Try both "data" and "responses" properties (Issue #5)
-    debugLog("forms-export", "exporting", {
-      submissionCount: submissions.length,
-      fieldCount: fields.length,
-    });
     const rows = submissions.map((sub) => {
-      const raw = sub as unknown as Record<string, unknown>;
-      const responses = (raw.data || raw.responses || {}) as Record<string, unknown>;
+      const responses = (sub.data ?? {}) as Record<string, unknown>;
       return [
         sub.users?.name || "",
         sub.users?.email || "",
@@ -34,8 +28,8 @@ export function ExportCSVButton({ form, submissions }: ExportCSVButtonProps) {
 
     // Create CSV content
     const csvContent = [
-      headers.map(escapeCSV).join(","),
-      ...rows.map((row) => row.map(escapeCSV).join(",")),
+      headers.map(escapeCsvCell).join(","),
+      ...rows.map((row) => row.map(escapeCsvCell).join(",")),
     ].join("\n");
 
     // Download
@@ -63,11 +57,4 @@ function formatValue(value: unknown): string {
   if (Array.isArray(value)) return value.join("; ");
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return String(value);
-}
-
-function escapeCSV(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }

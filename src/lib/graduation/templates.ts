@@ -1,6 +1,5 @@
 import type { GraduatingMember, OrgWithSlug } from "./queries";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.myteamnetwork.com";
+import { getAppUrl } from "@/lib/url";
 
 interface EmailTemplate {
   subject: string;
@@ -22,7 +21,7 @@ export function build30DayWarningEmail(
     month: "long",
     day: "numeric",
   });
-  const memberEditUrl = `${APP_URL}/${org.slug}/members/${member.id}/edit`;
+  const memberEditUrl = `${getAppUrl()}/${org.slug}/members/${member.id}/edit`;
 
   return {
     subject: `Member Graduating Soon: ${fullName}`,
@@ -76,7 +75,7 @@ export function buildNoCapacityEmail(
   const firstName = member.first_name || "Member";
   const lastName = member.last_name || "";
   const fullName = `${firstName} ${lastName}`.trim();
-  const billingUrl = `${APP_URL}/${org.slug}/settings/billing`;
+  const billingUrl = `${getAppUrl()}/${org.slug}/settings/billing`;
 
   return {
     subject: `[Action Required] Alumni Limit Reached - Access Revoked`,
@@ -107,7 +106,7 @@ export function buildReinstatementEmail(
     month: "long",
     day: "numeric",
   });
-  const memberEditUrl = `${APP_URL}/${org.slug}/members/${member.id}/edit`;
+  const memberEditUrl = `${getAppUrl()}/${org.slug}/members/${member.id}/edit`;
 
   return {
     subject: `Member Auto-Reinstated: ${fullName}`,

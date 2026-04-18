@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Card, Badge, Button } from "@/components/ui";
+import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { MentorshipLogForm } from "./MentorshipLogForm";
+import { getMentorshipStatusTranslationKey } from "@/lib/mentorship/presentation";
 
 interface MentorshipLog {
   id: string;
@@ -28,6 +31,7 @@ interface MentorshipPairCardProps {
   orgId: string;
   userLabel: (id: string) => string;
   onDelete?: (pairId: string) => void;
+  highlight?: boolean;
 }
 
 export function MentorshipPairCard({
@@ -40,13 +44,21 @@ export function MentorshipPairCard({
   orgId,
   userLabel,
   onDelete,
+  highlight = false,
 }: MentorshipPairCardProps) {
+  const router = useRouter();
+  const tMentorship = useTranslations("mentorship");
+  const tCommon = useTranslations("common");
   const [isDeleting, setIsDeleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDeleted, setIsDeleted] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showLogForm, setShowLogForm] = useState(false);
+  const [showAllLogs, setShowAllLogs] = useState(false);
 
   const handleDeleteClick = () => {
+    setShowMenu(false);
     setShowConfirm(true);
     setError(null);
   };
@@ -67,11 +79,12 @@ export function MentorshipPairCard({
       return;
     }
 
-    // Delete associated mentorship_logs first (cascade)
+    // Soft-delete associated mentorship_logs first
     const { error: logsError } = await supabase
       .from("mentorship_logs")
-      .delete()
-      .eq("pair_id", pair.id);
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("pair_id", pair.id)
+      .is("deleted_at", null);
 
     if (logsError) {
       setError("Unable to delete mentorship pair. Please try again.");
@@ -79,11 +92,12 @@ export function MentorshipPairCard({
       return;
     }
 
-    // Delete the mentorship_pair record
+    // Soft-delete the mentorship_pair record
     const { error: pairError } = await supabase
       .from("mentorship_pairs")
-      .delete()
-      .eq("id", pair.id);
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", pair.id)
+      .is("deleted_at", null);
 
     if (pairError) {
       setError("Unable to delete mentorship pair. Please try again.");
@@ -103,38 +117,102 @@ export function MentorshipPairCard({
     return null;
   }
 
+  const visibleLogs = showAllLogs ? logs : logs.slice(0, 5);
+  const hasMoreLogs = logs.length > 5;
+  const lastLogDate =
+    logs.length > 0 ? new Date(logs[0].entry_date).toLocaleDateString() : null;
+
+  const statusLabel = tMentorship(getMentorshipStatusTranslationKey(pair.status));
+
   return (
-    <Card className="p-6 space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <h3 className="font-semibold text-foreground">{mentorLabel}</h3>
-          <p className="text-sm text-muted-foreground">Mentor</p>
+    <div className={`py-4 space-y-3${highlight ? " bg-[var(--muted)]/10" : ""}`}>
+      {/* Row 1: mentor → mentee header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <h3 className="font-semibold text-foreground truncate">
+            {mentorLabel}
+          </h3>
+          <span aria-hidden="true" className="text-muted-foreground">
+            →
+          </span>
+          <h3 className="font-semibold text-foreground truncate">
+            {menteeLabel}
+          </h3>
         </div>
-        <div className="text-center flex items-center gap-2">
-          <Badge variant="primary">{pair.status}</Badge>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] font-medium text-[var(--muted-foreground)]">{statusLabel}</span>
           {isAdmin && (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={handleDeleteClick}
-              disabled={isDeleting || showConfirm}
-              aria-label="Delete mentorship pair"
-            >
-              Delete
-            </Button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowMenu((v) => !v)}
+                onBlur={() => setTimeout(() => setShowMenu(false), 150)}
+                disabled={isDeleting || showConfirm}
+                aria-label={tMentorship("openPairMenu")}
+                aria-haspopup="menu"
+                aria-expanded={showMenu}
+                className="h-8 w-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 6v.01M12 12v.01M12 18v.01"
+                  />
+                </svg>
+              </button>
+              {showMenu && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full mt-1 min-w-[10rem] rounded-md border border-[var(--border)]/20 bg-[var(--background)] shadow-sm z-10 py-1"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onMouseDown={(e) => {
+                      // onMouseDown fires before the parent button's onBlur,
+                      // so we avoid the blur race swallowing the click.
+                      e.preventDefault();
+                      handleDeleteClick();
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted"
+                  >
+                    {tMentorship("archivePair")}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
-        <div className="text-right">
-          <h3 className="font-semibold text-foreground">{menteeLabel}</h3>
-          <p className="text-sm text-muted-foreground">Mentee</p>
-        </div>
+      </div>
+
+      {/* Row 2: last activity + log count */}
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <span>
+          {lastLogDate
+            ? `${tMentorship("lastSession")}: ${lastLogDate}`
+            : tMentorship("noSessionsYet")}
+        </span>
+        <span aria-hidden="true" className="h-1 w-1 rounded-full bg-border" />
+        <span className="text-xs text-[var(--muted-foreground)]">
+          {logs.length}{" "}
+          {logs.length === 1
+            ? tMentorship("sessionSingular")
+            : tMentorship("sessionPlural")}
+        </span>
       </div>
 
       {/* Confirmation dialog */}
       {showConfirm && (
-        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 space-y-3">
-          <p className="text-sm text-red-700 dark:text-red-300">
-            Are you sure you want to delete this mentorship pair? This will also remove all associated activity logs. This action cannot be undone.
+        <div className="py-3 space-y-3">
+          <p className="text-sm text-[var(--muted-foreground)]">
+            {tMentorship("archivePairConfirm")}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -143,7 +221,7 @@ export function MentorshipPairCard({
               onClick={handleConfirmDelete}
               isLoading={isDeleting}
             >
-              Yes, Delete
+              {tMentorship("archivePair")}
             </Button>
             <Button
               variant="ghost"
@@ -151,7 +229,7 @@ export function MentorshipPairCard({
               onClick={handleCancelDelete}
               disabled={isDeleting}
             >
-              Cancel
+              {tCommon("cancel")}
             </Button>
           </div>
         </div>
@@ -159,35 +237,66 @@ export function MentorshipPairCard({
 
       {/* Error message */}
       {error && (
-        <div className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
-          {error}
-        </div>
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
       )}
 
-      {logs.length > 0 ? (
-        <div className="space-y-3">
-          {logs.slice(0, 5).map((log) => (
-            <div key={log.id} className="p-3 rounded-xl bg-muted/50 space-y-1">
+      {/* Activity logs */}
+      {logs.length > 0 && (
+        <div>
+          {visibleLogs.map((log) => (
+            <div key={log.id} className="py-2 space-y-1">
               <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>{new Date(log.entry_date).toLocaleDateString()}</span>
-                <span>by {userLabel(log.created_by)}</span>
+                <span>
+                  {tMentorship("loggedBy", { name: userLabel(log.created_by) })}
+                </span>
               </div>
               {log.notes && <p className="text-foreground">{log.notes}</p>}
               {log.progress_metric !== null && (
-                <p className="text-xs text-muted-foreground">Progress: {log.progress_metric}</p>
+                <p className="text-xs text-muted-foreground">
+                  {tMentorship("progressMetric", { value: log.progress_metric })}
+                </p>
               )}
             </div>
           ))}
+          {hasMoreLogs && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAllLogs((v) => !v)}
+            >
+              {showAllLogs
+                ? tMentorship("hideLogs")
+                : tMentorship("showAllLogs", { count: logs.length })}
+            </Button>
+          )}
         </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">No activity logged yet.</p>
       )}
 
+      {/* Collapsible log form */}
       {canLogActivity && (
-        <div className="pt-2 border-t border-border">
-          <MentorshipLogForm orgId={orgId} pairId={pair.id} />
+        <div className="pt-3 mt-1">
+          {showLogForm ? (
+            <div className="space-y-2">
+              <MentorshipLogForm orgId={orgId} pairId={pair.id} onLogCreated={() => router.refresh()} />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowLogForm(false)}
+              >
+                {tCommon("cancel")}
+              </Button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLogForm(true)}
+              className="text-xs font-medium text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+            >
+              + {tMentorship("logSession")}
+            </button>
+          )}
         </div>
       )}
-    </Card>
+    </div>
   );
 }

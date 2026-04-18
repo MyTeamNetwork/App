@@ -6,6 +6,7 @@ import {
   logDevAdminAction,
   extractRequestContext,
 } from "@/lib/auth/dev-admin";
+import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,11 +19,32 @@ export const runtime = "nodejs";
  */
 export async function GET(req: Request) {
   try {
-    // 1. Check authentication
+    // 1. Rate limit by IP before any auth backend calls
+    const ipRateLimit = checkRateLimit(req, {
+      feature: "dev-admin",
+      limitPerIp: 30,
+      limitPerUser: 0,
+    });
+    if (!ipRateLimit.ok) {
+      return buildRateLimitResponse(ipRateLimit);
+    }
+
+    // 2. Check authentication
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    // 2. Verify dev-admin access
+    // 3. Rate limit authenticated users (separate from IP limit above)
+    const userRateLimit = checkRateLimit(req, {
+      userId: user?.id ?? null,
+      feature: "dev-admin",
+      limitPerIp: 0,
+      limitPerUser: 20,
+    });
+    if (!userRateLimit.ok) {
+      return buildRateLimitResponse(userRateLimit);
+    }
+
+    // 4. Verify dev-admin access
     if (!isDevAdmin(user)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
@@ -49,6 +71,7 @@ export async function GET(req: Request) {
         name,
         slug,
         created_at,
+        enterprise_id,
         stripe_connect_account_id,
         organization_subscriptions(
           status,
@@ -63,19 +86,54 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 5. Get member counts for each organization
+    // 5. Batch-fetch enterprise names/slugs for orgs with enterprise_id
+    const enterpriseIds = [
+      ...new Set(
+        (orgs ?? [])
+          .map((org) => org.enterprise_id)
+          .filter((id): id is string => id != null)
+      ),
+    ];
+
+    const enterpriseMap = new Map<
+      string,
+      { name: string; slug: string }
+    >();
+
+    if (enterpriseIds.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: enterprises } = (await (serviceClient as any)
+        .from("enterprises")
+        .select("id, name, slug")
+        .in("id", enterpriseIds)) as {
+        data: Array<{ id: string; name: string; slug: string }> | null;
+      };
+
+      for (const ent of enterprises ?? []) {
+        enterpriseMap.set(ent.id, { name: ent.name, slug: ent.slug });
+      }
+    }
+
+    // 6. Get member counts for each organization
     const orgsWithCounts = await Promise.all(
       (orgs ?? []).map(async (org) => {
         const { count } = await serviceClient
-          .from("user_organization_roles")
-          .select("*", { count: "exact", head: true })
+          .from("members")
+          .select("id", { count: "exact", head: true })
           .eq("organization_id", org.id)
-          .eq("status", "active");
+          .is("deleted_at", null);
+
+        const enterprise = org.enterprise_id
+          ? enterpriseMap.get(org.enterprise_id)
+          : null;
 
         return {
           ...org,
           member_count: count ?? 0,
           subscription: org.organization_subscriptions?.[0] ?? null,
+          enterprise_id: org.enterprise_id ?? null,
+          enterprise_name: enterprise?.name ?? null,
+          enterprise_slug: enterprise?.slug ?? null,
         };
       })
     );

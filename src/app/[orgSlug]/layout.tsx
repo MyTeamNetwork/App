@@ -1,14 +1,38 @@
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { OrgSidebar } from "@/components/layout/OrgSidebar";
+import { OrgMainContent } from "@/components/layout/OrgMainContent";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { GracePeriodBanner } from "@/components/layout/GracePeriodBanner";
+import { CancelingBanner } from "@/components/layout/CancelingBanner";
 import { BillingGate } from "@/components/layout/BillingGate";
 import { DevPanel } from "@/components/layout/DevPanel";
-import { getOrgContext } from "@/lib/auth/roles";
+import { getOrgContext, getCurrentUser } from "@/lib/auth/roles";
 import { canDevAdminPerform } from "@/lib/auth/dev-admin";
-import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { createClient } from "@/lib/supabase/server";
+import { OrgAnalyticsProvider } from "@/components/analytics/OrgAnalyticsContext";
+import { ConsentModal } from "@/components/analytics/ConsentModal";
+import { LinkedInUrlPrompt } from "@/components/linkedin/LinkedInUrlPrompt";
+import { AnalyticsProvider } from "@/components/analytics/AnalyticsProvider";
+import { AIPanelProvider } from "@/components/ai-assistant";
+import { JoinOrgGate } from "@/components/join/JoinOrgGate";
+import { MediaUploadManagerProvider } from "@/components/media/MediaUploadManagerContext";
+import { pickCurrentOrgProfile } from "@/lib/auth/current-org-profile";
+import dynamic from "next/dynamic";
+const AIPanel = dynamic(
+  () => import("@/components/ai-assistant/AIPanel").then((m) => m.AIPanel),
+  { ssr: false },
+);
+const AIEdgeTab = dynamic(
+  () => import("@/components/ai-assistant/AIEdgeTab").then((m) => m.AIEdgeTab),
+  { ssr: false },
+);
+const OrgGlobalSearch = dynamic(
+  () => import("@/components/search/OrgGlobalSearch").then((m) => m.OrgGlobalSearch),
+  { ssr: false },
+);
+import { computeOrgThemeVariables, safeCssValue, safeHexColor } from "@/lib/theming/org-colors";
 
 interface OrgLayoutProps {
   children: React.ReactNode;
@@ -21,8 +45,8 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
 
   if (!orgContext.organization) notFound();
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  // Reuse cached user from getOrgContext — no extra auth.getUser() call
+  const user = await getCurrentUser();
   const isDevAdmin = canDevAdminPerform(user, "view_org");
   const isAdmin = orgContext.role === "admin" || isDevAdmin;
 
@@ -48,16 +72,63 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
     );
   }
 
+  if (orgContext.status === "pending" && !isDevAdmin) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="border-b border-border bg-card">
+          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <a href="/app" className="text-2xl font-bold text-foreground">
+              Team<span className="text-emerald-500">Network</span>
+            </a>
+            <form action="/auth/signout" method="POST">
+              <button type="submit" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                Sign Out
+              </button>
+            </form>
+          </div>
+        </header>
+
+        <main className="max-w-md mx-auto px-6 py-16">
+          <a href="/app" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-8">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+            Back
+          </a>
+
+          <div className="rounded-2xl border border-border bg-card p-8 text-center">
+            <div className="h-16 w-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
+              <svg className="h-8 w-8 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-foreground mb-2">Pending admin approval</h2>
+            <p className="text-muted-foreground mb-6">
+              Your request to join <span className="font-semibold text-foreground">{orgContext.organization.name}</span> has been submitted.
+            </p>
+            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-sm mb-6">
+              <p className="font-medium mb-1">Awaiting Admin Approval</p>
+              <p className="text-amber-600 dark:text-amber-400">
+                An admin will review your request and grant you access. You&apos;ll be able to access the organization once approved.
+              </p>
+            </div>
+            <div className="flex justify-center gap-3">
+              <a href="/app" className="inline-flex items-center justify-center rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground hover:bg-muted transition-colors">
+                Back to Dashboard
+              </a>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (!orgContext.role && !isDevAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background px-6">
-        <div className="max-w-lg text-center space-y-4">
-          <h1 className="text-2xl font-bold text-foreground">No membership found</h1>
-          <p className="text-muted-foreground">
-            You are signed in but do not have access to this organization. Please ask an admin to invite you.
-          </p>
-        </div>
-      </div>
+      <JoinOrgGate
+        orgName={orgContext.organization.name}
+        orgSlug={orgSlug}
+      />
     );
   }
 
@@ -102,7 +173,7 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
     }
   }
   
-  const activeStatuses = ["active", "trialing", "canceling"];
+  const activeStatuses = ["active", "trialing", "canceling", "enterprise_managed"];
   const shouldShowBillingGate = 
     subscriptionStatus && 
     !activeStatuses.includes(subscriptionStatus) && 
@@ -120,6 +191,60 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
   }
 
   const organization = orgContext.organization;
+
+  let currentProfileHref: string | undefined;
+  let currentProfileName: string | undefined;
+  let currentProfileAvatar: string | undefined;
+  let pendingApprovalsCount = 0;
+  if (orgContext.userId) {
+    const supabase = await createClient();
+    const [{ data: memberRow }, { data: alumniRow }, { data: parentRow }] = await Promise.all([
+      supabase
+        .from("members")
+        .select("id, first_name, last_name, photo_url")
+        .eq("organization_id", organization.id)
+        .eq("user_id", orgContext.userId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+      supabase
+        .from("alumni")
+        .select("id, first_name, last_name, photo_url")
+        .eq("organization_id", organization.id)
+        .eq("user_id", orgContext.userId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+      supabase
+        .from("parents")
+        .select("id, first_name, last_name, photo_url")
+        .eq("organization_id", organization.id)
+        .eq("user_id", orgContext.userId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+    ]);
+    const currentProfile = pickCurrentOrgProfile({
+      orgSlug,
+      role: orgContext.role,
+      memberProfile: memberRow ?? undefined,
+      alumniProfile: alumniRow ?? undefined,
+      parentProfile: parentRow ?? undefined,
+    });
+    if (!currentProfile) {
+      console.warn("[layout] no profile row found for userId:", orgContext.userId, "orgId:", organization.id, "role:", orgContext.role);
+    }
+    currentProfileHref = currentProfile?.href;
+    currentProfileName = currentProfile?.name;
+    currentProfileAvatar = currentProfile?.avatarUrl ?? undefined;
+
+    // Pending approvals count for admin sidebar badge (HEAD query, ~2ms)
+    if (isAdmin) {
+      const { count } = await supabase
+        .from("user_organization_roles")
+        .select("*", { count: "exact", head: true })
+        .eq("organization_id", organization.id)
+        .eq("status", "pending");
+      pendingApprovalsCount = count ?? 0;
+    }
+  }
 
   let serviceSupabase = null;
   if (isDevAdmin) {
@@ -146,81 +271,45 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
         .eq("organization_id", organization.id)
         .maybeSingle()
     : { data: null };
-  const primary = organization.primary_color || "#1e3a5f";
-  const secondary = organization.secondary_color || "#10b981";
-  const primaryLight = organization.primary_color ? adjustColor(organization.primary_color, 20) : "#2d4a6f";
-  const primaryDark = organization.primary_color ? adjustColor(organization.primary_color, -20) : "#0f2a4f";
-  const secondaryLight = organization.secondary_color ? adjustColor(organization.secondary_color, 20) : "#34d399";
-  const secondaryDark = organization.secondary_color ? adjustColor(organization.secondary_color, -20) : "#047857";
-  const isPrimaryDark = isColorDark(primary);
-  const isSecondaryDark = isColorDark(secondary);
-  const baseForeground = isPrimaryDark ? "#f8fafc" : "#0f172a";
-  // Use black text on bright secondary colors for better readability
-  const secondaryForeground = isSecondaryDark ? "#ffffff" : "#0f172a";
-  const cardColor = isPrimaryDark ? adjustColor(primary, 18) : adjustColor(primary, -12);
-  const cardForeground = isColorDark(cardColor) ? "#f8fafc" : "#0f172a";
-  // For light themes, use a more visible muted color that provides better contrast
-  const muted = isPrimaryDark ? adjustColor(primary, 28) : adjustColor(primary, -35);
-  const mutedForeground = isColorDark(muted) ? "#e2e8f0" : "#475569";
-  // For light themes, use a darker border for better visibility
-  const borderColor = isPrimaryDark ? adjustColor(primary, 35) : adjustColor(primary, -45);
+  const rawBase = (organization as Record<string, unknown>).base_color as string | null;
+  const baseColor = rawBase === "primary" ? "primary" : safeHexColor(rawBase, "primary");
+  const sidebarColor = safeHexColor(organization.primary_color, "#1e3a5f");
+  const buttonColor = safeHexColor(organization.secondary_color, "#10b981");
+
+  // Compute theme variables — base color determines light/dark, no separate modes
+  const themeVars = computeOrgThemeVariables(baseColor, sidebarColor, buttonColor);
 
   return (
-    <div 
-      data-org-shell
-      className="min-h-screen"
-      style={{
-        // Set org primary color as CSS variable
-        "--color-org-primary": primary,
-        "--color-org-primary-light": primaryLight,
-        "--color-org-primary-dark": primaryDark,
-        "--color-org-secondary": secondary,
-        "--color-org-secondary-light": secondaryLight,
-        "--color-org-secondary-dark": secondaryDark,
-        "--color-org-secondary-foreground": secondaryForeground,
-        // Apply org colors to global surface tokens for this layout
-        "--background": primary,
-        "--foreground": baseForeground,
-        "--card": cardColor,
-        "--card-foreground": cardForeground,
-        "--muted": muted,
-        "--muted-foreground": mutedForeground,
-        "--border": borderColor,
-        "--ring": secondary,
-        backgroundColor: primary,
-        color: baseForeground,
-      } as React.CSSProperties}
-    >
+    <OrgAnalyticsProvider orgId={organization.id} orgType={(organization as Record<string, unknown>).org_type as string || "general"}>
+    <AnalyticsProvider>
+    <AIPanelProvider autoOpen={isAdmin}>
+    <OrgGlobalSearch orgSlug={orgSlug} orgId={organization.id} currentProfileHref={currentProfileHref}>
+    <div data-org-shell className="min-h-screen">
       <style
-        // Mirror theme variables to :root so portals/modals also pick up org branding
         dangerouslySetInnerHTML={{
-          __html: `
-            :root {
-              --color-org-primary: ${primary};
-              --color-org-primary-light: ${primaryLight};
-              --color-org-primary-dark: ${primaryDark};
-              --color-org-secondary: ${secondary};
-              --color-org-secondary-light: ${secondaryLight};
-              --color-org-secondary-dark: ${secondaryDark};
-              --color-org-secondary-foreground: ${secondaryForeground};
-              --background: ${primary};
-              --foreground: ${baseForeground};
-              --card: ${cardColor};
-              --card-foreground: ${cardForeground};
-              --muted: ${muted};
-              --muted-foreground: ${mutedForeground};
-              --border: ${borderColor};
-              --ring: ${secondary};
-            }
-          `,
+          __html: (() => {
+            // Validate every key (must be a CSS custom property) and every
+            // value (allowlist of safe chars) before serializing so a bad
+            // org_branding row cannot escape the declaration block.
+            const KEY_RE = /^--[a-z0-9-]+$/i;
+            const vars = Object.entries(themeVars)
+              .filter(([key]) => KEY_RE.test(key))
+              .map(([key, value]) => `${key}: ${safeCssValue(value, "inherit")};`)
+              .join("\n              ");
+            return `
+            :root { ${vars} }
+            :root.dark { ${vars} }
+            @media (prefers-color-scheme: dark) { :root:not(.light) { ${vars} } }
+            `;
+          })(),
         }}
       />
 
-      {/* Grace period banner - shown when subscription is canceled but within 30-day grace */}
-      {orgContext.gracePeriod.isInGracePeriod && (
-        <div className="fixed top-0 left-0 right-0 z-50 lg:left-64">
-          <GracePeriodBanner 
-            daysRemaining={orgContext.gracePeriod.daysRemaining} 
+      {/* Canceling banner - shown when subscription is scheduled to cancel at period end */}
+      {orgContext.gracePeriod.isCanceling && orgContext.subscription?.currentPeriodEnd && (
+        <div className="fixed top-0 left-0 right-0 z-50 lg:left-[var(--sidebar-offset,3.5rem)] transition-[left] duration-300 ease-in-out motion-reduce:transition-none">
+          <CancelingBanner
+            periodEndDate={orgContext.subscription.currentPeriodEnd}
             orgSlug={orgSlug}
             organizationId={organization.id}
             isAdmin={isAdmin}
@@ -228,15 +317,31 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
         </div>
       )}
 
-      <div className="hidden lg:block fixed left-0 top-0 h-screen w-64 z-40">
-        <OrgSidebar organization={organization} role={orgContext.role} isDevAdmin={isDevAdmin} />
+      {/* Grace period banner - shown when subscription is canceled but within 30-day grace */}
+      {orgContext.gracePeriod.isInGracePeriod && (
+        <div className="fixed top-0 left-0 right-0 z-50 lg:left-[var(--sidebar-offset,3.5rem)] transition-[left] duration-300 ease-in-out motion-reduce:transition-none">
+          <GracePeriodBanner
+            daysRemaining={orgContext.gracePeriod.daysRemaining}
+            orgSlug={orgSlug}
+            organizationId={organization.id}
+            isAdmin={isAdmin}
+          />
+        </div>
+      )}
+
+      <div className="hidden lg:block">
+        <OrgSidebar organization={organization} role={orgContext.role} isDevAdmin={isDevAdmin} hasAlumniAccess={orgContext.hasAlumniAccess} hasParentsAccess={orgContext.hasParentsAccess} currentProfileHref={currentProfileHref} currentProfileName={currentProfileName} currentProfileAvatar={currentProfileAvatar} pendingApprovalsCount={pendingApprovalsCount} />
       </div>
 
-      <MobileNav organization={organization} role={orgContext.role} isDevAdmin={isDevAdmin} />
+      <MobileNav organization={organization} role={orgContext.role} isDevAdmin={isDevAdmin} hasAlumniAccess={orgContext.hasAlumniAccess} hasParentsAccess={orgContext.hasParentsAccess} currentProfileHref={currentProfileHref} currentProfileName={currentProfileName} currentProfileAvatar={currentProfileAvatar} pendingApprovalsCount={pendingApprovalsCount} />
+      {!isDevAdmin && <ConsentModal />}
+      {!isDevAdmin && <LinkedInUrlPrompt />}
 
-      <main className={`lg:ml-64 p-4 lg:p-8 pt-20 lg:pt-8 ${orgContext.gracePeriod.isInGracePeriod ? "mt-12" : ""}`}>
-        {children}
-      </main>
+      <MediaUploadManagerProvider orgId={organization.id}>
+        <OrgMainContent hasTopBanner={orgContext.gracePeriod.isInGracePeriod || orgContext.gracePeriod.isCanceling}>
+          {children}
+        </OrgMainContent>
+      </MediaUploadManagerProvider>
 
       {isDevAdmin && (
         <DevPanel
@@ -252,39 +357,16 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
           memberCount={memberCount}
         />
       )}
+      {isAdmin && (
+        <>
+          <AIPanel orgId={organization.id} />
+          <AIEdgeTab isAdmin={isAdmin} />
+        </>
+      )}
     </div>
+    </OrgGlobalSearch>
+    </AIPanelProvider>
+    </AnalyticsProvider>
+    </OrgAnalyticsProvider>
   );
-}
-
-// Helper function to lighten/darken a hex color
-function adjustColor(hex: string, amount: number): string {
-  const clamp = (num: number) => Math.min(255, Math.max(0, num));
-  
-  let color = hex.replace("#", "");
-  if (color.length === 3) {
-    color = color.split("").map(c => c + c).join("");
-  }
-  
-  const num = parseInt(color, 16);
-  const r = clamp((num >> 16) + amount);
-  const g = clamp(((num >> 8) & 0x00FF) + amount);
-  const b = clamp((num & 0x0000FF) + amount);
-  
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
-}
-
-function isColorDark(hex: string): boolean {
-  let color = hex.replace("#", "");
-  if (color.length === 3) {
-    color = color
-      .split("")
-      .map((c) => c + c)
-      .join("");
-  }
-  const num = parseInt(color, 16);
-  const r = (num >> 16) & 255;
-  const g = (num >> 8) & 255;
-  const b = num & 255;
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance < 0.6;
 }

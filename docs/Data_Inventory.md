@@ -1,140 +1,155 @@
 # Data Inventory for FERPA Compliance
 
-This document catalogs all personally identifiable information (PII) and education-related data collected by TeamNetwork to support FERPA compliance assessments.
+This document catalogs the main classes of PII and education-adjacent data currently stored by TeamNetwork.
 
-**Last Updated:** January 2026
-**Source:** Codebase analysis of `src/types/database.ts` (Supabase schema)
+**Last Updated:** April 16, 2026
+**Primary Sources:** `src/types/database.ts`, `src/lib/analytics/policy.ts`, and current Supabase migrations (266 as of this revision).
 
 ---
 
 ## Overview
 
-TeamNetwork is a multi-tenant SaaS platform serving organizations (schools, teams, alumni networks). The platform collects PII tied to educational contexts through organization membership, making FERPA applicable when serving K-12 or higher education institutions receiving federal funding.
+TeamNetwork is a multi-tenant SaaS platform for schools, teams, booster groups, and alumni organizations. The platform stores identity and activity data tied to organization membership, so FERPA analysis should assume educational-context data is in scope whenever a school or school-affiliated organization uses the product.
 
 ---
 
-## Student Identifiers
-
-The following fields can directly or indirectly identify students:
+## Core Identity Data
 
 | Data Type | Source Table(s) | Classification | Notes |
 |-----------|-----------------|----------------|-------|
-| `first_name`, `last_name` | `alumni`, `members` | Direct Identifier | Full legal names |
-| `email` | `alumni`, `members`, `users` | Direct Identifier | Primary contact method |
-| `phone_number` | `alumni` | Direct Identifier | Optional field |
-| `photo_url`, `avatar_url` | `alumni`, `members`, `users` | Biometric Identifier | Profile images |
-| `linkedin_url` | `alumni`, `members` | Indirect Identifier | Links to external PII |
-| `holder_name` | `records` | Direct Identifier | Achievement attribution |
+| `first_name`, `last_name` | `members`, `alumni`, `parents`, `users` | Direct identifier | Primary user-facing identity fields |
+| `email` | `users`, `members`, `alumni`, `parents`, `parent_invites`, `enterprise_invites` | Direct identifier | Contact, invite, and account lookup data |
+| `phone_number` | `alumni`, `parents`, `notification_preferences` | Direct identifier | Optional contact data |
+| `photo_url`, `avatar_url` | `members`, `alumni`, `parents`, `users`, `media_items` | Direct/visual identifier | Profile and media-related imagery |
+| `linkedin_url` | `members`, `alumni`, `parents` | Indirect identifier | External profile linkage |
+| `user_id`, `organization_id`, `enterprise_id` | Membership and role tables | Indirect identifier | Links a person to an organization or enterprise context |
 
 ---
 
-## Educational Records
+## Education- and Organization-Context Data
 
-Data tied to academic or organizational contexts:
-
-| Data Type | Source Table | Sensitive? | Notes |
-|-----------|--------------|------------|-------|
-| `graduation_year` | `alumni`, `members` | No | Cohort marker, not academic performance |
-| `major` (field of study) | `alumni` | No | Academic program information |
-| `academic_schedules` (title, times, notes) | `academic_schedules` | Yes | Class/activity schedules |
-| `organization_id` + membership | `organization_members` | Yes | Ties identity to institution |
-
----
-
-## Sensitive Data
-
-Data requiring heightened protection:
-
-| Data Type | Source Table | Sensitivity Reason |
-|-----------|--------------|-------------------|
-| `chat_messages.body` | `chat_messages` | Private student communications |
-| `form_submissions.data` | `form_submissions` | Variable - may contain any user input |
-| `workout_logs` | `workout_logs` | Athletic performance metrics |
-| `competition_points` | `competition_points` | Performance/ranking data |
-| `contact_name`, `contact_email`, `contact_phone` | `leads` | Parent/guardian PII |
-| `current_city` | `alumni` | Location data |
+| Data Type | Source Table(s) | Sensitive? | Notes |
+|-----------|-----------------|------------|-------|
+| `graduation_year` | `members`, `alumni` | Medium | Cohort/roster history |
+| `academic_schedules` | `academic_schedules` | High | Class/activity timing and notes |
+| Organization membership and role assignment | `user_organization_roles` | High | Ties a person to a school/team context |
+| Parent-to-student relationship metadata | `parents` | High | Includes `student_name` and `relationship` |
+| Forms and document submissions | `form_submissions`, `form_document_submissions` | High | Freeform user-provided content |
+| Chat, discussions, feed, and comments | `chat_messages`, `discussion_threads`, `discussion_replies`, `feed_posts`, `feed_comments` | High | Private or semi-private communications |
+| Workout, event RSVP, and competition records | `workout_logs`, `event_rsvps`, `competition_points` | Medium | Participation and performance data |
 
 ---
 
-## Data NOT Collected
+## Parent and Guardian Data
 
-TeamNetwork explicitly does **not** collect the following sensitive education records:
+Parent and guardian records are now first-class data in the app and must be included in compliance reviews.
+
+| Data Type | Source Table(s) | Classification | Notes |
+|-----------|-----------------|----------------|-------|
+| Parent profile data | `parents` | Direct identifier | Names, email, phone, photo, notes |
+| Parent invite data | `parent_invites` | Direct identifier | Email or code-based onboarding metadata |
+| Student linkage | `parents.student_name`, `parents.relationship` | Education-adjacent | Connects guardian identity to a student/member context |
+| Parent role membership | `user_organization_roles.role = 'parent'` | Access-control data | Parent access is enforced throughout org-scoped routes and navigation |
+
+---
+
+## Analytics and Operational Telemetry
+
+TeamNetwork now stores limited behavioral and operational analytics. This is governed by allowlisted event names and policy checks in `src/lib/analytics/policy.ts`; it is not accurate to describe the system as collecting "no behavioral data."
+
+| Data Type | Source Table(s) | Sensitivity Reason |
+|-----------|-----------------|-------------------|
+| Product analytics events | `analytics_events` | Behavioral usage data tied to org/session context |
+| Analytics consent state | `analytics_consent` | Consent and privacy state |
+| Operational analytics events | `analytics_ops_events`, `ops_events` | Internal operational telemetry with route/session metadata |
+| Error and telemetry events | `error_groups`, `error_events` (via current schema/migrations), telemetry routes | Diagnostic data that may include route, environment, and user context |
+
+Behavioral analytics remains constrained by product policy and schema enforcement, but it is still stored data and should be documented as such.
+
+---
+
+## Sensitive Data Classes
+
+| Data Type | Source Table(s) | Sensitivity Reason |
+|-----------|-----------------|-------------------|
+| Private communications | `chat_messages`, `discussion_threads`, `discussion_replies`, `feed_comments` | Student/community communications |
+| Form responses | `form_submissions.responses` | Freeform input may contain sensitive personal information |
+| Parent notes | `parents.notes` | Freeform guardian/student context |
+| Athletic/performance metrics | `workout_logs`, `competition_points` | Performance and participation data |
+| Location-related fields | `alumni.current_city` | Location data |
+| Media uploads and moderation state | `media_items`, `media_uploads` | Visual identity and moderation metadata |
+| Enterprise audit logs | `enterprise_audit_logs` | Admin activity metadata including actor email, IP, and user agent |
+
+---
+
+## Data Not Collected
+
+The current app still does **not** appear to store the following as first-class product data:
 
 | Data Type | Status | Notes |
 |-----------|--------|-------|
-| Social Security Numbers (SSN) | ❌ Not Collected | No government IDs stored |
-| Student ID Numbers | ❌ Not Collected | No institutional identifiers |
-| Date of Birth | ❌ Not Collected | Only `graduation_year` for cohort |
-| Home Address | ❌ Not Collected | Only `current_city` for alumni |
-| Grades / GPA | ❌ Not Collected | No academic performance data |
-| Transcripts | ❌ Not Collected | No official records |
-| Attendance Records | ❌ Not Collected | No attendance tracking |
-| Disciplinary Records | ❌ Not Collected | No behavioral data |
-| Financial Aid Information | ❌ Not Collected | Payment data is for org subscriptions only |
-| Health / Medical Records | ❌ Not Collected | No HIPAA-relevant data |
+| Social Security Numbers | Not collected | No government ID storage |
+| Student ID numbers | Not collected | No institutional SIS identifier field in current schema |
+| Date of birth | Not collected | Current identity model relies on graduation year and age-gate logic, not DOB storage |
+| Home street address | Not collected | City-level alumni field exists, but not a full postal address model |
+| Grades / GPA / transcripts | Not collected | No academic performance record model |
+| Financial aid records | Not collected | Billing data is for platform subscriptions/donations, not school aid |
+| Medical records | Not collected | No HIPAA-style health record model |
+
+Disciplinary data is also not modeled as a dedicated feature, but the app does now store limited behavioral analytics and communication data, so older wording that implied "no behavioral data" is no longer accurate.
 
 ---
 
-## Data Flow Summary
+## Enterprise Data
 
-```
-User Registration
-       ↓
-Organization Membership Request
-       ↓
-Admin Approval (role assignment)
-       ↓
-User gains access to org-scoped data
-       ↓
-All access governed by:
-  - Supabase Row-Level Security (RLS)
-  - Middleware membership validation
-  - Role-based access control (admin/active_member/alumni)
-```
+Enterprise accounts add another layer of admin and billing PII:
 
----
+| Data Type | Source Table(s) | Classification | Notes |
+|-----------|-----------------|----------------|-------|
+| Billing contact email | `enterprises` | Direct identifier | Enterprise billing contact |
+| Admin invite emails | `enterprise_invites` | Direct identifier | Enterprise onboarding |
+| Enterprise role assignments | `user_enterprise_roles` | Indirect identifier | Links user identity to enterprise privileges |
+| Enterprise audit logs | `enterprise_audit_logs` | Sensitive admin metadata | Includes actor email, IP, user agent, action metadata |
+| Record access log | `data_access_log` | Sensitive audit metadata | Per-resource access telemetry for FERPA / NY Ed Law 2-d; raw IPs hashed (`20261012030000_hash_existing_raw_ips.sql`) |
+| Incident log | `breach_incidents` | Sensitive incident metadata | Discovery / containment / resolution timestamps, notification log (backs `Incident_Response_Runbook.md`) |
+| User agreement log | `user_agreements` | Consent/version metadata | ToS / Privacy / DSA version acceptance per user |
 
-## FERPA Applicability Determination
-
-**Conclusion: FERPA APPLIES**
-
-TeamNetwork collects:
-- ✅ Student names (first_name, last_name)
-- ✅ Student email addresses
-- ✅ Photo identifiers (avatar_url, photo_url)
-- ✅ Data tied to organization contexts (schools/teams)
-- ✅ Graduation year (educational cohort indicator)
-
-Although TeamNetwork does not store traditional "education records" (grades, transcripts, attendance), the collection of PII tied to educational institution contexts triggers FERPA requirements for:
-1. Data protection safeguards
-2. Third-party service provider agreements
-3. Prohibition on unauthorized disclosure
+Current retention guidance is no longer "undefined." The repo includes audit-log retention work in `supabase/migrations/20260501110000_audit_log_retention.sql`, so future compliance docs should describe the implemented retention behavior instead of calling it unbounded.
 
 ---
 
-## Security Controls Applied
+## FERPA Applicability
+
+**Conclusion: FERPA likely applies whenever TeamNetwork is used by covered educational institutions or their agents.**
+
+Reasons:
+
+1. The app stores names, emails, photos, and organization-linked role data.
+2. The app stores schedules, communications, forms, and other records tied to school/team contexts.
+3. Parent and guardian data is now part of the live schema and access model.
+
+Even without grades or transcripts, the platform still handles education-adjacent records that require contractual, technical, and disclosure controls consistent with FERPA expectations.
+
+---
+
+## Security Controls Present in the App
 
 | Control | Status | Implementation |
 |---------|--------|----------------|
-| Encryption at Rest | ✅ Active | Supabase PostgreSQL (AES-256) |
-| Encryption in Transit | ✅ Active | TLS/SSL enforced |
-| Row-Level Security | ✅ Active | All tables have RLS policies |
-| Role-Based Access Control | ✅ Active | `src/lib/auth/roles.ts` |
-| Input Validation | ✅ Active | Zod schemas in `src/lib/schemas/` |
-| Rate Limiting | ✅ Active | `src/lib/security/rate-limit.ts` |
-| Data Export (GDPR) | ✅ Active | `src/app/api/user/export-data/route.ts` |
-| Account Deletion | ✅ Active | `src/app/api/user/delete-account/route.ts` |
+| Encryption at rest | Active | Supabase/PostgreSQL managed storage |
+| Encryption in transit | Active | HTTPS/TLS |
+| Row-Level Security | Active | Supabase RLS policies across product tables |
+| Role-based access control | Active | Org and enterprise role helpers in `src/lib/auth/` |
+| Input validation | Active | Zod schemas in `src/lib/schemas/` |
+| Rate limiting | Active | `src/lib/security/rate-limit.ts` and related helpers |
+| Data export | Active | `src/app/api/user/export-data/route.ts` |
+| Account deletion | Active | `src/app/api/user/delete-account/route.ts` |
 
 ---
 
 ## Recommendations
 
-1. **Password Policy Enhancement**: Current minimum is 6 characters (`src/lib/auth/password.ts`). Recommend increasing to 12+ with complexity requirements.
-
-2. **Multi-Factor Authentication**: Not currently implemented. Recommend adding TOTP/backup codes for admin accounts.
-
-3. **Security Headers**: Add Content-Security-Policy, HSTS, X-Frame-Options headers in `next.config.mjs`.
-
-4. **Account Lockout**: Implement brute-force protection after failed login attempts.
-
-5. **Vulnerability Scanning**: Schedule regular automated security scans.
+1. Add MFA for high-privilege accounts, especially org admins and enterprise owners.
+2. Document analytics retention and disclosure boundaries alongside the existing analytics policy code.
+3. Keep parent/guardian data explicitly represented in FERPA and COPPA documentation rather than treating it as a side effect of member data.
+4. Re-run this inventory whenever major schema additions land in `supabase/migrations/`.

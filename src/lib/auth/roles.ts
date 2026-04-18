@@ -1,8 +1,10 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { MembershipStatus, Organization, UserRole } from "@/types/database";
 import { normalizeRole, roleFlags, type OrgRole } from "./role-utils";
 import { getGracePeriodInfo, type GracePeriodInfo, type SubscriptionStatus } from "@/lib/subscription/grace-period";
+import { resolveCheck } from "@/lib/supabase/resolve-check";
 
 type OrgRoleResult = {
   role: OrgRole | null;
@@ -18,31 +20,56 @@ export type OrgContextResult = {
   isAdmin: boolean;
   isActiveMember: boolean;
   isAlumni: boolean;
+  isParent: boolean;
   subscription: SubscriptionStatus | null;
   gracePeriod: GracePeriodInfo;
+  hasAlumniAccess: boolean;
+  hasParentsAccess: boolean;
 };
 
-export async function getOrgRole(params: { orgId: string; userId?: string }): Promise<OrgRoleResult> {
-  const supabase = await createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+/** Normalize a raw membership row into role + status. Shared by getOrgRole and getOrgContext. */
+function normalizeMembershipRow(data: { role?: unknown; status?: unknown } | null): {
+  role: OrgRole | null;
+  status: MembershipStatus | null;
+} {
+  return {
+    role: normalizeRole((data?.role as UserRole | null) ?? null),
+    status: (data?.status as MembershipStatus | null) ?? null,
+  };
+}
 
-  const uid = params.userId ?? session?.user?.id ?? null;
+/**
+ * Cached wrapper for auth.getUser(). React.cache() deduplicates calls
+ * within the same server request — layout + page calling this both
+ * hit Supabase auth only once.
+ */
+export const getCurrentUser = cache(async () => {
+  const supabase = await createClient();
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return null;
+  return user;
+});
+
+export async function getOrgRole(params: { orgId: string; userId?: string }): Promise<OrgRoleResult> {
+  let uid = params.userId ?? null;
   if (!uid) {
-    return { role: null, status: null, userId: null };
+    const user = await getCurrentUser();
+    if (!user) return { role: null, status: null, userId: null };
+    uid = user.id;
   }
 
-  const { data } = await supabase
-    .from("user_organization_roles")
-    .select("role,status")
-    .eq("organization_id", params.orgId)
-    .eq("user_id", uid)
-    .maybeSingle();
+  const supabase = await createClient();
+  const data = resolveCheck(
+    await supabase
+      .from("user_organization_roles")
+      .select("role,status")
+      .eq("organization_id", params.orgId)
+      .eq("user_id", uid)
+      .maybeSingle(),
+    "getOrgRole"
+  );
 
-  const role = normalizeRole((data?.role as UserRole | null) ?? null);
-  const status = (data?.status as MembershipStatus | null) ?? "active";
-
+  const { role, status } = normalizeMembershipRow(data);
   return { role, status, userId: uid };
 }
 
@@ -53,7 +80,7 @@ export async function requireOrgRole(params: {
 }): Promise<OrgRoleResult> {
   const membership = await getOrgRole({ orgId: params.orgId, userId: undefined });
   const allowed =
-    membership.role && membership.status !== "revoked" && params.allowedRoles.includes(membership.role);
+    membership.role && membership.status === "active" && params.allowedRoles.includes(membership.role);
 
   if (!allowed) {
     if (params.redirectTo) {
@@ -65,18 +92,29 @@ export async function requireOrgRole(params: {
   return membership;
 }
 
-export async function getOrgContext(orgSlug: string): Promise<OrgContextResult> {
+/**
+ * Main org context loader — cached per orgSlug within a single request.
+ *
+ * React.cache() deduplicates layout + page calls.
+ * 2-stage parallel fetch:
+ *   Stage 1: getCurrentUser() + org query (parallel, independent)
+ *   Stage 2: subscription RPC + membership query (parallel, both need org.id)
+ */
+export const getOrgContext = cache(async (orgSlug: string): Promise<OrgContextResult> => {
+  // Stage 1: user + org lookup in parallel (independent of each other)
   const supabase = await createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const userId = session?.user?.id ?? null;
+  const [user, { data: org }] = await Promise.all([
+    getCurrentUser(),
+    supabase
+      .from("organizations")
+      .select(
+        "id, name, slug, logo_url, base_color, primary_color, secondary_color, nav_config, stripe_connect_account_id, org_type, donation_embed_url, created_at, feed_post_roles, job_post_roles, discussion_post_roles, media_upload_roles, timezone, hide_donor_names"
+      )
+      .eq("slug", orgSlug)
+      .maybeSingle(),
+  ]);
 
-  const { data: org } = await supabase
-    .from("organizations")
-    .select("*")
-    .eq("slug", orgSlug)
-    .maybeSingle();
+  const userId = user?.id ?? null;
 
   if (!org) {
     const flags = roleFlags(null);
@@ -86,16 +124,26 @@ export async function getOrgContext(orgSlug: string): Promise<OrgContextResult> 
       userId,
       subscription: null,
       gracePeriod: getGracePeriodInfo(null),
+      hasAlumniAccess: false,
+      hasParentsAccess: false,
       ...flags,
     };
   }
 
-  // Fetch subscription status for the organization
-  const { data: subscriptionData } = await supabase
-    .from("organization_subscriptions")
-    .select("status, grace_period_ends_at, current_period_end")
-    .eq("organization_id", org.id)
-    .maybeSingle();
+  // Stage 2: subscription + membership in parallel (both need org.id but not each other)
+  const [{ data: subscriptionRows }, membershipData] = await Promise.all([
+    supabase.rpc("get_subscription_status", { p_org_id: org.id }),
+    userId
+      ? supabase
+          .from("user_organization_roles")
+          .select("role,status")
+          .eq("organization_id", org.id)
+          .eq("user_id", userId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const subscriptionData = subscriptionRows?.[0] ?? null;
 
   const subscription: SubscriptionStatus | null = subscriptionData
     ? {
@@ -105,19 +153,29 @@ export async function getOrgContext(orgSlug: string): Promise<OrgContextResult> 
       }
     : null;
 
+  const hasAlumniAccess =
+    subscriptionData?.status === "enterprise_managed" ||
+    (subscriptionData?.alumni_bucket != null && subscriptionData.alumni_bucket !== "none");
+
+  const hasParentsAccess =
+    subscriptionData?.status === "enterprise_managed" ||
+    (subscriptionData?.parents_bucket != null && subscriptionData.parents_bucket !== "none");
+
   const gracePeriod = getGracePeriodInfo(subscription);
 
-  const membership = await getOrgRole({ orgId: org.id, userId: userId ?? undefined });
-  const flags = roleFlags(membership.role);
+  const { role, status: memberStatus } = normalizeMembershipRow(membershipData?.data);
+  const flags = memberStatus === "active" ? roleFlags(role) : roleFlags(null);
+
   return {
     organization: org as Organization,
-    status: membership.status,
+    status: memberStatus,
     userId,
     subscription,
     gracePeriod,
+    hasAlumniAccess,
+    hasParentsAccess,
     ...flags,
   };
-}
+});
 
 export { normalizeRole, roleFlags };
-

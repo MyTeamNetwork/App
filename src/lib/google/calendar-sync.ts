@@ -3,16 +3,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import {
     getValidAccessToken,
+    getCalendarConnection,
 } from "./oauth";
-
-// Types for calendar events
-export interface CalendarEvent {
-    summary: string;
-    description?: string;
-    location?: string;
-    start: { dateTime: string; timeZone: string };
-    end: { dateTime: string; timeZone: string };
-}
+import type { CalendarEvent } from "./calendar-event-mapper";
+import { mapEventToCalendarEvent } from "./calendar-event-mapper";
+export type { CalendarEvent };
+export { mapEventToCalendarEvent };
 
 export interface SyncResult {
     success: boolean;
@@ -21,7 +17,16 @@ export interface SyncResult {
 }
 
 // Event types that can be synced
-export type EventType = "general" | "game" | "meeting" | "social" | "fundraiser" | "philanthropy";
+export type EventType =
+    | "general"
+    | "game"
+    | "meeting"
+    | "social"
+    | "fundraiser"
+    | "philanthropy"
+    | "practice"
+    | "workout"
+    | "class";
 
 // Sync operation types
 export type SyncOperation = "create" | "update" | "delete";
@@ -54,13 +59,14 @@ function createCalendarClient(accessToken: string): calendar_v3.Calendar {
  */
 export async function createCalendarEvent(
     accessToken: string,
-    event: CalendarEvent
+    event: CalendarEvent,
+    calendarId: string = "primary"
 ): Promise<SyncResult> {
     try {
         const calendar = createCalendarClient(accessToken);
 
         const response = await calendar.events.insert({
-            calendarId: "primary",
+            calendarId,
             requestBody: {
                 summary: event.summary,
                 description: event.description,
@@ -103,13 +109,14 @@ export async function createCalendarEvent(
 export async function updateCalendarEvent(
     accessToken: string,
     googleEventId: string,
-    event: CalendarEvent
+    event: CalendarEvent,
+    calendarId: string = "primary"
 ): Promise<SyncResult> {
     try {
         const calendar = createCalendarClient(accessToken);
 
         await calendar.events.update({
-            calendarId: "primary",
+            calendarId,
             eventId: googleEventId,
             requestBody: {
                 summary: event.summary,
@@ -152,13 +159,14 @@ export async function updateCalendarEvent(
  */
 export async function deleteCalendarEvent(
     accessToken: string,
-    googleEventId: string
+    googleEventId: string,
+    calendarId: string = "primary"
 ): Promise<SyncResult> {
     try {
         const calendar = createCalendarClient(accessToken);
 
         await calendar.events.delete({
-            calendarId: "primary",
+            calendarId,
             eventId: googleEventId,
         });
 
@@ -174,54 +182,6 @@ export async function deleteCalendarEvent(
             error: errorMessage,
         };
     }
-}
-
-
-/**
- * Maps an organization event to a Google Calendar event format
- * @param event - The organization event from the database
- * @returns CalendarEvent formatted for Google Calendar API
- * 
- * Requirements: 2.2
- * - summary equal to event.title
- * - description equal to event.description (if present)
- * - location equal to event.location (if present)
- * - start.dateTime equal to event.start_date
- * - end.dateTime equal to event.end_date (or start_date + 1 hour if no end_date)
- */
-export function mapEventToCalendarEvent(event: {
-    title: string;
-    description?: string | null;
-    location?: string | null;
-    start_date: string;
-    end_date?: string | null;
-}): CalendarEvent {
-    const startDate = new Date(event.start_date);
-
-    // If no end_date, default to start_date + 1 hour
-    let endDate: Date;
-    if (event.end_date) {
-        endDate = new Date(event.end_date);
-    } else {
-        endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // +1 hour
-    }
-
-    // Determine timezone - use UTC if not determinable from the date string
-    const timeZone = "UTC";
-
-    return {
-        summary: event.title,
-        description: event.description ?? undefined,
-        location: event.location ?? undefined,
-        start: {
-            dateTime: startDate.toISOString(),
-            timeZone,
-        },
-        end: {
-            dateTime: endDate.toISOString(),
-            timeZone,
-        },
-    };
 }
 
 
@@ -247,7 +207,7 @@ export function isUserEligibleForSync(
         event_type?: EventType | null;
     },
     userId: string,
-    connection: { status: "connected" | "disconnected" | "error" } | null,
+    connection: { status: string | null } | null,
     preferences: {
         sync_general?: boolean | null;
         sync_game?: boolean | null;
@@ -255,6 +215,8 @@ export function isUserEligibleForSync(
         sync_social?: boolean | null;
         sync_fundraiser?: boolean | null;
         sync_philanthropy?: boolean | null;
+        sync_practice?: boolean | null;
+        sync_workout?: boolean | null;
     } | null,
     userRole: "member" | "active_member" | "alumni" | "admin" | null
 ): boolean {
@@ -319,6 +281,12 @@ export function isUserEligibleForSync(
             return preferences.sync_fundraiser !== false;
         case "philanthropy":
             return preferences.sync_philanthropy !== false;
+        case "practice":
+            return preferences.sync_practice !== false;
+        case "workout":
+            return preferences.sync_workout !== false;
+        case "class":
+            return preferences.sync_general !== false;
         default:
             // Unknown event type, default to syncing
             return true;
@@ -343,10 +311,28 @@ export async function getEligibleUsersForEvent(
         event_type?: EventType | null;
     }
 ): Promise<string[]> {
-    // Get all users with connected calendars in this organization
+    // Get org members first, then filter connections by those user IDs
+    const { data: orgUsers, error: orgError } = await supabase
+        .from("user_organization_roles")
+        .select("user_id, role")
+        .eq("organization_id", organizationId);
+
+    if (orgError || !orgUsers) {
+        console.error("[calendar-sync] Failed to fetch organization users:", orgError);
+        return [];
+    }
+
+    const orgUserIds = orgUsers.map(u => u.user_id);
+    if (orgUserIds.length === 0) {
+        return [];
+    }
+
+    // Get connections only for org members (Google provider)
     const { data: connections, error: connError } = await supabase
         .from("user_calendar_connections")
-        .select("user_id, status");
+        .select("user_id, status")
+        .in("user_id", orgUserIds)
+        .eq("provider", "google");
 
     if (connError || !connections) {
         console.error("[calendar-sync] Failed to fetch calendar connections:", connError);
@@ -359,18 +345,6 @@ export async function getEligibleUsersForEvent(
         .map(c => c.user_id);
 
     if (connectedUserIds.length === 0) {
-        return [];
-    }
-
-    // Get user roles from user_organization_roles
-    const { data: orgUsers, error: orgError } = await supabase
-        .from("user_organization_roles")
-        .select("user_id, role")
-        .eq("organization_id", organizationId)
-        .in("user_id", connectedUserIds);
-
-    if (orgError || !orgUsers) {
-        console.error("[calendar-sync] Failed to fetch organization users:", orgError);
         return [];
     }
 
@@ -400,7 +374,10 @@ export async function getEligibleUsersForEvent(
             continue;
         }
 
-        if (isUserEligibleForSync(event, userId, connection || null, prefs, role)) {
+        const connectionForSync = connection
+            ? { status: connection.status as "connected" | "disconnected" | "error" }
+            : null;
+        if (isUserEligibleForSync(event, userId, connectionForSync, prefs, role)) {
             eligibleUsers.push(userId);
         }
     }
@@ -427,17 +404,28 @@ export async function syncEventToUsers(
     operation: SyncOperation
 ): Promise<void> {
 
-    // Fetch the event details
-    const { data: event, error: eventError } = await supabase
-        .from("events")
-        .select("*")
-        .eq("id", eventId)
-        .single();
+    // Fetch the event details and org timezone in parallel
+    const [eventResult, orgResult] = await Promise.all([
+        supabase
+            .from("events")
+            .select("*")
+            .eq("id", eventId)
+            .single(),
+        supabase
+            .from("organizations")
+            .select("timezone")
+            .eq("id", organizationId)
+            .single(),
+    ]);
+
+    const { data: event, error: eventError } = eventResult;
 
     if (eventError || !event) {
         console.error("[calendar-sync] Failed to fetch event:", eventError);
         return;
     }
+
+    const orgTimeZone = orgResult.data?.timezone || "America/New_York";
 
     // For delete operations, we need to process existing entries
     if (operation === "delete") {
@@ -456,14 +444,14 @@ export async function syncEventToUsers(
         return;
     }
 
-    // Map the event to calendar format
+    // Map the event to calendar format with the org's timezone
     const calendarEvent = mapEventToCalendarEvent({
         title: event.title,
         description: event.description,
         location: event.location,
         start_date: event.start_date,
         end_date: event.end_date,
-    });
+    }, orgTimeZone);
 
     // Process each eligible user
     for (const userId of eligibleUserIds) {
@@ -488,12 +476,17 @@ async function syncEventForUser(
         return;
     }
 
-    // Check if there's an existing entry for this event/user
+    // Get the user's target calendar ID
+    const connection = await getCalendarConnection(supabase, userId);
+    const targetCalendarId = connection?.targetCalendarId || "primary";
+
+    // Check if there's an existing entry for this event/user (Google provider)
     const { data: existingEntry } = await supabase
         .from("event_calendar_entries")
         .select("*")
         .eq("event_id", eventId)
         .eq("user_id", userId)
+        .eq("provider", "google")
         .single();
 
     if (operation === "create") {
@@ -502,24 +495,36 @@ async function syncEventForUser(
             return;
         }
 
-        const result = await createCalendarEvent(accessToken, calendarEvent);
-        await updateSyncEntry(supabase, eventId, userId, organizationId, result);
+        const result = await createCalendarEvent(accessToken, calendarEvent, targetCalendarId);
+        await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, result);
     } else if (operation === "update") {
         if (!existingEntry) {
             // No existing entry, create new
-            const result = await createCalendarEvent(accessToken, calendarEvent);
-            await updateSyncEntry(supabase, eventId, userId, organizationId, result);
+            const result = await createCalendarEvent(accessToken, calendarEvent, targetCalendarId);
+            await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, result);
         } else {
-            // Update existing entry
-            const result = await updateCalendarEvent(accessToken, existingEntry.google_event_id, calendarEvent);
+            // Check if user switched their target calendar since the event was created
+            const storedCalendarId = existingEntry.external_calendar_id || "primary";
 
-            // Handle 404 - event was deleted from Google Calendar (Requirement 3.3)
-            if (!result.success && isNotFoundError(result.error)) {
-                // Create new event and update entry with new google_event_id
-                const createResult = await createCalendarEvent(accessToken, calendarEvent);
-                await updateSyncEntry(supabase, eventId, userId, organizationId, createResult);
+            if (storedCalendarId !== targetCalendarId) {
+                // Calendar changed — migrate the event
+                // Best-effort delete from old calendar (ignore failures)
+                await deleteCalendarEvent(accessToken, existingEntry.external_event_id, storedCalendarId);
+                // Create on new calendar
+                const createResult = await createCalendarEvent(accessToken, calendarEvent, targetCalendarId);
+                await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, createResult);
             } else {
-                await updateSyncEntry(supabase, eventId, userId, organizationId, result, existingEntry.google_event_id);
+                // Same calendar — normal update
+                const result = await updateCalendarEvent(accessToken, existingEntry.external_event_id, calendarEvent, targetCalendarId);
+
+                // Handle 404 - event was deleted from Google Calendar (Requirement 3.3)
+                if (!result.success && isNotFoundError(result.error)) {
+                    // Create new event and update entry with new external_event_id
+                    const createResult = await createCalendarEvent(accessToken, calendarEvent, targetCalendarId);
+                    await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, createResult);
+                } else {
+                    await updateSyncEntry(supabase, eventId, userId, organizationId, targetCalendarId, result, existingEntry.external_event_id);
+                }
             }
         }
     }
@@ -537,11 +542,12 @@ async function handleDeleteSync(
     supabase: SupabaseClient<Database>,
     eventId: string
 ): Promise<void> {
-    // Get all entries for this event
+    // Get all entries for this event (Google provider only)
     const { data: entries, error } = await supabase
         .from("event_calendar_entries")
         .select("*")
         .eq("event_id", eventId)
+        .eq("provider", "google")
         .neq("sync_status", "deleted");
 
     if (error || !entries || entries.length === 0) {
@@ -556,7 +562,10 @@ async function handleDeleteSync(
                 continue;
             }
 
-            const result = await deleteCalendarEvent(accessToken, entry.google_event_id);
+            // Use the stored calendar ID (where the event actually lives)
+            const calendarId = entry.external_calendar_id || "primary";
+
+            const result = await deleteCalendarEvent(accessToken, entry.external_event_id, calendarId);
 
             // Update entry status regardless of success (graceful handling - Requirement 4.3)
             // Deletion failures do NOT throw or block
@@ -583,12 +592,13 @@ async function updateSyncEntry(
     eventId: string,
     userId: string,
     organizationId: string,
+    externalCalendarId: string,
     result: SyncResult,
-    existingGoogleEventId?: string
+    existingExternalEventId?: string
 ): Promise<void> {
-    const googleEventId = result.googleEventId || existingGoogleEventId || "";
+    const externalEventId = result.googleEventId || existingExternalEventId || "";
 
-    if (!googleEventId && !result.success) {
+    if (!externalEventId && !result.success) {
         // Failed to create and no existing ID - cannot proceed
         return;
     }
@@ -599,10 +609,12 @@ async function updateSyncEntry(
             event_id: eventId,
             user_id: userId,
             organization_id: organizationId,
-            google_event_id: googleEventId,
+            provider: "google",
+            external_event_id: externalEventId,
+            external_calendar_id: externalCalendarId,
             sync_status: result.success ? "synced" : "failed",
             last_error: result.error || null,
         }, {
-            onConflict: "event_id,user_id",
+            onConflict: "event_id,user_id,provider",
         });
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_GOOGLE_REDIRECT_PATH, sanitizeGoogleRedirectPath } from "@/lib/google/redirect";
 import { getAuthorizationUrl } from "@/lib/google/oauth";
+import { getAppUrl } from "@/lib/url";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +19,9 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
     const url = new URL(request.url);
-    const redirectPath = url.searchParams.get("redirect") || "/settings/notifications";
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const rawRedirect = url.searchParams.get("redirect") || DEFAULT_GOOGLE_REDIRECT_PATH;
+    const redirectPath = sanitizeGoogleRedirectPath(rawRedirect);
+    const appUrl = getAppUrl();
 
     try {
         // Get the authenticated user

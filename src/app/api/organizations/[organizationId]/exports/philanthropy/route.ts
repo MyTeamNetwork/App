@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
 import { baseSchemas } from "@/lib/security/validation";
+import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
+import { escapeCsvCell } from "@/lib/export/spreadsheet";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,7 +25,7 @@ type PhilanthropyEventRow = {
   updated_at: string | null;
 };
 
-export async function GET(_request: Request, { params }: RouteParams) {
+export async function GET(request: Request, { params }: RouteParams) {
   const { organizationId } = await params;
   const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
   if (!orgIdParsed.success) {
@@ -38,6 +39,14 @@ export async function GET(_request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Unauthorized", message: "You must be logged in to export philanthropy." }, { status: 401 });
   }
 
+  const rateLimit = checkRateLimit(request, {
+    limitPerIp: 10,
+    limitPerUser: 5,
+    userId: user.id,
+    feature: "philanthropy export",
+  });
+  if (!rateLimit.ok) return buildRateLimitResponse(rateLimit);
+
   const { data: role } = await supabase
     .from("user_organization_roles")
     .select("role,status")
@@ -49,11 +58,11 @@ export async function GET(_request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Forbidden", message: "Only admins can export philanthropy." }, { status: 403 });
   }
 
-  const serviceClient = createServiceClient();
-  const { data: events, error } = await serviceClient
+  const { data: events, error } = await supabase
     .from("events")
     .select("id, title, start_date, end_date, location, description, audience, event_type, is_philanthropy, created_at, updated_at")
     .eq("organization_id", organizationId)
+    .is("deleted_at", null)
     .or("is_philanthropy.eq.true,event_type.eq.philanthropy")
     .order("start_date", { ascending: false });
 
@@ -106,14 +115,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
 
 function buildCsv(headers: string[], rows: string[][]) {
   return [
-    headers.map(escapeCsv).join(","),
-    ...rows.map((row) => row.map(escapeCsv).join(",")),
+    headers.map(escapeCsvCell).join(","),
+    ...rows.map((row) => row.map(escapeCsvCell).join(",")),
   ].join("\n");
-}
-
-function escapeCsv(value: string) {
-  if (value.includes(",") || value.includes("\"") || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }
