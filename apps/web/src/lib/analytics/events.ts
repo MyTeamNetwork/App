@@ -21,6 +21,9 @@ export const BEHAVIORAL_EVENT_NAMES = [
   "chat_thread_open",
   "chat_message_send",
   "chat_participants_change",
+  "search_used",
+  "search_result_click",
+  "search_action_click",
 ] as const;
 
 export type AnalyticsEventName = (typeof BEHAVIORAL_EVENT_NAMES)[number];
@@ -131,14 +134,14 @@ function dispatchAnalyticsPolicy(detail: AnalyticsPolicyChangeDetail): void {
   window.dispatchEvent(
     new CustomEvent<AnalyticsPolicyChangeDetail>("analytics:policy-change", {
       detail,
-    }),
+    })
   );
 }
 
 export function setAnalyticsPolicy(
   orgId: string,
   consentState: ConsentState,
-  trackingLevel: TrackingLevel,
+  trackingLevel: TrackingLevel
 ): void {
   const previousConsentState = consentByOrg.get(orgId);
   const previousTrackingLevel = trackingLevelByOrg.get(orgId);
@@ -178,7 +181,7 @@ export function getAnalyticsSessionMetadata() {
 export function trackBehavioralEvent(
   event_name: AnalyticsEventName,
   props: Record<string, unknown> = {},
-  orgId?: string | null,
+  orgId?: string | null
 ): void {
   if (!orgId) return;
   const consentState = getConsentState(orgId);
@@ -219,7 +222,7 @@ export function trackOpsEvent(
     error_code?: string;
     retryable?: boolean;
   } = {},
-  orgId?: string | null,
+  orgId?: string | null
 ): void {
   const supabase = createClient();
 
