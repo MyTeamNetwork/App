@@ -1,9 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Card, Badge, Avatar, Button, EmptyState, Select, Input } from "@/components/ui";
-import { MentorRegistration } from "./MentorRegistration";
+import { Avatar, Button, EmptyState, Select, Input } from "@/components/ui";
+import { MentorDetailModal, type MentorDetailData } from "./MentorDetailModal";
+import { MentorRequestDialog } from "./MentorRequestDialog";
+import {
+  applyFilters,
+  emptyFilters,
+  excludeSelf,
+  hasActiveFilters as filtersActive,
+  hasPendingRequest,
+  type DirectoryFilters,
+} from "@/lib/mentorship/directory-helpers";
 
 interface MentorData {
   id: string;
@@ -16,67 +26,159 @@ interface MentorData {
   current_company: string | null;
   current_city: string | null;
   expertise_areas: string[] | null;
+  topics: string[] | null;
+  sports: string[] | null;
+  positions: string[] | null;
   bio: string | null;
   contact_email: string | null;
   contact_linkedin: string | null;
   contact_phone: string | null;
+  accepting_new: boolean;
+  current_mentee_count: number;
+  max_mentees: number;
+  meeting_preferences: string[] | null;
+  years_of_experience: number | null;
 }
+
+type Signal = { code: string; weight: number; value?: string | number };
 
 interface MentorDirectoryProps {
   mentors: MentorData[];
   industries: string[];
   years: number[];
-  showRegistration: boolean;
+  sportOptions: string[];
+  positionOptions: string[];
+  orgHasAthleticData: boolean;
+  pendingRequestMentorIds: string[];
   orgId: string;
   orgSlug: string;
+  currentUserId: string;
+  canRequestIntro: boolean;
+  isAdmin: boolean;
 }
+
+type SortMode = "relevance" | "name" | "year";
 
 export function MentorDirectory({
   mentors,
   industries,
   years,
-  showRegistration,
+  sportOptions,
+  positionOptions,
+  orgHasAthleticData,
+  pendingRequestMentorIds,
   orgId,
   orgSlug,
+  currentUserId,
+  canRequestIntro,
+  isAdmin,
 }: MentorDirectoryProps) {
+  const router = useRouter();
   const tMentorship = useTranslations("mentorship");
   const tMembers = useTranslations("members");
   const tCommon = useTranslations("common");
 
-  const [filters, setFilters] = useState({
-    nameSearch: "",
-    industry: "",
-    year: "",
-  });
+  const [filters, setFilters] = useState<DirectoryFilters>(emptyFilters);
+  const [sortMode, setSortMode] = useState<SortMode>(
+    canRequestIntro ? "relevance" : "name"
+  );
+  const [relevanceOrder, setRelevanceOrder] = useState<string[] | null>(null);
+  const [mentorSignals, setMentorSignals] = useState<Record<string, Signal[]>>({});
+  const [loadingRelevance, setLoadingRelevance] = useState(false);
+  const [pendingIds, setPendingIds] = useState<string[]>(pendingRequestMentorIds);
 
-  const [showRegistrationForm, setShowRegistrationForm] = useState(false);
+  const [detailMentor, setDetailMentor] = useState<MentorDetailData | null>(null);
+  const [requestMentor, setRequestMentor] = useState<MentorDetailData | null>(null);
 
-  const nameQuery = filters.nameSearch.trim().toLowerCase();
+  const selfExcluded = useMemo(
+    () => excludeSelf(mentors, currentUserId),
+    [mentors, currentUserId]
+  );
 
-  // Filter mentors
-  const filteredMentors = mentors.filter((mentor) => {
-    if (nameQuery && !mentor.name.toLowerCase().includes(nameQuery)) {
-      return false;
+  const allTopics = useMemo(() => {
+    const s = new Set<string>();
+    selfExcluded.forEach((m) => m.topics?.forEach((t) => s.add(t)));
+    return Array.from(s).sort();
+  }, [selfExcluded]);
+
+  useEffect(() => {
+    setPendingIds(pendingRequestMentorIds);
+  }, [pendingRequestMentorIds]);
+
+  useEffect(() => {
+    if (sortMode !== "relevance" || !canRequestIntro) return;
+    let cancelled = false;
+    const run = async () => {
+      setLoadingRelevance(true);
+      try {
+        const res = await fetch(
+          `/api/organizations/${orgId}/mentorship/suggestions`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mentee_user_id: currentUserId, limit: 100 }),
+          }
+        );
+        if (!res.ok) {
+          if (!cancelled) {
+            setRelevanceOrder([]);
+            setMentorSignals({});
+          }
+          return;
+        }
+        const json = (await res.json()) as {
+          matches: Array<{ mentorUserId: string; signals?: Signal[] }>;
+        };
+        if (cancelled) return;
+        setRelevanceOrder(json.matches.map((m) => m.mentorUserId));
+        const sigMap: Record<string, Signal[]> = {};
+        for (const m of json.matches) {
+          if (m.signals && m.signals.length > 0) sigMap[m.mentorUserId] = m.signals;
+        }
+        setMentorSignals(sigMap);
+      } catch {
+        if (!cancelled) {
+          setRelevanceOrder([]);
+          setMentorSignals({});
+        }
+      } finally {
+        if (!cancelled) setLoadingRelevance(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [sortMode, canRequestIntro, orgId, currentUserId]);
+
+  const filteredMentors = applyFilters(selfExcluded, filters);
+
+  const sortedMentors = useMemo(() => {
+    const copy = [...filteredMentors];
+    if (sortMode === "name") {
+      copy.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortMode === "year") {
+      copy.sort((a, b) => (b.graduation_year ?? 0) - (a.graduation_year ?? 0));
+    } else if (sortMode === "relevance") {
+      if (relevanceOrder && relevanceOrder.length > 0) {
+        const rank = new Map(relevanceOrder.map((id, idx) => [id, idx]));
+        copy.sort((a, b) => {
+          const ai = rank.get(a.user_id);
+          const bi = rank.get(b.user_id);
+          if (ai === undefined && bi === undefined) return a.name.localeCompare(b.name);
+          if (ai === undefined) return 1;
+          if (bi === undefined) return -1;
+          return ai - bi;
+        });
+      } else {
+        copy.sort((a, b) => a.name.localeCompare(b.name));
+      }
     }
-    if (filters.industry && mentor.industry !== filters.industry) {
-      return false;
-    }
-    if (filters.year && mentor.graduation_year?.toString() !== filters.year) {
-      return false;
-    }
-    return true;
-  });
+    return copy;
+  }, [filteredMentors, sortMode, relevanceOrder]);
 
-  const hasActiveFilters =
-    filters.nameSearch !== "" || filters.industry !== "" || filters.year !== "";
-
-  const clearFilters = () => {
-    setFilters({
-      nameSearch: "",
-      industry: "",
-      year: "",
-    });
-  };
+  const hasActiveFilters = filtersActive(filters);
+  const clearFilters = () => setFilters(emptyFilters());
 
   const industryOptions = [
     { value: "", label: tMentorship("allIndustries") },
@@ -88,28 +190,60 @@ export function MentorDirectory({
     ...years.map((y) => ({ value: y.toString(), label: tMembers("classOf", { year: y }) })),
   ];
 
+  const sortOptions: Array<{ value: SortMode; label: string }> = [
+    ...(canRequestIntro
+      ? [{ value: "relevance" as SortMode, label: safeT(tMentorship, "sortRelevance", "Relevance") }]
+      : []),
+    { value: "name", label: safeT(tMentorship, "sortName", "Name") },
+    { value: "year", label: safeT(tMentorship, "sortYear", "Graduation year") },
+  ];
+
+  const toDetailData = (m: MentorData): MentorDetailData => ({
+    id: m.id,
+    user_id: m.user_id,
+    name: m.name,
+    photo_url: m.photo_url,
+    bio: m.bio,
+    industry: m.industry,
+    graduation_year: m.graduation_year,
+    current_company: m.current_company,
+    current_city: m.current_city,
+    topics: m.topics,
+    expertise_areas: m.expertise_areas,
+    years_of_experience: m.years_of_experience,
+    meeting_preferences: m.meeting_preferences,
+    current_mentee_count: m.current_mentee_count,
+    max_mentees: m.max_mentees,
+    accepting_new: m.accepting_new,
+    signals: mentorSignals[m.user_id] ?? [],
+  });
+
   return (
     <div id="mentor-directory" className="space-y-6">
       <div>
-        <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
           {tMentorship("willingToHelp")}
         </h2>
-        <div className="mt-3 mb-4 h-px bg-border" />
-        <p className="text-muted-foreground text-sm mb-4">
+        <p className="text-[var(--muted-foreground)] text-sm mt-2 mb-4">
           {tMentorship("directoryDesc")}
         </p>
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-4">
           <div className="w-full sm:flex-1">
             <Input
               type="search"
               value={filters.nameSearch}
-              onChange={(e) =>
-                setFilters({ ...filters, nameSearch: e.target.value })
-              }
+              onChange={(e) => setFilters({ ...filters, nameSearch: e.target.value })}
               placeholder={tMentorship("searchPlaceholder")}
               aria-label={tMentorship("searchPlaceholder")}
+            />
+          </div>
+          <div className="w-full sm:w-44">
+            <Select
+              label={safeT(tMentorship, "sortBy", "Sort by")}
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
+              options={sortOptions}
             />
           </div>
           <div className="w-full sm:w-48">
@@ -118,7 +252,6 @@ export function MentorDirectory({
               value={filters.industry}
               onChange={(e) => setFilters({ ...filters, industry: e.target.value })}
               options={industryOptions}
-              className="border-border/70"
             />
           </div>
           <div className="w-full sm:w-40">
@@ -127,86 +260,123 @@ export function MentorDirectory({
               value={filters.year}
               onChange={(e) => setFilters({ ...filters, year: e.target.value })}
               options={yearOptions}
-              className="border-border/70"
             />
           </div>
+        </div>
+
+        {orgHasAthleticData && (
+          <div className="flex flex-col gap-2 mb-4">
+            {sportOptions.length > 0 && (
+              <div className="flex flex-wrap gap-1" data-testid="sport-filter-chips">
+                <span className="text-[11px] uppercase tracking-wider text-[var(--muted-foreground)] mr-1 self-center">
+                  {safeT(tMentorship, "sport", "Sport")}
+                </span>
+                <ChipButton
+                  active={filters.sport === ""}
+                  onClick={() => setFilters({ ...filters, sport: "" })}
+                  label={safeT(tMentorship, "allSports", "All")}
+                />
+                {sportOptions.map((s) => (
+                  <ChipButton
+                    key={s}
+                    active={filters.sport === s}
+                    onClick={() =>
+                      setFilters({ ...filters, sport: filters.sport === s ? "" : s })
+                    }
+                    label={s}
+                  />
+                ))}
+              </div>
+            )}
+            {positionOptions.length > 0 && (
+              <div className="flex flex-wrap gap-1" data-testid="position-filter-chips">
+                <span className="text-[11px] uppercase tracking-wider text-[var(--muted-foreground)] mr-1 self-center">
+                  {safeT(tMentorship, "position", "Position")}
+                </span>
+                <ChipButton
+                  active={filters.position === ""}
+                  onClick={() => setFilters({ ...filters, position: "" })}
+                  label={safeT(tMentorship, "allPositions", "All")}
+                />
+                {positionOptions.map((p) => (
+                  <ChipButton
+                    key={p}
+                    active={filters.position === p}
+                    onClick={() =>
+                      setFilters({ ...filters, position: filters.position === p ? "" : p })
+                    }
+                    label={p}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          <label className="inline-flex items-center gap-2 text-sm text-[var(--foreground)]">
+            <input
+              type="checkbox"
+              checked={filters.acceptingOnly}
+              onChange={(e) => setFilters({ ...filters, acceptingOnly: e.target.checked })}
+            />
+            {safeT(tMentorship, "acceptingNewOnly", "Accepting new mentees only")}
+          </label>
+          {allTopics.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              <ChipButton
+                active={filters.topic === ""}
+                onClick={() => setFilters({ ...filters, topic: "" })}
+                label={safeT(tMentorship, "allTopics", "All topics")}
+              />
+              {allTopics.map((topic) => (
+                <ChipButton
+                  key={topic}
+                  active={filters.topic === topic}
+                  onClick={() =>
+                    setFilters({ ...filters, topic: filters.topic === topic ? "" : topic })
+                  }
+                  label={topic}
+                />
+              ))}
+            </div>
+          )}
           {hasActiveFilters && (
             <Button
               variant="ghost"
               size="sm"
               onClick={clearFilters}
-              className="text-muted-foreground hover:text-foreground shrink-0"
+              className="text-muted-foreground hover:text-foreground shrink-0 ml-auto"
             >
-              <svg
-                className="h-4 w-4 mr-1"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
               {tMentorship("clearFilters")}
             </Button>
           )}
         </div>
 
-        {/* Registration CTA */}
-        {showRegistration && !showRegistrationForm && (
-          <Card className="mb-6 bg-muted/30 border-dashed">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium mb-1">{tMentorship("wantToGiveBack")}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {tMentorship("joinDirectory")}
-                </p>
-              </div>
-              <Button onClick={() => setShowRegistrationForm(true)}>
-                {tMentorship("becomeMentor")}
-              </Button>
-            </div>
-          </Card>
+        {loadingRelevance && (
+          <p className="text-sm text-[var(--muted-foreground)] mb-3">
+            {safeT(tMentorship, "loadingSignals", "Computing relevance…")}
+          </p>
         )}
 
-        {/* Registration Form */}
-        {showRegistration && showRegistrationForm && (
-          <div className="mb-6">
-            <MentorRegistration
-              orgId={orgId}
-              orgSlug={orgSlug}
-              onCancel={() => setShowRegistrationForm(false)}
-            />
-          </div>
-        )}
+        <p className="text-xs text-muted-foreground mb-3">
+          {tMentorship("resultsCount", { count: sortedMentors.length, total: selfExcluded.length })}
+        </p>
 
-        {/* Mentor Grid */}
-        {filteredMentors.length === 0 ? (
+        {sortedMentors.length === 0 ? (
           <EmptyState
-            icon={
-              <svg
-                className="h-12 w-12"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
-                />
-              </svg>
+            title={
+              hasActiveFilters
+                ? tMentorship("noMentorsFound")
+                : isAdmin
+                ? tMentorship("noMentorsAdminTitle")
+                : tMentorship("noMentorsYet")
             }
-            title={hasActiveFilters ? tMentorship("noMentorsFound") : tMentorship("noMentorsYet")}
             description={
               hasActiveFilters
                 ? tMentorship("adjustFilters")
-                : showRegistration
-                ? tMentorship("beFirstMentorDesc")
+                : isAdmin
+                ? tMentorship("noMentorsAdminDesc")
                 : tMentorship("checkBackLater")
             }
             action={
@@ -214,143 +384,210 @@ export function MentorDirectory({
                 <Button variant="ghost" size="sm" onClick={clearFilters}>
                   {tMentorship("clearFilters")}
                 </Button>
-              ) : showRegistration && !showRegistrationForm ? (
-                <Button onClick={() => setShowRegistrationForm(true)}>
-                  {tMentorship("beFirstMentor")}
+              ) : isAdmin ? (
+                <Button onClick={() => router.push(`/${orgSlug}/members`)}>
+                  {tMentorship("inviteAlumni")}
                 </Button>
               ) : undefined
             }
           />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredMentors.map((mentor) => {
+          <div>
+            {sortedMentors.map((mentor) => {
               const hasContactLinks = Boolean(
                 mentor.contact_email || mentor.contact_linkedin || mentor.contact_phone
               );
+              const atCapacity =
+                !mentor.accepting_new || mentor.current_mentee_count >= mentor.max_mentees;
+              const topicsAndAreas = [
+                ...(mentor.topics ?? []),
+                ...(mentor.expertise_areas ?? []),
+              ];
+              const isRequested = hasPendingRequest(pendingIds, mentor.user_id);
 
               return (
-                <Card
+                <div
                   key={mentor.id}
-                  padding="md"
-                  className="group relative overflow-hidden min-h-[220px]"
+                  data-testid={`mentor-card-${mentor.user_id}`}
+                  className="group flex items-start gap-4 py-4 px-2 rounded-md hover:bg-[var(--muted)]/30 transition-colors duration-150"
                 >
-                  <div className="flex items-start gap-3 mb-3">
-                    <Avatar
-                      src={mentor.photo_url}
-                      name={mentor.name}
-                      size="lg"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-display text-lg font-semibold text-foreground truncate">
+                  <button
+                    type="button"
+                    onClick={() => setDetailMentor(toDetailData(mentor))}
+                    className="shrink-0"
+                    aria-label={mentor.name}
+                  >
+                    <Avatar src={mentor.photo_url} name={mentor.name} size="md" />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDetailMentor(toDetailData(mentor))}
+                        className="text-sm font-medium text-[var(--foreground)] truncate hover:underline text-left"
+                      >
                         {mentor.name}
-                      </h3>
+                      </button>
                       {mentor.graduation_year && (
-                        <div className="mt-1">
-                          <Badge variant="muted">
-                            &apos;{mentor.graduation_year.toString().slice(-2)}
-                          </Badge>
-                        </div>
+                        <span className="text-[11px] text-[var(--muted-foreground)]">
+                          &apos;{mentor.graduation_year.toString().slice(-2)}
+                        </span>
+                      )}
+                      {!mentor.accepting_new && (
+                        <span className="text-[10px] uppercase tracking-wider text-[var(--muted-foreground)] border border-[var(--border)] rounded px-1.5">
+                          {safeT(tMentorship, "notAcceptingShort", "Not accepting")}
+                        </span>
+                      )}
+                      {isRequested && (
+                        <span
+                          data-testid={`mentor-card-${mentor.user_id}-requested-badge`}
+                          className="text-[10px] uppercase tracking-wider text-[var(--foreground)] bg-[var(--muted)]/60 rounded px-1.5"
+                        >
+                          {safeT(tMentorship, "requestSent", "Request sent")}
+                        </span>
                       )}
                     </div>
-                  </div>
-
-                  <div className={hasContactLinks ? "space-y-3 sm:pb-14" : "space-y-3"}>
                     {(mentor.current_company || mentor.current_city) && (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-xs text-[var(--muted-foreground)] mt-0.5">
                         {[mentor.current_company, mentor.current_city]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
                     )}
-
-                    {mentor.expertise_areas && mentor.expertise_areas.length > 0 && (
-                      <div>
-                        <div className="flex flex-wrap gap-1">
-                          {mentor.expertise_areas.map((area, idx) => {
-                            return (
-                              <Badge key={idx} variant="primary">
-                                {area}
-                              </Badge>
-                            );
-                          })}
-                        </div>
+                    {topicsAndAreas.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {topicsAndAreas.map((area, idx) => (
+                          <span
+                            key={`${area}-${idx}`}
+                            className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium bg-[var(--muted)]/40 text-[var(--muted-foreground)]"
+                          >
+                            {area}
+                          </span>
+                        ))}
                       </div>
                     )}
-
                     {mentor.bio && (
-                      <p className="text-sm line-clamp-2">{mentor.bio}</p>
+                      <p className="text-sm text-[var(--foreground)]/80 line-clamp-2 mt-1">{mentor.bio}</p>
                     )}
-                  </div>
 
-                  {hasContactLinks && (
-                    <div className="mt-4 flex flex-wrap gap-3 border-t border-border pt-3 sm:absolute sm:inset-x-0 sm:bottom-0 sm:mt-0 sm:translate-y-full sm:bg-[var(--card)] sm:px-4 sm:py-3 sm:transition-transform sm:duration-200 sm:group-hover:translate-y-0 sm:focus-within:translate-y-0">
-                      {mentor.contact_email && (
-                        <a
-                          href={`mailto:${mentor.contact_email}`}
-                          className="text-sm text-org-primary hover:underline flex items-center gap-1"
+                    <div className="flex flex-wrap items-center gap-3 mt-2">
+                      {canRequestIntro && (
+                        <Button
+                          size="sm"
+                          data-testid={`mentor-card-${mentor.user_id}-request`}
+                          onClick={() => setRequestMentor(toDetailData(mentor))}
+                          disabled={atCapacity || isRequested}
                         >
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                            />
-                          </svg>
-                          {tCommon("email")}
-                        </a>
+                          {isRequested
+                            ? safeT(tMentorship, "requestSent", "Request sent")
+                            : tMentorship("requestIntro")}
+                        </Button>
                       )}
-                      {mentor.contact_linkedin && (
-                        <a
-                          href={mentor.contact_linkedin.startsWith("http") ? mentor.contact_linkedin : `https://${mentor.contact_linkedin}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-org-primary hover:underline flex items-center gap-1"
-                        >
-                          <svg
-                            className="h-4 w-4"
-                            fill="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
-                          </svg>
-                          {tMentorship("linkedin")}
-                        </a>
-                      )}
-                      {mentor.contact_phone && (
-                        <a
-                          href={`tel:${mentor.contact_phone}`}
-                          className="text-sm text-org-primary hover:underline flex items-center gap-1"
-                        >
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                            />
-                          </svg>
-                          {tMentorship("phone")}
-                        </a>
+                      {hasContactLinks && (
+                        <div className="flex flex-wrap gap-3 sm:opacity-0 sm:group-hover:opacity-100 sm:transition-opacity sm:duration-150">
+                          {mentor.contact_email && (
+                            <a
+                              href={`mailto:${mentor.contact_email}`}
+                              className="text-xs text-[var(--foreground)] hover:underline"
+                            >
+                              {tCommon("email")}
+                            </a>
+                          )}
+                          {mentor.contact_linkedin && (
+                            <a
+                              href={
+                                mentor.contact_linkedin.startsWith("http")
+                                  ? mentor.contact_linkedin
+                                  : `https://${mentor.contact_linkedin}`
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-[var(--foreground)] hover:underline"
+                            >
+                              {tMentorship("linkedin")}
+                            </a>
+                          )}
+                          {mentor.contact_phone && (
+                            <a
+                              href={`tel:${mentor.contact_phone}`}
+                              className="text-xs text-[var(--foreground)] hover:underline"
+                            >
+                              {tMentorship("phone")}
+                            </a>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
-                </Card>
+                  </div>
+                </div>
               );
             })}
           </div>
         )}
       </div>
+
+      <MentorDetailModal
+        mentor={detailMentor}
+        isOpen={detailMentor !== null}
+        canRequestIntro={canRequestIntro}
+        isRequestPending={detailMentor ? hasPendingRequest(pendingIds, detailMentor.user_id) : false}
+        onClose={() => setDetailMentor(null)}
+        onRequestIntro={(m) => {
+          setDetailMentor(null);
+          if (canRequestIntro) setRequestMentor(m);
+        }}
+      />
+
+      <MentorRequestDialog
+        mentor={requestMentor}
+        orgId={orgId}
+        currentUserId={currentUserId}
+        isOpen={requestMentor !== null}
+        onClose={() => setRequestMentor(null)}
+        onSuccess={(mentorUserId) => {
+          setRequestMentor(null);
+          if (mentorUserId && !pendingIds.includes(mentorUserId)) {
+            setPendingIds([...pendingIds, mentorUserId]);
+          }
+        }}
+      />
     </div>
   );
+}
+
+function ChipButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-[11px] rounded-md px-2 py-0.5 border ${
+        active
+          ? "bg-[var(--foreground)] text-[var(--background)] border-transparent"
+          : "border-[var(--border)] text-[var(--muted-foreground)]"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function safeT(
+  t: (key: string) => string,
+  key: string,
+  fallback: string
+): string {
+  try {
+    const v = t(key);
+    return v || fallback;
+  } catch {
+    return fallback;
+  }
 }
