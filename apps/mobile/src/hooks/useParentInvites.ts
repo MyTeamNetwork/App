@@ -1,15 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { fetchWithAuth } from "@/lib/web-api";
 import * as sentry from "@/lib/analytics/sentry";
 import type { ParentInviteRecord } from "@/lib/parents";
 
-async function parseApiResponse<T>(response: Response): Promise<T> {
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(data?.error || "Request failed");
-  }
-  return data as T;
+const FAR_FUTURE_ISO = "9999-12-31T00:00:00.000Z";
+
+interface OrganizationInviteRow {
+  id: string;
+  code: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string | null;
+  role: string | null;
+}
+
+function toParentInviteRecord(row: OrganizationInviteRow): ParentInviteRecord {
+  return {
+    id: row.id,
+    code: row.code,
+    expires_at: row.expires_at ?? FAR_FUTURE_ISO,
+    status: row.revoked_at ? "revoked" : "pending",
+    created_at: row.created_at ?? new Date().toISOString(),
+  };
 }
 
 interface UseParentInvitesReturn {
@@ -40,13 +52,18 @@ export function useParentInvites(orgId: string | null, enabled: boolean): UsePar
 
     try {
       setLoading(true);
-      const response = await fetchWithAuth(`/api/organizations/${orgId}/parents/invite`, {
-        method: "GET",
-      });
-      const data = await parseApiResponse<{ invites: ParentInviteRecord[] }>(response);
+      const { data, error: fetchError } = await supabase
+        .from("organization_invites")
+        .select("id, code, expires_at, revoked_at, created_at, role")
+        .eq("organization_id", orgId)
+        .eq("role", "parent")
+        .order("created_at", { ascending: false });
+
+      if (fetchError) throw fetchError;
 
       if (isMountedRef.current) {
-        setInvites(data.invites ?? []);
+        const rows = (data as OrganizationInviteRow[] | null) ?? [];
+        setInvites(rows.map(toParentInviteRecord));
         setError(null);
       }
     } catch (e) {
@@ -80,7 +97,7 @@ export function useParentInvites(orgId: string | null, enabled: boolean): UsePar
         {
           event: "*",
           schema: "public",
-          table: "parent_invites",
+          table: "organization_invites",
           filter: `organization_id=eq.${orgId}`,
         },
         () => {
@@ -99,20 +116,24 @@ export function useParentInvites(orgId: string | null, enabled: boolean): UsePar
       if (!orgId) return { success: false, error: "Organization not loaded" };
 
       try {
-        const response = await fetchWithAuth(`/api/organizations/${orgId}/parents/invite`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(expiresAt ? { expires_at: expiresAt } : {}),
+        const { data, error: rpcError } = await supabase.rpc("create_org_invite", {
+          p_organization_id: orgId,
+          p_role: "parent",
+          p_uses: undefined,
+          p_expires_at: expiresAt ?? undefined,
         });
 
-        const data = await parseApiResponse<{ invite: ParentInviteRecord }>(response);
+        if (rpcError) throw rpcError;
+        if (!data) throw new Error("Failed to create invite");
+
+        const invite = toParentInviteRecord(data as OrganizationInviteRow);
         if (isMountedRef.current) {
           setInvites((prev) => {
-            const next = [data.invite, ...prev.filter((invite) => invite.id !== data.invite.id)];
+            const next = [invite, ...prev.filter((existing) => existing.id !== invite.id)];
             return next.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
           });
         }
-        return { success: true, invite: data.invite };
+        return { success: true, invite };
       } catch (e) {
         sentry.captureException(e as Error, { context: "useParentInvites.createInvite", orgId });
         return { success: false, error: (e as Error).message };
@@ -126,10 +147,14 @@ export function useParentInvites(orgId: string | null, enabled: boolean): UsePar
       if (!orgId) return { success: false, error: "Organization not loaded" };
 
       try {
-        const response = await fetchWithAuth(`/api/organizations/${orgId}/parents/invite/${inviteId}`, {
-          method: "PATCH",
-        });
-        await parseApiResponse<{ success: boolean }>(response);
+        const { error: updateError } = await supabase
+          .from("organization_invites")
+          .update({ revoked_at: new Date().toISOString() })
+          .eq("id", inviteId)
+          .eq("organization_id", orgId);
+
+        if (updateError) throw updateError;
+
         if (isMountedRef.current) {
           setInvites((prev) =>
             prev.map((invite) =>
@@ -151,10 +176,14 @@ export function useParentInvites(orgId: string | null, enabled: boolean): UsePar
       if (!orgId) return { success: false, error: "Organization not loaded" };
 
       try {
-        const response = await fetchWithAuth(`/api/organizations/${orgId}/parents/invite/${inviteId}`, {
-          method: "DELETE",
-        });
-        await parseApiResponse<{ success: boolean }>(response);
+        const { error: deleteError } = await supabase
+          .from("organization_invites")
+          .delete()
+          .eq("id", inviteId)
+          .eq("organization_id", orgId);
+
+        if (deleteError) throw deleteError;
+
         if (isMountedRef.current) {
           setInvites((prev) => prev.filter((invite) => invite.id !== inviteId));
         }

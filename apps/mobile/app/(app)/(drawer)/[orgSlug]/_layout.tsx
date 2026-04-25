@@ -191,6 +191,14 @@ function OrgLayoutInner() {
         }}
       />
       <Stack.Screen
+        name="mentorship/[pairId]"
+        options={{
+          headerShown: false,
+          title: "Mentorship Pair",
+          presentation: "card",
+        }}
+      />
+      <Stack.Screen
         name="records/index"
         options={{
           headerShown: false,

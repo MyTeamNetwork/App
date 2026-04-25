@@ -6,6 +6,7 @@ import { SPACING, RADIUS } from "@/lib/design-tokens";
 import type { NeutralColors, SemanticColors } from "@/lib/design-tokens";
 import { SelectField, SelectModal } from "@/components/ui/SelectField";
 import { MentorProfileForm } from "./MentorProfileForm";
+import { MentorRequestSheet } from "./MentorRequestSheet";
 import type {
   MentorDirectoryEntry,
   MentorProfileRecord,
@@ -19,6 +20,9 @@ export function MentorDirectorySection({
   showRegistration,
   currentUserProfile,
   onRefresh,
+  canRequest,
+  orgId,
+  pendingMentorIds,
 }: {
   mentors: MentorDirectoryEntry[];
   industries: string[];
@@ -26,6 +30,9 @@ export function MentorDirectorySection({
   showRegistration: boolean;
   currentUserProfile: MentorProfileRecord | null;
   onRefresh: () => void;
+  canRequest?: boolean;
+  orgId?: string | null;
+  pendingMentorIds?: Set<string>;
 }) {
   const styles = useThemedStyles(createStyles);
   const [filters, setFilters] = useState({
@@ -35,6 +42,7 @@ export function MentorDirectorySection({
   });
   const [activeSelect, setActiveSelect] = useState<"industry" | "year" | null>(null);
   const [showProfileForm, setShowProfileForm] = useState(false);
+  const [requestMentor, setRequestMentor] = useState<MentorDirectoryEntry | null>(null);
 
   const filteredMentors = useMemo(() => {
     const nameQuery = filters.nameSearch.trim().toLowerCase();
@@ -231,6 +239,23 @@ export function MentorDirectorySection({
               ) : null}
 
               <View style={styles.directoryContactRow}>
+                {canRequest ? (
+                  <Pressable
+                    onPress={() => setRequestMentor(mentor)}
+                    disabled={pendingMentorIds?.has(mentor.user_id)}
+                    style={({ pressed }) => [
+                      styles.requestButton,
+                      pressed && styles.contactButtonPressed,
+                      pendingMentorIds?.has(mentor.user_id) && styles.requestButtonDisabled,
+                    ]}
+                  >
+                    <Text style={styles.requestButtonText}>
+                      {pendingMentorIds?.has(mentor.user_id)
+                        ? "Pending"
+                        : "Request mentorship"}
+                    </Text>
+                  </Pressable>
+                ) : null}
                 {mentor.contact_email ? (
                   <Pressable
                     onPress={() => void Linking.openURL(`mailto:${mentor.contact_email}`)}
@@ -298,6 +323,19 @@ export function MentorDirectorySection({
         }}
         onClose={() => setActiveSelect(null)}
       />
+
+      {orgId ? (
+        <MentorRequestSheet
+          visible={Boolean(requestMentor)}
+          mentor={requestMentor}
+          orgId={orgId}
+          onClose={() => setRequestMentor(null)}
+          onRequested={() => {
+            setRequestMentor(null);
+            onRefresh();
+          }}
+        />
+      ) : null}
     </View>
   );
 }
@@ -517,5 +555,19 @@ const createStyles = (n: NeutralColors, s: SemanticColors) =>
       fontSize: 14,
       fontWeight: "500",
       color: n.foreground,
+    },
+    requestButton: {
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.xs + 2,
+      borderRadius: RADIUS.md,
+      backgroundColor: s.success,
+    },
+    requestButtonDisabled: {
+      backgroundColor: n.divider,
+    },
+    requestButtonText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: "#ffffff",
     },
   });

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, Pressable, Alert, StyleSheet } from "react-native";
-import { Trash2 } from "lucide-react-native";
+import { Trash2, ChevronRight } from "lucide-react-native";
 import { supabase } from "@/lib/supabase";
 import { normalizeMentorshipStatus, isUserInMentorshipPair } from "@teammeet/core";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
