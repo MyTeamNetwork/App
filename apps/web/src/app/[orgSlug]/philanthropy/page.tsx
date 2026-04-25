@@ -118,7 +118,10 @@ export default async function PhilanthropyPage({ params, searchParams }: Philant
       <DonationResultTracker organizationId={org.id} />
       <PageHeader
         title={pageLabel}
-        description={tPhilanthropy("description")}
+        description={`${donationCount} ${tPhilanthropy("contributionsRecorded")} · $${totalRaised.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })} · ${totalEvents} ${tPhilanthropy("totalEvents").toLowerCase()} (${upcomingCount} ${tEvents("upcoming").toLowerCase()}, ${pastCount} ${tPhilanthropy("completed").toLowerCase()})`}
         actions={
           (orgCtx.isAdmin || canEdit) ? (
             <div className="flex flex-wrap gap-2">
@@ -172,29 +175,24 @@ export default async function PhilanthropyPage({ params, searchParams }: Philant
         </div>
       )}
 
-      {/* Stat strip — large numbers, no colored boxes */}
-      <div className="mb-8">
-        <div className="grid grid-cols-2 gap-8 mb-3">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
-              {tPhilanthropy("totalRaisedLabel")}
-            </p>
-            <p className="text-2xl font-medium font-mono tabular-nums text-foreground">
-              ${totalRaised.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
-              {tPhilanthropy("averageGiftLabel")}
-            </p>
-            <p className="text-2xl font-medium font-mono tabular-nums text-foreground">
-              ${avgDonation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-          </div>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {donationCount} {tPhilanthropy("contributionsRecorded")} · {totalEvents} {tPhilanthropy("totalEvents").toLowerCase()} · {upcomingCount} {tEvents("upcoming").toLowerCase()} · {pastCount} {tPhilanthropy("completed").toLowerCase()}
-        </p>
+      {/* Stat cards — donations-style boxed stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+        <Card className="p-5">
+          <p className="text-sm text-muted-foreground mb-1">{tDonations("totalRaised")}</p>
+          <p className="text-3xl font-bold text-foreground font-mono">
+            ${totalRaised.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm text-muted-foreground mb-1">{tDonations("contributions")}</p>
+          <p className="text-3xl font-bold text-foreground font-mono">{donationCount}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-sm text-muted-foreground mb-1">{tDonations("averageGift")}</p>
+          <p className="text-3xl font-bold text-foreground font-mono">
+            ${avgDonation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+        </Card>
       </div>
 
       {/* Dashboard client section — admin controls, table, purpose breakdown, drawer */}

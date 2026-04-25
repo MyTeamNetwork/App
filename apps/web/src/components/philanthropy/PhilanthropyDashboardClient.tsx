@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Card, Button, Badge, ToggleSwitch } from "@/components/ui";
 import { RecentDuesTable } from "./RecentDuesTable";
-import { PurposeDotLeaders } from "./PurposeDotLeaders";
 import { DonationDrawer } from "./DonationDrawer";
 import { buildDonationPurposeTotals } from "@/lib/payments/donation-purpose-totals";
 import { SETTLED_DONATION_STATUSES } from "@/lib/payments/donation-status";
@@ -120,25 +119,36 @@ export function PhilanthropyDashboardClient({
         </div>
       )}
 
+      {/* Make a Donation button — positioned above the data grid for consistent placement */}
+      <div className="flex justify-end mb-4">
+        <Button onClick={() => setIsDrawerOpen(true)} disabled={!isStripeConnected}>
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {tDonations("makeADonation")}
+        </Button>
+      </div>
+
       {/* Main content grid — hide Recent Dues card entirely when simulating public + donor privacy */}
       {isSimulatingPublic && hideDonorNames ? (
         <div className="mb-8">
-          <Card className="p-5">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
-              {tDonations("byPurpose")}
-            </h3>
-            <PurposeDotLeaders
-              purposeTotals={activePurposeTotals}
-              emptyMessage={purposeEmptyMessage}
-            />
+          <Card className="p-6">
+            <h3 className="font-semibold text-foreground mb-4">{tDonations("byPurpose")}</h3>
+            <PurposeRows purposeTotals={activePurposeTotals} emptyMessage={purposeEmptyMessage} />
           </Card>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Recent Dues Table */}
+          {/* Purpose Breakdown — donations-style rows on the left */}
+          <Card className="p-6 lg:col-span-1">
+            <h3 className="font-semibold text-foreground mb-4">{tDonations("byPurpose")}</h3>
+            <PurposeRows purposeTotals={activePurposeTotals} emptyMessage={purposeEmptyMessage} />
+          </Card>
+
+          {/* Recent Dues Table — right side, col-span-2 */}
           <Card padding="none" className="lg:col-span-2 overflow-hidden">
-            <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground">{tDonations("recentDues")}</h3>
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <h3 className="font-semibold text-foreground">{tDonations("recentDues")}</h3>
             </div>
             <RecentDuesTable
               donations={donations}
@@ -159,27 +169,8 @@ export function PhilanthropyDashboardClient({
               }}
             />
           </Card>
-
-          {/* Purpose Breakdown */}
-          <Card className="p-5">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-4">
-              {tDonations("byPurpose")}
-            </h3>
-            <PurposeDotLeaders
-              purposeTotals={activePurposeTotals}
-              emptyMessage={purposeEmptyMessage}
-            />
-          </Card>
         </div>
       )}
-
-      {/* Make a Donation button (floating in header via portal would be ideal, but keeping it simple) */}
-      <Button onClick={() => setIsDrawerOpen(true)} disabled={!isStripeConnected}>
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        {tDonations("makeADonation")}
-      </Button>
 
       {/* Donation Drawer */}
       <DonationDrawer
@@ -191,5 +182,26 @@ export function PhilanthropyDashboardClient({
         isStripeConnected={isStripeConnected}
       />
     </>
+  );
+}
+
+function PurposeRows({ purposeTotals, emptyMessage }: { purposeTotals: Record<string, number>; emptyMessage: string }) {
+  const entries = Object.entries(purposeTotals);
+  if (entries.length === 0) {
+    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
+  }
+  return (
+    <div className="space-y-3">
+      {entries
+        .sort(([, a], [, b]) => b - a)
+        .map(([purpose, cents]) => (
+          <div key={purpose} className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
+            <span className="text-foreground">{purpose}</span>
+            <span className="font-mono font-medium text-foreground">
+              ${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+        ))}
+    </div>
   );
 }

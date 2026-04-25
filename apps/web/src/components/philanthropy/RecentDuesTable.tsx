@@ -36,58 +36,59 @@ export function RecentDuesTable({ donations, isAdmin, isPublicView = false, tran
     );
   }
 
+  const showVisibilityCol = isAdmin && !isPublicView;
+
   return (
     <div className="overflow-x-auto">
-      <table className="w-full table-dense">
+      <table className="w-full">
         <thead>
-          <tr className="border-b border-[var(--border)]">
-            <th className="text-left">{t.donor}</th>
-            <th className="text-left">{t.purpose}</th>
-            <th className="text-left">{t.date}</th>
-            <th className="text-right">{t.amount}</th>
-            <th className="text-right">{t.status}</th>
-            {isAdmin && !isPublicView && <th className="text-right">{t.visibility}</th>}
+          <tr className="border-b border-border">
+            <th className="text-left p-4 text-sm font-medium text-muted-foreground">{t.donor}</th>
+            <th className="text-left p-4 text-sm font-medium text-muted-foreground">{t.purpose}</th>
+            <th className="text-left p-4 text-sm font-medium text-muted-foreground">{t.date}</th>
+            <th className="text-right p-4 text-sm font-medium text-muted-foreground">{t.amount}</th>
+            <th className="text-right p-4 text-sm font-medium text-muted-foreground">{t.status}</th>
+            {showVisibilityCol && (
+              <th className="text-right p-4 text-sm font-medium text-muted-foreground">{t.visibility}</th>
+            )}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-border">
           {visibleDonations.map((donation) => {
             const isAnonymous = donation.anonymous === true;
             const visibility = donation.visibility || "public";
 
             return (
-              <tr key={donation.id}>
-                <td>
+              <tr key={donation.id} className="hover:bg-muted/50 transition-colors">
+                <td className="p-4">
                   <p className="font-medium text-foreground">
                     {isAnonymous ? t.anonymous : (donation.donor_name || t.anonymous)}
                   </p>
                   {!isAnonymous && !isPublicView && donation.donor_email && (
-                    <p className="text-xs text-muted-foreground">{donation.donor_email}</p>
+                    <p className="text-sm text-muted-foreground">{donation.donor_email}</p>
                   )}
                 </td>
-                <td className="text-muted-foreground">
+                <td className="p-4 text-muted-foreground">
                   {donation.purpose || t.generalSupport}
                 </td>
-                <td className="text-muted-foreground">
+                <td className="p-4 text-muted-foreground">
                   {donation.created_at
                     ? new Date(donation.created_at).toLocaleDateString()
                     : "—"}
                 </td>
-                <td className="text-right font-mono tabular-nums font-medium text-foreground">
+                <td className="p-4 text-right font-mono font-medium text-foreground">
                   ${(donation.amount_cents / 100).toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
                 </td>
-                <td className="text-right">
-                  <Badge
-                    variant={donation.status === "succeeded" ? "success" : donation.status === "failed" ? "error" : "muted"}
-                    className={donation.status === "succeeded" ? "badge-success-muted" : ""}
-                  >
+                <td className="p-4 text-right">
+                  <Badge variant={donation.status === "succeeded" ? "success" : donation.status === "failed" ? "error" : "muted"}>
                     {donation.status}
                   </Badge>
                 </td>
-                {isAdmin && !isPublicView && (
-                  <td className="text-right">
+                {showVisibilityCol && (
+                  <td className="p-4 text-right">
                     <VisibilityBadge visibility={visibility} translations={t} />
                   </td>
                 )}
@@ -122,11 +123,12 @@ function VisibilityBadge({ visibility, translations: t }: { visibility: string; 
       );
     default:
       return (
-        <span className="inline-flex items-center justify-end text-muted-foreground" title="Public">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <Badge variant="muted">
+          <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
           </svg>
-        </span>
+          Public
+        </Badge>
       );
   }
 }
