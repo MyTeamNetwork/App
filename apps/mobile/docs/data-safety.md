@@ -68,7 +68,7 @@ scoped photo picker.
 | **App interactions** (screen views, feature usage) | Yes | No | Required | Analytics, App functionality | PostHog |
 | **Crash logs** | Yes | No | Required | Crash reporting | Sentry |
 | **Diagnostics** (perf, ANRs, hangs) | Yes | No | Required | Performance monitoring | Sentry + PostHog |
-| **Device or other IDs** | Yes | No | Required | Analytics, Crash reporting, Push delivery, Fraud prevention | PostHog (`$device_id`), Sentry (`device.id`), FCM push token (Supabase `user_devices`), hCaptcha (risk signals) |
+| **Device or other IDs** | Yes | No | Required | Analytics, Crash reporting, Push delivery, Fraud prevention | PostHog (`$device_id`), Sentry (`device.id`), FCM push token (Supabase `user_devices`), Cloudflare Turnstile (risk signals) |
 
 **Push notifications** specifically:
 - Tokens come from `expo-notifications` via FCM.
@@ -115,7 +115,7 @@ Leave all of these unchecked in the form:
 | PostHog (`posthog-react-native`) | User ID, device ID, event properties |
 | Sentry (`@sentry/react-native`) | User ID, device/OS info, stack traces |
 | Google Sign-In | Google account email, name, ID token (user-initiated) |
-| hCaptcha | Device/browser signals during signup challenges |
+| Cloudflare Turnstile | Device/browser signals during auth and donation challenges |
 | Firebase Cloud Messaging (via `expo-notifications`) | Device push token, notification payload |
 
 ### 1.9 Open questions before submission
@@ -128,7 +128,7 @@ Leave all of these unchecked in the form:
 - [ ] PostHog opt-out — is there a Settings toggle?
 - [ ] COPPA — minimum user age; any under-13 path?
 - [ ] AD_ID permission — verify it's not pulled in by a transitive SDK.
-- [ ] `hCaptcha` site key — confirmed on EAS env, not just `.env.local`.
+- [ ] `EXPO_PUBLIC_TURNSTILE_SITE_KEY` — confirmed on EAS env, not just `.env.local`.
 
 ---
 

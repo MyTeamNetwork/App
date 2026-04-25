@@ -27,7 +27,6 @@
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
     "@expo/cli": "^54.0.21",
     "@gorhom/bottom-sheet": "^5.2.8",
-    "@hcaptcha/react-native-hcaptcha": "^2.1.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "^8.6.0",
     "@react-native-community/netinfo": "^12.0.1",

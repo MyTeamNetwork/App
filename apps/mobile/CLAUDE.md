@@ -213,8 +213,8 @@ Copy `.env.example` to `.env.local` (never commit `.env.local`).
 | `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | No | Google OAuth iOS client ID |
 | `EXPO_PUBLIC_POSTHOG_KEY` | No | PostHog product analytics key |
 | `EXPO_PUBLIC_SENTRY_DSN` | No | Sentry error tracking DSN |
-| `EXPO_PUBLIC_HCAPTCHA_SITE_KEY` | No | hCaptcha site key (donations/Stripe) |
-| `EXPO_PUBLIC_HCAPTCHA_BASE_URL` | No | hCaptcha base URL |
+| `EXPO_PUBLIC_TURNSTILE_SITE_KEY` | Yes | Cloudflare Turnstile site key (auth + donations) |
+| `EXPO_PUBLIC_CAPTCHA_BASE_URL` | No | Document origin for the in-WebView captcha widget (default: web app URL) |
 
 ## Testing
 

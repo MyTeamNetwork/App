@@ -1,10 +1,9 @@
 /**
- * Consolidated hCaptcha Integration Tests
+ * Consolidated Captcha Integration Tests
  *
- * Tests for captcha verification including:
- * - Backend verification (token validation, timeout enforcement)
- * - Component behavior (callback invocation)
- * - Login form integration (form submission blocking, button state)
+ * Tests for Cloudflare Turnstile verification (the validator is provider-agnostic
+ * in shape — covers token validation, timeout enforcement, callback invocation,
+ * and form submission gating).
  */
 
 import { describe, it } from "node:test";
@@ -20,7 +19,7 @@ function resetEnv() {
   process.env = { ...originalEnv };
 }
 
-describe("hCaptcha Integration", () => {
+describe("Captcha Integration", () => {
   describe("Backend Verification", () => {
     it("should reject missing or empty tokens", async () => {
       // Set up a mock secret key so we don't hit development bypass

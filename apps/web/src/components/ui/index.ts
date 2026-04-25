@@ -10,6 +10,8 @@ export { Textarea } from "./Textarea";
 export { SoftDeleteButton } from "./SoftDeleteButton";
 export { HCaptcha } from "./HCaptcha";
 export type { HCaptchaProps, HCaptchaRef } from "./HCaptcha";
+export { Turnstile } from "./Turnstile";
+export type { TurnstileProps, TurnstileRef } from "./Turnstile";
 export { Skeleton } from "./Skeleton";
 export { PermissionRoleCard } from "./PermissionRoleCard";
 export { ProgressBar } from "./ProgressBar";

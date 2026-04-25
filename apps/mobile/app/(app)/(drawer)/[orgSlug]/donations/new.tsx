@@ -15,7 +15,7 @@ import { DrawerActions } from "@react-navigation/native";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { getWebAppUrl } from "@/lib/web-api";
-import HCaptcha, { type HCaptchaRef } from "@/components/HCaptcha";
+import Turnstile, { type TurnstileRef } from "@/components/Turnstile";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
@@ -27,7 +27,7 @@ import { track } from "@/lib/analytics";
 export default function NewDonationScreen() {
   const navigation = useNavigation();
   const { orgId, orgSlug, orgName, orgLogoUrl } = useOrg();
-  const captchaRef = useRef<HCaptchaRef>(null);
+  const captchaRef = useRef<TurnstileRef>(null);
   const { neutral, semantic } = useAppColorScheme();
   const styles = useThemedStyles((n, s) => ({
     container: {
@@ -275,11 +275,10 @@ export default function NewDonationScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <HCaptcha
+          <Turnstile
             ref={captchaRef}
             onVerify={handleCaptchaVerify}
             onError={(message) => setError(message)}
-            onExpire={() => setError("Captcha expired. Please try again.")}
             onCancel={() => setError("Captcha was canceled.")}
           />
 

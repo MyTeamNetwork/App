@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Card, Button, Input, Textarea, Select, HCaptcha } from "@/components/ui";
+import { Card, Button, Input, Textarea, Select, Turnstile } from "@/components/ui";
 import { useIdempotencyKey, useCaptcha } from "@/hooks";
 import { trackBehavioralEvent } from "@/lib/analytics/events";
 
@@ -264,7 +264,7 @@ export function DonationForm({
           </div>
         )}
 
-        <HCaptcha
+        <Turnstile
           onVerify={onCaptchaVerify}
           onExpire={onCaptchaExpire}
           onError={onCaptchaError}

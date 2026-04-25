@@ -31,6 +31,7 @@ import { supabase } from "@/lib/supabase";
 import { captureException, track } from "@/lib/analytics";
 import { showToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/Button";
+import Turnstile, { type TurnstileRef } from "@/components/Turnstile";
 import {
   ANIMATION,
   NEUTRAL,
@@ -77,6 +78,10 @@ export default function LoginScreen() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const isLoading = emailLoading || googleLoading;
+
+  // Captcha
+  const turnstileRef = useRef<TurnstileRef>(null);
+  const pendingCredsRef = useRef<{ email: string; password: string } | null>(null);
 
   // Reanimated — sheet entrance
   const sheetTranslate = useSharedValue(16);
@@ -161,8 +166,8 @@ export default function LoginScreen() {
     passwordFocusOpacity.value = withTiming(0, { duration: ANIMATION.fast });
   };
 
-  // Email/Password sign in
-  const handleEmailSignIn = async () => {
+  // Email/Password sign in — step 1: validate form, then trigger captcha
+  const handleEmailSignIn = () => {
     setEmailError("");
     setPasswordError("");
     setApiError("");
@@ -184,11 +189,25 @@ export default function LoginScreen() {
       return;
     }
 
+    pendingCredsRef.current = { email: trimmedEmail.toLowerCase(), password };
     setEmailLoading(true);
+    turnstileRef.current?.show();
+  };
+
+  // Email/Password sign in — step 2: captcha verified, send to Supabase
+  const handleCaptchaVerify = async (captchaToken: string) => {
+    const creds = pendingCredsRef.current;
+    pendingCredsRef.current = null;
+    if (!creds) {
+      setEmailLoading(false);
+      return;
+    }
+
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail.toLowerCase(),
-        password,
+        email: creds.email,
+        password: creds.password,
+        options: { captchaToken },
       });
 
       if (error) {
@@ -216,6 +235,20 @@ export default function LoginScreen() {
     } finally {
       setEmailLoading(false);
     }
+  };
+
+  const handleCaptchaCancel = () => {
+    pendingCredsRef.current = null;
+    setEmailLoading(false);
+  };
+
+  const handleCaptchaError = (message: string) => {
+    pendingCredsRef.current = null;
+    setEmailLoading(false);
+    const helpful = "Verification failed. Please try again.";
+    setApiError(helpful);
+    showToast(helpful, "error");
+    captureException(new Error(`Turnstile: ${message}`), { screen: "Login", method: "email" });
   };
 
   // Google OAuth sign in (web-based — native flow has nonce issues with Supabase)
@@ -513,6 +546,13 @@ export default function LoginScreen() {
           </ScrollView>
         </Animated.View>
       </KeyboardAvoidingView>
+
+      <Turnstile
+        ref={turnstileRef}
+        onVerify={handleCaptchaVerify}
+        onError={handleCaptchaError}
+        onCancel={handleCaptchaCancel}
+      />
     </View>
   );
 }

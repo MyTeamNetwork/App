@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { ChevronLeft, Eye, EyeOff } from "lucide-react-native";
 import { supabase } from "@/lib/supabase";
 import { track } from "@/lib/analytics";
 import { borderRadius, spacing, fontSize } from "@/lib/theme";
+import Turnstile, { type TurnstileRef } from "@/components/Turnstile";
 
 // Check if running in web browser (Expo web mode)
 const isWeb = Platform.OS === "web";
@@ -93,6 +94,10 @@ export default function SignupScreen() {
   // Loading state
   const [loading, setLoading] = useState(false);
 
+  // Captcha
+  const turnstileRef = useRef<TurnstileRef>(null);
+  const pendingCredsRef = useRef<{ email: string; password: string } | null>(null);
+
   const isFormValid =
     isEmailValid(email) &&
     password.length >= 6 &&
@@ -161,13 +166,26 @@ export default function SignupScreen() {
       return;
     }
 
+    pendingCredsRef.current = { email: trimmedEmail.toLowerCase(), password };
     setLoading(true);
+    turnstileRef.current?.show();
+  };
+
+  const handleCaptchaVerify = async (captchaToken: string) => {
+    const creds = pendingCredsRef.current;
+    pendingCredsRef.current = null;
+    if (!creds) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const { error } = await supabase.auth.signUp({
-        email: trimmedEmail.toLowerCase(),
-        password,
+        email: creds.email,
+        password: creds.password,
         options: {
           emailRedirectTo: "teammeet://callback",
+          captchaToken,
         },
       });
 
@@ -195,6 +213,17 @@ export default function SignupScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCaptchaCancel = () => {
+    pendingCredsRef.current = null;
+    setLoading(false);
+  };
+
+  const handleCaptchaError = () => {
+    pendingCredsRef.current = null;
+    setLoading(false);
+    setApiError("Verification failed. Please try again.");
   };
 
   const getInputStyle = (focused: boolean, hasError: boolean) => {
@@ -387,6 +416,13 @@ export default function SignupScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Turnstile
+        ref={turnstileRef}
+        onVerify={handleCaptchaVerify}
+        onError={handleCaptchaError}
+        onCancel={handleCaptchaCancel}
+      />
     </View>
   );
 }
