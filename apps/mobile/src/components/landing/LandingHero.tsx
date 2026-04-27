@@ -30,12 +30,14 @@ interface LandingHeroProps {
   onSignIn: () => void;
   onCreateAccount: () => void;
   onContinueWithGoogle: () => void;
+  googleLoading?: boolean;
 }
 
 export function LandingHero({
   onSignIn,
   onCreateAccount,
   onContinueWithGoogle,
+  googleLoading = false,
 }: LandingHeroProps) {
   const { width } = useWindowDimensions();
   const isCompact = width < 375;
@@ -106,6 +108,7 @@ export function LandingHero({
           fullWidth
           size="lg"
           onPress={onSignIn}
+          disabled={googleLoading}
           accessibilityLabel="Sign in"
           accessibilityHint="Navigates to the sign-in screen"
         >
@@ -123,6 +126,7 @@ export function LandingHero({
           primaryColor="#ffffff"
           primaryForeground="#0f172a"
           onPress={onCreateAccount}
+          disabled={googleLoading}
           accessibilityLabel="Create account"
           accessibilityHint="Navigates to the sign-up screen"
         >
@@ -134,14 +138,20 @@ export function LandingHero({
           the colored G chip; Button has no sub-icon slot for it. */}
       <Pressable
         onPress={onContinueWithGoogle}
-        style={({ pressed }) => [styles.googleRow, pressed && styles.googleRowPressed]}
+        disabled={googleLoading}
+        style={({ pressed }) => [
+          styles.googleRow,
+          googleLoading && styles.googleRowDisabled,
+          pressed && !googleLoading && styles.googleRowPressed,
+        ]}
         accessibilityRole="button"
         accessibilityLabel="Continue with Google"
+        accessibilityState={{ disabled: googleLoading, busy: googleLoading }}
       >
         <View style={styles.googleChip}>
           <Text style={styles.googleChipText}>G</Text>
         </View>
-        <Text style={styles.googleText}>Continue with Google</Text>
+        <Text style={styles.googleText}>{googleLoading ? "Connecting…" : "Continue with Google"}</Text>
       </Pressable>
 
       {/* Scroll hint */}
@@ -232,6 +242,9 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   googleRowPressed: {
+    opacity: 0.7,
+  },
+  googleRowDisabled: {
     opacity: 0.7,
   },
   googleChip: {

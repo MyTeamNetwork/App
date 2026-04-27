@@ -14,6 +14,15 @@ export function init(dsn: string): void {
     enableAutoSessionTracking: true,
     attachStacktrace: true,
     environment: __DEV__ ? "development" : "production",
+    sendDefaultPii: false,
+    beforeSend(event) {
+      if (event.user) {
+        delete event.user.email;
+        delete event.user.username;
+        delete event.user.ip_address;
+      }
+      return event;
+    },
   });
   initialized = true;
 }
@@ -25,7 +34,7 @@ export function setEnabled(value: boolean): void {
   }
 }
 
-export function setUser(user: { id: string; email?: string } | null): void {
+export function setUser(user: { id: string } | null): void {
   if (!initialized) return;
   if (!telemetryEnabled && user !== null) return;
   Sentry.setUser(user);

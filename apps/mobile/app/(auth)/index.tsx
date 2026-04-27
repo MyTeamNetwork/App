@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Linking, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -9,9 +10,11 @@ import { LandingFeatures } from "@/components/landing/LandingFeatures";
 import { getWebAppUrl } from "@/lib/web-api";
 import { SPACING } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
+import { startGoogleSignIn } from "@/lib/google-sign-in";
 
 export default function LandingScreen() {
   const router = useRouter();
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleSignInPress = () => {
     router.push("/(auth)/login");
@@ -21,8 +24,13 @@ export default function LandingScreen() {
     router.push("/(auth)/signup");
   };
 
-  const handleGooglePress = () => {
-    router.push("/(auth)/login");
+  const handleGooglePress = async () => {
+    setGoogleLoading(true);
+    try {
+      await startGoogleSignIn("landing");
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   const handleTermsPress = () => {
@@ -65,6 +73,7 @@ export default function LandingScreen() {
             onSignIn={handleSignInPress}
             onCreateAccount={handleCreateAccountPress}
             onContinueWithGoogle={handleGooglePress}
+            googleLoading={googleLoading}
           />
 
           <View style={styles.demoCardWrap}>

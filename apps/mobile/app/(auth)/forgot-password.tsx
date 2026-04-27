@@ -199,7 +199,7 @@ export default function ForgotPasswordScreen() {
                 <Text style={styles.successEmail}>{email.trim().toLowerCase()}</Text>
               </Text>
               <Text style={styles.successHint}>
-                {"If you don't see the email, check your spam folder. The link opens a secure Team Network page in your browser where you can set a new password."}
+                {"If you don't see the email, check your spam folder. The link opens a secure TeamNetwork page in your browser where you can set a new password."}
               </Text>
               <Link href="/(auth)/login" asChild>
                 <Pressable

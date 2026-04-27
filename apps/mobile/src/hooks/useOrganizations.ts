@@ -7,6 +7,7 @@ import * as sentry from "@/lib/analytics/sentry";
 
 interface UseOrganizationsReturn {
   organizations: Organization[];
+  pendingOrganizations: Organization[];
   loading: boolean;
   error: string | null;
   refetch: () => void;
@@ -18,6 +19,7 @@ export function useOrganizations(): UseOrganizationsReturn {
   const userId = user?.id ?? null;
   const { beginRequest, invalidateRequests, isCurrentRequest } = useRequestTracker();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [pendingOrganizations, setPendingOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,32 +30,47 @@ export function useOrganizations(): UseOrganizationsReturn {
       if (!userId) {
         if (isMountedRef.current) {
           setOrganizations([]);
+          setPendingOrganizations([]);
           setError(null); // Not an error, just not logged in
           setLoading(false);
         }
         return;
       }
 
-      const { data, error: fetchError } = await supabase
-        .from("user_organization_roles")
-        .select("organization:organizations(*)")
-        .eq("user_id", userId)
-        .eq("status", "active");
+      const [activeResult, pendingResult] = await Promise.all([
+        supabase
+          .from("user_organization_roles")
+          .select("organization:organizations(*)")
+          .eq("user_id", userId)
+          .eq("status", "active"),
+        supabase
+          .from("user_organization_roles")
+          .select("organization:organizations(*)")
+          .eq("user_id", userId)
+          .eq("status", "pending"),
+      ]);
 
-      if (fetchError) throw fetchError;
+      if (activeResult.error) throw activeResult.error;
+      if (pendingResult.error) throw pendingResult.error;
 
       if (isMountedRef.current && isCurrentRequest(requestId)) {
-        const orgs = (data || [])
+        const orgs = (activeResult.data || [])
+          .map((row) => row.organization)
+          .filter((org): org is Organization => org !== null);
+        const pendingOrgs = (pendingResult.data || [])
           .map((row) => row.organization)
           .filter((org): org is Organization => org !== null);
 
         setOrganizations(orgs);
+        setPendingOrganizations(pendingOrgs);
         setError(null);
       }
     } catch (e) {
       sentry.captureException(e as Error, { context: "useOrganizations.fetchOrganizations" });
       if (isMountedRef.current && isCurrentRequest(requestId)) {
+        setOrganizations([]);
         setError((e as Error).message);
+        setPendingOrganizations([]);
       }
     } finally {
       if (isMountedRef.current && isCurrentRequest(requestId)) {
@@ -95,5 +112,5 @@ export function useOrganizations(): UseOrganizationsReturn {
     };
   }, [userId, fetchOrganizations]);
 
-  return { organizations, loading, error, refetch: fetchOrganizations };
+  return { organizations, pendingOrganizations, loading, error, refetch: fetchOrganizations };
 }

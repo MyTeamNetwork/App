@@ -360,7 +360,7 @@ export default function SignupScreen() {
           {/* Title */}
           <Text style={styles.title}>Create Account</Text>
           <Text style={styles.subtitle}>
-            Sign up to get started with TeamMeet.
+            Sign up to get started with TeamNetwork.
           </Text>
 
           {step === "age_gate" ? (

@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
+  Linking,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -19,6 +20,7 @@ import { APP_CHROME } from "@/lib/chrome";
 import { NEUTRAL, SHADOWS, RADIUS, SPACING } from "@/lib/design-tokens";
 import { spacing, fontSize } from "@/lib/theme";
 import type { Organization } from "@teammeet/types";
+import { getWebRoute } from "@/lib/web-api";
 
 const WORDMARK = require("../../../assets/brand-logo.png");
 
@@ -31,7 +33,7 @@ export default function OrganizationsScreen() {
   const insets = useSafeAreaInsets();
   const params = useGlobalSearchParams<{ orgSlug?: string; currentSlug?: string }>();
   const currentSlug = params.currentSlug ?? params.orgSlug;
-  const { organizations, loading, error, refetch } = useOrganizations();
+  const { organizations, pendingOrganizations, loading, error, refetch } = useOrganizations();
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = useCallback(() => {
@@ -45,6 +47,12 @@ export default function OrganizationsScreen() {
     },
     [router]
   );
+
+  const openWebOnboardingRoute = useCallback((path: string) => {
+    Linking.openURL(getWebRoute(path)).catch(() => {
+      // No-op: keep the current screen stable if the browser can't open.
+    });
+  }, []);
 
   const GradientHeader = (
     <LinearGradient
@@ -95,6 +103,7 @@ export default function OrganizationsScreen() {
   }
 
   const hasOrgs = organizations.length > 0;
+  const hasPendingOrgs = pendingOrganizations.length > 0;
 
   return (
     <View style={styles.container}>
@@ -126,11 +135,61 @@ export default function OrganizationsScreen() {
                 );
               })}
             </View>
+          ) : hasPendingOrgs ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyTitle}>Access Pending</Text>
+              <Text style={styles.emptyText}>
+                Your request is in with a team admin. Your organization will appear here as soon as
+                access is approved.
+              </Text>
+              <View style={styles.pendingGroup}>
+                {pendingOrganizations.map((org) => (
+                  <View key={org.id} style={styles.pendingRow}>
+                    <Text style={styles.pendingOrgName} numberOfLines={1}>
+                      {org.name}
+                    </Text>
+                    <View style={styles.pendingBadge}>
+                      <Text style={styles.pendingBadgeText}>Pending</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+              <View style={styles.emptyActions}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.emptyActionButton,
+                    styles.emptyActionButtonPrimary,
+                    pressed && { opacity: 0.8 },
+                  ]}
+                  onPress={() => openWebOnboardingRoute("/app/join")}
+                  accessibilityLabel="Join Another Team"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.emptyActionButtonPrimaryText}>Join Another Team</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.emptyActionButton,
+                    styles.emptyActionButtonSecondary,
+                    pressed && { opacity: 0.8 },
+                  ]}
+                  onPress={() => openWebOnboardingRoute("/app/create-org")}
+                  accessibilityLabel="Create a Team"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.emptyActionButtonSecondaryText}>Create a Team</Text>
+                </Pressable>
+              </View>
+            </View>
           ) : (
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyTitle}>Welcome to TeamNetwork</Text>
               <Text style={styles.emptyText}>
                 Join an existing team or create a new one
+              </Text>
+              <Text style={styles.emptyHint}>
+                Already requested access? Your team admin may still need to approve you before it
+                appears here.
               </Text>
               <View style={styles.emptyActions}>
                 <Pressable
@@ -139,7 +198,7 @@ export default function OrganizationsScreen() {
                     styles.emptyActionButtonPrimary,
                     pressed && { opacity: 0.8 },
                   ]}
-                  onPress={() => router.push("/(app)/join" as const)}
+                  onPress={() => openWebOnboardingRoute("/app/join")}
                   accessibilityLabel="Join a Team"
                   accessibilityRole="button"
                 >
@@ -151,7 +210,7 @@ export default function OrganizationsScreen() {
                     styles.emptyActionButtonSecondary,
                     pressed && { opacity: 0.8 },
                   ]}
-                  onPress={() => router.push("/(app)/create-org" as const)}
+                  onPress={() => openWebOnboardingRoute("/app/create-org")}
                   accessibilityLabel="Create a Team"
                   accessibilityRole="button"
                 >
@@ -256,11 +315,53 @@ const styles = StyleSheet.create({
     color: NEUTRAL.muted,
     textAlign: "center",
     lineHeight: 22,
+  },
+  emptyHint: {
+    fontSize: 14,
+    color: NEUTRAL.muted,
+    textAlign: "center",
+    lineHeight: 20,
+    marginTop: SPACING.sm,
     marginBottom: SPACING.xl,
   },
   emptyActions: {
     width: "100%",
     gap: 12,
+  },
+  pendingGroup: {
+    width: "100%",
+    marginBottom: SPACING.xl,
+    backgroundColor: NEUTRAL.surface,
+    borderRadius: RADIUS.xl,
+    overflow: "hidden",
+    ...SHADOWS.sm,
+  },
+  pendingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: NEUTRAL.border,
+  },
+  pendingOrgName: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: NEUTRAL.foreground,
+    marginRight: SPACING.md,
+  },
+  pendingBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    backgroundColor: "rgba(245, 158, 11, 0.16)",
+  },
+  pendingBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#b45309",
   },
   emptyActionButton: {
     paddingVertical: 14,
