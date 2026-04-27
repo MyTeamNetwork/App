@@ -53,6 +53,7 @@ export async function middleware(request: NextRequest) {
     "/api/stripe/webhook",
     "/api/stripe/webhook-connect",
     "/api/auth/validate-age", // Age gate validation during signup
+    "/api/auth/mobile-handoff/consume", // Mobile OAuth handoff exchange — caller has no session yet
     "/api/telemetry/error", // Error tracking from unauthenticated contexts
   ];
   if (publicApiRoutes.includes(pathname)) {
