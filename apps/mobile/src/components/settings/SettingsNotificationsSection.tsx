@@ -34,12 +34,18 @@ export function SettingsNotificationsSection({ orgId }: Props) {
   const [emailAddress, setEmailAddress] = useState("");
   const [emailEnabled, setEmailEnabled] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(true);
+  const [announcementPush, setAnnouncementPush] = useState(true);
+  const [chatPush, setChatPush] = useState(true);
+  const [eventReminderPush, setEventReminderPush] = useState(true);
 
   useEffect(() => {
     if (prefs) {
       setEmailAddress(prefs.email_address || "");
       setEmailEnabled(prefs.email_enabled);
       setPushEnabled(prefs.push_enabled);
+      setAnnouncementPush(prefs.announcement_push_enabled);
+      setChatPush(prefs.chat_push_enabled);
+      setEventReminderPush(prefs.event_reminder_push_enabled);
     }
   }, [prefs]);
 
@@ -48,6 +54,9 @@ export function SettingsNotificationsSection({ orgId }: Props) {
       email_address: emailAddress.trim() || null,
       email_enabled: emailEnabled,
       push_enabled: pushEnabled,
+      announcement_push_enabled: announcementPush,
+      chat_push_enabled: chatPush,
+      event_reminder_push_enabled: eventReminderPush,
     });
   };
 
@@ -246,13 +255,55 @@ export function SettingsNotificationsSection({ orgId }: Props) {
               <View style={styles.switchRow}>
                 <View style={styles.switchInfo}>
                   <Text style={styles.switchLabel}>Push Notifications</Text>
-                  <Text style={styles.switchHint}>Announcements and events</Text>
+                  <Text style={styles.switchHint}>Master switch for all push categories</Text>
                 </View>
                 <Switch
                   value={pushEnabled}
                   onValueChange={setPushEnabled}
                   trackColor={{ false: colors.border, true: colors.primaryLight }}
                   thumbColor={pushEnabled ? colors.primary : colors.card}
+                />
+              </View>
+
+              <View style={[styles.switchRow, !pushEnabled && { opacity: 0.5 }]}>
+                <View style={styles.switchInfo}>
+                  <Text style={styles.switchLabel}>Announcements</Text>
+                  <Text style={styles.switchHint}>New announcements posted to your org</Text>
+                </View>
+                <Switch
+                  value={announcementPush}
+                  onValueChange={setAnnouncementPush}
+                  disabled={!pushEnabled}
+                  trackColor={{ false: colors.border, true: colors.primaryLight }}
+                  thumbColor={announcementPush ? colors.primary : colors.card}
+                />
+              </View>
+
+              <View style={[styles.switchRow, !pushEnabled && { opacity: 0.5 }]}>
+                <View style={styles.switchInfo}>
+                  <Text style={styles.switchLabel}>Chat mentions</Text>
+                  <Text style={styles.switchHint}>When someone @mentions you</Text>
+                </View>
+                <Switch
+                  value={chatPush}
+                  onValueChange={setChatPush}
+                  disabled={!pushEnabled}
+                  trackColor={{ false: colors.border, true: colors.primaryLight }}
+                  thumbColor={chatPush ? colors.primary : colors.card}
+                />
+              </View>
+
+              <View style={[styles.switchRow, !pushEnabled && { opacity: 0.5 }]}>
+                <View style={styles.switchInfo}>
+                  <Text style={styles.switchLabel}>Event reminders</Text>
+                  <Text style={styles.switchHint}>1 hour and 24 hours before events you&apos;re attending</Text>
+                </View>
+                <Switch
+                  value={eventReminderPush}
+                  onValueChange={setEventReminderPush}
+                  disabled={!pushEnabled}
+                  trackColor={{ false: colors.border, true: colors.primaryLight }}
+                  thumbColor={eventReminderPush ? colors.primary : colors.card}
                 />
               </View>
 

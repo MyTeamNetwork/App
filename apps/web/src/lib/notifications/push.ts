@@ -1,0 +1,298 @@
+/**
+ * Server-side Expo Push fan-out.
+ *
+ * P0a scope: minimal, inline send for v1. Two-tier dispatch:
+ *   - 1 recipient (chat DM, single mention) → inline await from API route
+ *   - Broadcasts → still inline for now; can be migrated to a worker that
+ *     drains `notification_jobs` once an org breaches the Vercel timeout.
+ *
+ * Token resolution today is a 3-step query (members → preferences → tokens)
+ * because the recipient-resolution RPC recommended in the deepened plan is a
+ * P1 follow-up. The shape of `sendPush` does not depend on the resolver, so
+ * swapping in `resolve_push_targets()` later is a one-line change.
+ *
+ * DeviceNotRegistered tickets are handled inline — that token row is deleted
+ * immediately. Other receipt errors are logged but not retried here; a later
+ * `cron/push-receipts` run will handle async receipt polling.
+ */
+
+import { Expo, type ExpoPushMessage, type ExpoPushTicket } from "expo-server-sdk";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type {
+  Database,
+  NotificationAudience,
+  UserRole,
+} from "@/types/database";
+import type { NotificationCategory } from "@/lib/notifications";
+
+export type PushType =
+  | "announcement"
+  | "event"
+  | "event_reminder"
+  | "chat"
+  | "mentorship"
+  | "donation"
+  | "membership";
+
+export interface SendPushInput {
+  supabase: SupabaseClient<Database>;
+  organizationId: string;
+  audience?: NotificationAudience | null;
+  /** Explicit user list. If both `audience` and `targetUserIds` are set, intersection wins. */
+  targetUserIds?: string[] | null;
+  title: string;
+  body: string;
+  /** Per-category gating against `notification_preferences.<category>_push_enabled`. */
+  category?: NotificationCategory;
+  pushType?: PushType;
+  pushResourceId?: string;
+  /** Optional Expo `data` payload — drives `getNotificationRoute` on the device. */
+  data?: Record<string, unknown>;
+  /** Optional org slug — included in `data` so the device can route on tap. */
+  orgSlug?: string;
+}
+
+export interface SendPushResult {
+  /** Number of pushes Expo accepted (ticket.status === 'ok'). */
+  sent: number;
+  /** Recipients skipped because they had no token, push disabled, or category opted out. */
+  skipped: number;
+  /** Receipt-error messages for diagnostic surfaces. */
+  errors: string[];
+}
+
+/**
+ * Map a NotificationCategory to the boolean column on notification_preferences
+ * that controls push for that category. Mirrors the email map in lib/notifications.ts.
+ */
+const CATEGORY_PUSH_COLUMN: Record<NotificationCategory, string> = {
+  announcement: "announcement_push_enabled",
+  discussion: "discussion_push_enabled",
+  event: "event_push_enabled",
+  workout: "workout_push_enabled",
+  competition: "competition_push_enabled",
+  mentorship: "mentorship_push_enabled",
+};
+
+const expoClient = new Expo({
+  accessToken: process.env.EXPO_ACCESS_TOKEN,
+  useFcmV1: true,
+});
+
+interface MembershipRow {
+  user_id: string;
+  role: string;
+}
+
+interface PreferenceRow {
+  user_id: string | null;
+  push_enabled: boolean | null;
+  [column: string]: unknown;
+}
+
+interface TokenRow {
+  user_id: string;
+  expo_push_token: string;
+}
+
+/**
+ * Resolve which (user_id, expo_push_token) pairs should receive a push,
+ * applying audience filtering and per-category preference gating.
+ *
+ * Three-step query is intentional for v1; replace with `resolve_push_targets()`
+ * RPC once it lands.
+ */
+async function resolvePushTargets(
+  input: SendPushInput
+): Promise<{ tokens: string[]; resolvedUsers: number; skippedUsers: number }> {
+  const { supabase, organizationId, audience, targetUserIds, category } = input;
+
+  const audienceRoles: readonly UserRole[] = mapAudienceToRoles(audience ?? "both");
+
+  // Step 1: memberships in the org for the requested audience.
+  let membershipQuery = supabase
+    .from("user_organization_roles")
+    .select("user_id, role")
+    .eq("organization_id", organizationId)
+    .eq("status", "active")
+    .in("role", audienceRoles as readonly UserRole[]);
+
+  if (targetUserIds && targetUserIds.length > 0) {
+    membershipQuery = membershipQuery.in("user_id", targetUserIds);
+  }
+
+  const { data: memberships } = await membershipQuery;
+  const userIds = (memberships as MembershipRow[] | null)?.map((m) => m.user_id) ?? [];
+
+  if (userIds.length === 0) {
+    return { tokens: [], resolvedUsers: 0, skippedUsers: 0 };
+  }
+
+  // Step 2: preferences for those users in this org.
+  const prefColumns = ["user_id", "push_enabled"];
+  if (category && CATEGORY_PUSH_COLUMN[category]) {
+    prefColumns.push(CATEGORY_PUSH_COLUMN[category]);
+  }
+
+  const { data: prefs } = await supabase
+    .from("notification_preferences")
+    .select(prefColumns.join(","))
+    .eq("organization_id", organizationId)
+    .in("user_id", userIds);
+
+  const prefByUser = new Map<string, PreferenceRow>();
+  (prefs as PreferenceRow[] | null)?.forEach((row) => {
+    if (row.user_id) prefByUser.set(row.user_id, row);
+  });
+
+  const allowedUserIds = userIds.filter((userId) => {
+    const pref = prefByUser.get(userId);
+    if (!pref) {
+      // No row yet → defaults apply. New columns default to true for
+      // announcement/chat/event_reminder, false for the rest.
+      return defaultPushEnabled(category);
+    }
+    if (pref.push_enabled === false) return false;
+    if (category) {
+      const col = CATEGORY_PUSH_COLUMN[category];
+      if (col && pref[col] === false) return false;
+    }
+    return true;
+  });
+
+  if (allowedUserIds.length === 0) {
+    return { tokens: [], resolvedUsers: userIds.length, skippedUsers: userIds.length };
+  }
+
+  // Step 3: tokens for the surviving users (multi-device → multiple rows).
+  // Cast: `user_push_tokens` is in the database (migration 20260425100000)
+  // but not yet in the generated `Database` types. Regenerate via
+  // `bun run gen:types` to remove this cast.
+  const { data: tokens } = await (supabase as unknown as {
+    from: (table: string) => {
+      select: (cols: string) => {
+        in: (col: string, vals: string[]) => Promise<{ data: TokenRow[] | null }>;
+      };
+    };
+  })
+    .from("user_push_tokens")
+    .select("user_id, expo_push_token")
+    .in("user_id", allowedUserIds);
+
+  const tokenList =
+    (tokens as TokenRow[] | null)
+      ?.map((t) => t.expo_push_token)
+      .filter((t) => Expo.isExpoPushToken(t)) ?? [];
+
+  return {
+    tokens: tokenList,
+    resolvedUsers: allowedUserIds.length,
+    skippedUsers: userIds.length - allowedUserIds.length,
+  };
+}
+
+function mapAudienceToRoles(audience: NotificationAudience): readonly UserRole[] {
+  if (audience === "members") return ["admin", "active_member", "member"];
+  if (audience === "alumni") return ["alumni", "viewer"];
+  return ["admin", "active_member", "member", "alumni", "viewer"];
+}
+
+function defaultPushEnabled(category?: NotificationCategory): boolean {
+  // Mirrors the migration defaults for `*_push_enabled`.
+  switch (category) {
+    case "announcement":
+      return true;
+    case "event":
+    case "workout":
+    case "competition":
+    case "discussion":
+    case "mentorship":
+      return false;
+    default:
+      // Untyped pushes (e.g., chat, event_reminder, donation) — be conservative
+      // and let the application-level callers decide; default true so first-
+      // run users still see chat/reminders.
+      return true;
+  }
+}
+
+/**
+ * Send Expo push notifications to all eligible recipients.
+ *
+ * Resolves recipients server-side, batches into ≤100/req chunks, and processes
+ * tickets inline for synchronous error handling (DeviceNotRegistered → drop
+ * the token row).
+ */
+export async function sendPush(input: SendPushInput): Promise<SendPushResult> {
+  const { tokens, resolvedUsers, skippedUsers } = await resolvePushTargets(input);
+
+  if (tokens.length === 0) {
+    return { sent: 0, skipped: resolvedUsers + skippedUsers, errors: [] };
+  }
+
+  const data: Record<string, unknown> = {
+    ...(input.data ?? {}),
+    type: input.pushType,
+    id: input.pushResourceId,
+    orgSlug: input.orgSlug,
+    title: input.title,
+    body: input.body,
+  };
+
+  const messages: ExpoPushMessage[] = tokens.map((token) => ({
+    to: token,
+    title: input.title,
+    body: input.body,
+    data,
+    sound: "default",
+  }));
+
+  const chunks = expoClient.chunkPushNotifications(messages);
+  const tickets: Array<{ token: string; ticket: ExpoPushTicket }> = [];
+  const errors: string[] = [];
+
+  for (const chunk of chunks) {
+    try {
+      const chunkTickets = await expoClient.sendPushNotificationsAsync(chunk);
+      chunkTickets.forEach((ticket, i) => {
+        tickets.push({ token: chunk[i].to as string, ticket });
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`Chunk send failed: ${msg}`);
+    }
+  }
+
+  let sent = 0;
+  const tokensToDrop: string[] = [];
+
+  for (const { token, ticket } of tickets) {
+    if (ticket.status === "ok") {
+      sent += 1;
+      continue;
+    }
+    const errorCode = ticket.details?.error;
+    if (errorCode === "DeviceNotRegistered") {
+      tokensToDrop.push(token);
+    } else {
+      errors.push(`${errorCode ?? "unknown"}: ${ticket.message}`);
+    }
+  }
+
+  if (tokensToDrop.length > 0) {
+    // Best-effort cleanup; failure here does not affect send result.
+    // Same `user_push_tokens` cast as above.
+    await (input.supabase as unknown as {
+      from: (table: string) => {
+        delete: () => {
+          in: (col: string, vals: string[]) => Promise<unknown>;
+        };
+      };
+    })
+      .from("user_push_tokens")
+      .delete()
+      .in("expo_push_token", tokensToDrop);
+  }
+
+  return { sent, skipped: skippedUsers, errors };
+}

@@ -7,6 +7,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef, ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
+import { signOutCleanup } from "@/lib/lifecycle";
 import type { Session, User, AuthChangeEvent } from "@supabase/supabase-js";
 
 export interface AuthContextValue {
@@ -26,6 +27,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const isMountedRef = useRef(true);
+  const sessionRef = useRef<Session | null>(null);
+  sessionRef.current = session;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -65,6 +68,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Run cleanup BEFORE signOut so RLS-gated deletes (push tokens) succeed.
+    const userId = sessionRef.current?.user?.id;
+    if (userId) {
+      await signOutCleanup({ userId });
+    }
     await supabase.auth.signOut();
   }, []);
 

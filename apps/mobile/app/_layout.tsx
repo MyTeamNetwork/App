@@ -13,7 +13,6 @@ import {
   PlusJakartaSans_600SemiBold,
 } from "@expo-google-fonts/plus-jakarta-sans";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { supabase } from "@/lib/supabase";
 import { ColorSchemeProvider } from "@/contexts/ColorSchemeContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { NetworkProvider } from "@/contexts/NetworkContext";
@@ -24,9 +23,7 @@ import { init as initAnalytics, identify, reset as resetAnalytics, captureExcept
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useSupabaseAppState } from "@/hooks/useSupabaseAppState";
-import { getNativeAppLinkRoute, sanitizeUrlForTelemetry } from "@/lib/url-safety";
-import { parseMobileAuthCallbackUrl } from "@/lib/auth-redirects";
-import { consumeMobileAuthHandoff } from "@/lib/mobile-auth";
+import { parseTeammeetUrl, routeIntent } from "@/lib/deep-link";
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -176,112 +173,15 @@ function RootLayoutInner() {
     }
   }, [session?.user?.id, session?.user?.app_metadata?.provider]);
 
-  // Handle deep link URLs that carry an auth handoff, PKCE code, or recovery link.
-  // Native scheme (teammeet://callback) is the canonical mobile path — it carries
-  // a one-time handoff_code or an error. Trusted web hosts handle PKCE codes and
-  // the legacy implicit flow used by older recovery emails.
+  // Unified deep-link handling. All parsing + routing lives in
+  // `apps/mobile/src/lib/deep-link.ts` so push taps, quick actions, share
+  // targets, QR scans, and wallet adds all funnel through one parser.
+  // TODO(deep-link.ts): the OAuth parity plan
+  // (docs/plans/2026-04-26-001-feat-mobile-oauth-parity-with-web-plan.md)
+  // also touches this handler — coordinate convergence on parseTeammeetUrl.
   const handleDeepLink = useCallback(async (event: { url: string }) => {
-    const url = event.url;
-
-    // 1. Native scheme: parse and handle handoff/error.
-    const mobileCallback = parseMobileAuthCallbackUrl(url);
-    if (mobileCallback.type === "handoff") {
-      try {
-        await consumeMobileAuthHandoff(mobileCallback.code);
-      } catch (err) {
-        captureException(err as Error, {
-          context: "handleDeepLink-handoff-consume",
-          ...sanitizeUrlForTelemetry(url),
-        });
-      }
-      return;
-    }
-    if (mobileCallback.type === "error") {
-      captureException(new Error(mobileCallback.message), {
-        context: "handleDeepLink-mobile-auth-error",
-        ...sanitizeUrlForTelemetry(url),
-      });
-      return;
-    }
-
-    // 2. Reject raw tokens on the native scheme (session fixation defense).
-    if (getNativeAppLinkRoute(url) === "callback") {
-      return;
-    }
-
-    // 3. Trusted web host: PKCE code or legacy implicit flow tokens.
-    const supabaseHost = process.env.EXPO_PUBLIC_SUPABASE_URL
-      ? new URL(process.env.EXPO_PUBLIC_SUPABASE_URL).hostname
-      : null;
-    const allowedHosts = [
-      supabaseHost,
-      "www.myteamnetwork.com",
-      "myteamnetwork.com",
-    ].filter(Boolean);
-
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(url);
-    } catch {
-      return;
-    }
-    if (!allowedHosts.includes(parsedUrl.hostname)) {
-      return;
-    }
-    if (!url.includes("access_token") && !url.includes("callback") && !url.includes("code=")) {
-      return;
-    }
-
-    try {
-      const errorParam = parsedUrl.searchParams.get("error");
-      if (errorParam) {
-        const errorDescription = parsedUrl.searchParams.get("error_description");
-        captureException(new Error(errorDescription || errorParam), {
-          context: "handleDeepLink-oauth-error",
-          ...sanitizeUrlForTelemetry(url),
-        });
-        return;
-      }
-
-      const code = parsedUrl.searchParams.get("code");
-      if (code) {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchangeError) {
-          captureException(new Error(exchangeError.message), {
-            context: "handleDeepLink-pkce",
-            ...sanitizeUrlForTelemetry(url),
-          });
-        }
-        return;
-      }
-
-      // Legacy/implicit flow fallback: extract tokens from hash or query params.
-      let accessToken: string | null = null;
-      let refreshToken: string | null = null;
-
-      if (parsedUrl.hash) {
-        const hashParams = new URLSearchParams(parsedUrl.hash.substring(1));
-        accessToken = hashParams.get("access_token");
-        refreshToken = hashParams.get("refresh_token");
-      }
-
-      if (!accessToken) {
-        accessToken = parsedUrl.searchParams.get("access_token");
-        refreshToken = parsedUrl.searchParams.get("refresh_token");
-      }
-
-      if (accessToken && refreshToken) {
-        await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-      }
-    } catch (err) {
-      captureException(err as Error, {
-        context: "handleDeepLink",
-        ...sanitizeUrlForTelemetry(url),
-      });
-    }
+    const intent = parseTeammeetUrl(event.url);
+    await routeIntent(router, intent, event.url);
   }, [router]);
 
   useEffect(() => {

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { sendNotificationBlast, sendEmail as sendEmailStub } from "@/lib/notifications";
 import type { EmailParams, NotificationResult, NotificationCategory } from "@/lib/notifications";
+import { sendPush, type PushType } from "@/lib/notifications/push";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import {
   baseSchemas,
@@ -28,6 +29,26 @@ const validChannel = (value: string | undefined): NotificationChannel => {
   return "email";
 };
 
+// Supported channel inputs from clients. "push" sends Expo push only;
+// "all" sends email/SMS (per existing audience preferences) AND push.
+type RequestedChannel = "email" | "sms" | "both" | "push" | "all";
+
+function shouldSendBlast(channel: RequestedChannel): boolean {
+  return channel === "email" || channel === "sms" || channel === "both" || channel === "all";
+}
+
+function shouldSendPush(channel: RequestedChannel): boolean {
+  return channel === "push" || channel === "all";
+}
+
+function mapBlastChannel(channel: RequestedChannel): NotificationChannel {
+  if (channel === "push") return "email"; // unused when blast skipped, but keep type stable
+  if (channel === "sms") return "sms";
+  if (channel === "both") return "both";
+  if (channel === "all") return "both";
+  return "email";
+}
+
 const mapAnnouncementAudience = (audience: string): NotificationAudience => {
   if (audience === "active_members") return "members";
   if (audience === "alumni") return "alumni";
@@ -43,10 +64,17 @@ const notificationSchema = z
     title: optionalSafeString(200),
     body: optionalSafeString(8_000),
     audience: z.enum(["members", "alumni", "both"]).optional(),
-    channel: z.enum(["email", "sms", "both"]).optional(),
+    channel: z.enum(["email", "sms", "both", "push", "all"]).optional(),
     targetUserIds: uuidArray(500).optional(),
     persistNotification: z.boolean().optional(),
     category: z.enum(["announcement", "discussion", "event", "workout", "competition"]).optional(),
+    // Push fan-out fields. When `channel` is "push" or "all", these drive
+    // the Expo push payload + per-category preference filtering.
+    pushType: z
+      .enum(["announcement", "event", "event_reminder", "chat", "mentorship", "donation", "membership"])
+      .optional(),
+    pushResourceId: baseSchemas.uuid.optional(),
+    orgSlug: optionalSafeString(120),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -125,11 +153,15 @@ export async function POST(request: Request) {
     let title: string | null = body.title ?? null;
     let bodyText = body.body ?? "";
     let audience: NotificationAudience = body.audience ?? "both";
-    let channel: NotificationChannel = body.channel ?? "email";
+    const requestedChannel: RequestedChannel = (body.channel ?? "email") as RequestedChannel;
+    let channel: NotificationChannel = mapBlastChannel(requestedChannel);
     let targetUserIds: string[] | null = body.targetUserIds ?? null;
     let resolvedNotificationId: string | null = notificationId ?? null;
     let persistNotification = body.persistNotification !== false;
     let category: NotificationCategory | undefined = body.category;
+    const pushType: PushType | undefined = body.pushType;
+    const pushResourceId: string | undefined = body.pushResourceId;
+    const orgSlug: string | undefined = body.orgSlug ?? undefined;
 
     if (announcementId) {
       const { data: announcement, error: announcementError } = await service
@@ -196,7 +228,7 @@ export async function POST(request: Request) {
       bodyText = body.body ?? "";
       const requestedAudience = body.audience as NotificationAudience | undefined;
       audience = requestedAudience || "both";
-      channel = body.channel ?? "email";
+      channel = mapBlastChannel((body.channel ?? "email") as RequestedChannel);
       targetUserIds = body.targetUserIds ?? null;
       resolvedNotificationId = body.notificationId ?? null;
       persistNotification = body.persistNotification !== false;
@@ -258,22 +290,41 @@ export async function POST(request: Request) {
       );
     }
 
-    // Use sendNotificationBlast which handles targeting, concurrency, and sending
-    const blastResult = await sendNotificationBlast({
-      supabase: service,
-      organizationId,
-      audience,
-      channel,
-      title,
-      body: bodyText,
-      targetUserIds: targetUserIds || undefined,
-      category,
-      sendEmailFn: async (params: EmailParams): Promise<NotificationResult> => {
-        return sendEmailWithFallback(params.to, params.subject, params.body);
-      },
-    });
+    // Email + SMS fan-out (existing path). Skipped entirely when channel="push".
+    const blastResult = shouldSendBlast(requestedChannel)
+      ? await sendNotificationBlast({
+          supabase: service,
+          organizationId,
+          audience,
+          channel,
+          title,
+          body: bodyText,
+          targetUserIds: targetUserIds || undefined,
+          category,
+          sendEmailFn: async (params: EmailParams): Promise<NotificationResult> => {
+            return sendEmailWithFallback(params.to, params.subject, params.body);
+          },
+        })
+      : { total: 0, emailCount: 0, smsCount: 0, skippedMissingContact: 0, errors: [] };
 
-    if (blastResult.total === 0) {
+    // Expo push fan-out (P0a). Inline send for now; later phases may move to
+    // a worker draining notification_jobs.
+    const pushResult = shouldSendPush(requestedChannel)
+      ? await sendPush({
+          supabase: service,
+          organizationId,
+          audience,
+          targetUserIds: targetUserIds || undefined,
+          title,
+          body: bodyText,
+          category,
+          pushType,
+          pushResourceId,
+          orgSlug,
+        })
+      : { sent: 0, skipped: 0, errors: [] };
+
+    if (blastResult.total === 0 && pushResult.sent === 0 && shouldSendBlast(requestedChannel)) {
       return respond(
         {
           error: "No recipients matched the selected audience",
@@ -291,17 +342,19 @@ export async function POST(request: Request) {
         .eq("id", resolvedNotificationId);
     }
 
-    const sent = blastResult.emailCount + blastResult.smsCount;
-    const success = blastResult.errors.length === 0 && sent > 0;
+    const sent = blastResult.emailCount + blastResult.smsCount + pushResult.sent;
+    const allErrors = [...blastResult.errors, ...pushResult.errors];
+    const success = allErrors.length === 0 && sent > 0;
 
     const payload = {
       success,
       sent,
       emailSent: blastResult.emailCount,
       smsSent: blastResult.smsCount,
+      pushSent: pushResult.sent,
       total: blastResult.total,
-      skipped: blastResult.skippedMissingContact,
-      errors: blastResult.errors.length > 0 ? blastResult.errors : undefined,
+      skipped: blastResult.skippedMissingContact + pushResult.skipped,
+      errors: allErrors.length > 0 ? allErrors : undefined,
     };
 
     const status = success ? 200 : 500;
