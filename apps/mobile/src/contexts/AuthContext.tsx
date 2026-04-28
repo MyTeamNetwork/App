@@ -75,15 +75,40 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // the next signed-in user shouldn't inherit the previous user's events.
     const syncedOrgIds = await listSyncedOrgIds().catch(() => [] as string[]);
     if (syncedOrgIds.length > 0) {
+      // Race the user's choice against a 30s timeout that defaults to "Keep".
+      // If the OS dismisses the alert (incoming call, JS reload, system
+      // dialog), the promise would otherwise hang forever and sign-out
+      // would never complete.
       const removeCalendars = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const settle = (value: boolean) => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+        const timeoutId = setTimeout(() => settle(false), 30_000);
         Alert.alert(
           "Remove TeamMeet calendars?",
           `You have ${syncedOrgIds.length} TeamMeet calendar${
             syncedOrgIds.length === 1 ? "" : "s"
           } on this device. Remove them when signing out?`,
           [
-            { text: "Keep", style: "cancel", onPress: () => resolve(false) },
-            { text: "Remove", style: "destructive", onPress: () => resolve(true) },
+            {
+              text: "Keep",
+              style: "cancel",
+              onPress: () => {
+                clearTimeout(timeoutId);
+                settle(false);
+              },
+            },
+            {
+              text: "Remove",
+              style: "destructive",
+              onPress: () => {
+                clearTimeout(timeoutId);
+                settle(true);
+              },
+            },
           ],
           { cancelable: false }
         );
