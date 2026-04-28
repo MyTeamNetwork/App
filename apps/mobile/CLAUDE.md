@@ -86,7 +86,7 @@ Then in ASC:
 ### Common gotchas
 
 - Bundle ID immutable after first ASC submission
-- Sign in with Apple required if any other social sign-in present (Google/LinkedIn/Microsoft all enabled — already implemented)
+- Sign in with Apple required if any other social sign-in present. Mobile uses `expo-apple-authentication` on iOS and requires the Apple capability on bundle ID `com.myteamnetwork.teammeet`.
 - Push key (`.p8`) shared across all team apps; never revoke without rotating in Expo
 - Each `eas build --profile production` consumes paid build minutes; use `preview` profile for internal dogfood
 - Version in `app.json` (`expo.version`) = marketing version shown in store; `expo.ios.buildNumber` auto-increments via EAS

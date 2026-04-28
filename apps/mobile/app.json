@@ -27,6 +27,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.myteamnetwork.teammeet",
       "buildNumber": "1",
+      "usesAppleSignIn": true,
       "associatedDomains": [
         "applinks:www.myteamnetwork.com",
         "applinks:myteamnetwork.com"
@@ -34,8 +35,11 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Scan a TeamMeet QR code to join your organization or check members in at events.",
+        "NSCalendarsFullAccessUsageDescription": "Add TeamMeet events to your device calendar so you see them alongside your other commitments.",
         "NSCalendarsWriteOnlyAccessUsageDescription": "Add TeamMeet events to your device calendar so you see them alongside your other commitments.",
         "NSCalendarsUsageDescription": "Add TeamMeet events to your device calendar so you see them alongside your other commitments.",
+        "NSRemindersFullAccessUsageDescription": "TeamMeet uses reminders to surface event-related reminders alongside your existing reminders.",
+        "NSRemindersUsageDescription": "TeamMeet uses reminders to surface event-related reminders alongside your existing reminders.",
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
@@ -142,10 +146,12 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "Add TeamMeet events to your device calendar so you see them alongside your other commitments."
+          "calendarPermission": "Add TeamMeet events to your device calendar so you see them alongside your other commitments.",
+          "remindersPermission": "TeamMeet uses reminders to surface event-related reminders alongside your existing reminders."
         }
       ],
       "expo-quick-actions",
+      "expo-apple-authentication",
       "./plugins/withOptionalHardwareFeatures",
       "expo-font"
     ],

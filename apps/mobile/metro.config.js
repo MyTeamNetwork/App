@@ -16,6 +16,8 @@ config.resolver.nodeModulesPaths = [
 
 // Ensure React singletons always resolve from the local project (since they are not hoisted).
 config.resolver.extraNodeModules = {
+  "expo-apple-authentication": path.resolve(projectRoot, "node_modules/expo-apple-authentication"),
+  "expo-local-authentication": path.resolve(projectRoot, "node_modules/expo-local-authentication"),
   react: path.resolve(projectRoot, "node_modules/react"),
   "react-dom": path.resolve(projectRoot, "node_modules/react-dom"),
   "react-native": path.resolve(projectRoot, "node_modules/react-native"),

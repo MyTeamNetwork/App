@@ -23,6 +23,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { CheckCircle, ChevronLeft, Eye, EyeOff, Lock, Mail } from "lucide-react-native";
+import * as AppleAuthentication from "expo-apple-authentication";
 import * as WebBrowser from "expo-web-browser";
 import { makeRedirectUri } from "expo-auth-session";
 import { Image } from "expo-image";
@@ -35,6 +36,11 @@ import {
 } from "@/lib/auth-redirects";
 import { consumeMobileAuthHandoff } from "@/lib/mobile-auth";
 import { getWebAppUrl } from "@/lib/web-api";
+import {
+  isAppleAuthAvailable,
+  isAppleAuthCanceled,
+  signInWithApple,
+} from "@/lib/apple-auth";
 import { captureException, track } from "@/lib/analytics";
 import { showToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/Button";
@@ -84,7 +90,9 @@ export default function LoginScreen() {
   // Loading state
   const [emailLoading, setEmailLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<MobileOAuthProvider | null>(null);
-  const isLoading = emailLoading || socialLoading !== null;
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const isLoading = emailLoading || socialLoading !== null || appleLoading;
 
   // Captcha
   const turnstileRef = useRef<TurnstileRef>(null);
@@ -112,6 +120,20 @@ export default function LoginScreen() {
       easing: Easing.out(Easing.quad),
     });
   }, [sheetOpacity, sheetTranslate]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    isAppleAuthAvailable().then((available) => {
+      if (mounted) {
+        setAppleAvailable(available);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetTranslate.value }],
@@ -292,6 +314,32 @@ export default function LoginScreen() {
       showToast(message, "error");
     } finally {
       setSocialLoading(null);
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    if (isLoading) {
+      return;
+    }
+
+    setApiError("");
+    setAppleLoading(true);
+
+    try {
+      await signInWithApple();
+      track("user_logged_in", { method: "apple" });
+    } catch (error: unknown) {
+      if (isAppleAuthCanceled(error)) {
+        return;
+      }
+
+      const err = error as { message?: string };
+      captureException(error as Error, { screen: "Login", provider: "apple" });
+      const message = err.message || "Could not complete Apple sign in.";
+      setApiError(message);
+      showToast(message, "error");
+    } finally {
+      setAppleLoading(false);
     }
   };
 
@@ -488,12 +536,28 @@ export default function LoginScreen() {
               <View style={styles.dividerLine} />
             </View>
 
+            {/* Apple */}
+            {appleAvailable ? (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={RADIUS.lg}
+                onPress={handleAppleSignIn}
+                pointerEvents={isLoading ? "none" : "auto"}
+                style={[
+                  styles.appleButton,
+                  isLoading && styles.socialButtonDisabled,
+                ]}
+              />
+            ) : null}
+
             {/* Google */}
             <Pressable
               onPress={() => signInWithProvider("google")}
               disabled={isLoading}
               style={({ pressed }) => [
                 styles.socialButton,
+                appleAvailable && styles.socialButtonStacked,
                 isLoading && styles.socialButtonDisabled,
                 pressed && styles.socialButtonPressed,
               ]}
@@ -781,6 +845,10 @@ const styles = StyleSheet.create({
   },
 
   // Social sign-in buttons
+  appleButton: {
+    width: "100%",
+    height: 56,
+  },
   socialButton: {
     flexDirection: "row",
     alignItems: "center",

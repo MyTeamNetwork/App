@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -14,10 +14,16 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter, useNavigation } from "expo-router";
 import { ChevronLeft, Eye, EyeOff } from "lucide-react-native";
+import * as AppleAuthentication from "expo-apple-authentication";
 import * as WebBrowser from "expo-web-browser";
 import { makeRedirectUri } from "expo-auth-session";
 import { supabase } from "@/lib/supabase";
-import { track } from "@/lib/analytics";
+import {
+  isAppleAuthAvailable,
+  isAppleAuthCanceled,
+  signUpWithApple,
+} from "@/lib/apple-auth";
+import { captureException, track } from "@/lib/analytics";
 import { borderRadius, spacing, fontSize } from "@/lib/theme";
 import Turnstile, { type TurnstileRef } from "@/components/Turnstile";
 import {
@@ -111,8 +117,11 @@ export default function SignupScreen() {
   // Loading state
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<MobileOAuthProvider | null>(null);
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
   const [step, setStep] = useState<SignupStep>("age_gate");
   const [ageGate, setAgeGate] = useState<AgeGateData | null>(null);
+  const authBusy = loading || socialLoading !== null || appleLoading;
 
   // Captcha
   const turnstileRef = useRef<TurnstileRef>(null);
@@ -123,6 +132,20 @@ export default function SignupScreen() {
     password.length >= 6 &&
     confirmPassword.length > 0 &&
     password === confirmPassword;
+
+  useEffect(() => {
+    let mounted = true;
+
+    isAppleAuthAvailable().then((available) => {
+      if (mounted) {
+        setAppleAvailable(available);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleAgeGateSelect = async (ageBracket: "under_13" | "13_17" | "18_plus") => {
     setApiError("");
@@ -312,6 +335,35 @@ export default function SignupScreen() {
       setApiError((error as Error).message || "Could not complete signup.");
     } finally {
       setSocialLoading(null);
+    }
+  };
+
+  const handleAppleSignup = async () => {
+    setApiError("");
+
+    if (!ageGate) {
+      setApiError("Please verify your age before continuing with Apple.");
+      setStep("age_gate");
+      return;
+    }
+
+    if (authBusy) {
+      return;
+    }
+
+    setAppleLoading(true);
+    try {
+      await signUpWithApple(ageGate);
+      track("user_signed_up", { method: "apple" });
+    } catch (error) {
+      if (isAppleAuthCanceled(error)) {
+        return;
+      }
+
+      captureException(error as Error, { screen: "Signup", provider: "apple" });
+      setApiError((error as Error).message || "Could not complete Apple signup.");
+    } finally {
+      setAppleLoading(false);
     }
   };
 
@@ -518,11 +570,11 @@ export default function SignupScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.primaryButton,
-                (!isFormValid || loading || socialLoading !== null || isWeb) && styles.primaryButtonDisabled,
+                (!isFormValid || authBusy || isWeb) && styles.primaryButtonDisabled,
                 pressed && { opacity: 0.7 },
               ]}
               onPress={handleSignup}
-              disabled={!isFormValid || loading || socialLoading !== null || isWeb}
+              disabled={!isFormValid || authBusy || isWeb}
               accessibilityLabel="Create account"
               accessibilityRole="button"
             >
@@ -535,12 +587,27 @@ export default function SignupScreen() {
               )}
             </Pressable>
 
+            {appleAvailable ? (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={borderRadius.lg}
+                onPress={handleAppleSignup}
+                pointerEvents={authBusy || isWeb ? "none" : "auto"}
+                style={[
+                  styles.appleButton,
+                  (authBusy || isWeb) && styles.socialButtonDisabled,
+                ]}
+              />
+            ) : null}
+
             <Pressable
               onPress={() => handleSocialSignup("google")}
-              disabled={loading || socialLoading !== null || isWeb}
+              disabled={authBusy || isWeb}
               style={({ pressed }) => [
                 styles.socialButton,
-                (loading || socialLoading !== null || isWeb) && styles.socialButtonDisabled,
+                appleAvailable && styles.socialButtonStacked,
+                (authBusy || isWeb) && styles.socialButtonDisabled,
                 pressed && { opacity: 0.75 },
               ]}
               accessibilityLabel="Continue with Google"
@@ -556,11 +623,11 @@ export default function SignupScreen() {
 
             <Pressable
               onPress={() => handleSocialSignup("linkedin")}
-              disabled={loading || socialLoading !== null || isWeb}
+              disabled={authBusy || isWeb}
               style={({ pressed }) => [
                 styles.socialButton,
                 styles.socialButtonStacked,
-                (loading || socialLoading !== null || isWeb) && styles.socialButtonDisabled,
+                (authBusy || isWeb) && styles.socialButtonDisabled,
                 pressed && { opacity: 0.75 },
               ]}
               accessibilityLabel="Continue with LinkedIn"
@@ -576,11 +643,11 @@ export default function SignupScreen() {
 
             <Pressable
               onPress={() => handleSocialSignup("microsoft")}
-              disabled={loading || socialLoading !== null || isWeb}
+              disabled={authBusy || isWeb}
               style={({ pressed }) => [
                 styles.socialButton,
                 styles.socialButtonStacked,
-                (loading || socialLoading !== null || isWeb) && styles.socialButtonDisabled,
+                (authBusy || isWeb) && styles.socialButtonDisabled,
                 pressed && { opacity: 0.75 },
               ]}
               accessibilityLabel="Continue with Microsoft"
@@ -811,6 +878,11 @@ const styles = StyleSheet.create({
     color: colors.primaryButtonText,
     fontSize: fontSize.base,
     fontWeight: "600",
+  },
+  appleButton: {
+    height: 52,
+    marginTop: spacing.md,
+    width: "100%",
   },
   socialButton: {
     alignItems: "center",
