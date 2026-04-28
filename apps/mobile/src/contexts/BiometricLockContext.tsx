@@ -60,6 +60,10 @@ export function BiometricLockProvider({ children }: PropsWithChildren) {
   const [isLocked, setIsLocked] = useState(false);
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
   const lastBackgroundedAtRef = useRef<number | null>(null);
+  // Read inside the AppState handler so the listener can stay stable across
+  // enable/disable toggles. Avoids a race where re-subscribing drops the
+  // backgrounded timestamp mid-toggle.
+  const enabledRef = useRef(false);
 
   // Cold-start: read enabled flag and lock if needed.
   useEffect(() => {
@@ -67,6 +71,7 @@ export function BiometricLockProvider({ children }: PropsWithChildren) {
     (async () => {
       const on = await isBiometricEnabled();
       if (cancelled) return;
+      enabledRef.current = on;
       setEnabled(on);
       if (on) setIsLocked(true);
       setIsResolving(false);
@@ -78,11 +83,12 @@ export function BiometricLockProvider({ children }: PropsWithChildren) {
 
   // AppState: lock when foregrounding after timeout, and track current state
   // so we can render a privacy overlay during inactive/background (the
-  // moments iOS captures the app-switcher snapshot).
+  // moments iOS captures the app-switcher snapshot). Subscribed once with no
+  // deps; reads `enabled` via a ref to stay stable across toggles.
   useEffect(() => {
     const handler = (next: AppStateStatus) => {
       setAppState(next);
-      if (!enabled) return;
+      if (!enabledRef.current) return;
       if (next === "background" || next === "inactive") {
         lastBackgroundedAtRef.current = Date.now();
         return;
@@ -97,7 +103,7 @@ export function BiometricLockProvider({ children }: PropsWithChildren) {
     };
     const sub = AppState.addEventListener("change", handler);
     return () => sub.remove();
-  }, [enabled]);
+  }, []);
 
   const showPrivacyOverlay = enabled && appState !== "active";
 
@@ -112,6 +118,7 @@ export function BiometricLockProvider({ children }: PropsWithChildren) {
     if (result.reEnrolled) {
       // Re-enrollment invalidates the credential — force re-opt-in.
       await setBiometricEnabled(false);
+      enabledRef.current = false;
       setEnabled(false);
       setIsLocked(false);
     }
