@@ -220,6 +220,19 @@ function defaultPushEnabled(category?: NotificationCategory): boolean {
 }
 
 /**
+ * Soft cap on the inline-dispatch path. Larger broadcasts must wait for the
+ * `notification_jobs` worker to drain — which is not yet implemented (P1
+ * follow-up). For now we send the first `INLINE_PUSH_TOKEN_CAP` tokens and
+ * return the rest as `skipped` with an error string so callers can surface a
+ * useful message instead of silently dropping recipients past the timeout.
+ *
+ * Why a hard cap: Vercel API routes have a 10s/15s/300s timeout depending on
+ * plan and Expo's HTTP/2 push API rate-limits at ~600 req/sec; an 5000-alumni
+ * announcement run inline trips both before completing.
+ */
+export const INLINE_PUSH_TOKEN_CAP = 200;
+
+/**
  * Send Expo push notifications to all eligible recipients.
  *
  * Resolves recipients server-side, batches into ≤100/req chunks, and processes
@@ -227,10 +240,25 @@ function defaultPushEnabled(category?: NotificationCategory): boolean {
  * the token row).
  */
 export async function sendPush(input: SendPushInput): Promise<SendPushResult> {
-  const { tokens, resolvedUsers, skippedUsers } = await resolvePushTargets(input);
+  const { tokens: allTokens, resolvedUsers, skippedUsers } = await resolvePushTargets(input);
 
-  if (tokens.length === 0) {
+  if (allTokens.length === 0) {
     return { sent: 0, skipped: resolvedUsers + skippedUsers, errors: [] };
+  }
+
+  // Cap the inline path; surface the overflow rather than silently dropping it.
+  const overflow = Math.max(0, allTokens.length - INLINE_PUSH_TOKEN_CAP);
+  const tokens = overflow > 0 ? allTokens.slice(0, INLINE_PUSH_TOKEN_CAP) : allTokens;
+  const capErrors =
+    overflow > 0
+      ? [
+          `inline push cap exceeded: skipped ${overflow} of ${allTokens.length} recipients (cap=${INLINE_PUSH_TOKEN_CAP}); needs notification_jobs worker for full broadcast`,
+        ]
+      : [];
+  if (overflow > 0) {
+    console.warn(
+      `[push] ${capErrors[0]} (type=${input.pushType ?? "unknown"} org=${input.organizationId})`
+    );
   }
 
   const data: Record<string, unknown> = {
@@ -252,7 +280,7 @@ export async function sendPush(input: SendPushInput): Promise<SendPushResult> {
 
   const chunks = expoClient.chunkPushNotifications(messages);
   const tickets: Array<{ token: string; ticket: ExpoPushTicket }> = [];
-  const errors: string[] = [];
+  const errors: string[] = [...capErrors];
 
   for (const chunk of chunks) {
     try {
@@ -297,5 +325,5 @@ export async function sendPush(input: SendPushInput): Promise<SendPushResult> {
       .in("expo_push_token", tokensToDrop);
   }
 
-  return { sent, skipped: skippedUsers, errors };
+  return { sent, skipped: skippedUsers + overflow, errors };
 }
