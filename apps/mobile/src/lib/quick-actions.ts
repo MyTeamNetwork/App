@@ -108,12 +108,16 @@ export async function clearQuickActions(): Promise<void> {
   }
 }
 
+// Module-level guard: `QuickActions.initial` is the press that cold-launched
+// the app. It must fire exactly once across the whole session — without this,
+// every Supabase token refresh (which produces a new `session` reference and
+// re-runs the subscriber effect) re-dispatches the same cold-start action,
+// jumping the user to a random screen hours later.
+let initialConsumed = false;
+
 /**
  * Subscribe to quick-action presses and dispatch through routeIntent. Returns
  * a teardown for the caller's effect cleanup.
- *
- * Also handles the `initial` quick action (cold start from a press), which the
- * library exposes as a sync property (`QuickActions.initial`).
  */
 export function subscribeQuickActions(router: Pick<Router, "push" | "replace">): () => void {
   const dispatch = (action: QuickActions.Action) => {
@@ -123,8 +127,8 @@ export function subscribeQuickActions(router: Pick<Router, "push" | "replace">):
     void routeIntent(router, intent, url);
   };
 
-  // Cold-start press: handle once.
-  if (QuickActions.initial) {
+  if (!initialConsumed && QuickActions.initial) {
+    initialConsumed = true;
     dispatch(QuickActions.initial);
   }
 
