@@ -21,10 +21,10 @@ bun run prebuild:clean       # Regenerate native projects from scratch (when nat
 
 # EAS cloud builds — profiles defined in eas.json
 eas build --platform ios --profile preview        # Internal dogfood build (no store)
-eas build --platform ios --profile production     # Store-ready, autoIncrement build #
+bun run eas:ios:production                       # Store-ready (~ eas build … --profile production)
 eas build --platform android --profile production # Android store-ready
 
-eas submit --platform ios --latest                # Upload latest iOS build to App Store Connect
+bun run eas:submit:ios                          # Upload latest iOS cloud build (~ eas submit --platform ios --latest)
 eas submit --platform android --latest            # Upload latest Android build to Play Console
 ```
 
@@ -65,9 +65,11 @@ bun run android:doctor       # Verify Android SDK, Java, adb setup
 ```bash
 cd apps/mobile
 # Bump version in app.json if shipping new marketing version (buildNumber auto-increments)
-eas build --platform ios --profile production
-eas submit --platform ios --latest
+bun run eas:ios:production                      # npm script → eas production iOS build
+eas submit --platform ios --latest              # same as bun run eas:submit:ios
 ```
+
+If `eas build` fails with **`Distribution Certificate is not validated for non-interactive builds`**, run **`bun run eas:ios:production`** once from a terminal where you can authenticate (TTY); complete the prompts so Expo validates certs on Expo servers ([CI prerequisites](https://docs.expo.dev/build/building-on-ci/)). Subsequent builds can use `--non-interactive` in CI.
 
 Then in ASC:
 1. App → **TestFlight** tab → wait for processing (~10–30 min)
