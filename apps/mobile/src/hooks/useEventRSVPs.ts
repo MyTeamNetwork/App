@@ -30,10 +30,7 @@ interface UseEventRSVPsReturn {
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  checkInAttendee: (
-    rsvpId: string,
-    coords?: { latitude: number; longitude: number } | null
-  ) => Promise<{ success: boolean; error?: string }>;
+  checkInAttendee: (rsvpId: string) => Promise<{ success: boolean; error?: string }>;
   undoCheckIn: (rsvpId: string) => Promise<{ success: boolean; error?: string }>;
   findRsvpByUserId: (userId: string) => EventRSVP | undefined;
   attendingCount: number;
@@ -150,21 +147,11 @@ export function useEventRSVPs(eventId: string | undefined): UseEventRSVPsReturn 
   }, [eventId, fetchRSVPs]);
 
   const checkInAttendee = useCallback(
-    async (
-      rsvpId: string,
-      coords?: { latitude: number; longitude: number } | null
-    ): Promise<{ success: boolean; error?: string }> => {
+    async (rsvpId: string): Promise<{ success: boolean; error?: string }> => {
       try {
-        const rpcArgs = {
-          p_rsvp_id: rsvpId,
-          p_undo: false,
-          p_lat: coords?.latitude ?? undefined,
-          p_lng: coords?.longitude ?? undefined,
-        };
-
         const { data: rpcResult, error: rpcError } = await supabase.rpc(
           "check_in_event_attendee",
-          rpcArgs
+          { p_rsvp_id: rsvpId, p_undo: false }
         );
 
         if (rpcError) {

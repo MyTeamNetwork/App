@@ -37,8 +37,6 @@ import { TYPOGRAPHY } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { formatShortWeekdayDate, formatTime } from "@/lib/date-format";
-import { getDeviceCoords } from "@/lib/event-location";
-
 type FilterMode = "all" | "attending" | "checked_in" | "not_checked_in";
 
 export default function CheckInScreen() {
@@ -417,16 +415,7 @@ export default function CheckInScreen() {
   }, [rsvps, filterMode, searchQuery]);
 
   const handleCheckIn = async (rsvp: EventRSVP) => {
-    let coords: { latitude: number; longitude: number } | undefined;
-    if (event?.geofence_enabled) {
-      const loc = await getDeviceCoords();
-      if (!loc.ok) {
-        Alert.alert("Location needed", loc.error);
-        return;
-      }
-      coords = loc.coords;
-    }
-    const result = await checkInAttendee(rsvp.id, coords);
+    const result = await checkInAttendee(rsvp.id);
     if (!result.success) {
       Alert.alert("Error", result.error || "Failed to check in attendee");
     } else {

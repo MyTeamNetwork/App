@@ -29,13 +29,6 @@ function resolvePackageRealDir(pkgName) {
   }
 }
 
-const expoLocationDir = resolvePackageRealDir("expo-location");
-if (!fs.existsSync(path.join(expoLocationDir, "package.json"))) {
-  console.warn(
-    "\n[metro] expo-location is missing. From the repo root run:\n  bun install\nThen restart with: bun run --cwd apps/mobile start:dev-client -- --clear\n"
-  );
-}
-
 const config = getDefaultConfig(projectRoot);
 
 // Monorepo support
@@ -50,7 +43,6 @@ config.resolver.nodeModulesPaths = [
 config.resolver.extraNodeModules = {
   "expo-apple-authentication": path.resolve(projectRoot, "node_modules/expo-apple-authentication"),
   "expo-local-authentication": path.resolve(projectRoot, "node_modules/expo-local-authentication"),
-  "expo-location": expoLocationDir,
   react: path.resolve(projectRoot, "node_modules/react"),
   "react-dom": path.resolve(projectRoot, "node_modules/react-dom"),
   "react-native": path.resolve(projectRoot, "node_modules/react-native"),

@@ -19,7 +19,7 @@ import { useOrgTheme } from "@/hooks/useOrgTheme";
 import { SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { formatDatePickerLabel, formatTimePickerLabel } from "@/lib/date-format";
-import { getDeviceCoords } from "@/lib/event-location";
+import { openVenueInMaps } from "@/lib/venue-maps";
 import type { ThemeColors } from "@/lib/theme";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import type { NeutralColors, SemanticColors } from "@/lib/design-tokens";
@@ -73,9 +73,6 @@ export default function EditEventScreen() {
   const [endTime, setEndTime] = useState<Date | null>(null);
   const [location, setLocation] = useState("");
   const [geofenceEnabled, setGeofenceEnabled] = useState(false);
-  const [geofenceRadiusM, setGeofenceRadiusM] = useState("100");
-  const [latitudeStr, setLatitudeStr] = useState("");
-  const [longitudeStr, setLongitudeStr] = useState("");
   const [eventType, setEventType] = useState<EventType>("general");
   const [audience, setAudience] = useState<Audience>("both");
   const [loading, setLoading] = useState(true);
@@ -106,21 +103,6 @@ export default function EditEventScreen() {
         setDescription(data.description || "");
         setLocation(data.location || "");
         setGeofenceEnabled(!!data.geofence_enabled);
-        setGeofenceRadiusM(
-          typeof data.geofence_radius_m === "number"
-            ? String(data.geofence_radius_m)
-            : "100"
-        );
-        setLatitudeStr(
-          data.latitude != null && typeof data.latitude === "number"
-            ? String(data.latitude)
-            : ""
-        );
-        setLongitudeStr(
-          data.longitude != null && typeof data.longitude === "number"
-            ? String(data.longitude)
-            : ""
-        );
         setEventType((data.event_type as EventType) || "general");
         setAudience((data.audience as Audience) || "both");
 
@@ -210,6 +192,11 @@ export default function EditEventScreen() {
       return;
     }
 
+    if (geofenceEnabled && !location.trim()) {
+      setError("Add a location so members can open it in Maps for check-in.");
+      return;
+    }
+
     if (!startDate || !startTime) {
       setError("Start date and time are required.");
       return;
@@ -245,18 +232,9 @@ export default function EditEventScreen() {
           end_date: endDateTime,
           location: location.trim() || null,
           geofence_enabled: geofenceEnabled,
-          geofence_radius_m: (() => {
-            const r = parseInt(geofenceRadiusM, 10);
-            return Number.isFinite(r) && r > 0 ? r : 100;
-          })(),
-          latitude:
-            latitudeStr.trim() !== "" && Number.isFinite(Number(latitudeStr))
-              ? Number(latitudeStr)
-              : null,
-          longitude:
-            longitudeStr.trim() !== "" && Number.isFinite(Number(longitudeStr))
-              ? Number(longitudeStr)
-              : null,
+          geofence_radius_m: 100,
+          latitude: null,
+          longitude: null,
           event_type: eventType,
           is_philanthropy: eventType === "philanthropy",
           audience,
@@ -286,9 +264,6 @@ export default function EditEventScreen() {
     endTime,
     location,
     geofenceEnabled,
-    geofenceRadiusM,
-    latitudeStr,
-    longitudeStr,
     eventType,
     audience,
     router,
@@ -438,16 +413,22 @@ export default function EditEventScreen() {
       </View>
       {geofenceEnabled ? (
         <View style={styles.field}>
-          <Text style={[styles.label, { marginBottom: SPACING.sm }]}>Venue GPS + radius</Text>
+          <Text
+            style={[
+              TYPOGRAPHY.bodySmall,
+              { color: neutral.secondary, marginBottom: SPACING.sm },
+            ]}
+          >
+            Members open this address in Apple Maps and confirm they’re at the venue before
+            self check-in.
+          </Text>
           <Pressable
-            onPress={async () => {
-              const loc = await getDeviceCoords();
-              if (!loc.ok) {
-                Alert.alert("Location", loc.error);
+            onPress={() => {
+              if (!location.trim()) {
+                Alert.alert("Location", "Enter a location first.");
                 return;
               }
-              setLatitudeStr(String(loc.coords.latitude));
-              setLongitudeStr(String(loc.coords.longitude));
+              void openVenueInMaps(location.trim());
             }}
             style={({ pressed }) => [
               fieldStyle,
@@ -455,35 +436,8 @@ export default function EditEventScreen() {
               pressed && { opacity: 0.85 },
             ]}
           >
-            <Text style={styles.dateText}>Use my current location</Text>
+            <Text style={styles.dateText}>Preview in Apple Maps</Text>
           </Pressable>
-          <Text style={styles.label}>Latitude</Text>
-          <TextInput
-            value={latitudeStr}
-            onChangeText={setLatitudeStr}
-            placeholder="e.g. 42.3601"
-            placeholderTextColor={neutral.placeholder}
-            keyboardType="decimal-pad"
-            style={[styles.input, { marginBottom: SPACING.sm }]}
-          />
-          <Text style={styles.label}>Longitude</Text>
-          <TextInput
-            value={longitudeStr}
-            onChangeText={setLongitudeStr}
-            placeholder="e.g. -71.0589"
-            placeholderTextColor={neutral.placeholder}
-            keyboardType="decimal-pad"
-            style={[styles.input, { marginBottom: SPACING.sm }]}
-          />
-          <Text style={styles.label}>Radius (meters)</Text>
-          <TextInput
-            value={geofenceRadiusM}
-            onChangeText={setGeofenceRadiusM}
-            placeholder="100"
-            placeholderTextColor={neutral.placeholder}
-            keyboardType="number-pad"
-            style={styles.input}
-          />
         </View>
       ) : null}
 

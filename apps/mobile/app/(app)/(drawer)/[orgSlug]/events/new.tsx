@@ -25,7 +25,7 @@ import { TYPOGRAPHY } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { formatDatePickerLabel, formatTimePickerLabel } from "@/lib/date-format";
-import { getDeviceCoords } from "@/lib/event-location";
+import { openVenueInMaps } from "@/lib/venue-maps";
 
 type Audience = "members" | "alumni" | "both" | "specific";
 type Channel = "email" | "sms" | "both";
@@ -86,9 +86,6 @@ export default function NewEventScreen() {
   const [endTime, setEndTime] = useState<Date | null>(null);
   const [location, setLocation] = useState("");
   const [geofenceEnabled, setGeofenceEnabled] = useState(false);
-  const [geofenceRadiusM, setGeofenceRadiusM] = useState("100");
-  const [latitudeStr, setLatitudeStr] = useState("");
-  const [longitudeStr, setLongitudeStr] = useState("");
   const [eventType, setEventType] = useState<EventType>("general");
   const [audience, setAudience] = useState<Audience>("both");
   const [channel, setChannel] = useState<Channel>("email");
@@ -465,6 +462,11 @@ export default function NewEventScreen() {
       return;
     }
 
+    if (geofenceEnabled && !location.trim()) {
+      setError("Add a location so members can open it in Maps for check-in.");
+      return;
+    }
+
     if (audience === "specific" && targetUserIds.length === 0) {
       setError("Select at least one recipient.");
       return;
@@ -507,18 +509,9 @@ export default function NewEventScreen() {
           end_date: endDateTime,
           location: location.trim() || null,
           geofence_enabled: geofenceEnabled,
-          geofence_radius_m: (() => {
-            const r = parseInt(geofenceRadiusM, 10);
-            return Number.isFinite(r) && r > 0 ? r : 100;
-          })(),
-          latitude:
-            latitudeStr.trim() !== "" && Number.isFinite(Number(latitudeStr))
-              ? Number(latitudeStr)
-              : null,
-          longitude:
-            longitudeStr.trim() !== "" && Number.isFinite(Number(longitudeStr))
-              ? Number(longitudeStr)
-              : null,
+          geofence_radius_m: 100,
+          latitude: null,
+          longitude: null,
           event_type: eventType,
           is_philanthropy: eventType === "philanthropy",
           audience: audienceValue,
@@ -754,16 +747,17 @@ export default function NewEventScreen() {
           </View>
           {geofenceEnabled ? (
             <View style={styles.fieldGroup}>
-              <Text style={[styles.fieldLabel, { marginBottom: SPACING.sm }]}>Venue GPS + radius</Text>
+              <Text style={[styles.fieldLabel, { fontWeight: "400" as const, marginBottom: SPACING.sm }]}>
+                Members open this address in Apple Maps and confirm they’re at the venue before
+                self check-in.
+              </Text>
               <Pressable
-                onPress={async () => {
-                  const loc = await getDeviceCoords();
-                  if (!loc.ok) {
-                    Alert.alert("Location", loc.error);
+                onPress={() => {
+                  if (!location.trim()) {
+                    Alert.alert("Location", "Enter a location first.");
                     return;
                   }
-                  setLatitudeStr(String(loc.coords.latitude));
-                  setLongitudeStr(String(loc.coords.longitude));
+                  void openVenueInMaps(location.trim());
                 }}
                 style={({ pressed }) => [
                   styles.chipRow,
@@ -771,35 +765,8 @@ export default function NewEventScreen() {
                   pressed && { opacity: 0.85 },
                 ]}
               >
-                <Text style={[styles.fieldLabel, { fontSize: 14 }]}>Use my current location</Text>
+                <Text style={[styles.fieldLabel, { fontSize: 14 }]}>Preview in Apple Maps</Text>
               </Pressable>
-              <Text style={styles.fieldLabel}>Latitude</Text>
-              <TextInput
-                value={latitudeStr}
-                onChangeText={setLatitudeStr}
-                placeholder="e.g. 42.3601"
-                placeholderTextColor={neutral.placeholder}
-                keyboardType="decimal-pad"
-                style={[styles.input, { marginBottom: SPACING.sm }]}
-              />
-              <Text style={styles.fieldLabel}>Longitude</Text>
-              <TextInput
-                value={longitudeStr}
-                onChangeText={setLongitudeStr}
-                placeholder="e.g. -71.0589"
-                placeholderTextColor={neutral.placeholder}
-                keyboardType="decimal-pad"
-                style={[styles.input, { marginBottom: SPACING.sm }]}
-              />
-              <Text style={styles.fieldLabel}>Radius (meters)</Text>
-              <TextInput
-                value={geofenceRadiusM}
-                onChangeText={setGeofenceRadiusM}
-                placeholder="100"
-                placeholderTextColor={neutral.placeholder}
-                keyboardType="number-pad"
-                style={styles.input}
-              />
             </View>
           ) : null}
 

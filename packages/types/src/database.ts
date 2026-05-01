@@ -4680,8 +4680,6 @@ export type Database = {
       }
       check_in_event_attendee: {
         Args: {
-          p_lat?: number | null
-          p_lng?: number | null
           p_rsvp_id: string
           p_undo?: boolean
         }
@@ -4692,6 +4690,7 @@ export type Database = {
           p_event_id: string
           p_lat?: number | null
           p_lng?: number | null
+          p_venue_confirmed?: boolean
         }
         Returns: Json
       }

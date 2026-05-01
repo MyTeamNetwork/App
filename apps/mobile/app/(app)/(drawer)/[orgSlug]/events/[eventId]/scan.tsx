@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { ArrowLeft } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { QRScanner } from "@/components/QRScanner";
@@ -10,7 +10,7 @@ import { useOrgRole } from "@/hooks/useOrgRole";
 import { useEventRSVPs } from "@/hooks/useEventRSVPs";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { parseTeammeetUrl } from "@/lib/deep-link";
-import { getDeviceCoords } from "@/lib/event-location";
+import { openVenueInMaps } from "@/lib/venue-maps";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { SPACING } from "@/lib/design-tokens";
 import { supabase } from "@/lib/supabase";
@@ -34,22 +34,24 @@ export default function ScanCheckInScreen() {
   const mode: ScanMode = modeParam === "self" ? "self" : "admin";
 
   const [geofenceEnabled, setGeofenceEnabled] = useState(false);
+  const [eventLocation, setEventLocation] = useState("");
   const [toast, setToast] = useState<Toast>(null);
 
   useEffect(() => {
     let cancelled = false;
-    async function loadGeo() {
+    async function loadEventMeta() {
       if (!eventId) return;
       const { data } = await supabase
         .from("events")
-        .select("geofence_enabled")
+        .select("geofence_enabled, location")
         .eq("id", eventId)
         .maybeSingle();
       if (!cancelled) {
         setGeofenceEnabled(!!data?.geofence_enabled);
+        setEventLocation(typeof data?.location === "string" ? data.location : "");
       }
     }
-    void loadGeo();
+    void loadEventMeta();
     return () => {
       cancelled = true;
     };
@@ -59,6 +61,41 @@ export default function ScanCheckInScreen() {
     setToast(next);
     setTimeout(() => setToast(null), 2400);
   }, []);
+
+  const completeSelfCheckIn = useCallback(
+    async (venueConfirmed: boolean): Promise<boolean> => {
+      if (!eventId) return false;
+      const { data, error: rpcError } = await supabase.rpc("self_check_in_event", {
+        p_event_id: eventId,
+        p_venue_confirmed: venueConfirmed,
+      });
+
+      if (rpcError) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast({ kind: "error", text: rpcError.message });
+        return false;
+      }
+
+      const payload =
+        data && typeof data === "object" && "success" in (data as object)
+          ? (data as { success?: boolean; error?: string })
+          : null;
+
+      if (!payload || payload.success !== true) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        showToast({
+          kind: "error",
+          text: typeof payload?.error === "string" ? payload.error : "Check-in failed",
+        });
+        return false;
+      }
+
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast({ kind: "ok", text: "You’re checked in" });
+      return true;
+    },
+    [eventId, showToast]
+  );
 
   const handleScan = useCallback(
     async (raw: string): Promise<boolean> => {
@@ -88,47 +125,44 @@ export default function ScanCheckInScreen() {
           return true;
         }
 
-        let pLat: number | undefined;
-        let pLng: number | undefined;
         if (geofenceEnabled) {
-          const loc = await getDeviceCoords();
-          if (!loc.ok) {
+          if (!eventLocation.trim()) {
             await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            showToast({ kind: "error", text: loc.error });
+            showToast({
+              kind: "error",
+              text: "This event is missing a location for venue verification.",
+            });
             return true;
           }
-          pLat = loc.coords.latitude;
-          pLng = loc.coords.longitude;
-        }
-
-        const { data, error: rpcError } = await supabase.rpc("self_check_in_event", {
-          p_event_id: eventId,
-          p_lat: pLat,
-          p_lng: pLng,
-        });
-
-        if (rpcError) {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          showToast({ kind: "error", text: rpcError.message });
-          return true;
-        }
-
-        const payload =
-          data && typeof data === "object" && "success" in (data as object)
-            ? (data as { success?: boolean; error?: string })
-            : null;
-
-        if (!payload || payload.success !== true) {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          showToast({
-            kind: "error",
-            text: typeof payload?.error === "string" ? payload.error : "Check-in failed",
+          await new Promise<void>((resolve) => {
+            Alert.alert(
+              "Confirm venue",
+              "Open the location in Apple Maps, then confirm you’re at the venue.",
+              [
+                { text: "Cancel", style: "cancel", onPress: () => resolve() },
+                {
+                  text: "Open Maps",
+                  onPress: () => {
+                    void openVenueInMaps(eventLocation);
+                    resolve();
+                  },
+                },
+                {
+                  text: "I’m at the venue",
+                  onPress: () => {
+                    void (async () => {
+                      await completeSelfCheckIn(true);
+                      resolve();
+                    })();
+                  },
+                },
+              ]
+            );
           });
           return true;
         }
 
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        showToast({ kind: "ok", text: "You’re checked in" });
+        await completeSelfCheckIn(false);
         return true;
       }
 
@@ -144,9 +178,6 @@ export default function ScanCheckInScreen() {
         showToast({ kind: "error", text: "Member is not on the RSVP list" });
         return true;
       }
-      // Only members who said they're attending should check in. We surface
-      // a clear message instead of silently checking in a `maybe` /
-      // `not_attending` row, so the admin can decide what to do.
       if (rsvp.status !== "attending") {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         showToast({
@@ -164,18 +195,7 @@ export default function ScanCheckInScreen() {
         return true;
       }
 
-      let coords: { latitude: number; longitude: number } | undefined;
-      if (geofenceEnabled) {
-        const loc = await getDeviceCoords();
-        if (!loc.ok) {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          showToast({ kind: "error", text: loc.error });
-          return true;
-        }
-        coords = loc.coords;
-      }
-
-      const result = await checkInAttendee(rsvp.id, coords);
+      const result = await checkInAttendee(rsvp.id);
       if (result.success) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         showToast({
@@ -193,9 +213,11 @@ export default function ScanCheckInScreen() {
       eventId,
       orgSlug,
       geofenceEnabled,
+      eventLocation,
       findRsvpByUserId,
       checkInAttendee,
       showToast,
+      completeSelfCheckIn,
     ]
   );
 
@@ -214,8 +236,8 @@ export default function ScanCheckInScreen() {
     toast?.kind === "ok"
       ? semantic.success
       : toast?.kind === "error"
-      ? semantic.error
-      : semantic.info;
+        ? semantic.error
+        : semantic.info;
 
   return (
     <View style={styles.container}>
@@ -226,7 +248,7 @@ export default function ScanCheckInScreen() {
             ? "Loading RSVPs…"
             : mode === "self"
               ? geofenceEnabled
-                ? "Scan event QR (location verified at venue)"
+                ? "Scan event QR — confirm venue in Maps when asked"
                 : "Scan event QR to check in"
               : `${attendingCount} attending · ${rsvps.length} total RSVPs`
         }
