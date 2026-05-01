@@ -30,36 +30,12 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/cron/ai-cache-purge",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/ai-embed-process",
+      "path": "/api/cron/event-reminders",
       "schedule": "*/5 * * * *"
     },
     {
-      "path": "/api/cron/graph-sync-process",
+      "path": "/api/cron/notification-dispatch",
       "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/cron/enrichment-process",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/linkedin-bulk-sync",
-      "schedule": "0 2 1 1,4,7,10 *"
-    },
-    {
-      "path": "/api/cron/account-deletion",
-      "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/cron/audit-log-retention",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/mentor-match-expire",
-      "schedule": "0 8 * * *"
     }
   ]
 }

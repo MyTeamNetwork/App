@@ -1,29 +1,40 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
-/.pnp
+node_modules
+.pnp
 .pnp.js
 .yarn/install-state.gz
 
-# package manager lockfiles (standardize on npm)
+# package manager lockfiles (standardize on bun)
 pnpm-lock.yaml
 yarn.lock
-bun.lockb
+package-lock.json
+
+# Turborepo
+.turbo/
 
 # testing
-/coverage
+coverage/
 
 # next.js
-/.next/
-/out/
+.next/
+out/
 
 # production
-/build
+build/
 
 # misc
 .DS_Store
 *.pem
+
+# editor backup files
+*~
+*.swp
+*.swo
+
+# IDE directories
+.idea/
 
 # debug
 npm-debug.log*
@@ -39,51 +50,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+expo-env.d.ts
 
 # audit artifacts (keep templates)
-/audit/
-!/audit/*.template.*
+audit/
+!audit/*.template.*
 
 # playwright
 playwright/.auth/state.json
-playwright/.auth/e2e-state.json
+playwright-report/
+test-results/
 
 .cursor/mcp.json
 
 # opencode auth tool
 opencode-auth/
-
-# IDE/Editor
-.cursor/
-.kiro/
-
-# Screen recordings
-*.mov
-*.mp4
-.env*.local
-.worktrees
-
-# Gas Town (added by gt)
-.runtime/
-.claude/
-.beads/
-.logs/
-
-# Workspace apps and shared packages (separate projects)
-apps/
-packages/
-
-# Real CSV test data with PII
-teamnetwork_linkedin_import_real.csv
-
-# Obsidian (local docs vault)
-docs/.obsidian/
-
-# Local issue-tracker metadata
-.beads/
-
-# Claude Code agent tooling (local-only)
-.factory/
-.understand-anything/
-.agents/
-skills-lock.json

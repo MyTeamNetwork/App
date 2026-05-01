@@ -22,7 +22,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.AUDIT_BASE_URL || 'https://www.myteamnetwork.com',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -37,35 +37,23 @@ export default defineConfig({
   /* Configure projects for major browsers */
   projects: [
     {
+      name: 'e2e',
+      testDir: './apps/web/tests/e2e',
+      testMatch: '**/*.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+      },
+    },
+    {
       name: 'audit-crawler',
       testDir: './tests/audit',
       testMatch: 'crawl.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
+        baseURL: process.env.AUDIT_BASE_URL || 'https://www.myteamnetwork.com',
         /* Use saved auth state */
         storageState: process.env.AUDIT_STORAGE_STATE || 'playwright/.auth/state.json',
       },
-    },
-    /* E2E Auth Setup - runs first to create authenticated state */
-    {
-      name: 'e2e-setup',
-      testDir: './tests/e2e',
-      testMatch: /auth\.setup\.ts/,
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3000',
-      },
-    },
-    /* E2E Tests - depends on auth setup */
-    {
-      name: 'e2e',
-      testDir: './tests/e2e/specs',
-      use: {
-        ...devices['Desktop Chrome'],
-        baseURL: 'http://localhost:3000',
-        storageState: 'playwright/.auth/e2e-state.json',
-      },
-      dependencies: ['e2e-setup'],
     },
   ],
 
@@ -74,7 +62,7 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'npm run dev',
+    command: 'bun run dev:web',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

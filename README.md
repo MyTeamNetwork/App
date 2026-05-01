@@ -1,5 +1,13 @@
 TeamNetwork is a multi-tenant Next.js application for organization membership, alumni directories, communication, scheduling, payments, and enterprise administration.
 
+## Repository Overview
+
+- `apps/web`: Next.js web app (default `bun dev`, `bun build`).
+- `apps/mobile`: Expo (React Native) mobile app.
+- `packages/*`: shared packages (types, validation, core logic).
+
+The monorepo uses **Turborepo** for task orchestration with caching and parallel execution.
+
 ## Getting Started
 
 This repository expects Node.js 22 or newer for the built-in `fs.globSync`
@@ -10,6 +18,8 @@ Copy `.env.local.example` to `.env.local` and fill in the values your local envi
 ```bash
 cp .env.local.example .env.local
 ```
+
+#### Web app (`apps/web`)
 
 Core environment variables:
 
@@ -23,91 +33,237 @@ Core environment variables:
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
 | `NEXT_PUBLIC_HCAPTCHA_SITE_KEY` | hCaptcha site key |
-| `HCAPTCHA_SECRET_KEY` | hCaptcha secret key |
+| `HCAPTCHA_SECRET_KEY` | hCaptcha secret key (server-side only) |
+
+Build-time Stripe price validation also expects `STRIPE_PRICE_BASE_MONTHLY`, `STRIPE_PRICE_BASE_YEARLY`, and the full set of alumni/enterprise tier price IDs. See `.env.local.example` for the complete list.
+
+Useful optional variables:
+- `STRIPE_WEBHOOK_SECRET_CONNECT` - Required in production for donation webhooks via Stripe Connect
+- `CRON_SECRET` - Required in production for cron job authentication
+- `RESEND_API_KEY`, `FROM_EMAIL`, `ADMIN_EMAIL`, `ALERT_EMAIL_TO` - Email and alerting
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_TOKEN_ENCRYPTION_KEY` - Google Calendar integration
+- `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_TOKEN_ENCRYPTION_KEY` - LinkedIn profile sync
+- `SKIP_STRIPE_VALIDATION=true` - Skip Stripe price ID validation in local dev
+
+#### Mobile app (`apps/mobile`)
+
+Required environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `EXPO_PUBLIC_SUPABASE_URL` | Supabase project URL for Expo |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key for Expo |
 
 Build-time Stripe price validation also expects:
 
-- `STRIPE_PRICE_BASE_MONTHLY`
-- `STRIPE_PRICE_BASE_YEARLY`
-- `STRIPE_PRICE_ALUMNI_0_250_MONTHLY`
-- `STRIPE_PRICE_ALUMNI_0_250_YEARLY`
-- `STRIPE_PRICE_ALUMNI_251_500_MONTHLY`
-- `STRIPE_PRICE_ALUMNI_251_500_YEARLY`
-- `STRIPE_PRICE_ALUMNI_501_1000_MONTHLY`
-- `STRIPE_PRICE_ALUMNI_501_1000_YEARLY`
-- `STRIPE_PRICE_ALUMNI_1001_2500_MONTHLY`
-- `STRIPE_PRICE_ALUMNI_1001_2500_YEARLY`
-- `STRIPE_PRICE_ALUMNI_2500_5000_MONTHLY`
-- `STRIPE_PRICE_ALUMNI_2500_5000_YEARLY`
-- `STRIPE_PRICE_ENTERPRISE_ALUMNI_BUCKET_MONTHLY`
-- `STRIPE_PRICE_ENTERPRISE_ALUMNI_BUCKET_YEARLY`
-- `STRIPE_PRICE_ENTERPRISE_SUB_ORG_MONTHLY`
-- `STRIPE_PRICE_ENTERPRISE_SUB_ORG_YEARLY`
-
-Useful optional variables:
-
-- `STRIPE_WEBHOOK_SECRET_CONNECT`
-- `CRON_SECRET`
-- `RESEND_API_KEY`
-- `FROM_EMAIL`
-- `ADMIN_EMAIL`
-- `ALERT_EMAIL_TO`
-- `GOOGLE_CLIENT_ID`
-- `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_TOKEN_ENCRYPTION_KEY`
-- `LINKEDIN_CLIENT_ID`
-- `LINKEDIN_CLIENT_SECRET`
-- `LINKEDIN_TOKEN_ENCRYPTION_KEY`
-- `SKIP_STRIPE_VALIDATION=true` for local development without real Stripe price IDs
-
-## Development
+Run the web development server:
 
 ```bash
-npm run dev
-npm run build
-npm run lint
-npm run test
-npm run test:unit
-npm run test:security
-npm run test:payments
-npm run test:routes
-npm run test:schedules
-npm run test:e2e
-npm run gen:types
+bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) after `npm run dev`.
+Run the mobile app with Expo:
+
+```bash
+bun dev:mobile
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the web result.
+
+You can start editing the web page by modifying `apps/web/src/app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Auth & OAuth
+
+- Web auth uses Supabase with `/auth/*` routes plus middleware-based guards. Login supports Google OAuth, password, and magic-link flows; password and magic-link logins require hCaptcha.
+- Mobile auth uses Supabase Google OAuth via Expo Auth Session with the `teammeet` scheme.
+- **Note**: The mobile app enforces strict authentication. Unauthenticated users are redirected to login. Currently, the login flow redirects to the main app dashboard, which may interrupt deep links.
+- Google Calendar sync uses a separate Google OAuth app with scopes:
+  - `https://www.googleapis.com/auth/calendar.events`
+  - `https://www.googleapis.com/auth/userinfo.email`
+
+## Styling
+
+- Web UI uses Tailwind utility classes (see `apps/web/src/app/globals.css` and component `className` usage).
+- Mobile UI uses React Native `StyleSheet` and standard style props.
+
+## Mobile App Testing (Expo)
+
+This section covers how to run and test the mobile app locally using Expo.
+
+### Prerequisites
+
+1. **Install EAS CLI** (for env management and builds):
+   ```bash
+   npm install -g eas-cli
+   eas login
+   ```
+
+2. **Accept Xcode license** (required for iOS simulator):
+   ```bash
+   sudo xcodebuild -license
+   ```
+
+3. **Install Expo Go** on your iOS or Android device (for quick testing without a build).
+
+### Environment Setup
+
+Pull environment variables from EAS to your local machine:
+
+```bash
+cd apps/mobile
+eas env:pull --environment development
+```
+
+This creates/overwrites `apps/mobile/.env.local` with the correct `EXPO_PUBLIC_*` variables.
+
+### Running the Mobile App
+
+**Option 1: Expo Go (fastest for UI iteration)**
+
+```bash
+cd apps/mobile
+npx expo start
+```
+
+- Press `s` to switch to Expo Go mode.
+- Scan the QR code **from inside the Expo Go app** (not the camera app).
+- Logs appear in the same Metro terminal on your Mac.
+
+**Option 2: iOS Simulator**
+
+```bash
+cd apps/mobile
+npx expo start
+```
+
+- Press `i` to open iOS simulator.
+- Requires Xcode and accepted license.
+
+**Option 3: Development Build (for native modules)**
+
+```bash
+cd apps/mobile
+eas build --profile development --platform ios
+```
+
+After build completes, install via `eas build:run`.
+
+### Where to Find Logs
+
+- **Metro terminal** (on your Mac): the primary source for all `console.log()` output from the app.
+- **Debugger**: press `j` in Metro terminal to open Chrome DevTools for more detailed debugging.
+- **On-device**: shake device to open Developer Menu, then choose "Debug Remote JS" to see logs in browser DevTools.
+
+### OAuth Redirect Configuration (Supabase)
+
+For Google OAuth to work in different environments, add these redirect URLs in **Supabase Dashboard > Authentication > URL Configuration > Redirect URLs**:
+
+| Environment | Redirect URL Pattern |
+|-------------|---------------------|
+| Expo Go (local) | `exp://YOUR_LOCAL_IP:8081/--/auth/callback` |
+| Expo Go (localhost) | `exp://localhost:8081/--/auth/callback` |
+| Dev Client / Production | `teammeet://auth/callback` |
+| Dev Client / Production | `teammeet://` |
+
+Replace `YOUR_LOCAL_IP` with your machine's IP (shown in Metro output, e.g., `10.0.0.35`).
+
+### Troubleshooting
+
+#### "No organizations" showing
+
+This usually means the app is not authenticated or authenticated as a different user than expected.
+
+1. **Check Metro logs** for:
+   - `hasSession: true` after login
+   - `userId` matching the expected user
+
+2. **Verify membership in Supabase SQL editor**:
+   ```sql
+   -- Find user by email
+   SELECT id, email FROM auth.users WHERE lower(email) = lower('your@email.com');
+   
+   -- Check memberships for that user
+   SELECT organization_id, role, status
+   FROM public.user_organization_roles
+   WHERE user_id = 'PASTE_USER_UUID_HERE';
+   ```
+
+3. **Confirm the join works**:
+   ```sql
+   SELECT o.id, o.name, uor.role, uor.status
+   FROM public.user_organization_roles uor
+   JOIN public.organizations o ON o.id = uor.organization_id
+   WHERE uor.user_id = 'PASTE_USER_UUID_HERE'
+     AND uor.status = 'active';
+   ```
+
+#### "Unable to resolve react-native-web" (Expo Web)
+
+If you press `w` for web and see this error, install the web dependencies:
+
+```bash
+cd apps/mobile
+npx expo install react-native-web react-dom
+```
+
+#### QR code shows "No usable data found"
+
+- Make sure you're scanning from **inside the Expo Go app**, not the camera app.
+- Press `s` in Metro to switch to Expo Go mode if it shows a development client URL.
+
+#### Xcode / simctl errors
+
+```bash
+# Accept Xcode license
+sudo xcodebuild -license
+
+# Verify simctl works
+xcrun simctl help
+```
+
+### EAS Commands Reference
+
+```bash
+# Authentication
+eas login
+eas whoami
+
+# Environment variables
+eas env:list
+eas env:pull --environment development
+
+# Builds
+eas build --profile development --platform ios
+eas build:run --platform ios
+
+# Updates (OTA)
+eas update --branch development --message "description"
+```
 
 ## Payments Idempotency
 
-- All payment flows store a `payment_attempts` row keyed by `idempotency_key`.
-- Stripe webhooks are deduplicated in `stripe_events`.
-- Clients reuse stable keys so replayed requests return the existing checkout/session result.
-- `npm run test:payments` covers the core idempotency and webhook dedupe paths.
-
-## Error Reporting
-
-- Client and server errors are sent to `POST /api/telemetry/error`.
-- Error grouping is fingerprint-based.
-- `ADMIN_EMAIL`, `FROM_EMAIL`, and `RESEND_API_KEY` enable production alert delivery.
-- Hourly baseline updates run through `/api/cron/error-baselines`.
-
-## Audit Tooling
-
-The repo still includes audit helpers under `scripts/audit/` plus audit-oriented Playwright configuration, but there are currently no `npm run audit:*` wrappers in `package.json`.
-
-Manual entry points:
-
-```bash
-node scripts/audit/static-routes.js
-node scripts/audit/backend-audit.js
-node scripts/audit/report.js
-```
+- All payment flows (subscriptions, donations, Connect onboarding) store an attempt row in `payment_attempts` keyed by `idempotency_key` (unique). Stripe objects reuse that row and every Stripe create call includes the same `idempotencyKey`.
+- Webhooks are deduped via `stripe_events(event_id unique)`. Each event is recorded once; retries skip if `processed_at` is set.
+- Clients keep a stable key in local storage per flow; server returns existing `checkout_url`/`session`/`payment_intent` if the same key is replayed.
+- Troubleshooting: look up the attempt by `idempotency_key` to see status and any `last_error`; confirm the matching Stripe IDs; check `stripe_events` to see if the webhook ran.
+- Tests: `bun run test:payments` runs idempotency + webhook dedupe unit tests (uses the lightweight TS loader in `tests/ts-loader.js`).
 
 `playwright.config.ts` still defines an `audit-crawler` project, but the repository does not currently include a committed `tests/audit/` suite.
 
 ## Learn More
 
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Playwright Documentation](https://playwright.dev/)
-- [Stripe Docs](https://stripe.com/docs)
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
