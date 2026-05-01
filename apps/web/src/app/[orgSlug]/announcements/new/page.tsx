@@ -167,6 +167,7 @@ export default function NewAnnouncementPage() {
               announcementId: announcement.id,
               category: "announcement",
               channel: "all",
+              orgSlug,
             }),
           });
         }

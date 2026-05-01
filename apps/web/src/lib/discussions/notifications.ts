@@ -1,42 +1,106 @@
 import { sendNotificationBlast } from "@/lib/notifications";
+import { sendPush } from "@/lib/notifications/push";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
+
+async function resolveOrgSlug(
+  supabase: SupabaseClient<Database>,
+  organizationId: string
+): Promise<string | undefined> {
+  const { data } = await supabase
+    .from("organizations")
+    .select("slug")
+    .eq("id", organizationId)
+    .maybeSingle();
+  return (data as { slug?: string } | null)?.slug ?? undefined;
+}
 
 export async function notifyNewThread(params: {
   supabase: SupabaseClient<Database>;
   organizationId: string;
+  threadId: string;
   threadTitle: string;
   threadUrl: string;
   authorName: string;
+  excludeUserId?: string;
 }) {
-  const { supabase, organizationId, threadTitle, threadUrl, authorName } = params;
+  const { supabase, organizationId, threadId, threadTitle, threadUrl, authorName, excludeUserId } = params;
 
-  // Fetch users who have discussion_emails_enabled
+  // Email fan-out is gated by the legacy `discussion_emails_enabled` column.
   const { data: preferences } = await supabase
     .from("notification_preferences")
     .select("user_id")
     .eq("organization_id", organizationId)
     .eq("discussion_emails_enabled", true);
 
-  if (!preferences || preferences.length === 0) {
-    return { sent: 0, errors: [] };
-  }
+  const emailTargetIds = (preferences ?? [])
+    .map((p) => p.user_id)
+    .filter((id): id is string => !!id && id !== excludeUserId);
 
-  const targetUserIds = preferences.map((p) => p.user_id);
+  const orgSlug = await resolveOrgSlug(supabase, organizationId);
 
-  // Send notification blast to users with discussion emails enabled
-  const result = await sendNotificationBlast({
+  const [emailResult, pushResult] = await Promise.all([
+    emailTargetIds.length > 0
+      ? sendNotificationBlast({
+          supabase,
+          organizationId,
+          audience: "both",
+          channel: "email",
+          title: `New Discussion: ${threadTitle}`,
+          body: `${authorName} started a new discussion thread.\n\nTitle: ${threadTitle}\n\nView and reply: ${threadUrl}`,
+          targetUserIds: emailTargetIds,
+        })
+      : Promise.resolve({ emailCount: 0, errors: [] as string[] }),
+    sendPush({
+      supabase,
+      organizationId,
+      audience: "both",
+      title: `New discussion: ${threadTitle}`,
+      body: `${authorName} started a new discussion`,
+      category: "discussion",
+      pushType: "discussion",
+      pushResourceId: threadId,
+      orgSlug,
+    }).catch((err) => ({
+      sent: 0,
+      skipped: 0,
+      errors: [err instanceof Error ? err.message : String(err)],
+    })),
+  ]);
+
+  return {
+    sent: (emailResult as { emailCount: number }).emailCount + pushResult.sent,
+    errors: [...(emailResult.errors ?? []), ...pushResult.errors],
+  };
+}
+
+export async function notifyNewReply(params: {
+  supabase: SupabaseClient<Database>;
+  organizationId: string;
+  threadId: string;
+  threadTitle: string;
+  authorName: string;
+}) {
+  const { supabase, organizationId, threadId, threadTitle, authorName } = params;
+
+  const orgSlug = await resolveOrgSlug(supabase, organizationId);
+
+  // Push only for replies — email fan-out for every reply would be noisy.
+  // Audience: thread participants. For v1 we fan out to everyone with
+  // discussion push enabled; a later pass can scope to thread participants.
+  return sendPush({
     supabase,
     organizationId,
     audience: "both",
-    channel: "email",
-    title: `New Discussion: ${threadTitle}`,
-    body: `${authorName} started a new discussion thread.\n\nTitle: ${threadTitle}\n\nView and reply: ${threadUrl}`,
-    targetUserIds,
-  });
-
-  return {
-    sent: result.emailCount,
-    errors: result.errors,
-  };
+    title: `Reply: ${threadTitle}`,
+    body: `${authorName} replied to "${threadTitle}"`,
+    category: "discussion",
+    pushType: "discussion",
+    pushResourceId: threadId,
+    orgSlug,
+  }).catch((err) => ({
+    sent: 0,
+    skipped: 0,
+    errors: [err instanceof Error ? err.message : String(err)],
+  }));
 }

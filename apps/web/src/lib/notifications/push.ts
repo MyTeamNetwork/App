@@ -30,6 +30,7 @@ export type PushType =
   | "event"
   | "event_reminder"
   | "chat"
+  | "discussion"
   | "mentorship"
   | "donation"
   | "membership";

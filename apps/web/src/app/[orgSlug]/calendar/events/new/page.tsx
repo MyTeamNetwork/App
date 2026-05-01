@@ -319,6 +319,8 @@ export default function NewCalendarEventPage() {
         .join("\n\n");
 
       try {
+        // Always include push alongside the user-selected email/SMS channel.
+        // "all" = email/SMS (per audience prefs) + Expo push (per per-category prefs).
         await fetch("/api/notifications/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -326,10 +328,13 @@ export default function NewCalendarEventPage() {
             organizationId: orgIdToUse,
             title: `New ${singularLabel}: ${data.title}`,
             body: notificationBody || `${singularLabel} scheduled for ${data.start_date} at ${data.start_time}`,
-            channel: data.channel,
+            channel: "all",
             audience: audienceValue,
             targetUserIds: targetIds,
             category: "event",
+            pushType: "event",
+            pushResourceId: createdEventIds[0],
+            orgSlug,
           }),
         });
       } catch (notifError) {

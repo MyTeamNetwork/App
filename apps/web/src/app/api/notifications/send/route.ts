@@ -71,7 +71,7 @@ const notificationSchema = z
     // Push fan-out fields. When `channel` is "push" or "all", these drive
     // the Expo push payload + per-category preference filtering.
     pushType: z
-      .enum(["announcement", "event", "event_reminder", "chat", "mentorship", "donation", "membership"])
+      .enum(["announcement", "event", "event_reminder", "chat", "discussion", "mentorship", "donation", "membership"])
       .optional(),
     pushResourceId: baseSchemas.uuid.optional(),
     orgSlug: optionalSafeString(120),

@@ -207,9 +207,11 @@ export async function POST(request: NextRequest) {
     notifyNewThread({
       supabase,
       organizationId: orgId,
+      threadId: thread.id,
       threadTitle: title,
       threadUrl: `/discussions/${thread.id}`,
       authorName: authorUser?.name || "A member",
+      excludeUserId: user.id,
     }).catch(() => {
       // Notification failure should not affect thread creation
     });

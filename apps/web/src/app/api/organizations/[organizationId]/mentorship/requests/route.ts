@@ -15,6 +15,7 @@ import {
   intersectNormalized,
 } from "@/lib/mentorship/matching-signals";
 import { sendNotificationBlast } from "@/lib/notifications";
+import { sendPush } from "@/lib/notifications/push";
 import { proposalReceivedTemplate } from "@/lib/notifications/templates/mentorship/proposal_received";
 
 export const dynamic = "force-dynamic";
@@ -314,6 +315,18 @@ export async function POST(req: Request, { params }: RouteParams) {
       body: msgBody,
       targetUserIds: [body.mentor_user_id],
       category: "mentorship",
+    });
+
+    await sendPush({
+      supabase: service,
+      organizationId,
+      targetUserIds: [body.mentor_user_id],
+      title,
+      body: msgBody,
+      category: "mentorship",
+      pushType: "mentorship",
+      pushResourceId: rpcRow.pair_id,
+      orgSlug: orgRow?.slug ?? undefined,
     });
   } catch (notifyError) {
     console.error("[mentorship/requests] notify failed", notifyError);

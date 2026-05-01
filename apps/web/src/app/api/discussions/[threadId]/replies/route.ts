@@ -4,6 +4,7 @@ import { createReplySchema } from "@/lib/schemas/discussion";
 import { validateJson, validationErrorResponse, ValidationError } from "@/lib/security/validation";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { getOrgMembership } from "@/lib/auth/api-helpers";
+import { notifyNewReply } from "@/lib/discussions/notifications";
 
 export async function POST(request: NextRequest, { params }: { params: { threadId: string } }) {
   try {
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest, { params }: { params: { threadI
     // Fetch thread to check if locked and get org_id
     const { data: thread } = await supabase
       .from("discussion_threads")
-      .select("organization_id, is_locked")
+      .select("organization_id, is_locked, title")
       .eq("id", threadId)
       .is("deleted_at", null)
       .maybeSingle();
@@ -67,6 +68,22 @@ export async function POST(request: NextRequest, { params }: { params: { threadI
     if (error) {
       return NextResponse.json({ error: "Failed to create reply" }, { status: 500 });
     }
+
+    const { data: authorUser } = await supabase
+      .from("users")
+      .select("name")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    notifyNewReply({
+      supabase,
+      organizationId: thread.organization_id,
+      threadId,
+      threadTitle: (thread as { title?: string }).title ?? "discussion",
+      authorName: authorUser?.name || "A member",
+    }).catch(() => {
+      // Notification failure should not affect reply creation
+    });
 
     return NextResponse.json({ data: reply }, { status: 201, headers: rateLimit.headers });
   } catch (error) {

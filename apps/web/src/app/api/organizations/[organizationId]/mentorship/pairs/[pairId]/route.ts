@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { baseSchemas } from "@/lib/security/validation";
 import { ensureDirectChatGroup } from "@/lib/chat/direct-chat";
 import { sendNotificationBlast } from "@/lib/notifications";
+import { sendPush } from "@/lib/notifications/push";
 import { proposalAcceptedTemplate } from "@/lib/notifications/templates/mentorship/proposal_accepted";
 import { proposalDeclinedTemplate } from "@/lib/notifications/templates/mentorship/proposal_declined";
 
@@ -186,6 +187,18 @@ export async function PATCH(req: Request, { params }: RouteParams) {
         body: msgBody,
         targetUserIds: [pair.mentee_user_id],
         category: "mentorship",
+      });
+
+      await sendPush({
+        supabase: service,
+        organizationId,
+        targetUserIds: [pair.mentee_user_id],
+        title,
+        body: msgBody,
+        category: "mentorship",
+        pushType: "mentorship",
+        pushResourceId: pair.id,
+        orgSlug,
       });
     } catch (err) {
       console.error("[mentorship pair PATCH] accept notify failed", err);
