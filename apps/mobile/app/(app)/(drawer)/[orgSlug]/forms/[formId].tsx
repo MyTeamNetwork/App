@@ -17,7 +17,7 @@ import { ChevronLeft, Check, Circle, Square, CheckSquare } from "lucide-react-na
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
-import type { Form, FormField, FormFieldOption, FormSubmission } from "@teammeet/types";
+import type { Form, FormField, FormFieldOption, FormSubmission, Json } from "@teammeet/types";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
@@ -442,7 +442,7 @@ export default function FormDetailScreen() {
         // Update existing submission
         const { error: updateError } = await supabase
           .from("form_submissions")
-          .update({ data: responses, submitted_at: new Date().toISOString() })
+          .update({ responses: responses as Json, submitted_at: new Date().toISOString() })
           .eq("id", existingSubmission.id);
 
         if (updateError) throw updateError;
@@ -454,7 +454,7 @@ export default function FormDetailScreen() {
             form_id: formId,
             organization_id: form.organization_id,
             user_id: user.id,
-            data: responses,
+            responses: responses as Json,
           });
 
         if (insertError) throw insertError;
@@ -552,7 +552,7 @@ export default function FormDetailScreen() {
           </View>
         );
 
-      case "checkbox":
+      case "checkbox": {
         const checkedValues = (value as string[]) || [];
         return (
           <View style={styles.fieldContainer} key={field.name}>
@@ -586,8 +586,9 @@ export default function FormDetailScreen() {
             </View>
           </View>
         );
+      }
 
-      case "date":
+      case "date": {
         const dateValue = value ? new Date(value as string) : null;
         return (
           <View style={styles.fieldContainer} key={field.name}>
@@ -615,6 +616,7 @@ export default function FormDetailScreen() {
             )}
           </View>
         );
+      }
 
       case "email":
         return (

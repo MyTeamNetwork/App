@@ -22,7 +22,9 @@ import { supabase } from "@/lib/supabase";
 import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { formatTimeFromDate, formatDateFromDate } from "@/lib/date-format";
-import type { AcademicSchedule, OccurrenceType } from "@teammeet/types";
+import type { AcademicSchedule, Database, OccurrenceType } from "@teammeet/types";
+
+type AcademicScheduleUpdate = Database["public"]["Tables"]["academic_schedules"]["Update"];
 
 const SCHEDULE_COLORS = {
   background: "#ffffff",
@@ -191,7 +193,7 @@ export default function EditScheduleScreen() {
     const startDateStr = startDate.toISOString().split("T")[0];
     const endDateStr = endDate ? endDate.toISOString().split("T")[0] : null;
 
-    const updateData: Record<string, unknown> = {
+    const updateData: AcademicScheduleUpdate = {
       title: title.trim(),
       occurrence_type: occurrenceType,
       start_time: startTimeStr,

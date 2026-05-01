@@ -45,6 +45,8 @@ export default [
     },
     rules: {
       ...tseslint.configs.recommended.rules,
+      "no-empty": ["error", { allowEmptyCatch: true }],
+      "@typescript-eslint/ban-ts-comment": "warn",
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
@@ -70,7 +72,10 @@ export default [
       "babel.config.js",
       "metro.config.js",
       "jest.config.js",
+      "jest.setup.js",
       "__tests__/",
+      "__mocks__/",
+      "plugins/",
     ],
   },
 ];

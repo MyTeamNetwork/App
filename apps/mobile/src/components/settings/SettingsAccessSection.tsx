@@ -224,11 +224,11 @@ export function SettingsAccessSection({ orgId, isAdmin }: Props) {
     },
   }));
 
-  if (!isAdmin) return null;
-
   const activeMembers = useMemo(() => memberships.filter((m) => m.status === "active"), [memberships]);
   const revokedMembers = useMemo(() => memberships.filter((m) => m.status === "revoked"), [memberships]);
   const totalPending = pendingMembers.length + pendingAlumni.length;
+
+  if (!isAdmin) return null;
 
   const handleRoleChange = async (userId: string, newRole: "admin" | "active_member" | "alumni") => {
     const member = memberships.find((m) => m.user_id === userId);
