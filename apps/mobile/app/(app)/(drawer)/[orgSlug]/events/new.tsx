@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -14,8 +15,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter, useNavigation } from "expo-router";
-import { DrawerActions } from "@react-navigation/native";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { ChevronLeft } from "lucide-react-native";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { fetchWithAuth } from "@/lib/web-api";
@@ -76,7 +77,7 @@ function formatTimeLabel(value: Date | null) {
 export default function NewEventScreen() {
   const router = useRouter();
   const navigation = useNavigation();
-  const { orgId, orgSlug, orgName, orgLogoUrl } = useOrg();
+  const { orgId, orgSlug } = useOrg();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -120,23 +121,6 @@ export default function NewEventScreen() {
       alignItems: "center" as const,
       justifyContent: "center" as const,
     },
-    orgLogo: {
-      width: 36,
-      height: 36,
-      borderRadius: 8,
-    },
-    orgAvatar: {
-      width: 36,
-      height: 36,
-      borderRadius: 8,
-      backgroundColor: "rgba(255,255,255,0.2)",
-      alignItems: "center" as const,
-      justifyContent: "center" as const,
-    },
-    orgAvatarText: {
-      ...TYPOGRAPHY.titleMedium,
-      color: APP_CHROME.headerTitle,
-    },
     headerTitle: {
       ...TYPOGRAPHY.titleLarge,
       color: APP_CHROME.headerTitle,
@@ -154,17 +138,6 @@ export default function NewEventScreen() {
       padding: SPACING.md,
       paddingBottom: SPACING.xxl,
       gap: SPACING.lg,
-    },
-    formHeader: {
-      gap: SPACING.xs,
-    },
-    formTitle: {
-      ...TYPOGRAPHY.headlineMedium,
-      color: n.foreground,
-    },
-    formSubtitle: {
-      ...TYPOGRAPHY.bodyMedium,
-      color: n.secondary,
     },
     errorCard: {
       backgroundColor: s.errorLight,
@@ -327,13 +300,13 @@ export default function NewEventScreen() {
     },
   }));
 
-  const handleDrawerToggle = useCallback(() => {
-    try {
-      if (navigation && typeof (navigation as any).dispatch === "function") {
-        (navigation as any).dispatch(DrawerActions.toggleDrawer());
-      }
-    } catch {}
-  }, [navigation]);
+  const handleBack = useCallback(() => {
+    if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+      router.back();
+    } else {
+      router.replace(`/(app)/${orgSlug}/(tabs)/calendar`);
+    }
+  }, [navigation, router, orgSlug]);
 
   useEffect(() => {
     let isMounted = true;
@@ -402,7 +375,27 @@ export default function NewEventScreen() {
     }
   }, [activePicker, startDate, startTime, endDate, endTime]);
 
+  const todayStart = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const pickerMinimumDate = useMemo(() => {
+    switch (activePicker) {
+      case "start-date":
+      case "start-time":
+        return todayStart;
+      case "end-date":
+      case "end-time":
+        return startDate ?? todayStart;
+      default:
+        return todayStart;
+    }
+  }, [activePicker, startDate, todayStart]);
+
   const openPicker = (target: PickerTarget) => {
+    Keyboard.dismiss();
     setActivePicker(target);
   };
 
@@ -591,14 +584,8 @@ export default function NewEventScreen() {
       >
         <SafeAreaView edges={["top"]} style={styles.headerSafeArea}>
           <View style={styles.headerContent}>
-            <Pressable onPress={handleDrawerToggle} style={styles.orgLogoButton}>
-              {orgLogoUrl ? (
-                <Image source={{ uri: orgLogoUrl }} style={styles.orgLogo} />
-              ) : (
-                <View style={styles.orgAvatar}>
-                  <Text style={styles.orgAvatarText}>{orgName?.[0] || "O"}</Text>
-                </View>
-              )}
+            <Pressable onPress={handleBack} style={styles.orgLogoButton} hitSlop={8}>
+              <ChevronLeft size={28} color={APP_CHROME.headerTitle} />
             </Pressable>
             <Text style={styles.headerTitle}>Create Event</Text>
             <View style={styles.headerSpacer} />
@@ -606,17 +593,16 @@ export default function NewEventScreen() {
         </SafeAreaView>
       </LinearGradient>
 
-      <View style={styles.contentSheet}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.contentSheet}
+        keyboardVerticalOffset={0}
+      >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.formHeader}>
-            <Text style={styles.formTitle}>Create Event</Text>
-            <Text style={styles.formSubtitle}>Schedule a new team event</Text>
-          </View>
-
           {error && (
             <View style={styles.errorCard}>
               <Text style={styles.errorText}>{error}</Text>
@@ -704,6 +690,7 @@ export default function NewEventScreen() {
               <DateTimePicker
                 value={pickerValue}
                 mode={pickerMode}
+                minimumDate={pickerMinimumDate}
                 display={
                   Platform.OS === "ios"
                     ? pickerMode === "date"
@@ -895,7 +882,7 @@ export default function NewEventScreen() {
             )}
           </Pressable>
         </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
