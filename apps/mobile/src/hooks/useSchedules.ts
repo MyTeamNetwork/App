@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
 import { showToast } from "@/components/ui/Toast";
@@ -204,8 +204,7 @@ export function useSchedules(
   // Real-time subscription for schedules table
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel(`schedules:${orgId}`)
+    const channel = createPostgresChangesChannel(`schedules:${orgId}`)
       .on(
         "postgres_changes",
         {

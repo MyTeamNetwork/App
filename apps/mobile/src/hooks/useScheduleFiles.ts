@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import type { ScheduleFile, User } from "@teammeet/types";
 import * as sentry from "@/lib/analytics/sentry";
 import {
@@ -171,8 +171,7 @@ export function useScheduleFiles(
   // Real-time subscription for schedule_files table
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel(`schedule-files:${orgId}`)
+    const channel = createPostgresChangesChannel(`schedule-files:${orgId}`)
       .on(
         "postgres_changes",
         {

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
 
 export interface Membership {
@@ -120,8 +120,7 @@ export function useMemberships(orgId: string | null): UseMembershipsReturn {
   useEffect(() => {
     if (!orgId) return;
 
-    const channel = supabase
-      .channel(`memberships:${orgId}`)
+    const channel = createPostgresChangesChannel(`memberships:${orgId}`)
       .on(
         "postgres_changes",
         {

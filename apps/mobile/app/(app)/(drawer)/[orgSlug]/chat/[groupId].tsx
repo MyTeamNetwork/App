@@ -15,7 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, ArrowUp, X, Plus, ChevronLeft, Users } from "lucide-react-native";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrgRole } from "@/hooks/useOrgRole";
@@ -259,8 +259,7 @@ export default function ChatRoomScreen() {
 
   useEffect(() => {
     if (!resolvedGroupId || !currentUserId) return;
-    const channel = supabase
-      .channel(`chat_messages:${resolvedGroupId}`)
+    const channel = createPostgresChangesChannel(`chat_messages:${resolvedGroupId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "chat_messages", filter: `chat_group_id=eq.${resolvedGroupId}` },

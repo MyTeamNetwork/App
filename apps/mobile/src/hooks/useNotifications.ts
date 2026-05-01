@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
 import { normalizeRole, ViewerContext } from "@teammeet/core";
@@ -457,8 +457,7 @@ export function useNotifications(
   useEffect(() => {
     if (!orgId) return;
 
-    const channel = supabase
-      .channel(`notifications:${orgId}`)
+    const channel = createPostgresChangesChannel(`notifications:${orgId}`)
       .on(
         "postgres_changes",
         {
@@ -485,8 +484,7 @@ export function useNotifications(
   useEffect(() => {
     if (!orgId || !userId) return;
 
-    const channel = supabase
-      .channel(`notification-roles:${orgId}:${userId}`)
+    const channel = createPostgresChangesChannel(`notification-roles:${orgId}:${userId}`)
       .on(
         "postgres_changes",
         {

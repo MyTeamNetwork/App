@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
@@ -193,8 +193,7 @@ export function useNotificationPreferences(
   useEffect(() => {
     if (!orgId || !userId) return;
 
-    const channel = supabase
-      .channel(`notification-prefs:${orgId}:${userId}`)
+    const channel = createPostgresChangesChannel(`notification-prefs:${orgId}:${userId}`)
       .on(
         "postgres_changes",
         {

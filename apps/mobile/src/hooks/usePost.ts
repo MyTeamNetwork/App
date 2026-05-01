@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
 import type { FeedPost, PostAuthor, MediaAttachment, UsePostReturn } from "@/types/feed";
 
@@ -109,8 +109,7 @@ export function usePost(postId: string | undefined): UsePostReturn {
   useEffect(() => {
     if (!postId) return;
 
-    const channel = supabase
-      .channel(`post_detail:${postId}`)
+    const channel = createPostgresChangesChannel(`post_detail:${postId}`)
       .on(
         "postgres_changes",
         {

@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
 import { showToast } from "@/components/ui/Toast";
@@ -155,8 +155,7 @@ export function useForms(orgId: string | null): UseFormsReturn {
   useEffect(() => {
     if (!orgId) return;
 
-    const channel = supabase
-      .channel(`forms:${orgId}`)
+    const channel = createPostgresChangesChannel(`forms:${orgId}`)
       .on(
         "postgres_changes",
         {

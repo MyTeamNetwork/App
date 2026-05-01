@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
 import type {
@@ -253,8 +253,7 @@ export function useJobs(
   useEffect(() => {
     if (!orgId) return;
 
-    const channel = supabase
-      .channel(`job_postings:${orgId}`)
+    const channel = createPostgresChangesChannel(`job_postings:${orgId}`)
       .on(
         "postgres_changes",
         {

@@ -24,7 +24,7 @@ import {
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { APP_CHROME } from "@/lib/chrome";
@@ -143,8 +143,7 @@ export default function PhilanthropyScreen() {
 
   useEffect(() => {
     if (!orgId) return;
-    const eventsChannel = supabase
-      .channel(`philanthropy-events:${orgId}`)
+    const eventsChannel = createPostgresChangesChannel(`philanthropy-events:${orgId}`)
       .on(
         "postgres_changes",
         {
@@ -159,8 +158,7 @@ export default function PhilanthropyScreen() {
       )
       .subscribe();
 
-    const donationChannel = supabase
-      .channel(`donation-stats:${orgId}`)
+    const donationChannel = createPostgresChangesChannel(`donation-stats:${orgId}`)
       .on(
         "postgres_changes",
         {
@@ -175,8 +173,7 @@ export default function PhilanthropyScreen() {
       )
       .subscribe();
 
-    const orgChannel = supabase
-      .channel(`org-connect:${orgId}`)
+    const orgChannel = createPostgresChangesChannel(`org-connect:${orgId}`)
       .on(
         "postgres_changes",
         {

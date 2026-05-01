@@ -8,7 +8,7 @@ import { shareEvent } from "@/lib/share";
 import { syncEventToDevice } from "@/lib/native-calendar";
 import { useDevicePermission } from "@/lib/device-permissions";
 import * as Linking from "expo-linking";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { track } from "@/lib/analytics";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
@@ -298,8 +298,7 @@ export default function EventDetailScreen() {
   // Mirrors the channel pattern in `useEventRSVPs.ts`.
   useEffect(() => {
     if (!eventId) return;
-    const channel = supabase
-      .channel(`event_detail_rsvps:${eventId}`)
+    const channel = createPostgresChangesChannel(`event_detail_rsvps:${eventId}`)
       .on(
         "postgres_changes",
         {

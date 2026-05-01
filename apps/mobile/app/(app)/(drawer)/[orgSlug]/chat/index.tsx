@@ -22,7 +22,7 @@ import Animated, {
   withSpring,
   type SharedValue,
 } from "react-native-reanimated";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
@@ -618,8 +618,7 @@ export default function ChatGroupsScreen() {
     fetchGroups();
     fetchDiscussions();
 
-    const groupsChannel = supabase
-      .channel(`chat_groups:${orgId}`)
+    const groupsChannel = createPostgresChangesChannel(`chat_groups:${orgId}`)
       .on(
         "postgres_changes",
         {
@@ -634,8 +633,7 @@ export default function ChatGroupsScreen() {
       )
       .subscribe();
 
-    const discussionsChannel = supabase
-      .channel(`${MOBILE_DISCUSSION_THREADS_TABLE}:${orgId}`)
+    const discussionsChannel = createPostgresChangesChannel(`${MOBILE_DISCUSSION_THREADS_TABLE}:${orgId}`)
       .on(
         "postgres_changes",
         {

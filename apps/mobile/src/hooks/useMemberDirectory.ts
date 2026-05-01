@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
 
 const STALE_TIME_MS = 30_000;
@@ -176,8 +176,7 @@ export function useMemberDirectory(
   // Real-time subscription for member changes
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel(`member-directory:${orgId}`)
+    const channel = createPostgresChangesChannel(`member-directory:${orgId}`)
       .on(
         "postgres_changes",
         {

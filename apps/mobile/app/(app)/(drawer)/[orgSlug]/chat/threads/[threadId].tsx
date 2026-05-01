@@ -15,7 +15,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, ArrowUp, Lock } from "lucide-react-native";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { useAuth } from "@/hooks/useAuth";
 import { Avatar } from "@/components/ui/Avatar";
@@ -124,8 +124,7 @@ export default function ThreadDetailScreen() {
   useEffect(() => {
     if (!resolvedThreadId) return;
 
-    const threadChannel = supabase
-      .channel(`discussion_thread:${resolvedThreadId}`)
+    const threadChannel = createPostgresChangesChannel(`discussion_thread:${resolvedThreadId}`)
       .on(
         "postgres_changes",
         {
@@ -170,8 +169,7 @@ export default function ThreadDetailScreen() {
   useEffect(() => {
     if (!resolvedThreadId) return;
 
-    const channel = supabase
-      .channel(`discussion_replies:${resolvedThreadId}`)
+    const channel = createPostgresChangesChannel(`discussion_replies:${resolvedThreadId}`)
       .on(
         "postgres_changes",
         {

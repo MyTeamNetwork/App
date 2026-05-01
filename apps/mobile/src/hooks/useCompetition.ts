@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Alert } from "react-native";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
 import * as sentry from "@/lib/analytics/sentry";
 import { buildLeaderboard, buildPointHistory } from "@/hooks/competitionHelpers";
@@ -152,8 +152,7 @@ export function useCompetition(orgId: string | null): UseCompetitionReturn {
   useEffect(() => {
     if (!orgId) return;
 
-    const competitionsChannel = supabase
-      .channel(`competitions:${orgId}`)
+    const competitionsChannel = createPostgresChangesChannel(`competitions:${orgId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "competitions", filter: `organization_id=eq.${orgId}` },
@@ -161,8 +160,7 @@ export function useCompetition(orgId: string | null): UseCompetitionReturn {
       )
       .subscribe();
 
-    const teamsChannel = supabase
-      .channel(`competition_teams:${orgId}`)
+    const teamsChannel = createPostgresChangesChannel(`competition_teams:${orgId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "competition_teams", filter: `organization_id=eq.${orgId}` },
@@ -170,8 +168,7 @@ export function useCompetition(orgId: string | null): UseCompetitionReturn {
       )
       .subscribe();
 
-    const pointsChannel = supabase
-      .channel(`competition_points:${orgId}`)
+    const pointsChannel = createPostgresChangesChannel(`competition_points:${orgId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "competition_points", filter: `organization_id=eq.${orgId}` },

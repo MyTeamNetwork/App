@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
 import type { OrganizationDonation, OrganizationDonationStat } from "@teammeet/types";
@@ -143,8 +143,7 @@ export function useDonations(orgSlug: string): UseDonationsReturn {
   // Real-time subscription for donations table
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel(`donations:${orgId}`)
+    const channel = createPostgresChangesChannel(`donations:${orgId}`)
       .on(
         "postgres_changes",
         {
@@ -167,8 +166,7 @@ export function useDonations(orgSlug: string): UseDonationsReturn {
   // Real-time subscription for donation stats table
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel(`donation-stats:${orgId}`)
+    const channel = createPostgresChangesChannel(`donation-stats:${orgId}`)
       .on(
         "postgres_changes",
         {

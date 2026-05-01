@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
 import { showToast } from "@/components/ui/Toast";
@@ -449,8 +449,7 @@ export function useUnifiedCalendar(orgId: string | null): UseUnifiedCalendarRetu
   useEffect(() => {
     if (!orgId) return;
 
-    const eventsChannel = supabase
-      .channel(`unified-calendar-events:${orgId}`)
+    const eventsChannel = createPostgresChangesChannel(`unified-calendar-events:${orgId}`)
       .on(
         "postgres_changes",
         {
@@ -465,8 +464,7 @@ export function useUnifiedCalendar(orgId: string | null): UseUnifiedCalendarRetu
       )
       .subscribe();
 
-    const schedulesChannel = supabase
-      .channel(`unified-calendar-schedules:${orgId}`)
+    const schedulesChannel = createPostgresChangesChannel(`unified-calendar-schedules:${orgId}`)
       .on(
         "postgres_changes",
         {

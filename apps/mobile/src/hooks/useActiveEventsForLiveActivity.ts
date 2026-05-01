@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
 import * as sentry from "@/lib/analytics/sentry";
 
@@ -206,8 +206,7 @@ export function useActiveEventsForLiveActivity(
   // path filters server-side anyway.
   useEffect(() => {
     if (!userId) return;
-    const channel = supabase
-      .channel(`active_events_la:${userId}`)
+    const channel = createPostgresChangesChannel(`active_events_la:${userId}`)
       .on(
         "postgres_changes",
         {

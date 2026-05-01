@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
 import type { ParentFormValues, ParentRecord } from "@/lib/parents";
 import { buildParentPayload } from "@/lib/parents";
@@ -96,8 +96,7 @@ export function useParents(orgId: string | null, enabled: boolean): UseParentsRe
   useEffect(() => {
     if (!orgId || !enabled) return;
 
-    const channel = supabase
-      .channel(`parents:${orgId}`)
+    const channel = createPostgresChangesChannel(`parents:${orgId}`)
       .on(
         "postgres_changes",
         {

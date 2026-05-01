@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
 
@@ -190,8 +190,7 @@ export function useAlumni(
   // Real-time subscription for alumni changes
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel(`alumni:${orgId}`)
+    const channel = createPostgresChangesChannel(`alumni:${orgId}`)
       .on(
         "postgres_changes",
         {

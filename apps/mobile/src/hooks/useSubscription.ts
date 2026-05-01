@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import type { AlumniBucket } from "@teammeet/types";
 import { ALUMNI_LIMITS } from "@teammeet/core";
 import * as sentry from "@/lib/analytics/sentry";
@@ -95,8 +95,7 @@ export function useSubscription(organizationId: string | null): UseSubscriptionR
   useEffect(() => {
     if (!organizationId) return;
 
-    const channel = supabase
-      .channel(`subscription:${organizationId}`)
+    const channel = createPostgresChangesChannel(`subscription:${organizationId}`)
       .on(
         "postgres_changes",
         {
@@ -120,8 +119,7 @@ export function useSubscription(organizationId: string | null): UseSubscriptionR
   useEffect(() => {
     if (!organizationId) return;
 
-    const channel = supabase
-      .channel(`alumni-count:${organizationId}`)
+    const channel = createPostgresChangesChannel(`alumni-count:${organizationId}`)
       .on(
         "postgres_changes",
         {

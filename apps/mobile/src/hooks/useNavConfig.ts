@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { fetchWithAuth } from "@/lib/web-api";
 import type { OrgRole } from "@teammeet/core";
 import * as sentry from "@/lib/analytics/sentry";
@@ -87,8 +87,7 @@ export function useNavConfig(orgId: string | null): UseNavConfigReturn {
   useEffect(() => {
     if (!orgId) return;
 
-    const channel = supabase
-      .channel(`nav-config:${orgId}`)
+    const channel = createPostgresChangesChannel(`nav-config:${orgId}`)
       .on(
         "postgres_changes",
         {

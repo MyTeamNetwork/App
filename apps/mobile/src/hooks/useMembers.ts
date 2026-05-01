@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
 import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
@@ -113,8 +113,7 @@ export function useMembers(orgId: string | null): UseMembersReturn {
   // Real-time subscription for member changes
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel(`members:${orgId}`)
+    const channel = createPostgresChangesChannel(`members:${orgId}`)
       .on(
         "postgres_changes",
         {

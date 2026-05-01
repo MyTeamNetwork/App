@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
 import type { FeedComment, PostAuthor, UseCommentsReturn } from "@/types/feed";
@@ -150,8 +150,7 @@ export function useComments(postId: string | undefined, orgId: string | null): U
   useEffect(() => {
     if (!postId) return;
 
-    const channel = supabase
-      .channel(`feed_comments:${postId}`)
+    const channel = createPostgresChangesChannel(`feed_comments:${postId}`)
       .on(
         "postgres_changes",
         {

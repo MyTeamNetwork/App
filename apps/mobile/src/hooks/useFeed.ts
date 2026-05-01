@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchWithAuth } from "@/lib/web-api";
 import { showToast } from "@/components/ui/Toast";
@@ -352,8 +352,7 @@ export function useFeed(orgId: string | null): UseFeedReturn {
   useEffect(() => {
     if (!orgId || !userId) return;
 
-    const channel = supabase
-      .channel(`feed_posts:${orgId}`)
+    const channel = createPostgresChangesChannel(`feed_posts:${orgId}`)
       .on(
         "postgres_changes",
         {

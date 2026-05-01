@@ -25,7 +25,7 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { APP_CHROME } from "@/lib/chrome";
@@ -203,8 +203,7 @@ export default function WorkoutsScreen() {
 
   useEffect(() => {
     if (!orgId) return;
-    const workoutsChannel = supabase
-      .channel(`workouts:${orgId}`)
+    const workoutsChannel = createPostgresChangesChannel(`workouts:${orgId}`)
       .on(
         "postgres_changes",
         {
@@ -219,8 +218,7 @@ export default function WorkoutsScreen() {
       )
       .subscribe();
 
-    const logsChannel = supabase
-      .channel(`workout_logs:${orgId}`)
+    const logsChannel = createPostgresChangesChannel(`workout_logs:${orgId}`)
       .on(
         "postgres_changes",
         {

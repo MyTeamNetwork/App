@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
 import type { Expense } from "@teammeet/types";
@@ -132,8 +132,7 @@ export function useExpenses(
   // Real-time subscription for expenses table
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel(`expenses:${orgId}`)
+    const channel = createPostgresChangesChannel(`expenses:${orgId}`)
       .on(
         "postgres_changes",
         {

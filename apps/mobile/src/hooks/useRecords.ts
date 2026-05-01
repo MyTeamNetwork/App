@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
 import type { Record } from "@teammeet/types";
@@ -124,8 +124,7 @@ export function useRecords(orgId: string | null): UseRecordsReturn {
   // Real-time subscription for records table
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel(`records:${orgId}`)
+    const channel = createPostgresChangesChannel(`records:${orgId}`)
       .on(
         "postgres_changes",
         {

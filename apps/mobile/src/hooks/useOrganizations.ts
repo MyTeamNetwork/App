@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
 import type { Organization } from "@teammeet/types";
@@ -91,8 +91,7 @@ export function useOrganizations(): UseOrganizationsReturn {
 
   useEffect(() => {
     if (!userId) return;
-    const channel = supabase
-      .channel(`organizations:${userId}`)
+    const channel = createPostgresChangesChannel(`organizations:${userId}`)
       .on(
         "postgres_changes",
         {

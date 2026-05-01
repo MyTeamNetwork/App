@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
 import { normalizeRsvpStatus, type RsvpStatus } from "@teammeet/core";
 
@@ -125,8 +125,7 @@ export function useEventRSVPs(eventId: string | undefined): UseEventRSVPsReturn 
   useEffect(() => {
     if (!eventId) return;
 
-    const channel = supabase
-      .channel(`event_rsvps:${eventId}`)
+    const channel = createPostgresChangesChannel(`event_rsvps:${eventId}`)
       .on(
         "postgres_changes",
         {
