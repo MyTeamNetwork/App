@@ -39,7 +39,7 @@ const EXPERIENCE_LEVEL_OPTIONS: { value: ExperienceLevel; label: string }[] = [
 export default function NewJobScreen() {
   const router = useRouter();
   const { orgId } = useOrg();
-  const { createJob } = useJobs(orgId);
+  const { createJob } = useJobs(orgId, undefined, { realtime: false });
 
   const [title, setTitle] = useState("");
   const [company, setCompany] = useState("");

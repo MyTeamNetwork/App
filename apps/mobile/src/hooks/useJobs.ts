@@ -18,8 +18,10 @@ const STALE_TIME_MS = 30_000; // 30 seconds
  */
 export function useJobs(
   orgId: string | null,
-  filters?: JobFilters
+  filters?: JobFilters,
+  options?: { realtime?: boolean }
 ): UseJobsReturn {
+  const realtimeEnabled = options?.realtime ?? true;
   const isMountedRef = useRef(true);
   const lastFetchTimeRef = useRef<number>(0);
 
@@ -251,7 +253,7 @@ export function useJobs(
 
   // Realtime subscription for job_postings changes
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId || !realtimeEnabled) return;
 
     const channel = createPostgresChangesChannel(`job_postings:${orgId}`)
       .on(
@@ -271,7 +273,7 @@ export function useJobs(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [orgId, fetchJobs]);
+  }, [orgId, fetchJobs, realtimeEnabled]);
 
   return {
     jobs,

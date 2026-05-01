@@ -40,7 +40,7 @@ export default function EditJobScreen() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>();
   const router = useRouter();
   const { orgId } = useOrg();
-  const { jobs, updateJob } = useJobs(orgId);
+  const { jobs, updateJob } = useJobs(orgId, undefined, { realtime: false });
 
   const job = useMemo(() => jobs.find((j) => j.id === jobId), [jobs, jobId]);
 
