@@ -285,15 +285,33 @@ export const EventCard = React.memo(function EventCard({
         </View>
 
         {hasRSVP && rsvpColors ? (
-          <View style={[styles.rsvpBadge, { backgroundColor: rsvpColors.background }]}>
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              onRSVP?.(event.user_rsvp_status as RSVPStatus);
+            }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Update RSVP, currently ${
+              event.user_rsvp_status === "attending"
+                ? "Going"
+                : event.user_rsvp_status === "maybe"
+                  ? "Maybe"
+                  : "Can't Go"
+            }`}
+            style={({ pressed }) => [
+              styles.rsvpBadge,
+              { backgroundColor: rsvpColors.background, opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
             <Text style={[styles.rsvpBadgeText, { color: rsvpColors.text }]}>
               {event.user_rsvp_status === "attending"
                 ? "Going"
                 : event.user_rsvp_status === "maybe"
-                ? "Maybe"
-                : "Can't Go"}
+                  ? "Maybe"
+                  : "Can't Go"}
             </Text>
-          </View>
+          </Pressable>
         ) : (
           <Button
             variant="outline"

@@ -12,6 +12,11 @@ import { rememberLastActiveOrg, registerQuickActions } from "@/lib/quick-actions
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   captureException(error, { context: "OrgErrorBoundary" });
+  // Surface the underlying error so we can diagnose on-device. Safe to keep —
+  // ErrorState already renders nicely; the message just adds detail.
+  console.error("[OrgErrorBoundary]", error);
+  const message =
+    (error as { message?: string } | null)?.message ?? String(error ?? "");
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#0f172a" }}>
@@ -19,7 +24,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
         <ErrorState
           onRetry={retry}
           title="Something went wrong"
-          subtitle="This screen encountered an error."
+          subtitle={message || "This screen encountered an error."}
         />
       </View>
     </SafeAreaView>
