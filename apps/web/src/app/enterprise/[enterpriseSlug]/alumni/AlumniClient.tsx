@@ -59,6 +59,7 @@ export function AlumniClient({ enterpriseId }: AlumniClientProps) {
   });
   const [filterOptions, setFilterOptions] = useState({
     years: [] as (number | null)[],
+    birthYears: [] as (number | null)[],
     industries: [] as string[],
     companies: [] as string[],
     cities: [] as string[],
@@ -73,6 +74,7 @@ export function AlumniClient({ enterpriseId }: AlumniClientProps) {
   const currentFilters = {
     org: searchParams.get("org") || "",
     year: searchParams.get("year") || "",
+    birthYear: searchParams.get("birthYear") || "",
     industry: searchParams.get("industry") || "",
     company: searchParams.get("company") || "",
     city: searchParams.get("city") || "",
@@ -90,13 +92,7 @@ export function AlumniClient({ enterpriseId }: AlumniClientProps) {
           const statsData = await statsRes.json();
           setStats(statsData);
           setOrganizations(statsData.organizations || []);
-          setFilterOptions(statsData.filterOptions || {
-            years: [],
-            industries: [],
-            companies: [],
-            cities: [],
-            positions: [],
-          });
+          setFilterOptions(prev => ({ ...prev, ...(statsData.filterOptions || {}) }));
         } else {
           setStatsError(true);
         }
@@ -114,7 +110,7 @@ export function AlumniClient({ enterpriseId }: AlumniClientProps) {
       setIsLoading(true);
       try {
         const params = new URLSearchParams();
-        const filterKeys = ["org", "year", "industry", "company", "city", "position", "hasEmail", "hasPhone"];
+        const filterKeys = ["org", "year", "birthYear", "industry", "company", "city", "position", "hasEmail", "hasPhone"];
         filterKeys.forEach((key) => {
           const value = searchParams.get(key);
           if (value) params.set(key, value);
@@ -177,6 +173,7 @@ export function AlumniClient({ enterpriseId }: AlumniClientProps) {
       <EnterpriseAlumniFilters
         organizations={organizations}
         years={filterOptions.years}
+        birthYears={filterOptions.birthYears}
         industries={filterOptions.industries}
         companies={filterOptions.companies}
         cities={filterOptions.cities}

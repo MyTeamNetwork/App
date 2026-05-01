@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { isOrgAdmin, getCurrentUser } from "@/lib/auth";
 import { NewChatGroupForm } from "@/app/[orgSlug]/chat/new/NewChatGroupForm";
 
-interface NewChatGroupPageProps {
+interface NewChatRedirectProps {
   params: Promise<{ orgSlug: string }>;
 }
 

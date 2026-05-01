@@ -245,9 +245,8 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
   const primary = safeHexColor(organization.primary_color, "#1e3a5f");
   const secondary = safeHexColor(organization.secondary_color, "#10b981");
 
-  // Compute theme variables for both light and dark modes
-  const lightModeVars = computeOrgThemeVariables(primary, secondary, false);
-  const darkModeVars = computeOrgThemeVariables(primary, secondary, true);
+  // Compute theme variables — base color determines light/dark, no separate modes
+  const themeVars = computeOrgThemeVariables(baseColor, sidebarColor, buttonColor);
 
   return (
     <OrgAnalyticsProvider orgId={organization.id} orgType={(organization as Record<string, unknown>).org_type as string || "general"}>
@@ -256,33 +255,27 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
     <div data-org-shell className="min-h-screen">
       <style
         dangerouslySetInnerHTML={{
-          __html: `
-            :root {
-              ${Object.entries(lightModeVars)
-                .map(([key, value]) => `${key}: ${value};`)
-                .join("\n              ")}
-            }
-
-            :root.dark {
-              ${Object.entries(darkModeVars)
-                .map(([key, value]) => `${key}: ${value};`)
-                .join("\n              ")}
-            }
-
-            @media (prefers-color-scheme: dark) {
-              :root:not(.light) {
-                ${Object.entries(darkModeVars)
-                  .map(([key, value]) => `${key}: ${value};`)
-                  .join("\n                ")}
-              }
-            }
-          `,
+          __html: (() => {
+            // Validate every key (must be a CSS custom property) and every
+            // value (allowlist of safe chars) before serializing so a bad
+            // org_branding row cannot escape the declaration block.
+            const KEY_RE = /^--[a-z0-9-]+$/i;
+            const vars = Object.entries(themeVars)
+              .filter(([key]) => KEY_RE.test(key))
+              .map(([key, value]) => `${key}: ${safeCssValue(value, "inherit")};`)
+              .join("\n              ");
+            return `
+            :root { ${vars} }
+            :root.dark { ${vars} }
+            @media (prefers-color-scheme: dark) { :root:not(.light) { ${vars} } }
+            `;
+          })(),
         }}
       />
 
       {/* Canceling banner - shown when subscription is scheduled to cancel at period end */}
       {orgContext.gracePeriod.isCanceling && orgContext.subscription?.currentPeriodEnd && (
-        <div className="fixed top-0 left-0 right-0 z-50 lg:left-64">
+        <div className="fixed top-0 left-0 right-0 z-50 lg:left-[var(--sidebar-offset,3.5rem)] transition-[left] duration-300 ease-in-out motion-reduce:transition-none">
           <CancelingBanner
             periodEndDate={orgContext.subscription.currentPeriodEnd}
             orgSlug={orgSlug}
@@ -294,7 +287,7 @@ export default async function OrgLayout({ children, params }: OrgLayoutProps) {
 
       {/* Grace period banner - shown when subscription is canceled but within 30-day grace */}
       {orgContext.gracePeriod.isInGracePeriod && (
-        <div className="fixed top-0 left-0 right-0 z-50 lg:left-64">
+        <div className="fixed top-0 left-0 right-0 z-50 lg:left-[var(--sidebar-offset,3.5rem)] transition-[left] duration-300 ease-in-out motion-reduce:transition-none">
           <GracePeriodBanner
             daysRemaining={orgContext.gracePeriod.daysRemaining}
             orgSlug={orgSlug}

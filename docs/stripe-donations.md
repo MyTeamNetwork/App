@@ -30,7 +30,7 @@ Ready! Your webhook signing secret is whsec_xxxxxxxxxxxxx
 Copy the webhook signing secret and add it to your `.env.local`:
 
 ```env
-STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET_CONNECT=whsec_xxxxxxxxxxxxx
 ```
 
 > **Note:** The webhook secret from `stripe listen` is different from your dashboard's webhook secret. Use the CLI-provided secret when testing locally.
@@ -93,7 +93,7 @@ See [Stripe Testing Documentation](https://stripe.com/docs/testing) for more tes
 
 1. Ensure `stripe listen` is running and connected
 2. Check the terminal output for forwarded events
-3. Verify `STRIPE_WEBHOOK_SECRET` matches the CLI output
+3. Verify `STRIPE_WEBHOOK_SECRET_CONNECT` matches the CLI output
 
 ### Connect onboarding fails
 

@@ -1,572 +1,430 @@
 # Supabase Schema Audit
 
-**Last Updated**: February 23, 2026
-**Scope**: All migrations through `20260515100000_enterprise_hybrid_pricing.sql` (59 migration files)
+**Last Updated:** April 16, 2026
+**Scope:** All migrations in `supabase/migrations/` through `20261017000000_graduation_rpc_admin_guard.sql`
+**Current Migration Count:** 266
+
+> **Freshness rule.** Header is hand-maintained. To recheck: `ls supabase/migrations/*.sql | wc -l` and `ls supabase/migrations/ | sort | tail -1`. If either drifts more than ~20 migrations, refresh this doc.
+
+This document is a current-state schema snapshot. The generated types in `src/types/database.ts` are the best day-to-day source of truth when this doc drifts. For per-policy RLS detail, grep the corresponding migration rather than duplicating SQL here.
 
 ---
 
-## Tables & Key Columns
+## Current Schema Surface
 
-### Core Identity & Multi-Tenant
+The live schema covers:
 
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `users` | Synced from `auth.users` via trigger | `id` (PK, FK to auth.users), `email`, `name`, `avatar_url` |
-| `organizations` | Top-level tenant entity | `id`, `slug`, `name`, `logo_url`, `donation_embed_url`, `nav_config` (jsonb), `secondary_color`, `stripe_connect_account_id` |
-| `user_organization_roles` | Membership + role assignment | `id`, `user_id`, `organization_id`, `role` (user_role enum), `status` (membership_status enum) |
-| `organization_subscriptions` | Stripe subscription state per org | `id`, `organization_id` (unique), `stripe_customer_id`, `stripe_subscription_id`, `base_plan_interval`, `alumni_bucket`, `alumni_plan_interval`, `status`, `current_period_end`, `grace_period_ends_at` |
-
-### Members & Alumni
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `members` | Active member profiles | `id`, `organization_id`, `user_id`, `email`, `first_name`, `last_name`, `photo_url`, `linkedin_url`, `deleted_at` |
-| `alumni` | Alumni profiles with extended fields | `id`, `organization_id`, `user_id`, `email`, `first_name`, `last_name`, `photo_url`, `linkedin_url`, `phone_number`, `industry`, `current_company`, `current_city`, `position_title`, `graduation_year`, `deleted_at` |
-
-### Events & RSVPs
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `events` | Organization events | `id`, `organization_id`, `audience` (check: members/alumni/both), `target_user_ids`, `deleted_at` |
-| `event_rsvps` | Attendance tracking with check-in | `id`, `event_id`, `user_id`, `organization_id`, `status` (attending/not_attending/maybe), `checked_in_at`, `checked_in_by`, unique on `(event_id, user_id)` |
-
-### Announcements & Notifications
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `announcements` | Audience-targeted announcements | `id`, `organization_id`, `audience` (all/members/active_members/alumni/individuals), `audience_user_ids`, `deleted_at` |
-| `notifications` | System notifications | `id`, `organization_id`, `audience` (members/alumni/both), `target_user_ids`, `deleted_at` |
-| `notification_preferences` | Per-user notification settings | `id`, `user_id`, `organization_id`, `push_enabled` (boolean, default true) |
-| `user_push_tokens` | Expo push tokens per device | `id`, `user_id`, `expo_push_token`, `device_id`, `platform` (ios/android/web), unique on `(user_id, expo_push_token)` |
-
-### Invites
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `organization_invites` | Join codes and tokens | `id`, `organization_id`, `code`, `token` (unique), `role` (admin/active_member/alumni), `uses_remaining`, `expires_at`, `revoked_at`, `created_by_user_id` |
-
-### Mentorship
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `mentorship_pairs` | Mentor/mentee pairings | `id`, `organization_id`, `mentor_user_id`, `mentee_user_id`, `status` |
-| `mentorship_logs` | Session notes and progress | `id`, `organization_id`, `pair_id`, `created_by`, `entry_date`, `notes`, `progress_metric` |
-
-### Workouts & Competition
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `workouts` | Workout definitions | `id`, `organization_id`, `title`, `description`, `workout_date`, `external_url`, `created_by` |
-| `workout_logs` | User participation tracking | `id`, `organization_id`, `workout_id`, `user_id`, `status`, `notes`, `metrics` (jsonb) |
-| `competitions` | Competition containers | `id`, `organization_id` |
-| `competition_teams` | Teams within competitions | `id`, `organization_id`, `competition_id`, `name` |
-| `competition_points` | Point tracking per team/user | `id`, `organization_id`, `team_id`, `reason`, `created_by`, `deleted_at` |
-
-### Donations & Payments
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `donations` | Legacy donation records | `id`, `organization_id`, `deleted_at` |
-| `organization_donations` | Stripe-powered donation events | `id`, `organization_id`, `amount_cents`, `currency`, `status`, `donor_name`, `donor_email`, `stripe_payment_intent_id` (unique), `stripe_checkout_session_id` (unique), `event_id`, `purpose`, `metadata` (jsonb) |
-| `organization_donation_stats` | Aggregate donation metrics per org | `organization_id` (PK), `total_amount_cents`, `donation_count`, `last_donation_at` |
-| `payment_attempts` | Idempotency ledger for all payment flows | `id`, `idempotency_key` (unique), `user_id`, `organization_id`, `flow_type`, `amount_cents`, `status`, `stripe_checkout_session_id`, `stripe_payment_intent_id`, `checkout_url`, `request_fingerprint`, `last_error`, `metadata` (jsonb) |
-| `stripe_events` | Webhook event deduplication | `id`, `event_id` (unique), `type`, `processed_at`, `payload_json` (jsonb) |
-
-### Embeds
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `org_philanthropy_embeds` | Philanthropy links/iframes | `id`, `organization_id`, `title`, `url` (HTTPS check), `embed_type` (link/iframe), `display_order` |
-| `org_donation_embeds` | Donation links/iframes | `id`, `organization_id`, `title`, `url` (HTTPS check), `embed_type` (link/iframe), `display_order` |
-| `philanthropy_events` | Philanthropy event records | `id`, `organization_id`, `deleted_at` |
-
-### Schedules & Files
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `academic_schedules` | User academic commitments | `id`, `organization_id`, `user_id`, `title`, `occurrence_type` (single/daily/weekly/monthly), `start_time`, `end_time`, `start_date`, `end_date`, `day_of_week` (smallint[]), `day_of_month`, `notes`, `deleted_at` |
-| `schedule_files` | Uploaded schedule PDFs/images | `id`, `organization_id`, `user_id`, `file_name`, `file_path`, `file_size`, `mime_type`, `deleted_at` |
-| `records` | Organization records | `id`, `organization_id`, `deleted_at` |
-
-### Forms & Documents
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `forms` | Admin-created form templates | `id`, `organization_id`, `title`, `description`, `fields` (jsonb), `is_active`, `created_by`, `deleted_at` |
-| `form_submissions` | User responses to forms | `id`, `form_id`, `organization_id`, `user_id`, `responses` (jsonb), `submitted_at` |
-| `form_documents` | PDF form templates | `id`, `organization_id`, `title`, `file_name`, `file_path`, `is_active`, `created_by`, `deleted_at` |
-| `form_document_submissions` | Filled/signed document uploads | `id`, `document_id`, `organization_id`, `user_id`, `file_name`, `file_path`, `submitted_at` |
-
-### Group Chat
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `chat_groups` | Group chat containers | `id`, `organization_id`, `name`, `description`, `is_default`, `require_approval`, `created_by`, `deleted_at` |
-| `chat_group_members` | Chat membership tracking | `id`, `chat_group_id`, `user_id`, `organization_id`, `role` (chat_group_role enum: admin/moderator/member), `joined_at`, `last_read_at`, unique on `(chat_group_id, user_id)` |
-| `chat_messages` | Messages with approval workflow | `id`, `chat_group_id`, `organization_id`, `author_id`, `body`, `status` (chat_message_status enum: pending/approved/rejected), `approved_by`, `rejected_by`, `edited_at`, `deleted_at` |
-
-### Google Calendar Sync
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `user_calendar_connections` | OAuth tokens and connection status | `id`, `user_id` (unique), `google_email`, `access_token_encrypted`, `refresh_token_encrypted`, `token_expires_at`, `status` (connected/disconnected/error), `last_sync_at` |
-| `event_calendar_entries` | Maps events to Google Calendar IDs | `id`, `event_id`, `user_id`, `organization_id`, `google_event_id`, `sync_status` (pending/synced/failed/deleted), `last_error`, unique on `(event_id, user_id)` |
-| `calendar_sync_preferences` | Per-user sync settings per org | `id`, `user_id`, `organization_id`, `sync_general`, `sync_game`, `sync_meeting`, `sync_social`, `sync_fundraiser`, `sync_philanthropy` (all boolean, default true), unique on `(user_id, organization_id)` |
-
-### Expenses
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `expenses` | Organization expense tracking | `id`, `organization_id` |
-
-### Enterprise Accounts
-
-| Table | Purpose | Key Columns |
-|-------|---------|-------------|
-| `enterprises` | Top-level enterprise entity | `id`, `name`, `slug`, `description`, `logo_url`, `primary_color`, `billing_contact_email`, `created_at`, `updated_at` |
-| `enterprise_subscriptions` | Enterprise billing & subscription | `id`, `enterprise_id`, `stripe_customer_id`, `stripe_subscription_id`, `billing_interval` (month/year), `alumni_bucket_quantity` (int, >= 1), `sub_org_quantity` (int, billing-only — not a hard cap), `status`, `current_period_end`, `grace_period_ends_at` |
-| `user_enterprise_roles` | Enterprise admin roles | `id`, `user_id`, `enterprise_id`, `role` (enterprise_role enum), `created_at`, unique on `(user_id, enterprise_id)` |
-| `enterprise_adoption_requests` | Pending org adoption requests | `id`, `enterprise_id`, `organization_id`, `requested_by`, `status` (pending/accepted/rejected/expired), `responded_by`, `responded_at`, `expires_at` |
-| `enterprise_alumni_counts` | Materialized view: alumni counts per enterprise | `enterprise_id`, `total_alumni_count`, `sub_org_count`, `enterprise_managed_org_count` |
-| `enterprise_invites` | Enterprise admin invitations | `id`, `enterprise_id`, `email`, `role` (enterprise_role), `token` (unique), `expires_at`, `accepted_at`, `revoked_at`, `created_by` |
-| `enterprise_audit_logs` | Enterprise action audit trail | `id`, `enterprise_id`, `actor_user_id`, `actor_email`, `action`, `target_type`, `target_id`, `metadata` (jsonb), `ip_address`, `user_agent`, `created_at` |
-
-**Enterprise pricing model (hybrid):**
-- Alumni buckets: each bucket covers 2,500 alumni. Buckets 1-4 are self-serve ($50/mo or $500/yr per bucket). Bucket 5+ is sales-led.
-- Team add-ons: first 3 sub-organizations are free. Additional orgs are $15/mo or $150/yr each. `sub_org_quantity` is billing-only (no DB-level hard cap).
-
-**Organization enterprise columns (added to `organizations`):**
-- `enterprise_id` (uuid, nullable FK) — links org to enterprise
-- `enterprise_relationship_type` (text: `created` or `adopted`)
-- `enterprise_adopted_at` (timestamptz)
+- Core identity, org membership, and enterprise billing
+- Members, alumni, parents, and parent invites
+- Events, announcements, notifications, and RSVPs
+- Chat (groups, messages, polls, forms), discussions, and feed
+- Forms, document submissions, and media (archive + uploads)
+- Calendar sync, schedule imports, and schedule domain security
+- Jobs, mentorship, workouts, competition, and philanthropy/donations
+- Analytics, usage analytics, telemetry, and operational events
+- Error tracking, compliance audit, and dev-admin audit logs
+- User deletion requests (GDPR/COPPA)
+- AI assistant (threads, messages, audit log, semantic cache)
+- LinkedIn OAuth connections and enrichment
+- Global search (cross-entity search across members/alumni/events/announcements/jobs/discussions/feed)
+- Mentorship tasks and meetings (PM upgrade: task lists, scheduled meetings, cascade deletion)
+- Breach incidents, data access log, user agreements (FERPA / NY Ed Law 2-d incident tracking)
+- AI feedback (thumbs up/down on assistant responses)
+- Alumni birth year (opt-in cohort data for reunions and enterprise stats)
 
 ---
 
-## Enum Types
+## Complete Table Reference
 
-| Enum | Values |
-|------|--------|
-| `user_role` | `admin`, `active_member`, `alumni` (legacy `member` and `viewer` migrated) |
-| `membership_status` | `active`, `revoked`, `pending` |
-| `chat_message_status` | `pending`, `approved`, `rejected` |
+### Identity, Membership, and Access
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `users` | App-level user profile mirrored from auth | Synced from `auth.users` |
+| `organizations` | Top-level tenant entity | Branding, nav config, Stripe/org settings, `media_upload_roles`, `feed_post_roles` |
+| `user_organization_roles` | Org membership + role assignment | `role` includes `parent`; `status`: `pending`, `active`, `revoked` |
+| `organization_subscriptions` | Org subscription state | Alumni/parent access buckets, grace-period data |
+| `organization_invites` | Invite codes for org onboarding | Unique `(org_id, code)`, optional `token`, `revoked_at` |
+| `user_deletion_requests` | GDPR/COPPA account deletion queue | Status: `pending`, `completed`, `cancelled`; 30-day grace period |
+| `compliance_audit_log` | Age-gate compliance events | Anonymized: no DOB/PII, stores `ip_hash`, `age_bracket` |
+
+### Enterprise
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `enterprises` | Enterprise tenant entity | Metadata and billing contact |
+| `enterprise_subscriptions` | Enterprise subscription state | Hybrid alumni-bucket + sub-org pricing |
+| `user_enterprise_roles` | Enterprise role assignment | `owner`, `billing_admin`, `org_admin` |
+| `enterprise_adoption_requests` | Org adoption workflow | Structured request lifecycle with status |
+| `enterprise_invites` | Enterprise admin invitations | Email/token onboarding flow |
+| `enterprise_audit_logs` | Admin audit trail | Actor email, IP, user agent |
+| `enterprise_alumni_counts` | Enterprise-wide org/alumni count view | Capacity planning / enforcement (VIEW, not table) |
+
+### Member Directories
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `members` | Active member profiles | Soft-delete via `deleted_at`. Enrichment columns: `current_company`, `school` |
+| `alumni` | Alumni profiles | Extended profile/contact fields including `current_city` |
+| `parents` | Parent/guardian profiles | Relationship, student name, notes, optional linked `user_id` |
+| `parent_invites` | Parent invite onboarding | Code-based invite flow with status, expiry, optional email |
+
+### Communication and Community
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `announcements` | Audience-targeted announcements | Supports `all`, `members`, `active_members`, `alumni`, `individuals` |
+| `notifications` | Notification records | Paired with notification preferences and push tokens |
+| `chat_groups` | Group chat containers | Approval and moderation workflow |
+| `chat_group_members` | Chat membership | `added_by`, soft removal via `removed_at`. See `docs/db/chat-members.md` |
+| `chat_messages` | Chat message records | `message_type` (`text`, `poll`, `form`), `metadata` JSONB, approval state, edit/delete |
+| `chat_poll_votes` | Poll votes within chat | One vote per user per poll (`UNIQUE(message_id, user_id)`), upsert for re-voting |
+| `chat_form_responses` | Inline form responses in chat | One response per user per form (`UNIQUE(message_id, user_id)`), immutable by default |
+| `discussion_threads` | Discussion threads | Pinned/locked flags, `reply_count`, `last_activity_at`, soft-delete |
+| `discussion_replies` | Thread replies | Reply content with soft-delete |
+| `feed_posts` | Feed posts | Community feed content, `comment_count`, `like_count` cached. `post_type` (`text`/`poll`) and `metadata` JSONB |
+| `feed_poll_votes` | Feed post poll votes | `UNIQUE(post_id, user_id)`, option_index 0–5, org-scoped RLS via `is_org_member()` |
+| `feed_comments` | Feed comments | Post-level replies/comments, soft-delete |
+| `feed_likes` | Feed post likes | Hard delete on unlike; `UNIQUE(post_id, user_id)` |
+
+### Scheduling and Calendar
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `events` | Org events | Audience targeting, optional recurrence |
+| `event_rsvps` | RSVP/check-in state | Check-in and attendance fields |
+| `academic_schedules` | User academic commitments | Personal schedule/availability, supports multi-day |
+| `schedule_files` | Uploaded schedule files | Per-user uploads |
+| `schedule_sources` | Imported external schedule sources | URL, connector type, sync stats |
+| `schedule_events` | Events from imported schedule sources | `UNIQUE(source_id, external_uid)` for dedup |
+| `calendar_feeds` | Calendar feed ingestion configs | Powers calendar sync workflows |
+| `calendar_events` | Events parsed from calendar feeds | `UNIQUE(feed_id, instance_key)` for dedup |
+| `user_calendar_connections` | Google OAuth connection state | Encrypted token storage |
+| `event_calendar_entries` | Event-to-Google Calendar mappings | Sync status and error state, `target_calendar_id` |
+| `calendar_sync_preferences` | Per-user sync preferences | Org-scoped preference table |
+
+### Schedule Domain Security
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `schedule_domain_rules` | Platform-level domain patterns | `UNIQUE(pattern)`, vendor ID, status: `active`/`blocked` |
+| `schedule_allowed_domains` | Verified/pending domain allowlist | `UNIQUE(hostname)`, status: `pending`/`active`/`blocked`, fingerprint JSONB. FK constraints on `verified_by_user_id` → `auth.users`, `verified_by_org_id` → `organizations` (both `ON DELETE SET NULL`) |
+
+### Forms and Documents
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `forms` | Dynamic form definitions | Org-scoped, `is_active` flag, soft-delete |
+| `form_submissions` | Form response payloads | `responses` JSONB, user-generated content. Soft-delete via `deleted_at`. `user_id` nullable for anonymous friction feedback (pre-auth flows) |
+| `form_documents` | Document upload templates | Org-scoped, `is_active` flag |
+| `form_document_submissions` | Uploaded document submissions | `file_name`, `file_path`, `mime_type`, `file_size`. Soft-delete via `deleted_at` |
+
+### Media
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `media_items` | Media archive items (photos/videos) | Moderation: `status` enum (`pending`, `approved`, `rejected`), tags, visibility, soft-delete |
+| `media_albums` | Album containers for media | `item_count` cached, soft-delete |
+| `media_album_items` | Junction: media items ↔ albums | `UNIQUE(album_id, media_item_id)`, `sort_order` |
+| `media_uploads` | Upload lifecycle tracking (feed, discussions, jobs) | Status enum: `pending`, `ready`, `failed`, `orphaned`; entity link to `feed_post`/`discussion_thread`/`job_posting` |
+
+**Storage Buckets:**
+- `media-archive` — Public bucket for media archive (50MB limit)
+- `org-media` — Private bucket for org uploads (25MB limit)
+- `feedback-screenshots` — Public bucket for friction feedback screenshots (5MB limit, images only)
+
+### Jobs and Mentorship
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `job_postings` | Job board posts | Org-scoped, `industry`, `experience_level` fields |
+| `mentor_profiles` | Alumni mentor directory | `UNIQUE(user_id, org_id)`, `expertise_areas` array, `is_active` flag |
+| `mentorship_pairs` | Mentor–mentee pairings | Org-scoped pair records. Soft-delete via `deleted_at` |
+| `mentorship_logs` | Mentorship session logs | `entry_date`, `notes`, `progress_metric` per pair. Soft-delete via `deleted_at` |
+
+### Workouts and Competition
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `workouts` | Workout content | Title, description, date, optional external URL |
+| `workout_logs` | Workout participation logs | Status: `not_started`, `in_progress`, `completed`; `metrics` JSONB |
+| `competitions` | Competition definitions | Org-scoped competition records |
+| `competition_teams` | Teams within competitions | Named teams per competition. Soft-delete via `deleted_at` |
+| `competition_points` | Point records | Per-user/team, `reason`, `created_by` |
+
+### Payments, Donations, and Embeds
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `payment_attempts` | Idempotency ledger | Unique on `idempotency_key`, states: `initiated`, `processing`, `succeeded`, `failed` |
+| `stripe_events` | Webhook dedup | `UNIQUE(event_id)` prevents double-processing |
+| `organization_donations` | Stripe Connect donation records | Per-donation event storage, optional `anonymous` flag. Soft-delete via `deleted_at` (compliance guard) |
+| `organization_donation_stats` | Donation rollups | Aggregate stats per org |
+| `org_donation_embeds` | Donation embed/link storage | Finance surface display |
+| `org_philanthropy_embeds` | Philanthropy embed/link storage | HTTPS-only URLs, `embed_type`: `link`/`iframe` |
+| `philanthropy_events` | Philanthropy event records | Org-scoped philanthropy data |
+
+### Analytics and Telemetry
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `analytics_consent` | Org/user analytics consent | Composite PK `(org_id, user_id)` |
+| `analytics_events` | Behavioral analytics events | Event name enum + allowlisted props; hardened by July 2026 migrations |
+| `ops_events` | Operational event log | System/ops signals |
+| `rate_limit_analytics` | Analytics rate limit windows | `UNIQUE(user_id, org_id, window_start)`, cleaned by daily cron |
+
+### Usage Analytics (FERPA/COPPA-compliant)
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `usage_events` | Raw behavioral events | No PII; event types: `page_view`, `feature_enter`, `feature_exit`, `nav_click`; purged after 90 days |
+| `usage_summaries` | Aggregated per-user/org feature usage | `UNIQUE(user_id, org_id, feature, period_start)` |
+| `ui_profiles` | LLM-generated personalization profiles | Cached with `expires_at` (7-day TTL), `UNIQUE(user_id, org_id)` |
+
+### Error Tracking
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `error_groups` | Aggregated error groups | `UNIQUE(env, fingerprint)`, severity, rolling counts (`count_1h`, `count_24h`, `total_count`), triage status |
+| `error_events` | Individual error occurrences | Linked to `error_groups`, stores message, stack, route, meta JSONB |
+
+### AI Assistant
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `ai_threads` | AI conversation threads | Scoped to user + org + surface. Soft-delete via `deleted_at`. Surfaces: `general`, `members`, `analytics`, `events` |
+| `ai_messages` | Messages within AI threads | Denormalized `user_id`/`org_id` with composite FK to `ai_threads(id, user_id, org_id)`. Idempotency key. Status: `pending`, `streaming`, `complete`, `error`. Role/content constraint check |
+| `ai_audit_log` | AI request audit trail | Service-role only (RLS enabled, no policies). No FK on `user_id`/`org_id` — intentional for audit survival. TTL: 90 days. Cache columns: `cache_status`, `cache_entry_id`, `cache_bypass_reason`. Context columns: `context_surface`, `context_token_estimate`. Stage telemetry column: `stage_timings` JSONB |
+| `ai_semantic_cache` | Semantic response cache | Org-scoped, keyed by `(org_id, surface, permission_scope_key, cache_version, prompt_hash)`. TTL via `expires_at`, soft-invalidation via `invalidated_at`. Service-role only |
+
+### LinkedIn Integration
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `user_linkedin_connections` | LinkedIn OAuth connection state | Mirrors `user_calendar_connections` pattern. `UNIQUE(user_id)`, encrypted tokens, sync status: `connected`/`disconnected`/`error` |
+
+### Mentorship PM (Oct 2026)
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `mentorship_tasks` | Tasks attached to a mentorship pair | Status, due date, optional assignee. Soft-delete via `deleted_at`. Cascade on pair deletion |
+| `mentorship_meetings` | Scheduled meetings within a pair | Start/end timestamps, notes, optional calendar link. Soft-delete via `deleted_at`. Cascade on pair deletion |
+
+### Search (Oct 2026)
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `global_search_entries` | Cross-entity search index | Materialized search surface covering members, alumni, events, announcements, jobs, discussions, feed. Refreshed by triggers / scheduled job. See migration `20261015110000_global_search.sql` |
+| `search_behavioral_analytics` | Search query telemetry | Query text (hashed/truncated), result counts, click-through events. PII-minimized |
+
+### Compliance & Security (Oct 2026)
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `breach_incidents` | Security/privacy incident tracking | Discovery/containment/resolution timestamps, severity tier, notification log. Backs `docs/Incident_Response_Runbook.md` |
+| `data_access_log` | Record-level access telemetry | Who accessed which resource when (for FERPA / NY Ed Law 2-d audit). IP stored hashed |
+| `user_agreements` | User acceptance of ToS / Privacy / DSA versions | `user_id`, `agreement_type`, `version`, `accepted_at` |
+
+### AI Feedback (Oct 2026)
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `ai_feedback` | Per-message thumbs/ratings on assistant responses | `message_id`, `user_id`, `rating`, optional `comment`. RLS: users read/write only their own feedback; admins read within org |
+
+### Audit Logs
+
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `dev_admin_audit_logs` | Dev/platform admin audit trail | Action, target type/id/slug, IP, user agent, metadata JSONB |
+| `enterprise_audit_logs` | Enterprise admin audit trail | Actor email, IP, user agent (see Enterprise section) |
+
+---
+
+## Enum Highlights
+
+| Enum | Current Values |
+|------|----------------|
+| `user_role` | `admin`, `active_member`, `alumni`, `parent` (plus legacy compat in some code paths) |
+| `membership_status` | `pending`, `active`, `revoked` |
 | `chat_group_role` | `admin`, `moderator`, `member` |
+| `chat_message_status` | `pending`, `approved`, `rejected` |
 | `enterprise_role` | `owner`, `billing_admin`, `org_admin` |
-| `adoption_request_status` | `pending`, `accepted`, `rejected`, `expired` |
-
----
-
-## RLS Policy Summary
-
-### Pattern Key
-- **Org members** = `has_active_role(organization_id, ARRAY['admin','active_member','alumni'])` or `is_org_member(organization_id)`
-- **Admin only** = `has_active_role(organization_id, ARRAY['admin'])` or `is_org_admin(organization_id)`
-- **Page editors** = `can_edit_page(organization_id, '/path')` (role-based page editing from `nav_config`)
-- **Self only** = `auth.uid() = user_id`
-- **Service only** = `auth.role() = 'service_role'`
-
-### Access Rules by Table
-
-| Table | SELECT | INSERT | UPDATE | DELETE |
-|-------|--------|--------|--------|--------|
-| `users` | All authenticated | -- | Self only | -- |
-| `user_organization_roles` | Self or admin | Self (join flow) | Admin or self (limited) | Admin only |
-| `organizations` | Org members | -- | -- | -- |
-| `members` | Org members | Admin only | Admin or self (profile owner) | Admin only |
-| `alumni` | Org members | Page editors + `can_add_alumni()` | Page editors or self (profile owner) | Page editors |
-| `events` | Org members | Admin only | Admin only | Admin only |
-| `event_rsvps` | Org members | Self (with active role) | Self or admin | Self |
-| `announcements` | `can_view_announcement()` | Admin only | Admin only | Admin only |
-| `donations` | Org members | Page editors | Page editors | Page editors |
-| `organization_donations` | Org members | Page editors | Page editors | Page editors |
-| `organization_donation_stats` | Org members | Page editors | Page editors | Page editors |
-| `org_philanthropy_embeds` | Org members | Page editors | Page editors | Page editors |
-| `org_donation_embeds` | Org members | Page editors | Page editors | Page editors |
-| `philanthropy_events` | Org members | Page editors | Page editors | Page editors |
-| `notifications` | Org members | Admin only | Admin only | Admin only |
-| `notification_preferences` | Self only | Self only | Self only | -- |
-| `organization_invites` | Admin or valid token lookup | Admin only | Admin only | Admin only |
-| `mentorship_pairs` | Org members | Admin or self (alumni) | Admin or self (participant) | Admin or self (participant) |
-| `mentorship_logs` | Org members | Admin or pair participant | Admin or pair participant | Admin only |
-| `workouts` | Org members | Admin only | Admin only | Admin only |
-| `workout_logs` | Org members | Admin only | Admin only | Admin only |
-| `competitions` | Org members | Admin only | Admin only | Admin only |
-| `competition_teams` | Org members | Admin only | Admin only | Admin only |
-| `competition_points` | Org members | Admin only | Admin only | Admin only |
-| `academic_schedules` | Self or admin | Self only | Self only | Self only |
-| `schedule_files` | Self or admin | Self only | Self only | Self only |
-| `forms` | Admin (all) or members (active only) | Admin only | Admin only | Admin only |
-| `form_submissions` | Self or admin | Self (with active role) | -- | -- |
-| `form_documents` | Admin (all) or members (active only) | Admin only | Admin only | Admin only |
-| `form_document_submissions` | Self or admin | Self (with active role) | -- | Self |
-| `chat_groups` | Org member + group member (or admin) | Admin only | Admin only | Admin only |
-| `chat_group_members` | Group member or admin | Admin/moderator | Admin/moderator | Admin/moderator |
-| `chat_messages` | Group member (approved msgs + own pending) | Group member | Author or moderator | Author or moderator |
-| `user_calendar_connections` | Self only | Self only | Self only | Self only |
-| `event_calendar_entries` | Self or admin | Self or admin | Self or admin | Self or admin |
-| `calendar_sync_preferences` | Self only | Self (with active role) | Self only | Self only |
-| `user_push_tokens` | Self only | Self only | Self only | Self only |
-| `payment_attempts` | Service only | Service only | Service only | Service only |
-| `stripe_events` | Service only | Service only | Service only | Service only |
-| `expenses` | Org members | Page editors | Page editors | Page editors |
-| `enterprises` | Enterprise member | -- | Enterprise owner | -- |
-| `enterprise_subscriptions` | Enterprise member | Service only | Service only | -- |
-| `user_enterprise_roles` | Enterprise member or self | Enterprise owner | -- | Enterprise owner |
-| `enterprise_adoption_requests` | Enterprise member or org admin | Enterprise admin | Enterprise admin | -- |
-| `enterprise_alumni_counts` | Enterprise member | -- | -- | -- |
-| `enterprise_invites` | Enterprise admin | Enterprise admin | Enterprise admin | Enterprise admin |
-| `enterprise_audit_logs` | Enterprise owner | Service only | -- | -- |
-
----
-
-## Security Functions
-
-### Role-Checking Helpers
-
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `has_active_role` | `(org_id uuid, allowed_roles text[]) -> boolean` | Checks if current user has one of the specified active roles in org |
-| `is_org_member` | `(org_id uuid) -> boolean` | Checks if current user has any active membership in org |
-| `is_org_admin` | `(org_id uuid) -> boolean` | Checks if current user is admin in org |
-| `can_view_announcement` | `(announcement_row) -> boolean` | Audience-based visibility check (all/members/alumni/individuals) |
-| `can_edit_page` | `(org_id uuid, path text) -> boolean` | Checks if user's role allows editing the given page path (via `nav_config` jsonb) |
-
-### Chat Helpers
-
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `is_chat_group_member` | `(group_id uuid) -> boolean` | Checks if current user belongs to the chat group |
-| `is_chat_group_moderator` | `(group_id uuid) -> boolean` | Checks if current user is admin or moderator in the chat group |
-
-### Enterprise Helpers
-
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `is_enterprise_member` | `(ent_id uuid) -> boolean` | Checks if current user has any role in enterprise (uses initplan pattern) |
-| `is_enterprise_owner` | `(ent_id uuid) -> boolean` | Checks if current user is owner in enterprise (uses initplan pattern) |
-| `can_enterprise_add_alumni` | `(p_enterprise_id uuid) -> boolean` | Returns true if enterprise has alumni capacity (bucket_qty * 2500 > current count) |
-
-### Alumni Quota Functions
-
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `alumni_bucket_limit` | `(p_bucket text) -> integer` | Maps bucket string to numeric limit (IMMUTABLE) |
-| `get_alumni_quota` | `(p_org_id uuid) -> jsonb` | Returns quota info: bucket, limit, count, remaining (admin only) |
-| `can_add_alumni` | `(p_org_id uuid) -> boolean` | Returns true if org has alumni capacity remaining |
-| `assert_alumni_quota` | `(p_org_id uuid) -> void` | Raises exception if alumni quota exceeded |
-
-### RPC Functions
-
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `create_org_invite` | `(p_organization_id, p_role, p_uses, p_expires_at) -> organization_invites` | Admin-only invite creation with secure code/token generation; enforces alumni quota for alumni invites |
-| `redeem_org_invite` | `(p_code text) -> jsonb` | Validates invite, creates active membership, decrements uses |
-| `redeem_org_invite_by_token` | `(p_token text) -> jsonb` | Token-based wrapper around redeem_org_invite |
-| `get_dropdown_options` | `(p_organization_id uuid) -> jsonb` | Returns aggregated filter options (graduation years, industries, companies, cities, positions, etc.) |
-| `check_in_event_attendee` | `(p_rsvp_id uuid, p_undo boolean) -> jsonb` | Admin-only check-in/undo for event attendees |
-| `increment_donation_stats` | `(p_org_id, p_amount_delta, p_count_delta, p_last) -> void` | Atomically increments donation aggregates via upsert |
-
-### Utility Functions
-
-| Function | Signature | Purpose |
-|----------|-----------|---------|
-| `handle_new_user` | `() -> trigger` | Syncs `auth.users` to `public.users` on insert/update |
-| `handle_org_member_sync` | `() -> trigger` | Syncs `user_organization_roles` to `members`/`alumni` tables; enforces alumni quota |
-| `update_updated_at_column` | `() -> trigger` | Generic `updated_at = now()` trigger function |
-| `protect_checkin_columns` | `() -> trigger` | Blocks non-admins from directly updating `checked_in_at`/`checked_in_by` |
-| `protect_rsvp_org_id` | `() -> trigger` | Prevents changing `organization_id` on event_rsvps |
-| `gen_random_bytes` | `(integer) -> bytea` | Public schema wrapper for `extensions.gen_random_bytes` |
-
-All SECURITY DEFINER functions use `SET search_path = ''` (or `= public`) to prevent search-path injection, except `handle_org_member_sync()` (`20260412093000`) which still needs hardening.
-
----
-
-## Triggers
-
-### User & Membership Sync
-
-| Trigger | Table | Event | Function |
-|---------|-------|-------|----------|
-| `on_auth_user_created` | `auth.users` | AFTER INSERT | `handle_new_user()` |
-| `on_auth_user_updated` | `auth.users` | AFTER UPDATE | `handle_new_user()` |
-| `on_org_member_sync` | `user_organization_roles` | AFTER INSERT OR UPDATE | `handle_org_member_sync()` |
-
-### Check-In Security
-
-| Trigger | Table | Event | Function |
-|---------|-------|-------|----------|
-| `event_rsvps_protect_checkin` | `event_rsvps` | BEFORE UPDATE | `protect_checkin_columns()` |
-| `event_rsvps_protect_org_id` | `event_rsvps` | BEFORE UPDATE | `protect_rsvp_org_id()` |
-
-### Updated-At Timestamps
-
-These tables have BEFORE UPDATE triggers calling `update_updated_at_column()` (or table-specific equivalents):
-
-`members`, `alumni`, `events`, `announcements`, `mentorship_pairs`, `mentorship_logs`, `workouts`, `workout_logs`, `notification_preferences`, `org_philanthropy_embeds`, `org_donation_embeds`, `organization_donations`, `organization_donation_stats`, `chat_groups`, `event_rsvps`, `payment_attempts`, `user_calendar_connections`, `event_calendar_entries`, `calendar_sync_preferences`, `user_push_tokens`
-
----
-
-## Indexes
-
-### Partial Indexes (Soft Delete)
-
-| Index | Table | Columns | Filter |
-|-------|-------|---------|--------|
-| `alumni_org_deleted_idx` | `alumni` | `organization_id` | `WHERE deleted_at IS NULL` |
-| `members_org_not_deleted_idx` | `members` | `organization_id` | `WHERE deleted_at IS NULL` |
-
-### Organization-Scoped Indexes
-
-| Index | Table | Columns |
-|-------|-------|---------|
-| `idx_members_org` | `members` | `organization_id` |
-| `idx_events_org` | `events` | `organization_id` |
-| `idx_announcements_org` | `announcements` | `organization_id` |
-| `idx_donations_org` | `donations` | `organization_id` |
-| `idx_notifications_org` | `notifications` | `organization_id` |
-| `idx_philanthropy_events_org` | `philanthropy_events` | `organization_id` |
-| `idx_records_org` | `records` | `organization_id` |
-| `idx_competitions_org` | `competitions` | `organization_id` |
-| `organization_subscriptions_org_idx` | `organization_subscriptions` | `organization_id` (unique) |
-
-### Alumni Search Indexes
-
-| Index | Table | Column |
-|-------|-------|--------|
-| `alumni_graduation_year_idx` | `alumni` | `graduation_year` |
-| `alumni_industry_idx` | `alumni` | `industry` |
-| `alumni_current_company_idx` | `alumni` | `current_company` |
-| `alumni_current_city_idx` | `alumni` | `current_city` |
-| `alumni_position_title_idx` | `alumni` | `position_title` |
-
-### Invite Indexes
-
-| Index | Table | Columns | Notes |
-|-------|-------|---------|-------|
-| `organization_invites_org_code_idx` | `organization_invites` | `(organization_id, code)` | Unique |
-| `organization_invites_token_idx` | `organization_invites` | `token` | Partial: WHERE token IS NOT NULL |
-| `organization_invites_org_id_idx` | `organization_invites` | `organization_id` |
-
-### Embed Indexes
-
-| Index | Table | Columns |
-|-------|-------|---------|
-| `org_philanthropy_embeds_org_idx` | `org_philanthropy_embeds` | `organization_id` |
-| `org_philanthropy_embeds_org_order_idx` | `org_philanthropy_embeds` | `(organization_id, display_order)` |
-| `org_donation_embeds_org_idx` | `org_donation_embeds` | `organization_id` |
-| `org_donation_embeds_org_order_idx` | `org_donation_embeds` | `(organization_id, display_order)` |
-
-### Donation & Payment Indexes
-
-| Index | Table | Columns | Notes |
-|-------|-------|---------|-------|
-| `organization_donations_org_idx` | `organization_donations` | `organization_id` |
-| `organization_donations_status_idx` | `organization_donations` | `(organization_id, status)` |
-| `organization_donations_pi_unique` | `organization_donations` | `stripe_payment_intent_id` | Unique |
-| `organization_donations_checkout_session_unique` | `organization_donations` | `stripe_checkout_session_id` | Unique |
-| `payment_attempts_checkout_session_unique` | `payment_attempts` | `stripe_checkout_session_id` | Partial unique |
-| `payment_attempts_payment_intent_unique` | `payment_attempts` | `stripe_payment_intent_id` | Partial unique |
-| `payment_attempts_transfer_unique` | `payment_attempts` | `stripe_transfer_id` | Partial unique |
-| `payment_attempts_payout_unique` | `payment_attempts` | `stripe_payout_id` | Partial unique |
-| `payment_attempts_org_flow_idx` | `payment_attempts` | `(organization_id, flow_type)` |
-| `payment_attempts_status_idx` | `payment_attempts` | `status` |
-| `stripe_events_type_idx` | `stripe_events` | `type` |
-
-### Event RSVP Indexes
-
-| Index | Table | Columns | Notes |
-|-------|-------|---------|-------|
-| `event_rsvps_event_id_idx` | `event_rsvps` | `event_id` |
-| `event_rsvps_user_id_idx` | `event_rsvps` | `user_id` |
-| `event_rsvps_org_id_idx` | `event_rsvps` | `organization_id` |
-| `event_rsvps_checked_in_idx` | `event_rsvps` | `(event_id, checked_in_at)` | Partial: WHERE checked_in_at IS NOT NULL |
-
-### Chat Indexes
-
-| Index | Table | Columns | Notes |
-|-------|-------|---------|-------|
-| `chat_groups_org_idx` | `chat_groups` | `organization_id` |
-| `chat_groups_org_default_idx` | `chat_groups` | `(organization_id, is_default)` | Filtered |
-| `chat_group_members_group_idx` | `chat_group_members` | `chat_group_id` |
-| `chat_group_members_user_idx` | `chat_group_members` | `user_id` |
-| `chat_group_members_org_idx` | `chat_group_members` | `organization_id` |
-| `chat_messages_group_idx` | `chat_messages` | `chat_group_id` |
-| `chat_messages_org_idx` | `chat_messages` | `organization_id` |
-| `chat_messages_author_idx` | `chat_messages` | `author_id` |
-| `chat_messages_created_idx` | `chat_messages` | `created_at` | Filtered: WHERE deleted_at IS NULL |
-| `chat_messages_pending_idx` | `chat_messages` | `(chat_group_id, status)` | Filtered: WHERE status = 'pending' |
-
-### Schedule & Form Indexes
-
-| Index | Table | Columns |
-|-------|-------|---------|
-| `idx_academic_schedules_org_user` | `academic_schedules` | `(organization_id, user_id, deleted_at)` |
-| `idx_academic_schedules_org` | `academic_schedules` | `(organization_id, deleted_at)` |
-| `idx_schedule_files_org` | `schedule_files` | `(organization_id, deleted_at)` |
-| `idx_schedule_files_user` | `schedule_files` | `(organization_id, user_id, deleted_at)` |
-| `idx_forms_org` | `forms` | `(organization_id, deleted_at)` |
-| `idx_forms_active` | `forms` | `(organization_id, is_active, deleted_at)` |
-| `idx_form_submissions_form` | `form_submissions` | `form_id` |
-| `idx_form_submissions_org` | `form_submissions` | `organization_id` |
-| `idx_form_submissions_user` | `form_submissions` | `user_id` |
-| `idx_form_documents_org` | `form_documents` | `(organization_id, deleted_at)` |
-| `idx_form_documents_active` | `form_documents` | `(organization_id, is_active, deleted_at)` |
-| `idx_form_doc_submissions_doc` | `form_document_submissions` | `document_id` |
-| `idx_form_doc_submissions_org` | `form_document_submissions` | `organization_id` |
-| `idx_form_doc_submissions_user` | `form_document_submissions` | `user_id` |
-
-### Calendar Sync Indexes
-
-| Index | Table | Columns |
-|-------|-------|---------|
-| `user_calendar_connections_user_id_idx` | `user_calendar_connections` | `user_id` |
-| `user_calendar_connections_status_idx` | `user_calendar_connections` | `status` |
-| `event_calendar_entries_event_id_idx` | `event_calendar_entries` | `event_id` |
-| `event_calendar_entries_user_id_idx` | `event_calendar_entries` | `user_id` |
-| `event_calendar_entries_org_id_idx` | `event_calendar_entries` | `organization_id` |
-| `event_calendar_entries_sync_status_idx` | `event_calendar_entries` | `sync_status` |
-| `calendar_sync_preferences_user_id_idx` | `calendar_sync_preferences` | `user_id` |
-| `calendar_sync_preferences_org_id_idx` | `calendar_sync_preferences` | `organization_id` |
-
-### Subscription Indexes
-
-| Index | Table | Columns | Notes |
-|-------|-------|---------|-------|
-| `idx_org_subscriptions_grace_period` | `organization_subscriptions` | `grace_period_ends_at` | Partial: WHERE grace_period_ends_at IS NOT NULL |
-
-### Push Notification Indexes
-
-| Index | Table | Columns |
-|-------|-------|---------|
-| `user_push_tokens_user_id_idx` | `user_push_tokens` | `user_id` |
-| `user_push_tokens_token_idx` | `user_push_tokens` | `expo_push_token` |
-
-### Other Indexes
-
-| Index | Table | Columns |
-|-------|-------|---------|
-| `members_user_id_idx` | `members` | `user_id` |
-| `alumni_user_id_idx` | `alumni` | `user_id` |
-| `users_email_idx` | `users` | `email` |
-| `user_org_roles_org_idx` | `user_organization_roles` | `organization_id` |
-| `user_org_roles_user_idx` | `user_organization_roles` | `user_id` |
-| `user_org_roles_active_idx` | `user_organization_roles` | `(organization_id, user_id, status)` |
-
----
-
-## Realtime
-
-Tables added to the `supabase_realtime` publication with REPLICA IDENTITY FULL:
-
-- `events`
-- `announcements`
-- `alumni`
-- `user_organization_roles`
-- `organizations`
-- `chat_messages`
-
----
-
-## Storage Buckets
-
-| Bucket | Access | Size Limit | Allowed Types |
-|--------|--------|------------|---------------|
-| `org-branding` | Public read | 5 MB | image/png, image/jpeg, image/jpg, image/webp, image/gif |
-
----
+| `media_status` | `pending`, `approved`, `rejected` |
+| `media_upload_status` | `pending`, `ready`, `failed`, `orphaned` |
+| `media_entity_type` | `feed_post`, `discussion_thread`, `job_posting` |
+| `analytics_event_name` | `app_open`, `route_view`, `nav_click`, `page_dwell_bucket`, `directory_view`, `directory_filter_apply`, `profile_card_open`, `events_view`, `event_open`, `rsvp_update`, `donation_flow_start`, `donation_checkout_start`, `donation_checkout_result`, `chat_thread_open`, `chat_message_send`, `chat_participants_change` (realigned Mar 2026 — deprecated events removed) |
 
 ## Extensions
 
-| Extension | Purpose |
-|-----------|---------|
-| `pgcrypto` | `gen_random_bytes()` for secure invite code generation |
+| Extension | Schema | Purpose |
+|-----------|--------|---------|
+| `vector` | `extensions` | pgvector — enabled for future embedding-based similarity search (AI semantic cache) |
 
 ---
 
-## Critical Issue Status
+## RLS Helper Functions
 
-Issues identified in the original December 2025 audit and their resolution status:
-
-| # | Issue | Status | Resolution |
-|---|-------|--------|------------|
-| 1 | Missing `public.users` sync trigger | **Resolved** | `handle_new_user()` trigger added in `20251217100000_schema_fixes.sql`, fires on auth.users INSERT and UPDATE |
-| 2 | Invite codes generated client-side | **Resolved** | `create_org_invite()` RPC generates secure codes server-side with `gen_random_bytes()` |
-| 3 | Invite redemption via direct insert | **Resolved** | `redeem_org_invite()` SECURITY DEFINER RPC handles validation and membership creation |
-| 4 | Announcement email notifications are stubs | **Outstanding** | `sendEmail()` in `src/lib/notifications.ts` still logs only; Resend API integration needed |
-| 5 | Missing `is_org_member` / `is_org_admin` helpers | **Resolved** | Both functions created in `20251217100000_schema_fixes.sql` |
-
-### Additional Security Improvements (Post-Audit)
-
-- All SECURITY DEFINER functions hardened with `SET search_path = ''` (`20260107120000`), except `handle_org_member_sync()` added later in `20260412093000`
-- RLS policies use `(select auth.uid())` initplan pattern for performance (`20260421130000`)
-- Unused tables dropped: `class_action_docs`, `class_action_personas`, `class_actions`, `leads` (`20260107120000`)
-- Event check-in protected by `protect_checkin_columns()` trigger preventing non-admin self-check-in (`20260124100000`)
-- Cross-org check-in bypass prevented by `protect_rsvp_org_id()` trigger and authoritative event org lookup (`20260124110000`)
-- Alumni quota enforcement in invite creation and member sync (`20260412093000`)
-- Chat function permissions fixed with proper GRANT statements (`20260421140000`)
-- Alumni self-edit column protection: `protect_alumni_self_edit()` trigger prevents self-editors from changing `organization_id`, `user_id`, or `deleted_at` (`20260127120000`)
+| Function | Purpose |
+|----------|---------|
+| `is_org_admin(org_id)` | Current user is admin for org |
+| `is_org_member(org_id)` | Current user is active member of org |
+| `has_active_role(org_id, roles[])` | Current user has one of the specified roles |
+| `is_enterprise_member(ent_id)` | Current user has any role in enterprise |
+| `is_enterprise_admin(ent_id)` | Current user is owner/billing_admin/org_admin |
+| `is_chat_group_member(group_id)` | Current user is active (non-removed) group member |
+| `is_chat_group_moderator(group_id)` | Current user is admin/moderator and not removed |
+| `is_chat_group_creator(group_id)` | Current user is `created_by` on chat_groups |
+| `check_analytics_rate_limit(...)` | Atomic rate limit check with upsert (SECURITY DEFINER) |
 
 ---
 
-## Migration Timeline
+## Key RPC Functions
 
-| Migration | Date | Description |
-|-----------|------|-------------|
-| `20251208120000` | Dec 2025 | Stripe subscription table, soft delete columns on 9 tables |
-| `20251211090000` | Dec 2025 | RBAC enum expansion (active_member/alumni), mentorship, workouts, competitions |
-| `20251214000000` | Dec 2025 | Alumni extended fields, philanthropy embeds, invite token/revoke columns |
-| `20251215000000` | Dec 2025 | Embed indexes, updated_at trigger function, pending membership status |
-| `20251216000000` | Dec 2025 | Announcement audience overhaul, donation embeds table, `can_view_announcement()` |
-| `20251217000000` | Dec 2025 | Organization invites table |
-| `20251217100000` | Dec 2025 | Major schema fixes: users sync trigger, helper functions, invite RPCs, comprehensive RLS/indexes |
-| `20251222215000` | Dec 2025 | Enable pgcrypto extension |
-| `20251222215500` | Dec 2025 | Fix invite role check constraint (allow admin/active_member/alumni) |
-| `20251222220000` | Dec 2025 | Rewrite `redeem_org_invite()` with enhanced validation |
-| `20251222220500` | Dec 2025 | Add pending status to membership_status enum |
-| `20251222221500` | Dec 2025 | Member sync trigger: `user_organization_roles` -> `members`/`alumni` |
-| `20251222223000` | Dec 2025 | Auto-approve invite redemptions (skip pending), backfill existing pending |
-| `20251222232000` | Dec 2025 | Consolidated member schema and sync repair |
-| `20251222235000` | Dec 2025 | Ensure `org_donation_embeds` table exists with backfill |
-| `20251222235500` | Dec 2025 | Add `nav_config` jsonb to organizations |
-| `20260101000000` | Jan 2026 | Mentorship self-service permissions (mentor/mentee can manage own pairs) |
-| `20260102010000` | Jan 2026 | `can_edit_page()` function, role-based page editing RLS for donations/philanthropy |
-| `20260102020000` | Jan 2026 | Members/alumni self-edit profile RLS policies |
-| `20260105090000` | Jan 2026 | Stripe donations refactor: `organization_donations`, `organization_donation_stats`, `increment_donation_stats()` |
-| `20260107100000` | Jan 2026 | Event RSVPs table with attending/not_attending/maybe statuses |
-| `20260107120000` | Jan 2026 | Security lint: drop unused tables, fix search_path on all functions, alumni quota functions |
-| `20260108000000` | Jan 2026 | Academic schedules table |
-| `20260108010000` | Jan 2026 | Schedule files table |
-| `20260108020000` | Jan 2026 | Forms and form submissions tables |
-| `20260108030000` | Jan 2026 | Form documents and document submissions tables |
-| `20260112200000` | Jan 2026 | Group chat: chat_groups, chat_group_members, chat_messages with approval workflow |
-| `20260114100000` | Jan 2026 | Update alumni bucket tiers to new pricing (0-250, 251-500, etc.) |
-| `20260114120000` | Jan 2026 | Enable Supabase Realtime for mobile tables |
-| `20260123100000` | Jan 2026 | Event check-in columns on event_rsvps |
-| `20260124100000` | Jan 2026 | Check-in RLS: `check_in_event_attendee()` RPC, `protect_checkin_columns()` trigger |
-| `20260124110000` | Jan 2026 | Cross-org check-in fix: `protect_rsvp_org_id()`, authoritative event org lookup |
-| `20260127120000` | Jan 2026 | Alumni editRoles: replace `is_org_admin()` with `can_edit_page('/alumni')` for INSERT/UPDATE/DELETE policies + self-edit column protection trigger |
-| `20260410120000` | Apr 2026 | Payment idempotency: `payment_attempts`, `stripe_events` tables |
-| `20260412093000` | Apr 2026 | Alumni quota enforcement in invite creation and member sync |
-| `20260415120000` | Apr 2026 | Org branding: `secondary_color` column, `org-branding` storage bucket |
-| `20260416100000` | Apr 2026 | Academic schedule multi-day support (`day_of_week` -> smallint array) |
-| `20260416120000` | Apr 2026 | Fix `gen_random_bytes` wrapper in public schema for invite code generation |
-| `20260420100000` | Apr 2026 | Subscription grace period: `grace_period_ends_at` column + partial index |
-| `20260420110000` | Apr 2026 | Fix `gen_random_bytes` search_path security |
-| `20260420120000` | Apr 2026 | Google Calendar sync: connections, entries, preferences tables |
-| `20260421130000` | Apr 2026 | Performance/security lint: initplan pattern, index cleanup, RLS policy consolidation |
-| `20260421140000` | Apr 2026 | Fix chat function permissions: GRANT EXECUTE, recreate with SECURITY DEFINER |
-| `20260422100000` | Apr 2026 | Fix chat group visibility: COALESCE in membership checks, refined SELECT policies |
-| `20260425100000` | Apr 2026 | Push notifications: `user_push_tokens` table, `push_enabled` on notification_preferences |
-| `20260430100000` | Apr 2026 | Enterprise security fixes: RLS hardening, function search_path fixes |
-| `20260501100000` | May 2026 | Enterprise audit logs table |
-| `20260201100000` | Feb 2026 | Enterprise accounts: `enterprises`, `enterprise_subscriptions`, `user_enterprise_roles`, `enterprise_adoption_requests`, `enterprise_alumni_counts` view |
-| `20260202100000` | Feb 2026 | Enterprise quantity pricing: `pricing_model`, `sub_org_quantity`, `price_per_sub_org_cents` columns |
-| `20260202200000` | Feb 2026 | Seed test enterprise (`test-enterprise`, ID `aaaaaaaa-0000-0000-0000-000000000001`) |
-| `20260203120000` | Feb 2026 | Revoke anon/authenticated SELECT on `enterprise_alumni_counts` |
-| `20260204100000` | Feb 2026 | Enterprise management features: settings, navigation sync, org removal |
-| `20260204150000` | Feb 2026 | Enterprise org limit trigger (later dropped in hybrid pricing migration) |
-| `20260205100000` | Feb 2026 | Enterprise service-role RLS policies |
-| `20260206100000` | Feb 2026 | Fix enterprise roles RLS for owner self-management |
-| `20260207110000` | Feb 2026 | Enterprise invite system: `enterprise_invites` table |
-| `20260208100000` | Feb 2026 | Enterprise-wide invites (cross-org invite codes) |
-| `20260209100000` | Feb 2026 | Enterprise admin cap (max 20 admins per enterprise) |
-| `20260515100000` | May 2026 | **Enterprise hybrid pricing**: adds `alumni_bucket_quantity`, backfills from legacy `alumni_tier`, drops `pricing_model`/`alumni_tier`/`pooled_alumni_limit`/`custom_price_cents`/`price_per_sub_org_cents`, drops `enforce_enterprise_org_limit` trigger, rewrites `can_enterprise_add_alumni()` for bucket model |
+| Function | Purpose | Migration |
+|----------|---------|-----------|
+| `create_org_invite(...)` | Create org invite with code generation | `20251217100000` |
+| `redeem_parent_invite(...)` | Atomic parent invite redemption | `20260625000000` + fixes through `20260701000003` |
+| `resolve_alumni_quota(...)` | Alumni quota enforcement | `20260628000000` |
+| `purge_analytics_events()` | Purge expired analytics data | Used by analytics-purge cron |
+| `purge_ops_events()` | Purge expired ops events | Used by analytics-purge cron |
+| `get_subscription_status(...)` | Get org subscription status | `20260430120000` |
+| `save_user_linkedin_url(uuid, text)` | Sync LinkedIn URL across member/alumni/parent profiles | `20260703000000` |
+| `sync_user_linkedin_profile_fields(uuid, text, text, text)` | Sync name/photo from LinkedIn to profiles | `20260704000000` |
+| `sync_user_linkedin_enrichment(uuid, text...)` | Sync Proxycurl enrichment data to member/alumni | `20260707000000` |
+| `purge_expired_ai_semantic_cache()` | TTL cleanup for AI semantic cache (service-role only, batch 500) | `20260321100001` |
+
+---
+
+## Important Implementation Notes
+
+### Chat Polls & Forms
+
+- `chat_messages` extended with `message_type` (`text`, `poll`, `form`) and `metadata` JSONB.
+- `chat_poll_votes`: One vote per user per poll; `allow_change` metadata flag controls re-voting via upsert.
+- `chat_form_responses`: One response per user per form; immutable by default.
+- Both tables are added to Supabase realtime publication with `REPLICA IDENTITY FULL`.
+- RLS: group members can read all votes/responses; users can modify their own.
+
+### Chat Member Management
+
+- `chat_group_members` supports soft removal via `removed_at`.
+- Re-adding is UPDATE (clear `removed_at`), not INSERT (unique constraint).
+- See `docs/db/chat-members.md` for full detail.
+
+### Media Architecture
+
+Two parallel media systems exist:
+1. **Media Archive** (`media_items`, `media_albums`, `media_album_items`): Full archive with moderation workflow, tags, visibility levels. Storage bucket: `media-archive`.
+2. **Media Uploads** (`media_uploads`): Upload lifecycle for feed posts, discussions, and jobs. Entity-linked. Storage bucket: `org-media`.
+
+Media moderation adds `status` enum to `media_items`: pending → approved/rejected. Admins see all statuses; members see only approved.
+
+### Schedule Domain Security
+
+Two-tier verification:
+- `schedule_domain_rules`: Platform-maintained vendor patterns (seeded with known providers).
+- `schedule_allowed_domains`: Runtime-verified hostnames with fingerprint, confidence, and verification method.
+
+### Navigation and Role Access
+
+- Parent access propagates through org navigation and feature gates.
+- Generated types and migrations are aligned on `parent` as a first-class role.
+- `feed_post_roles` and `media_upload_roles` columns on `organizations` enable per-org role customization.
+
+### Analytics
+
+- Behavioral analytics hardened by July 2026 migrations (allowlisted props, enum validation, tracking policy enforcement).
+- Usage analytics tables (`usage_events`, `usage_summaries`, `ui_profiles`) are FERPA/COPPA-compliant with no PII.
+- `rate_limit_analytics` prevents analytics abuse; cleaned daily by cron.
+
+### AI Assistant
+
+- `ai_threads` scoped to `(user_id, org_id, surface)` with soft-delete. Surfaces map to feature areas: `general`, `members`, `analytics`, `events`.
+- `ai_messages` denormalized with `user_id`/`org_id` from parent thread. Composite FK `(thread_id, user_id, org_id)` → `ai_threads(id, user_id, org_id)` prevents drift. RLS uses direct `user_id = auth.uid()` + EXISTS for `deleted_at IS NULL` filtering.
+- `ai_messages` enforces role/content invariants via CHECK constraint (user messages require content, assistant messages in `complete` status require content, etc.).
+- `ai_messages.idempotency_key` prevents duplicate user messages from retries (unique partial index where key IS NOT NULL).
+- `ai_audit_log` is service-role-only (no RLS policies). Logs model, tokens, latency, cache status, retrieval decision metadata, and per-stage timing/status in `stage_timings`. 90-day TTL via `expires_at`.
+- `ai_semantic_cache` deduplicates by `(org_id, surface, permission_scope_key, cache_version, prompt_hash)` where `invalidated_at IS NULL`. TTL-based expiry with `purge_expired_ai_semantic_cache()` function (batched, service-role only).
+- pgvector extension (`vector` in `extensions` schema) enabled for future embedding-based similarity search.
+
+### LinkedIn Integration
+
+- `user_linkedin_connections` follows the `user_calendar_connections` pattern — one connection per user, encrypted tokens, sync status tracking.
+- Three service-role RPCs propagate LinkedIn data across member/alumni/parent profiles: URL sync, profile field sync (name/photo), and enrichment sync (Proxycurl data).
+- Enrichment RPCs use `COALESCE` to only fill NULL fields, preserving manual user edits.
+
+### Feed Polls
+
+- `feed_posts.post_type` distinguishes `text` vs `poll` posts. Poll options stored in `metadata` JSONB.
+- `feed_poll_votes` mirrors the `feed_likes` RLS pattern: org members can view all votes, users can modify their own. `UNIQUE(post_id, user_id)` allows vote changing via upsert.
+
+### Error Tracking
+
+- `error_groups` deduplicate by `(env, fingerprint)` with rolling hourly/daily/total counts.
+- Hourly baselines reset by `error-baselines` cron for spike detection.
+- `error_events` store individual occurrences with stack traces and metadata.
+
+### Enterprise Typing
+
+- Enterprise tables are present in generated database types.
+- Some code still uses `as any` for service-role or auth-schema queries.
+
+### Compliance and Deletion
+
+- `user_deletion_requests` tracks GDPR/COPPA deletion with 30-day grace period.
+- `compliance_audit_log` stores anonymized age-gate events (no DOB/PII, only `ip_hash`).
+
+### Notification Delivery
+
+- Email delivery uses Resend when `RESEND_API_KEY` is configured.
+- SMS delivery remains a stub integration point.
+
+---
+
+## Migration Timeline Highlights
+
+| Period | Key Additions |
+|--------|---------------|
+| Dec 2025 | Core tables, org invites, RLS policies, donations, RSVP |
+| Jan 2026 | Chat groups, academic schedules, forms, documents |
+| Feb 2026 | Enterprise accounts, error tracking, analytics, graduation, user deletion, compliance |
+| Mar 2026 | Alumni bulk import, quota fixes, AI assistant foundations (threads, messages, audit log), semantic response cache (pgvector), architecture fixes (soft-delete on 6 tables, ai_messages denormalization, composite FK integrity, schedule domain FKs), LinkedIn OAuth connections + enrichment RPCs, feed polls, member enrichment columns, analytics event enum realignment, feedback screenshots bucket, anonymous friction feedback |
+| Apr 2026 | Stripe idempotency, Google Calendar sync, calendar feeds, schedule sources/events, schedule domain allowlist, performance/security fixes |
+| May 2026 | Enterprise hybrid pricing, event recurrence, discussions, jobs, mentor profiles, feed, media uploads, dev-admin audit |
+| Jun 2026 | Media archive + moderation + albums, parent invites, parent role propagation (feed, announcements, chat, remaining tables), donations anonymous flag, chat polls/forms, alumni quota fixes, member soft-delete sync |
+| Jul 2026 | Parent invite redemption fixes, analytics hardening (allowlisted props, enum validation, behavioral tracking policy), AI context enrichment columns (`context_surface`, `context_token_estimate` on `ai_audit_log`), AI stage timing telemetry (`stage_timings` on `ai_audit_log`) |
+| Aug 2026 | Audit log retention, RAG hardening follow-ups, security definer search-path hardening |
+| Sep 2026 | Enterprise invite hardening, invite pagination indexes, enterprise member count RPC, enterprise invite role cast fix |
+| Oct 2026 | Duplicate OAuth account merge, user agreements, `data_access_log`, IP hash backfill, `breach_incidents`, mentorship tasks + meetings + pair cascade deletion, parent role added to remaining RLS policies, parent discussion posting, alumni birth year (+ enterprise stats, bulk-import column), announcement visibility reconciliation, member restore on re-approval, `global_search` surface, org `hide_donor_names`, org `base_color`, search behavioral analytics, AI feedback, graduation RPC admin guard |
+
+> For per-migration detail, use `git log supabase/migrations/` — this table is intentionally coarse and will no longer be extended month-by-month once the next schema refresh lands.
+
+---
+
+## Known Intentional Divergences
+
+1. **`error_events.user_id`** — Stored as `text`, not `uuid`. No FK to `auth.users`. Intentional: the telemetry endpoint (`/api/telemetry/error`) accepts unauthenticated requests with client-generated user identifiers that may not be valid UUIDs. All other user_id columns in the schema are `uuid` with FK constraints.
+
+2. **`ai_audit_log.user_id` / `ai_audit_log.org_id`** — `uuid NOT NULL` with no FK constraints. Intentional: audit logs must survive user and org deletion. Adding FK with CASCADE would destroy audit data; SET NULL conflicts with NOT NULL. Table is service-role-only (RLS enabled with zero policies).
+
+3. **`ai_messages` composite FK** — `(thread_id, user_id, org_id)` references `ai_threads(id, user_id, org_id)` instead of a simple `thread_id` FK. Intentional: enforces ownership consistency at the DB level so RLS does not need subquery joins for ownership verification — only for `deleted_at` filtering. The composite FK also prevents user_id/org_id drift between messages and their parent thread.
+
+4. **`ai_messages.idempotency_key` uniqueness scope** — The unique constraint on `idempotency_key` is table-wide, not scoped to `(org_id, user_id)`. Intentional: idempotency keys are client-generated UUIDs (v4) that must be globally unique to guarantee exactly-once delivery across the entire cluster. Scoping the constraint to a user or org would allow a key collision across organizations in a hypothetical multi-tenant replay attack scenario. The per-request key generation (`crypto.randomUUID()`) makes accidental cross-org collisions statistically impossible, and the broader constraint gives the strongest safety guarantee with no practical downside. See `src/app/api/ai/[orgId]/chat/handler.ts` for key generation and `src/hooks/useAIStream.ts` for client-side handling.
+
+---
+
+## Remaining Cautions
+
+1. Prefer `src/types/database.ts` when checking exact column names or enums.
+2. Re-run this audit after major migration batches; the schema changes frequently.
+3. Treat compliance docs that omit parent records or say "no behavioral data" as stale unless updated after the July 2026 migrations.
+4. `rls-playbook.md` in this directory is the evergreen RLS pattern reference (`(select auth.uid())`, policy consolidation, SECURITY DEFINER helpers, indexing RLS-referenced columns). The old `rls-and-schema-fixes.md` was a one-off Dec 2025 post-mortem — consult migration history for per-fix detail.
+
+## Suggested Future Automation
+
+This doc is currently hand-maintained. Drift is inevitable. Two small scripts would keep it honest:
+
+1. **Header regeneration** — script that reads `supabase/migrations/` and rewrites the `Last Updated` / `Scope` / `Current Migration Count` block. Wire into `npm run gen:types`.
+2. **Policy + index matrix** — dump `pg_policies` and `pg_indexes` from a staging DB to `docs/db/rls-matrix.generated.md` and `docs/db/indexes.generated.md`. Link from this audit. Keeps "who can SELECT on X" and "is column Y indexed" out of human memory.
+
+Both are deferred (YAGNI) until drift becomes painful again.

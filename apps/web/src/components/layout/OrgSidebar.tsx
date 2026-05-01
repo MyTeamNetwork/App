@@ -9,6 +9,7 @@ import type { Organization } from "@/types/database";
 import type { OrgRole } from "@/lib/auth/role-utils";
 import { ORG_NAV_ITEMS, ORG_NAV_GROUPS, type NavConfig, type NavGroupId, GridIcon, LogOutIcon, getConfigKey } from "@/lib/navigation/nav-items";
 import { bucketItemsByGroup, buildSectionOrder, buildGlobalIndexMap, getActiveGroup, type VisibleNavItem } from "@/lib/navigation/sidebar-groups";
+import { getVisibleOrgNavItems } from "@/lib/navigation/visible-items";
 import { NavGroupSection, NavItemLink } from "@/components/layout/NavGroupSection";
 import { useUIProfile } from "@/lib/analytics/use-ui-profile";
 import { Avatar } from "@/components/ui/Avatar";
@@ -27,6 +28,8 @@ interface OrgSidebarProps {
   pendingApprovalsCount?: number;
   className?: string;
   onClose?: () => void;
+  forceExpanded?: boolean;
+  layout?: "fixed" | "static";
 }
 
 export function OrgSidebar({ organization, role, isDevAdmin = false, hasAlumniAccess = false, hasParentsAccess = false, currentMemberId, currentMemberName, currentMemberAvatar, pendingApprovalsCount, className = "", onClose }: OrgSidebarProps) {
@@ -40,7 +43,6 @@ export function OrgSidebar({ organization, role, isDevAdmin = false, hasAlumniAc
 
   const [openGroups, setOpenGroups] = useState<Set<NavGroupId>>(new Set());
 
-  // Parse nav_config with stable identity for hook dependencies
   const navConfig = useMemo<NavConfig>(() => {
     if (
       organization.nav_config &&
@@ -52,16 +54,11 @@ export function OrgSidebar({ organization, role, isDevAdmin = false, hasAlumniAc
     return {};
   }, [organization.nav_config]);
 
-  const visibleNav: VisibleNavItem[] = useMemo(() => ORG_NAV_ITEMS
-    .filter((item) => {
-      if (role && !item.roles.includes(role)) return false;
-      if (item.requiresAlumni && !hasAlumniAccess) return false;
-      if (item.requiresParents && !hasParentsAccess) return false;
-      const configKey = getConfigKey(item.href);
-      const config = navConfig[configKey];
-      if (config?.hidden) return false;
-      if (role && Array.isArray(config?.hiddenForRoles) && config.hiddenForRoles.includes(role)) return false;
-      return true;
+  const visibleNav: VisibleNavItem[] = useMemo(() => getVisibleOrgNavItems({
+      role,
+      hasAlumniAccess,
+      hasParentsAccess,
+      navConfig,
     })
     .map((item) => {
       const configKey = getConfigKey(item.href);
@@ -95,7 +92,6 @@ export function OrgSidebar({ organization, role, isDevAdmin = false, hasAlumniAc
       return ORG_NAV_ITEMS.findIndex(i => i.href === a.href) - ORG_NAV_ITEMS.findIndex(i => i.href === b.href);
     }), [role, hasAlumniAccess, hasParentsAccess, navConfig, profile, tNav, locale]);
 
-  // Auto-expand active group on navigation
   useEffect(() => {
     const activeGroupId = getActiveGroup(pathname, basePath, visibleNav);
     if (activeGroupId) {
@@ -239,17 +235,35 @@ export function OrgSidebar({ organization, role, isDevAdmin = false, hasAlumniAc
                       onClose={onClose}
                       badgeCounts={badgeCounts}
                     />
-                  ))}
-                </ul>
-              );
-            }
-            if (section.type === "divider") {
-              return <hr key={`divider-${sectionIndex}`} className="border-border" />;
-            }
-            return null;
-          })}
-        </div>
-      </nav>
+                  </div>
+                ) : (
+                  <div
+                    className={`flex-shrink-0 rounded-xl flex items-center justify-center text-white font-bold ${isCollapsed ? "h-9 w-9 text-sm" : "h-8 w-8"}`}
+                    style={{ backgroundColor: "var(--color-org-primary)" }}
+                  >
+                    {organization.name.charAt(0)}
+                  </div>
+                )}
+                {!isCollapsed && (
+                  <div className="min-w-0 flex-1">
+                    <h2 className="font-semibold text-foreground text-sm leading-tight break-words">{organization.name}</h2>
+                    <p className="text-xs text-muted-foreground">TeamNetwork</p>
+                    {isDevAdmin && (
+                      <p className="text-[10px] uppercase tracking-wide text-purple-300 mt-1">Dev Admin</p>
+                    )}
+                  </div>
+                )}
+              </Link>
+              {!forceExpanded && !isCollapsed && (
+                <div className="flex items-start pt-2 pr-2 flex-shrink-0">
+                  <PinButton
+                    isPinned={isPinned}
+                    isExpanded={isExpanded}
+                    onToggle={togglePin}
+                  />
+                </div>
+              )}
+            </div>
 
       {/* User Section */}
       <div className="p-4 border-t border-border space-y-1">

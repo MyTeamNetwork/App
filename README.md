@@ -1,4 +1,4 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+TeamNetwork is a multi-tenant Next.js application for organization membership, alumni directories, communication, scheduling, payments, and enterprise administration.
 
 ## Repository Overview
 
@@ -10,9 +10,10 @@ The monorepo uses **Turborepo** for task orchestration with caching and parallel
 
 ## Getting Started
 
-### Environment Variables
+This repository expects Node.js 22 or newer for the built-in `fs.globSync`
+APIs used by the test discovery scripts.
 
-Copy `.env.local.example` to `.env.local` and fill in your values:
+Copy `.env.local.example` to `.env.local` and fill in the values your local environment needs:
 
 ```bash
 cp .env.local.example .env.local
@@ -27,7 +28,7 @@ Core environment variables:
 | `NEXT_PUBLIC_SITE_URL` | Canonical application base URL |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
 | `STRIPE_SECRET_KEY` | Stripe secret API key |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
@@ -53,7 +54,7 @@ Required environment variables:
 | `EXPO_PUBLIC_SUPABASE_URL` | Supabase project URL for Expo |
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key for Expo |
 
-### Development Server
+Build-time Stripe price validation also expects:
 
 Run the web development server:
 
@@ -248,6 +249,8 @@ eas update --branch development --message "description"
 - Clients keep a stable key in local storage per flow; server returns existing `checkout_url`/`session`/`payment_intent` if the same key is replayed.
 - Troubleshooting: look up the attempt by `idempotency_key` to see status and any `last_error`; confirm the matching Stripe IDs; check `stripe_events` to see if the webhook ran.
 - Tests: `bun run test:payments` runs idempotency + webhook dedupe unit tests (uses the lightweight TS loader in `tests/ts-loader.js`).
+
+`playwright.config.ts` still defines an `audit-crawler` project, but the repository does not currently include a committed `tests/audit/` suite.
 
 ## Learn More
 

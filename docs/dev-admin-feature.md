@@ -1,89 +1,71 @@
 # Dev-Admin Feature Documentation
 
 ## Overview
-The **Dev-Admin** feature provides "God Mode" access for specific developers, allowing them to view, debug, and manage any organization within the platform without requiring explicit membership or admin roles in those organizations.
+
+Dev-admin access gives allowlisted developer accounts broad read/debug access across organizations and enterprises without requiring explicit membership in each one.
+
+The implementation is driven by `src/lib/auth/dev-admin.ts`, middleware checks in `src/middleware.ts`, and org/enterprise route integration in the app layer.
 
 ## Configuration
 
-### Allowlist
-Access is controlled via a hardcoded email allowlist in `src/lib/auth/dev-admin.ts`.
-**Current Admins:**
-- `mleonard1616@gmail.com`
-- `lociccone11@gmail.com`
+- Dev-admin emails are loaded from the `DEV_ADMIN_EMAILS` environment variable.
+- The allowlist is no longer hardcoded in the repo.
+- Example:
 
-### capabilities
-Dev-Admins can:
-1.  **Ghost Access:** View the dashboard and internal pages of **any** organization (even if not a member).
-2.  **Dev Panel:** Access a floating diagnostic panel (bottom-right) showing:
-    - Organization ID & Slug
-    - Raw Stripe Customer & Subscription IDs
-    - Subscription Status (Active, Past Due, Canceled, etc.)
-    - Member count (real-time from DB)
-3.  **Actions:**
-    - **Reconcile Subscription:** Force-sync Stripe status to the database.
-    - **Billing Portal:** Open the Stripe Billing Portal for the org.
-    - **Delete Organization:** (API enabled, UI pending) Permanently delete the org.
-4.  **Invisibility:**
-    - Dev-admins do **not** appear in the "Members" list of any organization.
-    - Dev-admins have a visible "Dev Admin" badge in the navigation sidebar/mobile drawer.
+```bash
+DEV_ADMIN_EMAILS="admin1@example.com,admin2@example.com"
+```
 
-## Architecture
+## Current Capabilities
 
-### 1. Authentication Layer
-- **`isDevAdmin(user)`:** Helper function to check if the current user is in the allowlist.
-- **`canDevAdminPerform(user, action)`:** Gatekeeper function used in API routes and UI components.
+Dev-admins can currently:
 
-### 2. Layout Integration (`src/app/[orgSlug]/layout.tsx`)
-- The layout checks if the user is a Dev-Admin.
-- **Bypass:** If `isDevAdmin` is true, it skips the standard "membership required" redirects (403/404).
-- **Service Client:** It attempts to initialize a Supabase Service Client (`createServiceClient`) to fetch raw data (Stripe IDs) that regular RLS policies might hide.
+1. View org-scoped pages without org membership.
+2. View enterprise-scoped pages without enterprise membership.
+3. Open the Dev Panel and enterprise modal UI used for diagnostics.
+4. Access subscription details and Stripe-related debug data when service-role access is available.
+5. Use the dev-admin organization and enterprise APIs.
+6. Perform a limited set of privileged actions such as subscription reconciliation, billing-portal access, org deletion, and error-group management.
 
-### 3. API Route Protection
-The following API routes have been patched to accept `isDevAdmin` authorization:
-- `POST /api/organizations/[id]/reconcile-subscription`
-- `POST /api/stripe/billing-portal`
-- `DELETE /api/organizations/[id]`
+Current allowed actions are defined by `DevAdminAction` and `canDevAdminPerform()` in `src/lib/auth/dev-admin.ts`.
 
-## Current Status & Known Issues
+## Visibility and Audit Behavior
 
-### ✅ Working
-- **Role Detection:** The app correctly identifies `mleonard1616@gmail.com` as a dev-admin.
-- **UI Indicators:** The "Dev Admin" badge appears in the sidebar and mobile drawer.
-- **Panel Rendering:** The Dev Panel renders correctly for organizations where the user is already a member.
-- **Member Filtering:** Dev-admins are successfully filtered out of the `/members` list.
+- Dev-admins are intentionally hidden from regular member lists.
+- The sidebar and mobile nav show a visible dev-admin indicator.
+- Middleware and API actions are audit logged with dev-admin-specific context.
 
-### ❌ Not Working / Issues
+## Implementation Notes
 
-#### 1. "Internal Server Error" (500) on Ghost Access
-**Symptom:** Visiting an org you are not a member of crashes the page.
-**Cause:** The layout attempts to call `createServiceClient()` to fetch advanced stats. If the `SUPABASE_SERVICE_ROLE_KEY` environment variable is missing in `.env.local`, this function throws a hard error, crashing the React server component.
-**Fix:** Wrap the service client initialization in a `try/catch` block or ensure the env var is set.
+### Middleware
 
-#### 2. "Page Not Found" (404) on Ghost Access
-**Symptom:** Visiting `localhost:3000/beta-theta-pi` returns a 404.
-**Cause:** The slug `beta-theta-pi` likely does not exist in the local database `organizations` table. Ghost access only works for *existing* organizations.
-**Fix:** Query the database (`SELECT slug FROM organizations`) to find a valid slug to test.
+- Org and enterprise membership checks are bypassed for allowlisted dev-admin emails.
+- Middleware writes audit entries for org and enterprise views when a dev-admin path is taken.
+
+### Org Layout
+
+- `src/app/[orgSlug]/layout.tsx` treats dev-admins as elevated viewers.
+- Service client initialization is already defensive: missing service-role config logs a warning instead of crashing the page.
+
+### API Surfaces
+
+Notable dev-admin-aware routes include:
+
+- `src/app/api/dev-admin/organizations/route.ts`
+- `src/app/api/dev-admin/enterprises/route.ts`
+- `src/app/api/organizations/[organizationId]/reconcile-subscription/route.ts`
+- `src/app/api/organizations/[organizationId]/route.ts`
+- `src/app/api/stripe/billing-portal/route.ts`
+- `src/app/api/organizations/[organizationId]/subscription/route.ts`
+
+## Operational Caveats
+
+1. Dev-admin access only works for existing organizations and enterprises; it does not invent missing slugs.
+2. Some views are richer when `SUPABASE_SERVICE_ROLE_KEY` is configured because the UI can fetch extra diagnostic data.
+3. Dev-admins are not unrestricted superusers; action-level permissions are explicitly allowlisted in code.
 
 ## Troubleshooting
 
-### How to Fix the 500 Crash
-In `src/app/[orgSlug]/layout.tsx`, the service client creation must be defensive:
-
-```typescript
-let serviceSupabase = null;
-if (isDevAdmin) {
-  try {
-    serviceSupabase = createServiceClient();
-  } catch (e) {
-    console.warn("DevAdmin: Failed to create service client (missing key?)", e);
-  }
-}
-```
-
-### How to Verify Ghost Access
-1.  **Find a valid slug:**
-    Run this SQL in Supabase Dashboard:
-    ```sql
-    SELECT name, slug FROM organizations LIMIT 5;
-    ```
-2.  **Visit the URL:** `http://localhost:3000/<valid-slug>`
+- If dev-admin access is not recognized, verify the email is present in `DEV_ADMIN_EMAILS`.
+- If diagnostic panels are missing Stripe/subscription details, verify `SUPABASE_SERVICE_ROLE_KEY` is available.
+- If a slug returns 404, verify the org or enterprise actually exists in the current environment.

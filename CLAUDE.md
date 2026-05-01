@@ -154,9 +154,15 @@ Required (validated in `next.config.mjs`):
 Optional:
 `NEXT_PUBLIC_SITE_URL`, `CRON_SECRET`, `GOOGLE_CLIENT_ID/SECRET/TOKEN_ENCRYPTION_KEY`, `LINKEDIN_CLIENT_ID/SECRET/TOKEN_ENCRYPTION_KEY`, `ALERT_EMAIL_TO`, `FROM_EMAIL`, `ADMIN_EMAIL`
 
-Use `SKIP_STRIPE_VALIDATION=true` in dev to skip Stripe price ID validation.
+- `src/middleware.ts` — Request interception, auth, org validation
+- `src/app/[orgSlug]/layout.tsx` — Organization context provider
+- `src/lib/auth/roles.ts` — `getOrgContext()`, `isOrgAdmin()`
+- `src/lib/security/validation.ts` — Zod schemas, `sanitizeIlikeInput()`
+- `src/lib/payments/idempotency.ts` — Payment deduplication
+- `src/lib/schemas/index.ts` — Centralized validation schemas
+- `docs/db/schema-audit.md` — Database schema docs and known issues
 
-## Coding Conventions
+## File Placement Rules
 
 - TypeScript strict mode
 - 2-space indentation, semicolons, double quotes

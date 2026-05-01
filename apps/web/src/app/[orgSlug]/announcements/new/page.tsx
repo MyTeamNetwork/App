@@ -10,6 +10,10 @@ import { PageHeader } from "@/components/layout";
 import { resolveActionLabel } from "@/lib/navigation/label-resolver";
 import { useLocale, useTranslations } from "next-intl";
 import { newAnnouncementSchema, type NewAnnouncementForm } from "@/lib/schemas/content";
+import {
+  createAnnouncement,
+  sendAnnouncementNotification,
+} from "@/lib/announcements/create-announcement";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 
 type TargetUser = {
@@ -116,31 +120,29 @@ export default function NewAnnouncementPage() {
 
     const { data: { user } } = await supabase.auth.getUser();
 
-    const audienceUserIds = data.audience === "individuals" ? targetUserIds : null;
-
-    const { error: insertError, data: announcement } = await supabase
-      .from("announcements")
-      .insert({
-        organization_id: org.id,
-        title: data.title,
-        body: data.body || null,
-        is_pinned: data.is_pinned,
-        published_at: new Date().toISOString(),
-        created_by_user_id: user?.id || null,
-        audience: data.audience,
-        audience_user_ids: audienceUserIds,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      setError(insertError.message);
+    if (!user?.id) {
+      setError("Unable to create announcement");
       setIsLoading(false);
       return;
     }
 
-    // Send notification if enabled
-    if (data.send_notification && announcement) {
+    const result = await createAnnouncement({
+      supabase,
+      orgId: org.id,
+      userId: user.id,
+      input: {
+        ...data,
+        audience_user_ids: data.audience === "individuals" ? targetUserIds : null,
+      },
+    });
+
+    if (!result.ok) {
+      setError(result.details?.[0] ?? result.error);
+      setIsLoading(false);
+      return;
+    }
+
+    if (data.send_notification) {
       try {
         // Map announcement audience to notification audience
         const notifAudience = data.audience === "all" ? "both"
@@ -173,7 +175,6 @@ export default function NewAnnouncementPage() {
         }
       } catch (notifError) {
         console.error("Failed to send notification:", notifError);
-        // Don't block on notification failure - announcement was created successfully
       }
     }
 

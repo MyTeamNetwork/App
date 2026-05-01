@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Card, Badge, EmptyState } from "@/components/ui";
 import { PageHeader } from "@/components/layout";
-import { DonationForm, ConnectSetup } from "@/components/donations";
+import { ConnectSetup } from "@/components/donations";
 import { DonationResultTracker } from "@/components/analytics/DonationResultTracker";
+import { PhilanthropyDashboardClient } from "@/components/philanthropy/PhilanthropyDashboardClient";
 import { getOrgContext } from "@/lib/auth/roles";
 import { canEditNavItem } from "@/lib/navigation/permissions";
 import { getConnectAccountStatus } from "@/lib/stripe";
@@ -12,7 +11,9 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { ExportCsvButton } from "@/components/shared";
 import { buildDonationPurposeTotals } from "@/lib/payments/donation-purpose-totals";
 import type { NavConfig } from "@/lib/navigation/nav-items";
-import type { OrganizationDonation, OrganizationDonationStat } from "@/types/database";
+import type { OrganizationDonationStat, OrganizationDonation } from "@/types/database";
+
+const SETTLED_STATUSES = ["succeeded", "recorded"];
 
 interface DonationsPageProps {
   params: Promise<{ orgSlug: string }>;
@@ -27,7 +28,6 @@ export default async function DonationsPage({ params }: DonationsPageProps) {
   const canEdit = canEditNavItem(org.nav_config as NavConfig, "/donations", orgCtx.role, ["admin"]);
   const supabase = await createClient();
 
-  // Include Stripe Connect status check in the parallel fetch
   const [{ data: donationStats }, { data: donations }, { data: philanthropyEvents }, connectStatus] = await Promise.all([
     supabase
       .from("organization_donation_stats")
@@ -44,6 +44,7 @@ export default async function DonationsPage({ params }: DonationsPageProps) {
       .from("events")
       .select("id, title")
       .eq("organization_id", org.id)
+      .is("deleted_at", null)
       .or("is_philanthropy.eq.true,event_type.eq.philanthropy")
       .order("start_date"),
     org.stripe_connect_account_id
@@ -52,12 +53,27 @@ export default async function DonationsPage({ params }: DonationsPageProps) {
   ]);
 
   const stats = (donationStats || null) as OrganizationDonationStat | null;
-  const donationRows = (donations || []) as OrganizationDonation[];
+  const allDonationRows = (donations || []) as OrganizationDonation[];
   const eventsForForm = (philanthropyEvents || []) as { id: string; title: string }[];
 
+  // Server-side privacy gate: non-admins/non-editors only see public donations, no donor emails
+  // When hide_donor_names is enabled, non-admins/editors see no donation rows at all
+  const hideDonorNames = Boolean((org as Record<string, unknown>).hide_donor_names);
+  const donationRows = (orgCtx.isAdmin || canEdit)
+    ? allDonationRows
+    : hideDonorNames
+      ? []
+      : allDonationRows
+          .filter((d) => (d.visibility || "public") === "public" && SETTLED_STATUSES.includes(d.status))
+          .map((d) => ({ ...d, donor_email: null }));
+
   const isConnected = Boolean(connectStatus?.isReady);
-  const totalAmount = (stats?.total_amount_cents ?? 0) / 100;
-  const donationCount = stats?.donation_count ?? donationRows.length;
+  const totalAmount = orgCtx.isAdmin
+    ? (stats?.total_amount_cents ?? 0) / 100
+    : donationRows.reduce((sum, d) => sum + (d.amount_cents || 0), 0) / 100;
+  const donationCount = orgCtx.isAdmin
+    ? (stats?.donation_count ?? allDonationRows.length)
+    : donationRows.length;
   const avgDonation = donationCount > 0 ? totalAmount / donationCount : 0;
 
   const navConfig = org.nav_config as NavConfig | null;
@@ -71,16 +87,14 @@ export default async function DonationsPage({ params }: DonationsPageProps) {
   const pageLabel = resolveLabel("/donations", navConfig, t, locale);
   const purposeTotals = buildDonationPurposeTotals(donationRows, tDonations("generalSupport"));
   const exportStamp = new Date().toISOString().slice(0, 10);
+  const purposeTotals = buildDonationPurposeTotals(donationRows, tDonations("generalSupport"));
 
   return (
     <div className="animate-fade-in">
       <DonationResultTracker organizationId={org.id} />
       <PageHeader
         title={pageLabel}
-        description={`${donationCount} contributions totaling ${totalAmount.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}`}
+        description={`${donationCount} ${tDonations("contributions").toLowerCase()} totaling $${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
         actions={
           orgCtx.isAdmin ? (
             <ExportCsvButton
@@ -123,7 +137,7 @@ export default async function DonationsPage({ params }: DonationsPageProps) {
             <p className="text-3xl font-bold text-foreground font-mono">
               ${avgDonation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
-          </Card>
+          </div>
         </div>
       </div>
 

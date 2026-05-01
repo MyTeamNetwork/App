@@ -50,7 +50,6 @@ const createOrgSchema = z
 
 export async function POST(req: Request) {
   try {
-    console.log("[create-org-checkout] Starting...");
     const supabase = await createClient();
     const serviceSupabase = createServiceClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -70,10 +69,8 @@ export async function POST(req: Request) {
       NextResponse.json(payload, { status, headers: rateLimit.headers });
 
     if (!user) {
-      console.log("[create-org-checkout] Unauthorized - no user");
       return respond({ error: "Unauthorized" }, 401);
     }
-    console.log("[create-org-checkout] User:", user.id, user.email);
 
     const body = await validateJson(req, createOrgSchema, { maxBodyBytes: 32_000 });
     const {
@@ -182,7 +179,6 @@ export async function POST(req: Request) {
         });
 
         if (organizationId) {
-          console.log("[create-org-checkout] Cleaning up org:", organizationId);
           await supabase.from("organization_subscriptions").delete().eq("organization_id", organizationId);
           await supabase.from("user_organization_roles").delete().eq("organization_id", organizationId).eq("user_id", user.id);
           await supabase.from("organizations").delete().eq("id", organizationId);
@@ -312,8 +308,6 @@ export async function POST(req: Request) {
         );
       }
 
-      console.log("[create-org-checkout] Creating Stripe session with prices:", { basePrice, alumniPrice, origin, pendingOrgId });
-
       const session = await stripe.checkout.sessions.create(
         {
           mode: "subscription",
@@ -341,7 +335,6 @@ export async function POST(req: Request) {
         status: "processing",
       });
 
-      console.log("[create-org-checkout] Success! Checkout URL:", session.url);
       return respond({
         url: session.url,
         idempotencyKey: claimedAttempt.idempotency_key,
@@ -371,11 +364,12 @@ export async function POST(req: Request) {
 
       const lastError = stripeErr?.message || stripeErr?.raw?.message || "checkout_failed";
       if (resolvedAttemptId) {
-        const errorUpdate: Record<string, unknown> = { last_error: lastError };
+        const errorUpdate: { last_error: string; status?: string } = { last_error: lastError };
         if (!stripeResourceCreated) {
           errorUpdate.status = "initiated";
         }
-        await serviceSupabase.from("payment_attempts").update(errorUpdate).eq("id", resolvedAttemptId);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await serviceSupabase.from("payment_attempts").update(errorUpdate as any).eq("id", resolvedAttemptId);
       }
 
       return respond({ error: "Unable to start checkout" }, 400);

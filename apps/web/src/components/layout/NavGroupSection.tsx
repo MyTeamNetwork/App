@@ -34,6 +34,27 @@ export function NavGroupSection({
 }: NavGroupSectionProps) {
   const panelId = `nav-group-${group.id}`;
 
+  if (isCollapsed) {
+    return (
+      <ul className="flex flex-col items-center gap-1">
+        {items.map((item) => (
+          <NavItemLink
+            key={item.href}
+            item={item}
+            basePath={basePath}
+            pathname={pathname}
+            visibleNav={visibleNav}
+            organizationId={organizationId}
+            globalIndex={globalIndexMap.get(item.href) ?? 0}
+            onClose={onClose}
+            badgeCounts={badgeCounts}
+            isCollapsed
+          />
+        ))}
+      </ul>
+    );
+  }
+
   return (
     <div>
       <button
@@ -118,11 +139,15 @@ export function NavItemLink({
     isActive = isPathMatch && !hasMoreSpecificMatch;
   }
   const Icon = item.icon;
+  const badgeCount = badgeCounts?.[item.href];
+  const hasBadge = badgeCount != null && badgeCount > 0;
 
   return (
-    <li>
+    <li className={isCollapsed ? "w-full flex justify-center" : ""}>
       <Link
         href={href}
+        title={isCollapsed ? item.label : undefined}
+        aria-label={isCollapsed ? item.label : undefined}
         onClick={() => {
           trackBehavioralEvent(
             "nav_click",
@@ -135,7 +160,11 @@ export function NavItemLink({
           );
           onClose?.();
         }}
-        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-[background-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+        className={`flex items-center text-sm font-medium transition-[background-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+          isCollapsed
+            ? "justify-center w-10 h-10 rounded-xl"
+            : "gap-3 px-3 py-2.5 rounded-xl"
+        } ${
           isActive
             ? "bg-org-secondary text-org-secondary-foreground shadow-soft"
             : "text-muted-foreground hover:bg-muted hover:text-foreground"

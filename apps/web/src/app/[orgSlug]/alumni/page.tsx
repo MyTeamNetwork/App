@@ -15,14 +15,19 @@ import { DirectoryCardLink } from "@/components/analytics/DirectoryCardLink";
 import { LinkedInBadge } from "@/components/shared";
 import { sanitizeIlikeInput } from "@/lib/security/validation";
 
+const PAGE_SIZE = 50;
+const FACET_ROW_CAP = 5000;
+
 interface AlumniPageProps {
   params: Promise<{ orgSlug: string }>;
   searchParams: Promise<{
     year?: string;
+    birthYear?: string;
     industry?: string;
     company?: string;
     city?: string;
     position?: string;
+    page?: string;
   }>;
 }
 
@@ -35,6 +40,7 @@ interface AlumniRecord {
   job_title: string | null;
   current_company: string | null;
   graduation_year: number | null;
+  birth_year: number | null;
   industry: string | null;
   current_city: string | null;
   linkedin_url: string | null;
@@ -66,10 +72,14 @@ export default async function AlumniPage({ params, searchParams }: AlumniPagePro
   const { role } = await getOrgRole({ orgId: org.id });
   const canEdit = canEditNavItem(navConfig, "/alumni", role, ["admin"]);
 
+  const currentPage = Math.max(1, parseInt(filters.page ?? "1", 10) || 1);
+  const offset = (currentPage - 1) * PAGE_SIZE;
+
   // Query alumni directly — the alumni table is the source of truth
   let query = dataClient
     .from("alumni")
-    .select(`
+    .select(
+      `
       id, first_name, last_name, photo_url, position_title, job_title, current_company,
       graduation_year, industry, current_city, linkedin_url
     `)
@@ -79,6 +89,9 @@ export default async function AlumniPage({ params, searchParams }: AlumniPagePro
   // Apply filters
   if (filters.year) {
     query = query.eq("graduation_year", parseInt(filters.year));
+  }
+  if (filters.birthYear) {
+    query = query.eq("birth_year", parseInt(filters.birthYear));
   }
   const industry = normalize(filters.industry);
   if (industry) {
@@ -97,21 +110,29 @@ export default async function AlumniPage({ params, searchParams }: AlumniPagePro
     query = query.ilike("position_title", sanitizeIlikeInput(position));
   }
 
-  // Apply ordering after all filters
-  query = query.order("graduation_year", { ascending: false });
+  // Apply ordering + pagination window
+  query = query
+    .order("graduation_year", { ascending: false, nullsFirst: false })
+    .order("last_name", { ascending: true })
+    .range(offset, offset + PAGE_SIZE - 1);
 
-  const { data: rawAlumni } = await query;
+  const { data: rawAlumni, count: totalCount } = await query;
 
   const alumni: AlumniRecord[] = (rawAlumni as AlumniRecord[] | null) || [];
+  const total = totalCount ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  // Get unique values for filter dropdowns (from all alumni, not just filtered)
+  // Get unique values for filter dropdowns (from all alumni, not just filtered).
+  // Cap at FACET_ROW_CAP rows — follow-up: move to RPC get_alumni_facet_options.
   const { data: allAlumni } = await dataClient
     .from("alumni")
-    .select("graduation_year, industry, current_company, current_city, position_title")
+    .select("graduation_year, birth_year, industry, current_company, current_city, position_title")
     .eq("organization_id", org.id)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .limit(FACET_ROW_CAP);
 
   const years = [...new Set(allAlumni?.map((a) => a.graduation_year).filter(Boolean))];
+  const birthYears = [...new Set(allAlumni?.map((a) => a.birth_year).filter(Boolean))];
   const industries = uniqueStringsCaseInsensitive(allAlumni?.map((a) => a.industry) ?? []).sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: "base" })
   );
@@ -126,7 +147,7 @@ export default async function AlumniPage({ params, searchParams }: AlumniPagePro
   );
 
   const hasActiveFilters =
-    filters.year || filters.industry || filters.company || filters.city || filters.position;
+    filters.year || filters.birthYear || filters.industry || filters.company || filters.city || filters.position;
 
   const [tNav, locale] = await Promise.all([getTranslations("nav.items"), getLocale()]);
   const t = (key: string) => tNav(key);
@@ -156,6 +177,7 @@ export default async function AlumniPage({ params, searchParams }: AlumniPagePro
       <AlumniFilters
         orgId={org.id}
         years={years}
+        birthYears={birthYears}
         industries={industries}
         companies={companies}
         cities={cities}

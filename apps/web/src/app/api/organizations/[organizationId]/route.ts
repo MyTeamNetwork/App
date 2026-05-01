@@ -236,6 +236,21 @@ export async function PATCH(req: Request, { params }: RouteParams) {
       .select("id, name, nav_config, feed_post_roles, job_post_roles, discussion_post_roles, media_upload_roles, linkedin_resync_enabled, require_invite_approval, timezone, default_language")
       .maybeSingle();
 
+    const updatedOrg = updatedOrgRaw as {
+      id: string;
+      name: string;
+      nav_config: NavConfig | null;
+      feed_post_roles: string[];
+      job_post_roles: string[];
+      discussion_post_roles: string[];
+      media_upload_roles: string[];
+      linkedin_resync_enabled?: boolean;
+      require_invite_approval?: boolean;
+      hide_donor_names?: boolean;
+      timezone?: string;
+      default_language?: string;
+    } | null;
+
     if (updateError) {
       return respond({ error: updateError.message }, 400);
     }

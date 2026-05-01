@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Assistant Architecture — Pipeline Status</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --bg-surface: #181a20;
+    --bg-elevated: #1e2028;
+    --bg-hover: #252830;
+    --border: #2a2d37;
+    --border-bright: #3a3d4a;
+    --text: #e2e4ea;
+    --text-muted: #8b8f9e;
+    --text-dim: #5c6070;
+    --green: #22c55e;
+    --green-bg: #0a2e1a;
+    --green-border: #166534;
+    --yellow: #eab308;
+    --yellow-bg: #2e2a0a;
+    --yellow-border: #854d0e;
+    --red: #ef4444;
+    --red-bg: #2e0a0a;
+    --red-border: #991b1b;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --accent: #6366f1;
+    --accent-dim: #4338ca;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: 1fr auto;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    grid-row: 1 / 3;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-header {
+    padding: 20px 16px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 2px;
+  }
+
+  .sidebar-header .subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* Progress Section */
+  .progress-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .progress-bar-wrap {
+    height: 8px;
+    background: var(--bg-elevated);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease, background 0.3s;
+  }
+
+  .progress-stats {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .progress-pct {
+    font-weight: 600;
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  /* Status chips */
+  .status-legend {
+    display: flex;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .legend-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+
+  .legend-chip:hover { background: var(--bg-hover); }
+  .legend-chip.active { border-color: var(--border-bright); background: var(--bg-elevated); }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  /* Preset buttons */
+  .presets {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .presets-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .preset-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .preset-btn {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: var(--font);
+    padding: 7px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+  }
+
+  .preset-btn:hover { border-color: var(--border-bright); color: var(--text); }
+  .preset-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(99,102,241,0.08); }
+
+  /* Detail panel */
+  .detail-panel {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+  }
+
+  .detail-placeholder {
+    padding: 40px 16px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+
+  .detail-content {
+    padding: 16px;
+  }
+
+  .detail-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .detail-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+
+  .detail-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .detail-pct {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .detail-section {
+    margin-bottom: 14px;
+  }
+
+  .detail-section-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+
+  .detail-section ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .detail-section li {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 3px 0;
+    padding-left: 14px;
+    position: relative;
+  }
+
+  .detail-section li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 9px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  .detail-section li.done::before { background: var(--green); }
+  .detail-section li.missing::before { background: var(--red); }
+  .detail-section li.partial::before { background: var(--yellow); }
+
+  .file-link {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--blue);
+    display: block;
+    padding: 2px 0;
+    word-break: break-all;
+  }
+
+  /* Canvas area */
+  .canvas-area {
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(99,102,241,0.03) 0%, transparent 70%),
+      var(--bg);
+  }
+
+  .canvas-area svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Zoom controls */
+  .zoom-controls {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 4px;
+    z-index: 10;
+  }
+
+  .zoom-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-family: var(--mono);
+    transition: all 0.15s;
+  }
+
+  .zoom-btn:hover { border-color: var(--border-bright); color: var(--text); }
+
+  /* Prompt area */
+  .prompt-area {
+    grid-column: 2;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    max-height: 200px;
+  }
+
+  .prompt-text {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    overflow-y: auto;
+    max-height: 176px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .copy-btn {
+    flex-shrink: 0;
+    background: var(--accent);
+    color: white;
+    border: none;
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .copy-btn:hover { background: var(--accent-dim); }
+  .copy-btn.copied { background: var(--green); }
+
+  /* Node tooltip on hover */
+  .node-tooltip {
+    position: absolute;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-bright);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--text);
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+  }
+
+  .node-tooltip.visible { opacity: 1; }
+
+  /* Comment system */
+  .comments-section {
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+  }
+
+  .comments-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .comment-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+  }
+
+  .comment-item:last-child { border-bottom: none; }
+
+  .comment-target {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+
+  .comment-text {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .comment-delete {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 2px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .comment-delete:hover { color: var(--red); }
+
+  /* Comment modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+
+  .modal-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .modal {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    padding: 20px;
+    width: 400px;
+    max-width: 90vw;
+  }
+
+  .modal h3 {
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+
+  .modal .modal-subtitle {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+
+  .modal textarea {
+    width: 100%;
+    height: 80px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 8px;
+    resize: vertical;
+    margin-bottom: 12px;
+  }
+
+  .modal textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .modal-btn {
+    font-family: var(--font);
+    font-size: 12px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    transition: all 0.15s;
+  }
+
+  .modal-btn-cancel {
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+  }
+
+  .modal-btn-cancel:hover { color: var(--text); }
+
+  .modal-btn-save {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  .modal-btn-save:hover { background: var(--accent-dim); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>AI Assistant Pipeline</h1>
+    <div class="subtitle">Pipeline Status &amp; Gap Analysis</div>
+  </div>
+
+  <div class="progress-section">
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
+    <div class="progress-stats">
+      <span class="progress-pct" id="progressPct">74%</span>
+      <span id="progressLabel">10 of 12 components</span>
+    </div>
+  </div>
+
+  <div class="status-legend" id="statusLegend">
+    <div class="legend-chip active" data-filter="all">
+      <span class="legend-dot" style="background: var(--accent)"></span> All
+    </div>
+    <div class="legend-chip" data-filter="built">
+      <span class="legend-dot" style="background: var(--green)"></span> Built
+    </div>
+    <div class="legend-chip" data-filter="stub">
+      <span class="legend-dot" style="background: var(--yellow)"></span> Stub
+    </div>
+    <div class="legend-chip" data-filter="missing">
+      <span class="legend-dot" style="background: var(--red)"></span> Missing
+    </div>
+  </div>
+
+  <div class="presets">
+    <div class="presets-label">Views</div>
+    <div class="preset-grid">
+      <button class="preset-btn active" data-preset="full">Full Pipeline</button>
+      <button class="preset-btn" data-preset="built">What's Built</button>
+      <button class="preset-btn" data-preset="missing">What's Missing</button>
+      <button class="preset-btn" data-preset="critical">Critical Path</button>
+    </div>
+  </div>
+
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-placeholder">Click a component to inspect</div>
+  </div>
+
+  <div class="comments-section" id="commentsSection" style="display:none">
+    <div class="comments-title">Comments (<span id="commentCount">0</span>)</div>
+    <div id="commentsList"></div>
+  </div>
+</div>
+
+<div class="canvas-area" id="canvasArea">
+  <div class="zoom-controls">
+    <button class="zoom-btn" id="zoomIn">+</button>
+    <button class="zoom-btn" id="zoomOut">&minus;</button>
+    <button class="zoom-btn" id="zoomReset" style="font-size:11px">1:1</button>
+  </div>
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div class="node-tooltip" id="tooltip"></div>
+</div>
+
+<div class="prompt-area">
+  <div class="prompt-text" id="promptOutput"></div>
+  <button class="copy-btn" id="copyBtn">Copy Prompt</button>
+</div>
+
+<!-- Comment Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle"></h3>
+    <div class="modal-subtitle" id="modalSubtitle"></div>
+    <textarea id="modalTextarea" placeholder="Add your note about this component..."></textarea>
+    <div class="modal-actions">
+      <button class="modal-btn modal-btn-cancel" id="modalCancel">Cancel</button>
+      <button class="modal-btn modal-btn-save" id="modalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Data ──────────────────────────────────────────────────────────────────
+
+const COMPONENTS = [
+  {
+    id: 'intake',
+    label: 'User Message Intake',
+    shortLabel: 'Intake',
+    pct: 100,
+    status: 'built',
+    layer: 'intake',
+    x: 60, y: 40,
+    files: [
+      'src/app/api/ai/[orgId]/chat/route.ts',
+      'src/app/api/ai/[orgId]/chat/handler.ts',
+      'src/lib/schemas/ai-assistant.ts',
+      'src/lib/ai/message-safety.ts'
+    ],
+    built: [
+      'POST endpoint with streaming SSE response',
+      'Zod request validation (message, threadId, surface, idempotencyKey)',
+      'Transport-noise cleanup before any model-facing use (Unicode normalization, zero-width/control-char stripping)',
+      'Message safety assessment returns none / suspicious / blocked with stable reasons',
+      'Prompt-injection and prompt-exfiltration attempts short-circuit before model, tools, RAG, or cache write',
+      'Rate limiting: 30 req/min IP, 20 req/min user, 60 req/min org (AI_ORG_RATE_LIMIT override)',
+      'Idempotency via idempotency_key + localStorage',
+      'Duplicate detection with 409 recovery for in-flight requests',
+      'Completed duplicate requests now also return 409 when the original assistant reply is not ready yet (instead of a replay error)',
+      'Abandoned stream cleanup (5-min threshold, status → error)',
+      'Atomic init_ai_chat RPC for thread create/reuse + message insert',
+      'Route-derived surface from pathname via routeToSurface()',
+      'requestId generated at handler entry and threaded through structured AI logs + stage timings'
+    ],
+    missing: []
+  },
+  {
+    id: 'context',
+    label: 'Context Enrichment',
+    shortLabel: 'Context',
+    pct: 100,
+    status: 'built',
+    layer: 'composition',
+    x: 60, y: 170,
+    files: [
+      'src/lib/ai/context-builder.ts',
+      'src/components/ai-assistant/route-surface.ts',
+      'supabase/migrations/20260323000000_ai_message_context_surface.sql'
+    ],
+    built: [
+      'Surface-based context selection (general/members/analytics/events)',
+      'Route-derived surface — pathname mapped to surface via routeToSurface()',
+      'Queries gated by surface — events skips members, alumni, parents, announcements, donations',
+      '4000-token budget with priority-based section dropping',
+      'SectionName union type for compile-time section name safety',
+      'ContextMetadata returned (sectionsIncluded, sectionsExcluded, estimatedTokens)',
+      'Untrusted org context injected as user role (prompt injection safe)',
+      'System prompt with NARROW_PANEL_POLICY',
+      'tool_first context mode keeps simple deterministic read turns lighter than full-context live lookups',
+      'shared_static mode overrides surface for cache-eligible miss contexts',
+      'Cross-surface thread reset on navigation (prevents thread/surface mismatch)',
+      'Thread list filtered by current surface',
+      'context_surface persisted per message (effective surface at send time)',
+      'AVAILABLE TOOLS section in system prompt instructs LLM on tool usage and trust boundary'
+    ],
+    missing: [
+      'No richer data sources per surface (e.g., individual member records for members surface)'
+    ]
+  },
+  {
+    id: 'cache',
+    label: 'Semantic Cache',
+    shortLabel: 'Cache',
+    pct: 90,
+    status: 'built',
+    layer: 'routing',
+    x: 310, y: 40,
+    files: [
+      'src/lib/ai/semantic-cache.ts',
+      'src/lib/ai/semantic-cache-utils.ts',
+      'supabase/migrations/20260321100001_ai_semantic_cache.sql'
+    ],
+    built: [
+      'Exact-hash SHA-256 prompt deduplication',
+      'Surface-specific TTLs defined: general 12h, members 4h, analytics 2h, events 4h',
+      'Permission scope key (SHA-256 of orgId:role)',
+      'Cache eligibility filtering (temporal, personalization, live context, write markers)',
+      'Prompt normalization before hashing',
+      'Cache write-back on successful responses',
+      'Purge function for expired entries',
+      'pgvector extension pre-loaded for future similarity search',
+      'DISABLE_AI_CACHE env kill switch'
+    ],
+    missing: [
+      'No embedding-based similarity matching (v2 — pgvector ready)',
+      'Eligibility gate blocks non-general surfaces (TTL infra ready but guard returns unsupported_surface)',
+      'Lifting multi-surface cache requires validating invalidation safety per surface'
+    ]
+  },
+  {
+    id: 'intent',
+    label: 'Intent + Plan Builder',
+    shortLabel: 'Intent',
+    pct: 75,
+    status: 'built',
+    layer: 'routing',
+    x: 310, y: 170,
+    files: [
+      'src/lib/ai/intent-router.ts',
+      'src/lib/ai/message-safety.ts',
+      'supabase/migrations/20260319000000_ai_assistant_tables.sql',
+      'src/lib/schemas/ai-assistant.ts'
+    ],
+    built: [
+      'intent column on ai_messages (DB schema ready)',
+      'surface enum: general, members, analytics, events',
+      'Thread surface stored and accessible',
+      'Keyword-based intent classifier (resolveSurfaceRouting)',
+      'Scores messages across members, analytics, events keyword lists',
+      'Detects ambiguous queries when surfaces score equally',
+      'Exact casual-message detection now feeds intentType; retrieval decisions move to TurnExecutionPolicy',
+      'Returns rerouted flag when inferred surface differs from requested',
+      'Maps surface → intent: members_query, analytics_query, events_query, general_query, ambiguous_query',
+      'Routing based on classified intent — effectiveSurface drives context selection',
+      'Routing/classification now consumes promptSafeMessage rather than raw user text',
+      'Exact casual turns omit pass-1 tools; non-casual turns gate tools by effectiveSurface',
+      'Simple member roster, event list, and stats prompts can narrow to a single fast-path read tool before the model plans anything more expensive'
+    ],
+    missing: [
+      'No plan decomposition for multi-step requests',
+      'No ML-based classification (current is keyword heuristic)'
+    ]
+  },
+  {
+    id: 'validator',
+    label: 'Output Validator',
+    shortLabel: 'Validator',
+    pct: 35,
+    status: 'stub',
+    layer: 'routing',
+    x: 500, y: 170,
+    files: [
+      'src/lib/ai/tool-grounding.ts',
+      'src/app/api/ai/[orgId]/chat/handler.ts'
+    ],
+    built: [
+      'Deterministic verification for read-tool summaries (members, events, announcements, discussions, job postings, org stats)',
+      'Tool-backed pass-2 content buffered server-side before release',
+      'Ungrounded tool-backed responses replaced with a safe fallback instead of being streamed to the user',
+      'Grounding failures emit ops telemetry (tool_grounding_failed)'
+    ],
+    missing: [
+      'No schema validation for structured LLM output',
+      'No safety check (toxicity, PII leakage, off-topic detection)',
+      'No validation for non-tool responses or RAG-backed freeform claims',
+      'No confidence scoring or fallback to "I don\'t know"',
+      'No retry loop for failed validation (re-prompt with corrections)',
+      'Does not yet gate all execution paths before actions branch out'
+    ]
+  },
+  {
+    id: 'policy',
+    label: 'Policy + Permission Gate',
+    shortLabel: 'Policy',
+    pct: 95,
+    status: 'built',
+    layer: 'intake',
+    x: 60, y: 300,
+    files: [
+      'src/lib/ai/context.ts',
+      'src/lib/ai/thread-resolver.ts',
+      'src/lib/ai/message-safety.ts',
+      'src/middleware.ts'
+    ],
+    built: [
+      'Admin-only access gate (getAiOrgContext)',
+      'Fail-closed pattern: DB error returns 503, never proceeds',
+      'Thread ownership validation (resolveOwnThread)',
+      'Never leaks thread existence to non-owners',
+      'Rate limiting at IP, user, and org level',
+      'RLS policies on ai_threads and ai_messages',
+      'Abandoned stream detection (5-min timeout, prevents stuck threads)',
+      'Distinct suspicious vs blocked safety outcomes with identical fail-closed execution behavior in v1',
+      'Risky prior user messages sanitized before prompt replay so blocked turns do not poison later turns',
+      'Confirmation gate for write tools: prepare_* tools create pending actions requiring explicit user confirmation before execution',
+      'Existing-thread history lookup failures now degrade to current-turn-only execution instead of aborting the chat request'
+    ],
+    missing: [
+      'Write tool permission checks limited to admin role gate — no granular per-action RBAC beyond admin/non-admin'
+    ]
+  },
+  {
+    id: 'rag',
+    label: 'FAQ / RAG',
+    shortLabel: 'RAG',
+    pct: 90,
+    status: 'built',
+    layer: 'execution',
+    x: 690, y: 40,
+    files: [
+      'src/lib/ai/embeddings.ts',
+      'src/lib/ai/chunker.ts',
+      'src/lib/ai/embedding-worker.ts',
+      'src/lib/ai/rag-retriever.ts',
+      'src/app/api/cron/ai-embed-process/route.ts',
+      'supabase/migrations/20260711000000_ai_rag_foundation.sql',
+      'supabase/migrations/20260711000001_ai_rag_queue_triggers.sql',
+      'supabase/migrations/20260711000002_ai_audit_rag_columns.sql',
+      'supabase/migrations/20260711100000_ai_rag_gemini_768_dims.sql',
+      'supabase/migrations/20260711100001_ai_rag_security_fixes.sql',
+      'supabase/migrations/20260712000000_ai_rag_hardening.sql'
+    ],
+    built: [
+      'pgvector extension + ai_document_chunks table (768-dim vectors)',
+      'Gemini embedding-001 client via OpenAI-compatible API (EMBEDDING_API_KEY)',
+      'Batch embedding generation (single API call for multiple texts)',
+      'Document chunker: 5 source tables, 2048-char max, parent thread context for replies',
+      'SHA-256 content hashing for change detection (skip unchanged chunks)',
+      'Embedding queue (ai_embedding_queue) with FOR UPDATE SKIP LOCKED concurrency',
+      'DB triggers auto-enqueue on insert/update/delete for all 5 source tables',
+      'Content-change-aware triggers (skip updates where title/body unchanged)',
+      'Cron endpoint: loops processEmbeddingQueue, purges dead-letter items',
+      'Per-org indexing exclusions (ai_indexing_exclusions) — fail-closed on error',
+      'Atomic chunk replacement via replace_ai_chunks RPC',
+      'Batch hash fetch via batchFetchExistingHashes (no N+1)',
+      'Orphaned chunk detection (old indexes not present in new render)',
+      'Dedupe partial unique index on pending queue items',
+      'Dead-letter purge via purge_ai_embedding_queue RPC',
+      'Vector similarity retrieval via search_ai_documents RPC',
+      'Parent thread title/body enrichment on retrieved replies',
+      'RAG wired end-to-end in chat handler — additive, never blocking',
+      'RAG silently skipped when EMBEDDING_API_KEY absent (graceful degradation)',
+      'RAG metrics in audit log (rag_chunk_count, rag_top_similarity, rag_error)',
+      'RAG retrieval now uses the shared timed-stage wrapper and emits structured request-scoped logs on failure'
+    ],
+    missing: [
+      'No manual knowledge base management UI (add/remove custom FAQ entries)',
+      'Retrieval is org-wide — not yet surface-aware (no surface filter on chunks)',
+      'No chunk-level relevance feedback or user correction loop'
+    ]
+  },
+  {
+    id: 'actions',
+    label: 'Action Executor',
+    shortLabel: 'Actions',
+    pct: 90,
+    status: 'built',
+    layer: 'execution',
+    x: 690, y: 170,
+    files: [
+      'src/lib/ai/tools/definitions.ts',
+      'src/lib/ai/tools/executor.ts',
+      'src/lib/ai/schedule-extraction.ts',
+      'src/lib/ai/schedule-upload-path.ts',
+      'src/lib/ai/pending-actions.ts',
+      'src/lib/ai/navigation-targets.ts',
+      'src/lib/ai/response-composer.ts',
+      'src/app/api/ai/[orgId]/chat/handler.ts',
+      'src/app/api/ai/[orgId]/upload-schedule/handler.ts',
+      'supabase/migrations/20260727000000_ai_pending_actions.sql',
+      'supabase/migrations/20260402120000_ai_schedule_uploads_bucket.sql',
+      'supabase/migrations/20260403120000_ai_schedule_uploads_auth_delete.sql'
+    ],
+    built: [
+      'AI_TOOLS defines 23 OpenAI function-calling tools: list_members, list_alumni, list_parents, list_events, list_announcements, list_discussions, list_job_postings, list_donations, list_philanthropy_events, list_chat_groups, prepare_announcement, prepare_job_posting, prepare_discussion_thread, prepare_discussion_reply, prepare_chat_message, prepare_group_message, prepare_event, prepare_events_batch, get_org_stats, suggest_connections, find_navigation_targets, scrape_schedule_website, extract_schedule_pdf',
+      'Full Zod argument validation per tool (limit, upcoming, pinned_only, etc.) with fail-closed behavior',
+      'list_members reads valid members columns only, prefers members first_name + last_name, and falls back to public.users.name for placeholder linked rows',
+      'executeToolCall with safeToolQuery/safeToolCount error wrappers',
+      'Two-pass tool loop: Pass 1 conditionally streams with tools, Pass 2 feeds tool results back (no tools, prevents chaining)',
+      'Single-tool deterministic fast path for list_members, list_events, get_org_stats, list_announcements, suggest_connections, and find_navigation_targets skips pass 2 entirely',
+      'Simple member / alumni / donation / events prompts can force a single read tool and use tool_first context for lower latency',
+      'tool_status SSE events emitted: calling, done, error',
+      'Malformed args fail closed — no {} fallback, error pushed to tool results',
+      'Cache bypass when toolCallMade = true (tool responses are dynamic)',
+      'Usage accumulated across both passes via usageRef',
+      'Tool calls recorded in audit log (toolCalls array)',
+      'Tool-backed pass-2 text is withheld until grounding verification succeeds',
+      'Schedule ingestion tools: scrape_schedule_website (fetchUrlSafe with domain allowlist enforcement) and extract_schedule_pdf (PDF/image extraction with 2MB image size cap)',
+      'Schedule upload API: private storage bucket with MIME+magic-byte validation, UUID orgId gating, shared path-ownership check (isOwnedScheduleUploadPath), authenticated DELETE RLS policy',
+      'LLM-based schedule extraction pipeline: text/PDF/image → Zod-validated event drafts → pending_actions batch confirmation flow',
+      'Confirmation-gated write tools: prepare_announcement, prepare_job_posting, prepare_discussion_thread, prepare_discussion_reply, prepare_chat_message, prepare_group_message, prepare_event, and prepare_events_batch create pending actions (ai_pending_actions table) with 15-min expiry',
+      'Pending action lifecycle: pending → confirmed → executed | failed | cancelled | expired (with rollback-safe CAS transitions)',
+      'Confirm handler rolls back to pending on unknown action_type (no stuck confirmed rows)',
+      'Cleanup endpoint recovers stranded confirmed actions by CAS-transitioning stale rows to failed',
+      'Cancel handler returns 410 for already-expired actions instead of false 200',
+      'prepare_job_posting validates draft, identifies missing fields, optionally enriches from application URL via fetchJobSourceDraft',
+      'prepare_announcement drafts org-wide or targeted announcements with audience selection (all, members, active_members, alumni, individuals) and optional notification flag',
+      'prepare_discussion_reply resolves threads by ID or title search and drafts replies',
+      'prepare_chat_message resolves recipients by member ID or name query and drafts direct messages',
+      'list_chat_groups returns chat groups the user belongs to with their role (admin/moderator/member)',
+      'prepare_group_message resolves groups by ID or name query and drafts group messages with moderation-aware status (approved/pending)',
+      'prepare_event and prepare_events_batch draft single or multiple calendar events with full event metadata (title, dates, times, location, type, philanthropy flag)',
+      'find_navigation_targets resolves in-app pages for open/manage/create requests against org nav config',
+      'list_announcements supports pinned_only filter; list_discussions and list_job_postings are org-scoped read tools; list_alumni supports graduation_year, industry, company, city filters; list_donations supports status and purpose filters; list_philanthropy_events supports upcoming filter',
+      'Tool execution timeout guard (withStageTimeout) prevents hung tool calls'
+    ],
+    missing: [
+      'No tool chaining (intentionally limited to single pass)',
+      'No streaming tool execution (tools run synchronously between passes)',
+      'Write tools cover announcements, job postings, discussion threads, discussion replies, direct chat messages, group chat messages, and calendar events (no member management or edit/delete operations yet)'
+    ]
+  },
+  {
+    id: 'analyst',
+    label: 'Data Analyst',
+    shortLabel: 'Analyst',
+    pct: 0,
+    status: 'missing',
+    layer: 'execution',
+    x: 690, y: 300,
+    files: [],
+    built: [],
+    missing: [
+      'No dynamic SQL generation or execution',
+      'No safe query sandbox',
+      'Only pre-fetched aggregate stats in context (via context-builder)',
+      'No chart/visualization generation',
+      'No trend analysis or comparisons',
+      'Would enable: "How many members joined this month?"'
+    ]
+  },
+  {
+    id: 'falkor',
+    label: 'People Graph (Falkor)',
+    shortLabel: 'Graph',
+    pct: 85,
+    status: 'built',
+    layer: 'execution',
+    x: 690, y: 430,
+    files: [
+      'src/lib/falkordb/client.ts',
+      'src/lib/falkordb/people.ts',
+      'src/lib/falkordb/suggestions.ts',
+      'src/lib/falkordb/sync.ts',
+      'src/lib/falkordb/scoring.ts',
+      'src/app/api/cron/graph-sync-process/route.ts',
+      'supabase/migrations/20260715000000_falkor_people_graph_foundation.sql'
+    ],
+    built: [
+      'Org-scoped graph: Person nodes + directed MENTORS edges in FalkorDB',
+      'Identity merge model: user_id links member+alumni into single person',
+      'DB triggers on members/alumni/mentorship_pairs auto-enqueue changes',
+      'Queue worker: SKIP LOCKED concurrency, reconciliatory re-read from DB',
+      'Cron endpoint drains queue (25s loop + 7-day purge)',
+      'Dual-mode read path: Falkor graph queries with automatic SQL fallback',
+      'Seven weighted scoring reasons (mentorship, company, industry, major, grad year, city)',
+      'Scoring parity between Falkor and SQL paths',
+      'Source person cross-table complement resolution (merged attributes)',
+      'Per-org freshness tracking with stale threshold',
+      'Embedded mode (local dev) and remote mode (production)',
+      'Backfill RPC for initial org population'
+    ],
+    missing: [
+      'No event attendance or interaction edges (Person + MENTORS only)',
+      'No weighted graph affinity or PageRank-style scoring',
+      'No graph management UI',
+      'No real-time sync (queue-based, cron-driven)'
+    ]
+  },
+  {
+    id: 'composer',
+    label: 'Response Composer',
+    shortLabel: 'Composer',
+    pct: 90,
+    status: 'built',
+    layer: 'composition',
+    x: 940, y: 105,
+    files: [
+      'src/lib/ai/response-composer.ts',
+      'src/lib/ai/client.ts',
+      'src/lib/ai/sse.ts'
+    ],
+    built: [
+      'AsyncGenerator-based SSE streaming',
+      'OpenAI-compatible client (z.ai / glm-5 via ZAI_MODEL env)',
+      'Token usage accumulation (input + output)',
+      'SSE encoding with chunk/done/error/tool_status events',
+      'Configurable temperature (0.7) and max_tokens (2000)',
+      'streaming → complete status transitions on ai_messages',
+      'streaming status write now fails closed instead of fire-and-forget',
+      'Tool call detection: streams OpenAI deltas, assembles multi-chunk argsJson by index',
+      'Yields tool_call_requested events with assembled tool call data',
+      'Pass 2 mode: reconstructs assistant + tool role messages per OpenAI function-calling protocol',
+      'Tool-backed pass-2 content now buffers until the route verifies it before emitting chunk text',
+      'Deterministic read turns can emit the final chunk directly from trusted tool data without a second model pass',
+      'response-composer stream failures log with requestId/orgId context'
+    ],
+    missing: [
+      'No structured output parsing',
+      'No response quality validation'
+    ]
+  },
+  {
+    id: 'audit',
+    label: 'Audit + Deliver',
+    shortLabel: 'Audit',
+    pct: 95,
+    status: 'built',
+    layer: 'delivery',
+    x: 940, y: 260,
+    files: [
+      'src/lib/ai/audit.ts',
+      'supabase/migrations/20260319000000_ai_assistant_tables.sql',
+      'supabase/migrations/20260710100000_ai_audit_log_context_columns.sql',
+      'supabase/migrations/20260711000002_ai_audit_rag_columns.sql'
+    ],
+    built: [
+      'ai_audit_log table with 90-day TTL',
+      'Fire-and-forget audit logging',
+      'Secret redaction (sk-*, key_*, AIza*, sbp_*, eyJ*, Bearer *)',
+      'Token usage tracking (input + output)',
+      'Latency measurement',
+      'Model and intent recorded (keyword classifier live, maps to surface-specific intents)',
+      'Cache telemetry (status, entry ID, bypass reason)',
+      'Context metadata (surface, token estimate, contextMode) on all paths',
+      'SSE delivery to client with replayed flag',
+      'RAG telemetry (rag_chunk_count, rag_top_similarity, rag_error)',
+      'toolCalls array in audit entries (names + args of all executed tools)',
+      'cacheBypassReason: tool_call_made recorded when tools used',
+      'Safety short-circuit reasons recorded via bypassReason/message_safety_* paths',
+      'tool_grounding_failed emitted to ops telemetry when buffered verification rejects a tool-backed answer',
+      'requestId recorded inside stageTimings.request for cross-log correlation'
+    ],
+    missing: [
+      'No real-time monitoring dashboard',
+      'No cost alerting thresholds'
+    ]
+  }
+];
+
+const CONNECTIONS = [
+  // Active data flow (solid lines)
+  { from: 'intake', to: 'policy', type: 'data-flow', label: 'validate' },
+  { from: 'policy', to: 'context', type: 'data-flow', label: 'enrich' },
+  { from: 'intake', to: 'cache', type: 'data-flow', label: 'check cache' },
+  { from: 'cache', to: 'composer', type: 'data-flow', label: 'cache hit', dashed: true },
+  { from: 'context', to: 'rag', type: 'data-flow', label: 'retrieve' },
+  { from: 'context', to: 'composer', type: 'data-flow', label: 'prompt' },
+  { from: 'rag', to: 'composer', type: 'data-flow', label: 'chunks' },
+  { from: 'composer', to: 'audit', type: 'event', label: 'log + deliver' },
+  { from: 'policy', to: 'intent', type: 'data-flow', label: 'classify' },
+  { from: 'composer', to: 'actions', type: 'tool-call', label: 'tool call' },
+  { from: 'actions', to: 'composer', type: 'data-flow', label: 'tool results' },
+  // Falkor graph tool call
+  { from: 'actions', to: 'falkor', type: 'tool-call', label: 'suggest' },
+  { from: 'falkor', to: 'actions', type: 'data-flow', label: 'ranked results' },
+  // Future connections (dashed — not yet wired)
+  { from: 'analyst', to: 'composer', type: 'data-flow', label: 'results', dashed: true }
+];
+
+const LAYER_LABELS = {
+  intake: { label: 'Intake + Auth', color: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.15)' },
+  routing: { label: 'Routing', color: 'rgba(168,85,247,0.08)', border: 'rgba(168,85,247,0.15)' },
+  execution: { label: 'Execution', color: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.15)' },
+  composition: { label: 'Composition', color: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.15)' },
+  delivery: { label: 'Delivery', color: 'rgba(234,179,8,0.08)', border: 'rgba(234,179,8,0.15)' }
+};
+
+const CONNECTION_COLORS = {
+  'data-flow': '#3b82f6',
+  'tool-call': '#a855f7',
+  'event': '#eab308'
+};
+
+const NODE_W = 170;
+const NODE_H = 65;
+
+// ─── State ─────────────────────────────────────────────────────────────────
+
+const state = {
+  filter: 'all',       // all | built | stub | missing
+  preset: 'full',      // full | built | missing | critical
+  selected: null,      // component id
+  comments: [],
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+  modalTarget: null
+};
+
+// ─── SVG Rendering ─────────────────────────────────────────────────────────
+
+const svg = document.getElementById('diagram');
+const tooltip = document.getElementById('tooltip');
+const canvasArea = document.getElementById('canvasArea');
+let svgGroup;
+
+function getStatusColor(status) {
+  if (status === 'built') return { fill: '#0a2e1a', stroke: '#166534', text: '#22c55e' };
+  if (status === 'stub') return { fill: '#2e2a0a', stroke: '#854d0e', text: '#eab308' };
+  return { fill: '#2e0a0a', stroke: '#991b1b', text: '#ef4444' };
+}
+
+function getVisibleComponents() {
+  let visible = COMPONENTS;
+
+  if (state.filter !== 'all') {
+    visible = visible.filter(c => c.status === state.filter);
+  }
+
+  if (state.preset === 'built') {
+    visible = visible.filter(c => c.status === 'built');
+  } else if (state.preset === 'missing') {
+    visible = visible.filter(c => c.status === 'missing' || c.status === 'stub');
+  } else if (state.preset === 'critical') {
+    visible = visible.filter(c =>
+      ['intake', 'context', 'policy', 'composer', 'audit', 'intent', 'actions', 'falkor'].includes(c.id)
+    );
+  }
+
+  return visible;
+}
+
+function getVisibleConnections(visibleIds) {
+  return CONNECTIONS.filter(c =>
+    visibleIds.has(c.from) && visibleIds.has(c.to)
+  );
+}
+
+function getCenterPoint(comp) {
+  return { x: comp.x + NODE_W / 2, y: comp.y + NODE_H / 2 };
+}
+
+function buildPath(from, to) {
+  const a = getCenterPoint(from);
+  const b = getCenterPoint(to);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+
+  // Determine exit/entry sides
+  let startX, startY, endX, endY;
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    // Horizontal
+    if (dx > 0) {
+      startX = from.x + NODE_W; startY = a.y;
+      endX = to.x; endY = b.y;
+    } else {
+      startX = from.x; startY = a.y;
+      endX = to.x + NODE_W; endY = b.y;
+    }
+  } else {
+    // Vertical
+    if (dy > 0) {
+      startX = a.x; startY = from.y + NODE_H;
+      endX = b.x; endY = to.y;
+    } else {
+      startX = a.x; startY = from.y;
+      endX = b.x; endY = to.y + NODE_H;
+    }
+  }
+
+  const midX = (startX + endX) / 2;
+  const midY = (startY + endY) / 2;
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return `M${startX},${startY} C${midX},${startY} ${midX},${endY} ${endX},${endY}`;
+  }
+  return `M${startX},${startY} C${startX},${midY} ${endX},${midY} ${endX},${endY}`;
+}
+
+function renderDiagram() {
+  const visibleComps = getVisibleComponents();
+  const visibleIds = new Set(visibleComps.map(c => c.id));
+  const visibleConns = getVisibleConnections(visibleIds);
+  const compMap = Object.fromEntries(COMPONENTS.map(c => [c.id, c]));
+
+  // Compute bounding box for layer backgrounds
+  const layerBounds = {};
+  for (const comp of visibleComps) {
+    if (!layerBounds[comp.layer]) {
+      layerBounds[comp.layer] = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    }
+    const b = layerBounds[comp.layer];
+    b.minX = Math.min(b.minX, comp.x);
+    b.minY = Math.min(b.minY, comp.y);
+    b.maxX = Math.max(b.maxX, comp.x + NODE_W);
+    b.maxY = Math.max(b.maxY, comp.y + NODE_H);
+  }
+
+  let html = '';
+
+  // Defs: arrowheads
+  html += '<defs>';
+  for (const [type, color] of Object.entries(CONNECTION_COLORS)) {
+    html += `<marker id="arrow-${type}" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="${color}" opacity="0.7"/>
+    </marker>`;
+  }
+  // Glow filter for selected
+  html += `<filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+    <feGaussianBlur stdDeviation="4" result="blur"/>
+    <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+  </filter>`;
+  html += '</defs>';
+
+  // Main group for zoom/pan
+  html += `<g id="svgGroup" transform="translate(${state.panX},${state.panY}) scale(${state.zoom})">`;
+
+  // Layer backgrounds
+  const PAD = 25;
+  for (const [layer, bounds] of Object.entries(layerBounds)) {
+    const info = LAYER_LABELS[layer];
+    if (!info) continue;
+    html += `<rect x="${bounds.minX - PAD}" y="${bounds.minY - PAD}"
+      width="${bounds.maxX - bounds.minX + PAD * 2}" height="${bounds.maxY - bounds.minY + PAD * 2}"
+      rx="12" fill="${info.color}" stroke="${info.border}" stroke-width="1"/>`;
+    html += `<text x="${bounds.minX - PAD + 10}" y="${bounds.minY - PAD + 14}"
+      font-size="9" fill="${info.border}" font-family="var(--font)" font-weight="600"
+      text-transform="uppercase" letter-spacing="0.05em">${info.label}</text>`;
+  }
+
+  // Connections
+  for (const conn of visibleConns) {
+    const from = compMap[conn.from];
+    const to = compMap[conn.to];
+    const color = CONNECTION_COLORS[conn.type] || '#6b7280';
+    const path = buildPath(from, to);
+    const dashArray = conn.dashed ? 'stroke-dasharray="6,4"' : '';
+    const opacity = conn.dashed ? '0.4' : '0.6';
+
+    html += `<path d="${path}" fill="none" stroke="${color}" stroke-width="1.5"
+      ${dashArray} opacity="${opacity}" marker-end="url(#arrow-${conn.type})"/>`;
+
+    if (conn.label) {
+      const a = getCenterPoint(from);
+      const b = getCenterPoint(to);
+      const lx = (a.x + b.x) / 2;
+      const ly = (a.y + b.y) / 2 - 6;
+      html += `<text x="${lx}" y="${ly}" text-anchor="middle" font-size="9"
+        fill="${color}" opacity="${opacity}" font-family="var(--font)">${conn.label}</text>`;
+    }
+  }
+
+  // Nodes
+  for (const comp of visibleComps) {
+    const sc = getStatusColor(comp.status);
+    const isSelected = state.selected === comp.id;
+    const hasComment = state.comments.some(c => c.target === comp.id);
+    const selectedStroke = isSelected ? 'var(--accent)' : sc.stroke;
+    const selectedWidth = isSelected ? '2' : '1.5';
+    const filterAttr = isSelected ? 'filter="url(#glow)"' : '';
+
+    html += `<g class="node" data-id="${comp.id}" style="cursor:pointer" ${filterAttr}>`;
+
+    // Node rect
+    html += `<rect x="${comp.x}" y="${comp.y}" width="${NODE_W}" height="${NODE_H}"
+      rx="10" fill="${sc.fill}" stroke="${selectedStroke}" stroke-width="${selectedWidth}"/>`;
+
+    // Comment indicator
+    if (hasComment) {
+      html += `<circle cx="${comp.x + NODE_W - 8}" cy="${comp.y + 8}" r="4" fill="var(--accent)"/>`;
+    }
+
+    // Status indicator dot
+    html += `<circle cx="${comp.x + 14}" cy="${comp.y + 18}" r="4" fill="${sc.text}"/>`;
+
+    // Label
+    html += `<text x="${comp.x + 26}" y="${comp.y + 22}" font-size="12" font-weight="600"
+      fill="${sc.text}" font-family="var(--font)">${comp.shortLabel}</text>`;
+
+    // Percentage
+    html += `<text x="${comp.x + NODE_W - 12}" y="${comp.y + 22}" text-anchor="end"
+      font-size="10" fill="${sc.text}" opacity="0.7" font-family="var(--mono)">${comp.pct}%</text>`;
+
+    // Subtitle
+    const fileCount = comp.files.length;
+    const subtitle = fileCount > 0 ? `${fileCount} file${fileCount > 1 ? 's' : ''}` : 'not implemented';
+    html += `<text x="${comp.x + 14}" y="${comp.y + 44}" font-size="9"
+      fill="var(--text-dim)" font-family="var(--font)">${subtitle}</text>`;
+
+    html += '</g>';
+  }
+
+  html += '</g>';
+
+  svg.innerHTML = html;
+
+  // Re-bind click events
+  svg.querySelectorAll('.node').forEach(node => {
+    node.addEventListener('click', (e) => {
+      const id = node.getAttribute('data-id');
+      state.selected = id;
+      updateAll();
+    });
+    node.addEventListener('dblclick', (e) => {
+      const id = node.getAttribute('data-id');
+      openCommentModal(id);
+    });
+    node.addEventListener('mouseenter', (e) => {
+      const id = node.getAttribute('data-id');
+      const comp = COMPONENTS.find(c => c.id === id);
+      showTooltip(e, comp.label + ' — ' + comp.pct + '% (double-click to comment)');
+    });
+    node.addEventListener('mouseleave', () => hideTooltip());
+  });
+}
+
+function showTooltip(e, text) {
+  const rect = canvasArea.getBoundingClientRect();
+  tooltip.textContent = text;
+  tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+  tooltip.style.top = (e.clientY - rect.top - 30) + 'px';
+  tooltip.classList.add('visible');
+}
+
+function hideTooltip() {
+  tooltip.classList.remove('visible');
+}
+
+// ─── Detail Panel ──────────────────────────────────────────────────────────
+
+function renderDetail() {
+  const panel = document.getElementById('detailPanel');
+
+  if (!state.selected) {
+    panel.innerHTML = '<div class="detail-placeholder">Click a component to inspect</div>';
+    return;
+  }
+
+  const comp = COMPONENTS.find(c => c.id === state.selected);
+  const sc = getStatusColor(comp.status);
+
+  let html = '<div class="detail-content">';
+
+  // Header
+  html += `<div class="detail-header">
+    <div class="detail-status-dot" style="background:${sc.text}"></div>
+    <div>
+      <div class="detail-title">${comp.label}</div>
+      <div class="detail-pct">${comp.pct}% complete &middot; ${comp.status}</div>
+    </div>
+  </div>`;
+
+  // Files
+  if (comp.files.length > 0) {
+    html += '<div class="detail-section"><div class="detail-section-title">Key Files</div>';
+    for (const f of comp.files) {
+      html += `<span class="file-link">${f}</span>`;
+    }
+    html += '</div>';
+  }
+
+  // What's built
+  if (comp.built.length > 0) {
+    html += '<div class="detail-section"><div class="detail-section-title">What\'s Built</div><ul>';
+    for (const item of comp.built) {
+      html += `<li class="done">${item}</li>`;
+    }
+    html += '</ul></div>';
+  }
+
+  // What's missing
+  if (comp.missing.length > 0) {
+    html += '<div class="detail-section"><div class="detail-section-title">What\'s Missing</div><ul>';
+    for (const item of comp.missing) {
+      html += `<li class="missing">${item}</li>`;
+    }
+    html += '</ul></div>';
+  }
+
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+// ─── Comments ──────────────────────────────────────────────────────────────
+
+function openCommentModal(nodeId) {
+  const comp = COMPONENTS.find(c => c.id === nodeId);
+  state.modalTarget = nodeId;
+  document.getElementById('modalTitle').textContent = comp.label;
+  document.getElementById('modalSubtitle').textContent = comp.files[0] || 'Not implemented';
+  document.getElementById('modalTextarea').value = '';
+  document.getElementById('modalOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('modalTextarea').focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  state.modalTarget = null;
+}
+
+function saveComment() {
+  const text = document.getElementById('modalTextarea').value.trim();
+  if (!text || !state.modalTarget) return;
+
+  const comp = COMPONENTS.find(c => c.id === state.modalTarget);
+  state.comments.push({
+    id: Date.now(),
+    target: state.modalTarget,
+    targetLabel: comp.label,
+    targetFile: comp.files[0] || '',
+    text
+  });
+
+  closeModal();
+  updateAll();
+}
+
+function deleteComment(id) {
+  state.comments = state.comments.filter(c => c.id !== id);
+  updateAll();
+}
+
+function renderComments() {
+  const section = document.getElementById('commentsSection');
+  const list = document.getElementById('commentsList');
+  const count = document.getElementById('commentCount');
+
+  if (state.comments.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  count.textContent = state.comments.length;
+
+  list.innerHTML = state.comments.map(c => `
+    <div class="comment-item">
+      <div>
+        <div class="comment-target">${c.targetLabel}</div>
+        <div class="comment-text">${c.text}</div>
+      </div>
+      <button class="comment-delete" data-id="${c.id}">&times;</button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.comment-delete').forEach(btn => {
+    btn.addEventListener('click', () => deleteComment(Number(btn.dataset.id)));
+  });
+}
+
+// ─── Progress ──────────────────────────────────────────────────────────────
+
+function renderProgress() {
+  const visible = getVisibleComponents();
+  const totalPct = visible.reduce((sum, c) => sum + c.pct, 0);
+  const avgPct = visible.length > 0 ? Math.round(totalPct / visible.length) : 0;
+  const builtCount = visible.filter(c => c.pct >= 80).length;
+
+  const fill = document.getElementById('progressFill');
+  fill.style.width = avgPct + '%';
+
+  if (avgPct >= 70) fill.style.background = 'var(--green)';
+  else if (avgPct >= 40) fill.style.background = 'var(--yellow)';
+  else fill.style.background = 'var(--red)';
+
+  document.getElementById('progressPct').textContent = avgPct + '%';
+  document.getElementById('progressLabel').textContent =
+    `${builtCount} of ${visible.length} components`;
+}
+
+// ─── Prompt ────────────────────────────────────────────────────────────────
+
+function updatePrompt() {
+  const visible = getVisibleComponents();
+  const parts = [];
+
+  parts.push('AI Assistant Pipeline Gap Analysis for TeamNetwork');
+  parts.push('');
+
+  // View context
+  if (state.preset !== 'full') {
+    const presetNames = {
+      built: "What's Built",
+      missing: "What's Missing",
+      critical: "Critical Path"
+    };
+    parts.push(`View: ${presetNames[state.preset] || 'Full Pipeline'}`);
+    parts.push('');
+  }
+
+  // Status summary
+  const built = visible.filter(c => c.status === 'built');
+  const stubs = visible.filter(c => c.status === 'stub');
+  const missing = visible.filter(c => c.status === 'missing');
+
+  if (built.length > 0) {
+    parts.push(`Built (${built.length}): ${built.map(c => `${c.label} (${c.pct}%)`).join(', ')}`);
+  }
+  if (stubs.length > 0) {
+    parts.push(`Stub (${stubs.length}): ${stubs.map(c => `${c.label} (${c.pct}%)`).join(', ')}`);
+  }
+  if (missing.length > 0) {
+    parts.push(`Missing (${missing.length}): ${missing.map(c => c.label).join(', ')}`);
+  }
+
+  // Selected component detail
+  if (state.selected) {
+    const comp = COMPONENTS.find(c => c.id === state.selected);
+    parts.push('');
+    parts.push(`Selected: ${comp.label} (${comp.pct}%)`);
+    if (comp.files.length > 0) {
+      parts.push(`Files: ${comp.files.join(', ')}`);
+    }
+    if (comp.missing.length > 0) {
+      parts.push('Gaps:');
+      comp.missing.forEach(m => parts.push(`  - ${m}`));
+    }
+  }
+
+  // Comments
+  if (state.comments.length > 0) {
+    parts.push('');
+    parts.push('Implementation notes:');
+    for (const c of state.comments) {
+      parts.push('');
+      const filePart = c.targetFile ? ` (${c.targetFile})` : '';
+      parts.push(`**${c.targetLabel}**${filePart}:`);
+      parts.push(c.text);
+    }
+  }
+
+  document.getElementById('promptOutput').textContent = parts.join('\n');
+}
+
+// ─── Controls ──────────────────────────────────────────────────────────────
+
+// Filter chips
+document.querySelectorAll('.legend-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    state.filter = chip.dataset.filter;
+    document.querySelectorAll('.legend-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    updateAll();
+  });
+});
+
+// Presets
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.preset = btn.dataset.preset;
+    state.filter = 'all'; // reset filter when changing preset
+    document.querySelectorAll('.legend-chip').forEach(c => c.classList.remove('active'));
+    document.querySelector('.legend-chip[data-filter="all"]').classList.add('active');
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    updateAll();
+  });
+});
+
+// Zoom
+document.getElementById('zoomIn').addEventListener('click', () => {
+  state.zoom = Math.min(2, state.zoom + 0.15);
+  updateAll();
+});
+
+document.getElementById('zoomOut').addEventListener('click', () => {
+  state.zoom = Math.max(0.4, state.zoom - 0.15);
+  updateAll();
+});
+
+document.getElementById('zoomReset').addEventListener('click', () => {
+  state.zoom = 1;
+  state.panX = 0;
+  state.panY = 0;
+  updateAll();
+});
+
+// Pan with mouse drag
+let isPanning = false;
+let didPan = false;
+let panStartX, panStartY;
+
+canvasArea.addEventListener('mousedown', (e) => {
+  if (e.target.closest('.node') || e.target.closest('.zoom-controls')) return;
+  isPanning = true;
+  didPan = false;
+  panStartX = e.clientX - state.panX;
+  panStartY = e.clientY - state.panY;
+  canvasArea.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isPanning) return;
+  didPan = true;
+  state.panX = e.clientX - panStartX;
+  state.panY = e.clientY - panStartY;
+  const g = document.getElementById('svgGroup');
+  if (g) g.setAttribute('transform', `translate(${state.panX},${state.panY}) scale(${state.zoom})`);
+});
+
+window.addEventListener('mouseup', () => {
+  isPanning = false;
+  canvasArea.style.cursor = '';
+});
+
+// Zoom with scroll wheel
+canvasArea.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? -0.08 : 0.08;
+  state.zoom = Math.max(0.4, Math.min(2, state.zoom + delta));
+  updateAll();
+}, { passive: false });
+
+// Copy
+document.getElementById('copyBtn').addEventListener('click', () => {
+  const text = document.getElementById('promptOutput').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = 'Copy Prompt';
+      btn.classList.remove('copied');
+    }, 1500);
+  });
+});
+
+// Modal
+document.getElementById('modalCancel').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal();
+});
+document.getElementById('modalSave').addEventListener('click', saveComment);
+document.getElementById('modalTextarea').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveComment();
+  if (e.key === 'Escape') closeModal();
+});
+
+// Click outside canvas nodes to deselect
+canvasArea.addEventListener('click', (e) => {
+  if (!e.target.closest('.node') && !e.target.closest('.zoom-controls')) {
+    if (!didPan) {
+      state.selected = null;
+      updateAll();
+    }
+    didPan = false;
+  }
+});
+
+// ─── Main Update ───────────────────────────────────────────────────────────
+
+function updateAll() {
+  renderDiagram();
+  renderDetail();
+  renderComments();
+  renderProgress();
+  updatePrompt();
+}
+
+// Initial render
+updateAll();
+
+// Center the diagram on load
+function centerDiagram() {
+  const rect = canvasArea.getBoundingClientRect();
+  const allX = COMPONENTS.map(c => c.x + NODE_W);
+  const allY = COMPONENTS.map(c => c.y + NODE_H);
+  const contentW = Math.max(...allX) + 40;
+  const contentH = Math.max(...allY) + 40;
+
+  const scaleX = rect.width / contentW;
+  const scaleY = rect.height / contentH;
+  state.zoom = Math.min(scaleX, scaleY, 1.2);
+  state.panX = (rect.width - contentW * state.zoom) / 2;
+  state.panY = (rect.height - contentH * state.zoom) / 2;
+  updateAll();
+}
+
+// Defer centering to allow layout
+requestAnimationFrame(centerDiagram);
+window.addEventListener('resize', centerDiagram);
+</script>
+</body>
+</html>

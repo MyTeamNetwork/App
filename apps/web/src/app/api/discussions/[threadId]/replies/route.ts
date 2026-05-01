@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createReplySchema } from "@/lib/schemas/discussion";
 import { validateJson, validationErrorResponse, ValidationError } from "@/lib/security/validation";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { getOrgMembership } from "@/lib/auth/api-helpers";
@@ -39,8 +38,11 @@ export async function POST(request: NextRequest, { params }: { params: { threadI
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (!thread) {
-      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    if (!result.ok) {
+      return NextResponse.json(
+        result.details ? { error: result.error, details: result.details } : { error: result.error },
+        { status: result.status }
+      );
     }
 
     if (thread.is_locked) {

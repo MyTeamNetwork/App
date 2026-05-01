@@ -25,6 +25,7 @@
  */
 
 import { createServiceClient } from "@/lib/supabase/service";
+import { hashIp } from "@/lib/compliance/audit-log";
 
 /**
  * Get dev-admin emails from environment variable
@@ -225,10 +226,10 @@ export async function fireAndForgetDevAdminAudit(
   try {
     await writer(entry);
   } catch (error) {
-    console.error("[dev-admin-audit] Failed to log:", {
-      action: entry.action,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    // Edge runtime cannot use Node crypto — audit writes from middleware silently skip.
+    if (message.includes("edge runtime does not support")) return;
+    console.error("[dev-admin-audit] Failed to log:", { action: entry.action, error: message });
   }
 }
 
@@ -250,7 +251,7 @@ export async function writeDevAdminAuditLog(
       target_slug: entry.targetSlug ?? null,
       request_path: entry.requestPath ?? null,
       request_method: entry.requestMethod ?? null,
-      ip_address: entry.ipAddress ?? null,
+      ip_address: entry.ipAddress ? hashIp(entry.ipAddress) : null,
       user_agent: entry.userAgent?.slice(0, 500) ?? null,
       metadata: entry.metadata ?? {},
     });

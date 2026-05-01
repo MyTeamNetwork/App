@@ -31,13 +31,20 @@ export function SubscriptionCard({ orgId, quota, isLoadingQuota, onQuotaRefresh 
   const [isUpdatingPlan, setIsUpdatingPlan] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
   const [planSuccess, setPlanSuccess] = useState<string | null>(null);
+  const isEnterpriseManaged = quota?.isEnterpriseManaged === true || quota?.status === "enterprise_managed";
+  const currentPlanLabel = isEnterpriseManaged ? "Enterprise pooled quota" : (quota?.bucket || "none");
 
   // Sync bucket when quota loads
   useEffect(() => {
-    if (quota?.bucket) setSelectedBucket(quota.bucket);
-  }, [quota?.bucket]);
+    if (quota?.bucket && !isEnterpriseManaged) setSelectedBucket(quota.bucket);
+  }, [isEnterpriseManaged, quota?.bucket]);
 
   const handleUpdatePlan = async () => {
+    if (isEnterpriseManaged) {
+      setPlanError("This organization uses enterprise-managed billing. Update alumni capacity from the enterprise billing page.");
+      return;
+    }
+
     const targetLimit = ALUMNI_LIMITS[selectedBucket];
     if (
       quota &&
@@ -150,7 +157,7 @@ export function SubscriptionCard({ orgId, quota, isLoadingQuota, onQuotaRefresh 
             label={tSettings("subscription.alumniPlan")}
             value={selectedBucket}
             onChange={(e) => setSelectedBucket(e.target.value as AlumniBucket)}
-            disabled={isLoadingQuota}
+            disabled={isLoadingQuota || isEnterpriseManaged}
             options={BUCKET_OPTIONS.map((option) => ({
               ...option,
               disabled:
@@ -171,7 +178,7 @@ export function SubscriptionCard({ orgId, quota, isLoadingQuota, onQuotaRefresh 
             label={tSettings("subscription.billingInterval")}
             value={selectedInterval}
             onChange={(e) => setSelectedInterval(e.target.value as "month" | "year")}
-            disabled={isLoadingQuota}
+            disabled={isLoadingQuota || isEnterpriseManaged}
             options={[
               { value: "month", label: tSettings("subscription.monthly") },
               { value: "year", label: tSettings("subscription.yearly") },
@@ -182,7 +189,7 @@ export function SubscriptionCard({ orgId, quota, isLoadingQuota, onQuotaRefresh 
           <Button
             onClick={handleUpdatePlan}
             isLoading={isUpdatingPlan}
-            disabled={isLoadingQuota || !quota || (selectedBucket === quota.bucket && !!quota.stripeSubscriptionId)}
+            disabled={isLoadingQuota || !quota || isEnterpriseManaged || (selectedBucket === quota.bucket && !!quota.stripeSubscriptionId)}
           >
             {tSettings("subscription.updatePlan")}
           </Button>

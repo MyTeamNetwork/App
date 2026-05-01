@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { Button, Card } from "@/components/ui";
+import { Button, Card, ToggleSwitch } from "@/components/ui";
 import { PageHeader } from "@/components/layout";
 import { EnterpriseInviteForm } from "@/components/enterprise/EnterpriseInviteForm";
 import type { CreatedInvite } from "@/components/enterprise/EnterpriseInviteForm";
@@ -78,7 +78,7 @@ export function InvitesClient({ enterpriseId }: InvitesClientProps) {
   }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchOrgs = async () => {
       try {
         const orgsRes = await fetch(`/api/enterprise/${enterpriseId}/organizations`);
         if (orgsRes.ok) {
@@ -87,14 +87,16 @@ export function InvitesClient({ enterpriseId }: InvitesClientProps) {
         }
         await fetchInvites(enterpriseId);
       } catch {
-        setError("Failed to load data");
-      } finally {
-        setIsLoading(false);
+        setError("Failed to load organizations");
       }
     };
+    fetchOrgs();
+  }, [enterpriseId]);
 
-    fetchData();
-  }, [enterpriseId, fetchInvites]);
+  useEffect(() => {
+    setIsLoading(true);
+    fetchInvites(enterpriseId, null, includeRevoked).finally(() => setIsLoading(false));
+  }, [enterpriseId, fetchInvites, includeRevoked]);
 
   useEffect(() => {
     if (preselectedOrgId && organizations.some(o => o.id === preselectedOrgId)) {

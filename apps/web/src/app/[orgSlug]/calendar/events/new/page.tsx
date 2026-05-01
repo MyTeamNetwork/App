@@ -1,4 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
+import { calendarNewEventPath } from "@/lib/calendar/routes";
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";

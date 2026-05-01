@@ -32,6 +32,12 @@
     "test:security": "turbo run test:security --filter=@teammeet/web",
     "test:e2e": "npx playwright test --project=e2e"
   },
+  "overrides": {
+    "glob": ">=10.4.6",
+    "@next/eslint-plugin-next": {
+      "glob": ">=10.4.6"
+    }
+  },
   "devDependencies": {
     "@eslint/eslintrc": "^3.1.0",
     "@next/eslint-plugin-next": "14.2.35",

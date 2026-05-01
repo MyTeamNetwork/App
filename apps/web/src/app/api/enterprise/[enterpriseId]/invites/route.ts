@@ -31,9 +31,7 @@ interface RouteParams {
 interface EnterpriseInviteRow {
   id: string;
   organization_id: string | null;
-  email: string;
   role: string;
-  status: string;
   created_at: string;
   expires_at: string | null;
   code?: string;
@@ -66,10 +64,15 @@ export async function GET(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   // Get all organizations for this enterprise to map names
-  const { data: orgs } = await ctx.serviceSupabase
+  const { data: orgs, error: orgsError } = await ctx.serviceSupabase
     .from("organizations")
     .select("id, name")
     .eq("enterprise_id", ctx.enterpriseId);
+
+  if (orgsError) {
+    console.error("[enterprise/invites GET] Failed to fetch organizations:", orgsError);
+    return respond({ error: "Failed to fetch organizations" }, 500);
+  }
 
   const orgMap = new Map(orgs?.map((o) => [o.id, o.name]) ?? []);
 

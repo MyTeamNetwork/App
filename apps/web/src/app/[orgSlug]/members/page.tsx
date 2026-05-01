@@ -46,15 +46,18 @@ export default async function MembersPage({ params, searchParams }: MembersPageP
   const devAdminEmails = getDevAdminEmails();
   const devAdminEmailFilter = `(${devAdminEmails.map((email) => `"${email}"`).join(",")})`;
 
-  // Step 1: Get user_ids with active_member or admin role
+  // Step 1: Get user_ids with active_member, admin, or parent role
   const { data: memberRoles } = await dataClient
     .from("user_organization_roles")
     .select("user_id, role")
     .eq("organization_id", org.id)
-    .in("role", ["active_member", "admin"])
+    .in("role", ["active_member", "admin", "parent"])
     .eq("status", "active");
 
   const memberUserIds = memberRoles?.map((r) => r.user_id) || [];
+  const parentUserIds = memberRoles
+    ?.filter((r) => r.role === "parent")
+    .map((r) => r.user_id) || [];
   const adminUserIds = new Set(
     memberRoles?.filter((r) => r.role === "admin").map((r) => r.user_id) || []
   );
@@ -86,11 +89,27 @@ export default async function MembersPage({ params, searchParams }: MembersPageP
     .not("email", "in", devAdminEmailFilter)
     .is("user_id", null);
 
+  let parentProfilesQuery = dataClient
+    .from("parents")
+    .select("id, first_name, last_name, email, photo_url, linkedin_url, relationship, student_name, user_id")
+    .eq("organization_id", org.id)
+    .is("deleted_at", null)
+    .not("user_id", "is", null);
+
+  if (parentUserIds.length > 0) {
+    parentProfilesQuery = parentProfilesQuery.in("user_id", parentUserIds);
+  } else {
+    parentProfilesQuery = parentProfilesQuery.in("user_id", ["__no_match__"]);
+  }
+
   // Apply filters to both queries
   // Default: show active members only unless explicitly filtered
   if (filters.status) {
     linkedMembersQuery = linkedMembersQuery.eq("status", filters.status);
     manualMembersQuery = manualMembersQuery.eq("status", filters.status);
+    if (filters.status !== "active") {
+      parentProfilesQuery = parentProfilesQuery.in("user_id", ["__no_match__"]);
+    }
   } else {
     linkedMembersQuery = linkedMembersQuery.eq("status", "active");
     manualMembersQuery = manualMembersQuery.eq("status", "active");
@@ -99,16 +118,21 @@ export default async function MembersPage({ params, searchParams }: MembersPageP
   if (filters.role) {
     linkedMembersQuery = linkedMembersQuery.eq("role", filters.role);
     manualMembersQuery = manualMembersQuery.eq("role", filters.role);
+    parentProfilesQuery = parentProfilesQuery.in("user_id", ["__no_match__"]);
   }
 
-  // Apply ordering after all filters
-  linkedMembersQuery = linkedMembersQuery.order("last_name");
-  manualMembersQuery = manualMembersQuery.order("last_name");
+  // Apply ordering after all filters. Cap each source at SOURCE_CAP so the
+  // page cannot OOM on large orgs; render a truncation banner if any
+  // source returns the full cap.
+  linkedMembersQuery = linkedMembersQuery.order("last_name").limit(SOURCE_CAP);
+  manualMembersQuery = manualMembersQuery.order("last_name").limit(SOURCE_CAP);
+  parentProfilesQuery = parentProfilesQuery.order("last_name").limit(SOURCE_CAP);
 
   // Run queries in parallel
-  const [{ data: linkedMembers }, { data: manualMembers }, { data: allMembers }] = await Promise.all([
+  const [{ data: linkedMembers }, { data: manualMembers }, { data: parentProfiles }, { data: allMembers }] = await Promise.all([
     linkedMembersQuery,
     manualMembersQuery,
+    parentProfilesQuery,
     dataClient
       .from("members")
       .select("role")
@@ -198,6 +222,16 @@ export default async function MembersPage({ params, searchParams }: MembersPageP
         />
       </div>
 
+      {isTruncated && (
+        <div
+          data-testid="members-truncation-banner"
+          className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          Showing the first {SOURCE_CAP} entries per source. Use filters to narrow results;
+          full pagination is coming soon.
+        </div>
+      )}
+
       {/* Members Grid */}
       {members && members.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger-children">
@@ -226,6 +260,9 @@ export default async function MembersPage({ params, searchParams }: MembersPageP
                       <Badge variant={member.status === "active" ? "success" : "muted"}>
                         {member.status}
                       </Badge>
+                      {member.isParent && (
+                        <Badge variant="primary">Parent</Badge>
+                      )}
                       {member.isAdmin && (
                         <Badge variant="warning">Admin</Badge>
                       )}

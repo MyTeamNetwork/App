@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { Button, Card, Select } from "@/components/ui";
+import { parseCSV, type ParsedBulkInviteRow } from "@/lib/invites/parse-bulk-csv";
 
 interface Organization {
   id: string;
@@ -15,12 +16,6 @@ interface BulkInviteUploaderProps {
   onCancel: () => void;
 }
 
-interface ParsedRow {
-  email?: string;
-  role?: string;
-  organizationId?: string;
-}
-
 export function BulkInviteUploader({
   enterpriseId,
   organizations,
@@ -30,11 +25,14 @@ export function BulkInviteUploader({
   const [selectedOrg, setSelectedOrg] = useState<string>("");
   const [defaultRole, setDefaultRole] = useState<string>("active_member");
   const [file, setFile] = useState<File | null>(null);
-  const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
+  const [parsedRows, setParsedRows] = useState<ParsedBulkInviteRow[]>([]);
+  const [truncated, setTruncated] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<{ success: number; failed: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const hasValidationErrors = parsedRows.some((r) => r.error);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -47,32 +45,14 @@ export function BulkInviteUploader({
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const rows = parseCSV(text);
-      setParsedRows(rows);
+      const result = parseCSV(text);
+      setParsedRows(result.rows);
+      setTruncated(result.truncated);
     };
     reader.onerror = () => {
       setError("Failed to read file");
     };
     reader.readAsText(file);
-  };
-
-  const parseCSV = (text: string): ParsedRow[] => {
-    const lines = text.split("\n").filter((line) => line.trim());
-    if (lines.length === 0) return [];
-
-    // Check if first line is a header
-    const firstLine = lines[0].toLowerCase();
-    const hasHeader = firstLine.includes("email") || firstLine.includes("role");
-    const dataLines = hasHeader ? lines.slice(1) : lines;
-
-    return dataLines.map((line) => {
-      const parts = line.split(",").map((p) => p.trim().replace(/^["']|["']$/g, ""));
-      return {
-        email: parts[0] || undefined,
-        role: parts[1] || undefined,
-        organizationId: parts[2] || undefined,
-      };
-    }).filter((row) => row.email);
   };
 
   const handleUpload = async () => {
@@ -90,11 +70,12 @@ export function BulkInviteUploader({
     setError(null);
 
     try {
-      const invites = parsedRows.map((row) => ({
-        organizationId: row.organizationId || selectedOrg,
-        role: row.role || defaultRole,
-        // Email is stored for tracking but invites are code-based
-      }));
+      const invites = parsedRows
+        .filter((r) => !r.error)
+        .map((row) => ({
+          organizationId: row.organizationId || selectedOrg,
+          role: row.role || defaultRole,
+        }));
 
       const res = await fetch(`/api/enterprise/${enterpriseId}/invites/bulk`, {
         method: "POST",
@@ -108,9 +89,10 @@ export function BulkInviteUploader({
       }
 
       const data = await res.json();
-      setResults(data);
+      const { success, failed } = data.summary as { success: number; failed: number; total: number };
+      setResults({ success, failed });
 
-      if (data.failed === 0) {
+      if (failed === 0) {
         onUploaded();
       }
     } catch (err) {
@@ -123,6 +105,7 @@ export function BulkInviteUploader({
   const clearFile = () => {
     setFile(null);
     setParsedRows([]);
+    setTruncated(false);
     setResults(null);
     setError(null);
     if (fileInputRef.current) {
@@ -146,13 +129,19 @@ export function BulkInviteUploader({
       <h3 className="font-semibold text-foreground mb-4">Bulk Import Invites</h3>
 
       <p className="text-sm text-muted-foreground mb-4">
-        Upload a CSV file to create multiple invites at once. Each row creates one invite code.
-        Format: <code className="bg-muted px-1 rounded">email,role,organization_id</code> (role and org are optional).
+        Upload a CSV file to create multiple invites at once. Each row creates one generic, shareable invite code.
+        Format: <code className="bg-muted px-1 rounded">role,organization_id</code> (both fields optional; defaults apply). One row per invite.
       </p>
 
       {error && (
         <div className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
           {error}
+        </div>
+      )}
+
+      {truncated && (
+        <div className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-sm">
+          Only the first 100 rows will be uploaded. Split your file to upload more.
         </div>
       )}
 
@@ -207,7 +196,7 @@ export function BulkInviteUploader({
         </div>
         {parsedRows.length > 0 && (
           <p className="text-sm text-muted-foreground mt-2">
-            {parsedRows.length} rows found
+            {parsedRows.filter((r) => !r.error).length} valid, {parsedRows.filter((r) => r.error).length} with errors
           </p>
         )}
       </div>
@@ -218,21 +207,29 @@ export function BulkInviteUploader({
             <thead className="bg-muted">
               <tr>
                 <th className="px-3 py-2 text-left text-muted-foreground">#</th>
-                <th className="px-3 py-2 text-left text-muted-foreground">Email</th>
                 <th className="px-3 py-2 text-left text-muted-foreground">Role</th>
+                <th className="px-3 py-2 text-left text-muted-foreground">Organization ID</th>
+                <th className="px-3 py-2 text-left text-muted-foreground">Status</th>
               </tr>
             </thead>
             <tbody>
               {parsedRows.slice(0, 10).map((row, idx) => (
                 <tr key={idx} className="border-t border-border">
                   <td className="px-3 py-2 text-muted-foreground">{idx + 1}</td>
-                  <td className="px-3 py-2">{row.email}</td>
-                  <td className="px-3 py-2">{row.role || defaultRole}</td>
+                  <td className="px-3 py-2">{row.role || ""}</td>
+                  <td className="px-3 py-2 text-xs">{row.organizationId || ""}</td>
+                  <td className="px-3 py-2">
+                    {row.error ? (
+                      <span className="text-red-600 dark:text-red-400 text-xs">{row.error}</span>
+                    ) : (
+                      <span className="text-green-600 dark:text-green-400 text-xs">✓</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {parsedRows.length > 10 && (
                 <tr className="border-t border-border">
-                  <td colSpan={3} className="px-3 py-2 text-center text-muted-foreground">
+                  <td colSpan={4} className="px-3 py-2 text-center text-muted-foreground">
                     ... and {parsedRows.length - 10} more
                   </td>
                 </tr>
@@ -246,9 +243,9 @@ export function BulkInviteUploader({
         <Button
           onClick={handleUpload}
           isLoading={isUploading}
-          disabled={parsedRows.length === 0 || !selectedOrg}
+          disabled={parsedRows.length === 0 || !selectedOrg || hasValidationErrors}
         >
-          Create {parsedRows.length} Invites
+          Create {parsedRows.filter((r) => !r.error).length} Invites
         </Button>
         <Button variant="secondary" onClick={onCancel}>
           Cancel

@@ -7,6 +7,65 @@ import { validateSiteUrl } from "./lib/supabase/config";
 // Validate at module load
 validateAuthTestMode();
 
+const LOCALE_SYNC_TTL_MS = 10 * 60 * 1000;
+
+function isLocaleCookieFresh(request: NextRequest): boolean {
+  const locale = request.cookies.get("NEXT_LOCALE")?.value;
+  const syncedAt = request.cookies.get("NEXT_LOCALE_SYNCED_AT")?.value;
+  if (!locale || !syncedAt) return false;
+  const ts = parseInt(syncedAt, 10);
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts < LOCALE_SYNC_TTL_MS;
+}
+
+interface OrgContextRpcResult {
+  found: boolean;
+  organization?: { default_language?: string | null } | null;
+  membership?: {
+    status?: string | null;
+    language_override?: string | null;
+  } | null;
+}
+
+function isOrgContextRpcResult(value: unknown): value is OrgContextRpcResult {
+  return typeof value === "object" && value !== null && "found" in value &&
+    typeof (value as Record<string, unknown>).found === "boolean";
+}
+
+/** Sync the NEXT_LOCALE cookie from DB language preferences (user override → org default → 'en'). */
+function syncLocaleCookie(
+  request: NextRequest,
+  response: NextResponse,
+  userLangOverride: string | null | undefined,
+  orgDefaultLang: string | null | undefined,
+) {
+  const effective = (
+    SUPPORTED_LOCALES.includes(userLangOverride as SupportedLocale) ? userLangOverride :
+    SUPPORTED_LOCALES.includes(orgDefaultLang as SupportedLocale) ? orgDefaultLang :
+    DEFAULT_LOCALE
+  ) as string;
+
+  const current = request.cookies.get("NEXT_LOCALE")?.value;
+  const cookieOpts = {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+  };
+  if (effective !== current) {
+    // Set on the request so downstream server components (getRequestConfig)
+    // see the updated locale in THIS request, not one request late.
+    request.cookies.set("NEXT_LOCALE", effective);
+    // Set on the response to persist the cookie for future requests.
+    response.cookies.set("NEXT_LOCALE", effective, cookieOpts);
+  }
+  // Stamp sync time so middleware can skip the DB reads on subsequent
+  // requests until the TTL expires or a save-path clears this cookie.
+  const syncedAt = String(Date.now());
+  request.cookies.set("NEXT_LOCALE_SYNCED_AT", syncedAt);
+  response.cookies.set("NEXT_LOCALE_SYNCED_AT", syncedAt, cookieOpts);
+}
+
 const supabaseUrl = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
 const supabaseAnonKey = requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
@@ -15,9 +74,6 @@ const publicRoutes = ["/", "/demos", "/auth/login", "/auth/signup", "/auth/callb
 
 // Enterprise public routes that don't require enterprise membership
 const enterprisePublicSlugs = ["pricing", "features"];
-
-// Routes that should redirect to /app if user is already authenticated
-const authOnlyRoutes = ["/auth/login", "/auth/signup", "/auth/forgot-password"];
 
 function fireMiddlewareAudit(params: {
   userId: string;
@@ -45,8 +101,11 @@ function fireMiddlewareAudit(params: {
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const host = request.headers.get("host");
-  const shouldLog = shouldLogAuth();
-  const logFailures = shouldLogAuthFailures();
+
+  // Browser/devtools probes should bypass auth and org logic entirely.
+  if (pathname.startsWith("/.well-known/")) {
+    return NextResponse.next();
+  }
 
   // Bypass routes that should never be blocked by auth middleware
   const publicApiRoutes = [
@@ -61,10 +120,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Dynamic public API routes (unauthenticated endpoints with dynamic path segments)
-  const isPublicApiPattern =
-    // Parent invite acceptance — called from /app/parents-join before account exists
-    (pathname.startsWith("/api/organizations/") && pathname.endsWith("/parents/invite/accept"));
-  if (isPublicApiPattern) {
+  if (isPublicApiPatternCheck(pathname)) {
     return NextResponse.next();
   }
 
@@ -74,7 +130,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Canonical host redirect: ensure cookies stay scoped to www domain
-  if (host === "myteamnetwork.com") {
+  if (shouldRedirectToCanonicalHost(host)) {
     const url = request.nextUrl.clone();
     url.protocol = "https:";
     url.host = "www.myteamnetwork.com";
@@ -109,24 +165,6 @@ export async function middleware(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
-        if (shouldLog) {
-          console.log("[AUTH-MW] setAll", {
-            host,
-            pathname,
-            cookieCount: cookiesToSet.length,
-            cookies: cookiesToSet.map(({ name, value, options }) => ({
-              name,
-              valueLen: value?.length ?? 0,
-              options: {
-                path: options.path ?? "/",
-                domain: options.domain,
-                secure: options.secure,
-                sameSite: options.sameSite,
-                maxAge: options.maxAge,
-              },
-            })),
-          });
-        }
         if (cookiesToSet.length === 0) {
           return;
         }
@@ -185,52 +223,14 @@ export async function middleware(request: NextRequest) {
     // Fall back to cookie-based auth for web clients
     const res = await supabase.auth.getUser();
     user = res.data.user;
-    authError = res.error;
-  }
-
-  // For compatibility, create a session-like object
-  const session = user ? { user, expires_at: null } : null;
-
-
-  const sbCookies = cookiesAll.map((c) => c.name).filter((n) => n.startsWith("sb-"));
-
-  // Always log auth failures in production for debugging user-specific issues
-  const isAuthFailure = !user && hasAuthCookies;
-  if (shouldLog || (isAuthFailure && logFailures)) {
-    console.log("[AUTH-MW]", {
-      host,
-      pathname,
-      origin: request.headers.get("origin"),
-      referer: request.headers.get("referer"),
-      userAgent: request.headers.get("user-agent")?.slice(0, 100),
-      sbCookies,
-      allCookieNames: cookiesAll.map((c) => c.name),
-      hasAuthCookies,
-      sessionUserHash: user ? hashForLogging(user.id) : null,
-      sessionNull: !session,
-      authError: authError ? { message: authError.message, name: authError.name } : null,
-      isAuthFailure,
-    });
-    if (pathname.startsWith("/testing123")) {
-      console.log("[AUTH-MW-testing123]", {
-        pathname,
-        sbCookies,
-        sessionPresent: !!session,
-        userHash: user ? hashForLogging(user.id) : null,
-        authError: authError?.message || null,
-      });
-    }
   }
 
   // Redirect authenticated users away from auth-only pages
-  if (user && authOnlyRoutes.includes(pathname)) {
+  if (user && isAuthOnlyRoute(pathname)) {
     return NextResponse.redirect(new URL("/app", request.url));
   }
 
-  const isPublicRoute =
-    publicRoutes.some((route) => pathname === route) || pathname.startsWith("/auth/");
-
-  if (isPublicRoute) {
+  if (isPublicRouteCheck(pathname)) {
     return response;
   }
 
@@ -255,14 +255,6 @@ export async function middleware(request: NextRequest) {
     const redirectResponse = NextResponse.redirect(redirectUrl);
 
     if (hasAuthCookies) {
-      // SECURITY FIX: Clear stale/invalid auth cookies instead of allowing pass-through
-      // This prevents unauthorized access while avoiding redirect loops (cookies cleared = no loop)
-      if (logFailures) {
-        console.log("[AUTH-MW] Clearing stale auth cookies and redirecting to login", {
-          pathname,
-          sbCookies,
-        });
-      }
       // Clear all Supabase auth cookies
       cookiesAll
         .filter((c) => c.name.startsWith("sb-") || c.name.includes("auth-token"))
@@ -329,10 +321,7 @@ export async function middleware(request: NextRequest) {
           response.headers.set("x-enterprise-id", enterprise.id);
           response.headers.set("x-enterprise-role", role.role);
         } catch (e) {
-          // Log error but redirect to app with error
-          if (shouldLog) {
-            console.error("[AUTH-MW] Error checking enterprise access:", e);
-          }
+          console.error("[AUTH-MW] Error checking enterprise access:", e);
           return NextResponse.redirect(new URL("/app?error=enterprise_error", request.url));
         }
       } else {
@@ -346,32 +335,18 @@ export async function middleware(request: NextRequest) {
           method: request.method,
           request,
         });
-        if (shouldLog) {
-          console.log("[AUTH-MW] Dev-admin bypassing enterprise membership check", {
-            email: userEmail ? redactEmail(userEmail) : null,
-            enterpriseSlug,
-            pathname,
-          });
-        }
       }
     }
   }
 
+  // ── Locale tracking (populated during org/user checks below) ──
+  let userLangOverride: string | null | undefined;
+  let orgDefaultLang: string | null | undefined;
+
   // Check for revoked access on org routes
-  // Org routes are paths like /[orgSlug]/... but not /app/ or /auth/ or /api/ or /settings/ or /enterprise/
-  const isOrgRoute = !pathname.startsWith("/app") &&
-    !pathname.startsWith("/auth") &&
-    !pathname.startsWith("/api") &&
-    !pathname.startsWith("/settings") &&
-    !pathname.startsWith("/enterprise") &&
-    pathname !== "/" &&
-    pathname.split("/").filter(Boolean).length >= 1;
-
-  if (isOrgRoute && user) {
+  if (isOrgRoute(pathname) && user) {
     const orgSlug = pathname.split("/")[1];
-
-    // Only check if it looks like an org slug (not a system path)
-    if (orgSlug && !["app", "auth", "api", "settings", "_next", "favicon.ico"].includes(orgSlug)) {
+    if (orgSlug) {
       // Check if user is dev-admin - if so, skip membership checks entirely
       const userEmail = "email" in user ? (user.email as string | null | undefined) : undefined;
       const userIsDevAdmin = isDevAdminEmail(userEmail);
@@ -379,43 +354,69 @@ export async function middleware(request: NextRequest) {
       if (!userIsDevAdmin) {
         // Only check membership for non-dev-admins
         try {
-          // Get organization by slug
-          const { data: org } = await supabase
-            .from("organizations")
-            .select("id")
-            .eq("slug", orgSlug)
-            .maybeSingle();
+          // Use RPC to fetch org + membership in a single round-trip (Phase 1.1 performance)
+          const { data: ctx, error: rpcError } = await supabase.rpc(
+            "get_org_context_by_slug",
+            { p_slug: orgSlug }
+          );
 
-          if (org) {
-            // Check user's membership status
-            const { data: membership } = await supabase
-              .from("user_organization_roles")
-              .select("status")
-              .eq("organization_id", org.id)
-              .eq("user_id", user.id)
+          let membershipStatus: string | null | undefined;
+
+          if (rpcError) {
+            const { data: org, error: orgError } = await supabase
+              .from("organizations")
+              .select("id")
+              .eq("slug", orgSlug)
               .maybeSingle();
 
-            if (membership?.status === "revoked") {
-              // User's access has been revoked - redirect to app with error
-              const redirectUrl = new URL("/app", request.url);
-              redirectUrl.searchParams.set("error", "access_revoked");
-              return NextResponse.redirect(redirectUrl);
+            if (orgError) {
+              throw orgError;
             }
 
-            if (membership?.status === "pending") {
-              // User's membership is pending approval - redirect to app with pending message
-              const redirectUrl = new URL("/app", request.url);
-              redirectUrl.searchParams.set("pending", orgSlug);
-              return NextResponse.redirect(redirectUrl);
+            if (org) {
+              const { data: membership, error: membershipError } = await supabase
+                .from("user_organization_roles")
+                .select("status")
+                .eq("organization_id", org.id)
+                .eq("user_id", user.id)
+                .maybeSingle();
+
+              if (membershipError) {
+                throw membershipError;
+              }
+
+              membershipStatus = membership?.status;
             }
+          } else if (isOrgContextRpcResult(ctx) && ctx.found) {
+            membershipStatus = ctx.membership?.status;
+            // Capture language fields from RPC for locale cookie sync (no extra query)
+            orgDefaultLang = ctx.organization?.default_language ?? null;
+            userLangOverride = ctx.membership?.language_override ?? null;
+          } else if (ctx !== null && ctx !== undefined && !isOrgContextRpcResult(ctx)) {
+            throw new Error("get_org_context_by_slug returned an invalid payload");
+          }
+          // If ctx is invalid or !ctx.found the org doesn't exist — layout.tsx handles the 404 gate
+
+          const membershipRedirect = getRedirectForMembershipStatus(membershipStatus, orgSlug);
+          if (membershipRedirect) {
+            return NextResponse.redirect(new URL(membershipRedirect, request.url));
           }
         } catch (e) {
-          // Log error but don't block the request
-          if (shouldLog) {
-            console.error("[AUTH-MW] Error checking membership status:", e);
-          }
+          console.error("[AUTH-MW] Error checking membership status, failing closed:", e);
+          return NextResponse.redirect(new URL("/app?error=org_access_check_failed", request.url));
         }
       } else {
+        // Dev-admin bypasses membership checks but still needs language data
+        try {
+          const { data: ctx } = await supabase.rpc("get_org_context_by_slug", { p_slug: orgSlug });
+          if (isOrgContextRpcResult(ctx) && ctx.found) {
+            orgDefaultLang = ctx.organization?.default_language ?? null;
+            userLangOverride = ctx.membership?.language_override ?? null;
+          }
+        } catch {
+          // Non-critical
+        }
+
         // Audit dev-admin bypass
         fireMiddlewareAudit({
           userId: user.id,
@@ -426,13 +427,6 @@ export async function middleware(request: NextRequest) {
           method: request.method,
           request,
         });
-        if (shouldLog) {
-          console.log("[AUTH-MW] Dev-admin bypassing membership check", {
-            email: userEmail ? redactEmail(userEmail) : null,
-            orgSlug,
-            pathname,
-          });
-        }
       }
     }
   }
@@ -449,6 +443,6 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|webmanifest)$).*)",
   ],
 };

@@ -1,6 +1,6 @@
 /**
  * Organization color theming utilities
- * Provides centralized color manipulation and CSS variable generation for org branding
+ * 3-color system: base (white/dark toggle), sidebar (free hex), button (free hex)
  */
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
@@ -59,30 +59,39 @@ export function isColorDark(hex: string): boolean {
   return luminance < 0.6;
 }
 
-/**
- * Derives dark mode variants of org colors
- * Adjusts brightness to ensure proper contrast in dark mode
- */
-export function deriveOrgDarkModeColors(
-  primaryColor: string,
-  secondaryColor: string
-): {
-  primary: string;
-  primaryLight: string;
-  primaryDark: string;
-  secondary: string;
-  secondaryLight: string;
-  secondaryDark: string;
-  secondaryForeground: string;
-} {
-  const isPrimaryDark = isColorDark(primaryColor);
-  const isSecondaryDark = isColorDark(secondaryColor);
+/** Hardcoded light palette — stable, hand-picked values */
+const LIGHT_PALETTE = {
+  "--background": "#fafbfc",
+  "--foreground": "#000000",
+  "--card": "#ffffff",
+  "--card-foreground": "#000000",
+  "--muted": "#f1f5f9",
+  "--muted-foreground": "#4a5568",
+  "--border": "#e2e8f0",
+} as const;
 
-  // In dark mode, brighten dark colors and darken light colors for proper contrast
-  const primary = isPrimaryDark ? adjustColor(primaryColor, 15) : adjustColor(primaryColor, -30);
-  const secondary = isSecondaryDark
-    ? adjustColor(secondaryColor, 15)
-    : adjustColor(secondaryColor, -30);
+/** Hardcoded dark palette — stable, hand-picked values */
+const DARK_PALETTE = {
+  "--background": "#222326",
+  "--foreground": "#ffffff",
+  "--card": "#2a2d31",
+  "--card-foreground": "#ffffff",
+  "--muted": "#33363b",
+  "--muted-foreground": "#a0aec0",
+  "--border": "#3d4147",
+} as const;
+
+const BASE_DARK = "#222326";
+const BASE_PRIMARY = "primary";
+
+/** Compute a dynamic palette from an arbitrary hex color */
+function computeDynamicPalette(hex: string): Record<string, string> {
+  const dark = isColorDark(hex);
+  const foreground = dark ? "#ffffff" : "#000000";
+  const card = dark ? adjustColor(hex, 18) : adjustColor(hex, -12);
+  const muted = dark ? adjustColor(hex, 28) : adjustColor(hex, -25);
+  const mutedForeground = dark ? "#a0aec0" : "#4a5568";
+  const border = dark ? adjustColor(hex, 35) : adjustColor(hex, -35);
 
   return {
     primary,
@@ -164,7 +173,65 @@ export function computeOrgThemeVariables(
     "--card-foreground": cardForeground,
     "--muted": muted,
     "--muted-foreground": mutedForeground,
-    "--border": borderColor,
-    "--ring": secondaryColor,
+    "--border": border,
+  };
+}
+
+/**
+ * Computes complete CSS variable object for org theming.
+ * Base color: "primary" (use sidebar color), "#ffffff" (light), or "#222326" (dark).
+ */
+export function computeOrgThemeVariables(
+  baseColor: string,
+  sidebarColor: string,
+  buttonColor: string,
+): Record<string, string> {
+  const basePalette =
+    baseColor === BASE_PRIMARY ? computeDynamicPalette(sidebarColor)
+    : baseColor === BASE_DARK ? DARK_PALETTE
+    : LIGHT_PALETTE;
+
+  // Sidebar: auto-derive foreground + muted variants from sidebar color darkness
+  const sidebarDark = isColorDark(sidebarColor);
+  const sidebarForeground = sidebarDark ? "#f8fafc" : "#1A1F36";
+  const sidebarMuted = sidebarDark ? adjustColor(sidebarColor, 25) : adjustColor(sidebarColor, -20);
+  const sidebarMutedForeground = sidebarDark ? "#94a3b8" : "#64748b";
+
+  // Button: derive light/dark variants + foreground
+  const buttonDark = isColorDark(buttonColor);
+  const buttonLight = adjustColor(buttonColor, 20);
+  const buttonDarkVariant = adjustColor(buttonColor, -20);
+  const buttonForeground = buttonDark ? "#ffffff" : "#0f172a";
+
+  // Map org-primary vars → sidebar color (30+ components reference these)
+  const sidebarLight = adjustColor(sidebarColor, 20);
+  const sidebarDarkVariant = adjustColor(sidebarColor, -20);
+  const sidebarPrimaryForeground = sidebarDark ? "#ffffff" : "#0f172a";
+
+  return {
+    // Base palette (hardcoded, no computation)
+    ...basePalette,
+
+    // Sidebar (scoped vars — applied on sidebar element to override base vars)
+    "--sidebar-bg": sidebarColor,
+    "--sidebar-foreground": sidebarForeground,
+    "--sidebar-muted": sidebarMuted,
+    "--sidebar-muted-foreground": sidebarMutedForeground,
+
+    // org-primary → maps to sidebar color (preserves existing component references)
+    "--color-org-primary": sidebarColor,
+    "--color-org-primary-light": sidebarLight,
+    "--color-org-primary-dark": sidebarDarkVariant,
+    "--color-org-primary-foreground": sidebarPrimaryForeground,
+
+    // org-secondary → maps to button color
+    "--color-org-secondary": buttonColor,
+    "--color-org-secondary-light": buttonLight,
+    "--color-org-secondary-dark": buttonDarkVariant,
+    "--color-org-secondary-foreground": buttonForeground,
+
+    // Ring & selection
+    "--ring": sidebarColor,
+    "--selection": buttonLight,
   };
 }

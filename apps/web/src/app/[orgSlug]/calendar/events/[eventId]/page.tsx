@@ -17,7 +17,7 @@ import { LocalDate, LocalTime } from "@/components/ui";
 import { calendarEventEditPath, calendarEventsPath } from "@/lib/calendar/routes";
 import { resolveOrgTimezone } from "@/lib/utils/timezone";
 
-interface EventDetailPageProps {
+interface LegacyEventDetailPageProps {
   params: Promise<{ orgSlug: string; eventId: string }>;
 }
 
