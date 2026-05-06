@@ -1,10 +1,10 @@
 # Mobile App — CLAUDE.md
 
-Self-contained reference for `apps/mobile/`. Root `CLAUDE.md` covers web app, payments, and database patterns.
+Reference for the TeamMeet mobile app. This IS the repo root; the web app lives in a separate repo and is reached via `EXPO_PUBLIC_WEB_URL=https://www.myteamnetwork.com`. Shared business logic lives in `packages/{core,types,validation}`.
 
 ## Commands
 
-All commands run from `apps/mobile/`.
+All commands run from the repo root.
 
 ### Development
 
@@ -63,7 +63,6 @@ bun run android:doctor       # Verify Android SDK, Java, adb setup
 ### Release flow (TestFlight, no review)
 
 ```bash
-cd apps/mobile
 # Bump version in app.json if shipping new marketing version (buildNumber auto-increments)
 bun run eas:ios:production                      # npm script → eas production iOS build
 eas submit --platform ios --latest              # same as bun run eas:submit:ios
@@ -162,7 +161,7 @@ const styles = useThemedStyles((n, s) => ({
 
 **Legacy:** `src/lib/theme.ts` (`spacing`, `fontSize`, `fontWeight`, `borderRadius`) is still used by some screens but new screens should use `design-tokens.ts` + `typography.ts` + `useThemedStyles`.
 
-**Brand wordmark** (`assets/brand-logo.png`, `@2x.png`, `@3x.png`): Product logo sourced from the web app (`apps/web/public/TeamNetwor.png`). Use via `require()` with `expo-image`, `contentFit="contain"`, `transition={0}`, `cachePolicy="memory"`. Intended for dark surfaces only (`#0a0a0a`–`#0f172a` range) — the type is light-colored. NOT for use as launcher icon or splash; those are separate assets in `android/app/src/main/res/` and `assets/splash.png`.
+**Brand wordmark** (`assets/brand-logo.png`, `@2x.png`, `@3x.png`): Product logo (sourced from the separately-deployed web app). Use via `require()` with `expo-image`, `contentFit="contain"`, `transition={0}`, `cachePolicy="memory"`. Intended for dark surfaces only (`#0a0a0a`–`#0f172a` range) — the type is light-colored. NOT for use as launcher icon or splash; those are separate assets in `android/app/src/main/res/` and `assets/splash.png`.
 
 ## Screen UI Pattern
 
@@ -279,10 +278,11 @@ import type { Organization, UserRole } from "@teammeet/types";
 import { baseSchemas, z } from "@teammeet/validation";
 ```
 
-## Monorepo Integration
+## Workspace Integration
 
 - `@/*` → `./src/*` (tsconfig.json + jest.config.js)
-- Metro config: `watchFolders` includes workspace root, `extraNodeModules` pins react/react-native to local copies
+- `@teammeet/{core,types,validation}` → `./packages/*/src` (workspace packages)
+- Metro config: `watchFolders` includes `./packages/`, `extraNodeModules` pins react/react-native to local copies
 
 ## Key Files
 

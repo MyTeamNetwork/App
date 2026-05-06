@@ -2,10 +2,14 @@
   "name": "@teammeet/mobile",
   "version": "0.1.0",
   "main": "expo-router/entry",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "start": "EXPO_USE_WATCHMAN=1 expo start",
     "start:dev-client": "EXPO_USE_WATCHMAN=1 expo start --dev-client",
-    "dev:mobile": "EXPO_USE_WATCHMAN=1 expo start",
+    "gen:db-types": "supabase gen types typescript --project-id rytsziwekhtjdqzzpdso --schema public > packages/types/src/database.ts",
     "android": "EXPO_USE_WATCHMAN=1 ./scripts/with-android-env.sh expo start --android --dev-client",
     "android:doctor": "./scripts/with-android-env.sh sh -c 'printf \"ANDROID_HOME=%s\\nJAVA_HOME=%s\\n\" \"$ANDROID_HOME\" \"$JAVA_HOME\"; java -version; command -v adb; command -v emulator || true'",
     "ios": "EXPO_USE_WATCHMAN=1 expo start --ios --dev-client",
@@ -106,6 +110,5 @@
     "jest": "^29.7.0",
     "jest-expo": "^52.0.5",
     "typescript": "~5.9.2"
-  },
-  "private": true
+  }
 }

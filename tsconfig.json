@@ -22,13 +22,16 @@
         "./src/*"
       ],
       "@teammeet/core": [
-        "../../packages/core/src"
+        "./packages/core/src"
+      ],
+      "@teammeet/core/*": [
+        "./packages/core/src/*"
       ],
       "@teammeet/types": [
-        "../../packages/types/src"
+        "./packages/types/src"
       ],
       "@teammeet/validation": [
-        "../../packages/validation/src"
+        "./packages/validation/src"
       ]
     }
   },

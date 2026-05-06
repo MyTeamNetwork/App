@@ -1,21 +1,25 @@
 # TeamMeet Mobile
 
-Expo React Native app for TeamMeet. This app shares auth, organization, role, validation, and pricing logic with the monorepo packages, while using native mobile navigation, storage, permissions, push notifications, and device integrations.
+Expo React Native app for TeamMeet. This is the repo root; the web app lives in a separate repo and the mobile app depends on it via `EXPO_PUBLIC_WEB_URL=https://www.myteamnetwork.com`. Shared business logic lives in `packages/{core,types,validation}`.
+
+## Prerequisites
+
+- Bun: `curl -fsSL https://bun.sh/install | bash`
+- Supabase CLI (for DB types): `brew install supabase/tap/supabase`
+- Auth Supabase CLI once: `supabase login`
 
 ## Quick start
 
-Run commands from `apps/mobile/` unless noted.
+All commands run from the repo root.
 
 ```bash
-# Install deps from repo root if needed
-cd ../..
 bun install
-
-# Start the mobile app
-cd apps/mobile
 cp .env.example .env.local
+bun run gen:db-types        # regenerate packages/types/src/database.ts (gitignored)
 bun run start:dev-client
 ```
+
+`packages/types/src/database.ts` is gitignored; every contributor regenerates locally against Supabase project `rytsziwekhtjdqzzpdso`.
 
 Common commands:
 
@@ -44,7 +48,7 @@ bun run android:doctor       # Android SDK/JDK/adb diagnostics
 
 ## Environment
 
-Create `apps/mobile/.env.local` from `.env.example`.
+Create `.env.local` from `.env.example` at repo root.
 
 Required for normal development:
 
@@ -70,7 +74,7 @@ Never commit `.env.local` or production secrets. Only `EXPO_PUBLIC_*` values are
 ## Project layout
 
 ```text
-apps/mobile/
+.                                 # repo root = mobile app
 ├── app/                         # Expo Router routes/layouts
 │   ├── (auth)/                  # login, signup, callback, password flows
 │   └── (app)/(drawer)/          # authenticated app shell and org-scoped routes
@@ -83,10 +87,15 @@ apps/mobile/
 ├── plugins/                     # Expo config plugins
 ├── scripts/                     # local developer helpers
 ├── docs/                        # store/privacy/release notes
+├── ios/, android/               # native projects (committed; not regenerated)
+├── modules/live-activity/       # local Expo module
+├── targets/widget/              # iOS widget extension via @bacons/apple-targets
+├── packages/                    # workspace deps: core, types, validation
+├── supabase/                    # DB migrations (shared schema source of truth)
 ├── app.json                     # primary Expo/native config
 ├── app.config.ts                # config-time helpers
 ├── eas.json                     # EAS build/submit profiles
-├── metro.config.js              # monorepo-aware Metro config
+├── metro.config.js              # Metro config (watches packages/ for HMR)
 ├── jest.config.js               # Jest aliases and transforms
 └── eslint.config.mjs            # mobile lint rules
 ```
