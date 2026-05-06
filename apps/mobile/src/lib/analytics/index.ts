@@ -19,9 +19,23 @@ import * as sentry from "./sentry";
 
 let enabled = !__DEV__;
 let configStored: AnalyticsConfig | null = null;
+let posthogInitialized = false;
+let sentryInitialized = false;
 let sdksInitialized = false;
+type QueuedDiagnostic =
+  | {
+      type: "exception";
+      args: Parameters<typeof sentry.captureException>;
+    }
+  | {
+      type: "message";
+      args: Parameters<typeof sentry.captureMessage>;
+    };
+
 const eventQueue: QueuedEvent[] = [];
+const diagnosticQueue: QueuedDiagnostic[] = [];
 const MAX_QUEUE_SIZE = 100;
+const MAX_DIAGNOSTIC_QUEUE_SIZE = 20;
 const ENABLED_STORAGE_KEY = "analytics.enabled";
 
 async function persistEnabled(value: boolean): Promise<void> {
@@ -52,23 +66,42 @@ export async function hydrateEnabled(): Promise<void> {
 /**
  * Check if config has valid keys (non-empty strings).
  */
-function hasValidConfig(config: AnalyticsConfig | null): config is AnalyticsConfig {
-  return !!(config?.posthogKey && config?.sentryDsn);
+function hasValidPostHogConfig(config: AnalyticsConfig | null): config is AnalyticsConfig {
+  return !!config?.posthogKey;
+}
+
+function hasValidSentryConfig(config: AnalyticsConfig | null): config is AnalyticsConfig {
+  return !!config?.sentryDsn;
 }
 
 /**
  * Initialize the underlying SDKs if enabled and config is valid.
  */
 function initSdksIfNeeded(): void {
-  if (sdksInitialized || !enabled || !hasValidConfig(configStored)) {
+  if (!enabled || !configStored) {
     return;
   }
 
-  posthog.init(configStored.posthogKey);
-  sentry.init(configStored.sentryDsn);
-  sentry.setEnabled(true);
-  sdksInitialized = true;
-  flushQueue();
+  if (!posthogInitialized && hasValidPostHogConfig(configStored)) {
+    posthog.init(configStored.posthogKey);
+    posthogInitialized = true;
+  }
+
+  if (!sentryInitialized && hasValidSentryConfig(configStored)) {
+    sentry.init(configStored.sentryDsn);
+    sentry.setEnabled(true);
+    sentryInitialized = true;
+  }
+
+  sdksInitialized = posthogInitialized && sentryInitialized;
+
+  if (sdksInitialized) {
+    flushQueue();
+  }
+
+  if (sentryInitialized) {
+    flushDiagnostics();
+  }
 }
 
 /**
@@ -81,9 +114,9 @@ export function init(config: AnalyticsConfig): void {
   sentry.setEnabled(enabled);
 
   // Warn in production if config is missing
-  if (!hasValidConfig(config) && !__DEV__) {
+  if ((!hasValidPostHogConfig(config) || !hasValidSentryConfig(config)) && !__DEV__) {
     console.warn(
-      "[Analytics] Missing EXPO_PUBLIC_POSTHOG_KEY or EXPO_PUBLIC_SENTRY_DSN. Analytics disabled."
+      "[Analytics] Missing EXPO_PUBLIC_POSTHOG_KEY or EXPO_PUBLIC_SENTRY_DSN. Analytics partially disabled."
     );
   }
 
@@ -168,9 +201,13 @@ export function track(event: string, properties?: EventProperties): void {
  */
 export function reset(): void {
   eventQueue.length = 0;
+  diagnosticQueue.length = 0;
 
-  if (sdksInitialized) {
+  if (posthogInitialized) {
     posthog.reset();
+  }
+
+  if (sentryInitialized) {
     sentry.setUser(null);
   }
 }
@@ -231,16 +268,51 @@ function flushQueue(): void {
   }
 }
 
+function queueDiagnostic(diagnostic: QueuedDiagnostic): void {
+  if (diagnosticQueue.length >= MAX_DIAGNOSTIC_QUEUE_SIZE) {
+    diagnosticQueue.shift();
+  }
+  diagnosticQueue.push(diagnostic);
+}
+
+function flushDiagnostics(): void {
+  if (!enabled || !sentryInitialized) {
+    return;
+  }
+
+  while (diagnosticQueue.length > 0) {
+    const diagnostic = diagnosticQueue.shift();
+    if (!diagnostic) continue;
+
+    switch (diagnostic.type) {
+      case "exception":
+        sentry.captureException(...diagnostic.args);
+        break;
+      case "message":
+        sentry.captureMessage(...diagnostic.args);
+        break;
+    }
+  }
+}
+
 export function captureException(
   ...args: Parameters<typeof sentry.captureException>
 ): void {
-  if (!enabled || !sdksInitialized) return;
+  if (!enabled) return;
+  if (!sentryInitialized) {
+    queueDiagnostic({ type: "exception", args });
+    return;
+  }
   sentry.captureException(...args);
 }
 
 export function captureMessage(
   ...args: Parameters<typeof sentry.captureMessage>
 ): void {
-  if (!enabled || !sdksInitialized) return;
+  if (!enabled) return;
+  if (!sentryInitialized) {
+    queueDiagnostic({ type: "message", args });
+    return;
+  }
   sentry.captureMessage(...args);
 }

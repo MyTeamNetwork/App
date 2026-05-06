@@ -76,6 +76,18 @@ describe("Analytics Module", () => {
     expect(sentry.setEnabled).toHaveBeenCalledWith(true);
   });
 
+  it("flushes buffered errors when only Sentry config is available", () => {
+    analytics.setEnabled(true);
+    const error = new Error("Sentry-only error");
+
+    analytics.captureException(error);
+    analytics.init({ posthogKey: "", sentryDsn: VALID_CONFIG.sentryDsn });
+
+    expect(posthog.init).not.toHaveBeenCalled();
+    expect(sentry.init).toHaveBeenCalledWith(VALID_CONFIG.sentryDsn);
+    expect(sentry.captureException).toHaveBeenCalledWith(error);
+  });
+
   it("queues events before init and flushes after init", () => {
     analytics.setEnabled(true);
 
@@ -141,10 +153,33 @@ describe("Analytics Module", () => {
     );
   });
 
-  it("does not send errors before init", () => {
+  it("buffers errors before init and flushes after init", () => {
+    analytics.setEnabled(true);
+    const error = new Error("Test error");
+
+    analytics.captureException(error, { screen: "PreInit" });
+    analytics.captureMessage("Test message");
+
+    expect(sentry.captureException).not.toHaveBeenCalled();
+    expect(sentry.captureMessage).not.toHaveBeenCalled();
+
+    analytics.init(VALID_CONFIG);
+
+    expect(sentry.captureException).toHaveBeenCalledWith(error, {
+      screen: "PreInit",
+    });
+    expect(sentry.captureMessage).toHaveBeenCalledWith("Test message");
+  });
+
+  it("drops buffered errors when disabled before init", () => {
     analytics.setEnabled(true);
     analytics.captureException(new Error("Test error"));
     analytics.captureMessage("Test message");
+
+    analytics.setEnabled(false);
+    analytics.setEnabled(true);
+    analytics.init(VALID_CONFIG);
+
     expect(sentry.captureException).not.toHaveBeenCalled();
     expect(sentry.captureMessage).not.toHaveBeenCalled();
   });

@@ -44,6 +44,7 @@
         "NSSupportsLiveActivitiesFrequentUpdates": true,
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Scan a TeamMeet QR code to join your organization or check members in at events.",
+        "NSPhotoLibraryUsageDescription": "TeamMeet needs access to your photo library so you can attach images to posts and update profile or organization photos.",
         "NSCalendarsFullAccessUsageDescription": "Add TeamMeet events to your device calendar so you see them alongside your other commitments.",
         "NSCalendarsWriteOnlyAccessUsageDescription": "Add TeamMeet events to your device calendar so you see them alongside your other commitments.",
         "NSCalendarsUsageDescription": "Add TeamMeet events to your device calendar so you see them alongside your other commitments.",

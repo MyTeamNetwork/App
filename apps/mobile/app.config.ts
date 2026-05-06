@@ -6,6 +6,7 @@ const REQUIRED_PROD_ENV = [
   "EXPO_PUBLIC_WEB_URL",
   "EXPO_PUBLIC_TURNSTILE_SITE_KEY",
   "EXPO_PUBLIC_CAPTCHA_BASE_URL",
+  "EXPO_PUBLIC_SENTRY_DSN",
 ] as const;
 
 if (process.env.EAS_BUILD_PROFILE === "production") {
@@ -55,6 +56,8 @@ const config: ExpoConfig = {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription:
         "Scan a TeamMeet QR code to join your organization or check members in at events.",
+      NSPhotoLibraryUsageDescription:
+        "TeamMeet needs access to your photo library so you can attach images to posts and update profile or organization photos.",
       NSCalendarsFullAccessUsageDescription:
         "Add TeamMeet events to your device calendar so you see them alongside your other commitments.",
       NSCalendarsWriteOnlyAccessUsageDescription:
