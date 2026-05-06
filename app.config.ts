@@ -34,9 +34,7 @@ const config: ExpoConfig = {
     backgroundColor: "#0f172a",
   },
   assetBundlePatterns: ["**/*"],
-  runtimeVersion: {
-    policy: "appVersion",
-  },
+  runtimeVersion: "1.0.0",
   ios: {
     supportsTablet: true,
     appleTeamId: "5GWLTFG43T",
