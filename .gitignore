@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+.bun/
+
+# Discourage non-Bun lockfiles
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
+
+# Expo / React Native
+.expo/
+expo-env.d.ts
+.metro-cache/
+
+# Native build artifacts
+ios/Pods/
+ios/build/
+ios/*.xcworkspace/xcuserdata/
+android/build/
+android/app/build/
+android/.gradle/
+*.bak-*/
+
+# Env (allow .env.example)
+.env
+.env.local
+.env*.local
+
+# Test / build outputs
+coverage/
+test-results/
+dist/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Generated DB types (regenerated locally)
+packages/types/src/database.ts
+
+# Turbo cache (legacy, may linger pre-cleanup)
+.turbo/
+
+# Misc
+.DS_Store
+*.log
+*.pem
+.idea/
+
+# Project-specific
+.claude/skills/
