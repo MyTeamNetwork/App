@@ -59,14 +59,17 @@ Close the mobile-app-store engineering gaps that the existing release-readiness 
 **Symptom:** Crashes between app start and telemetry-hydration finish disappear.
 
 **Evidence:**
-- `apps/mobile/src/lib/analytics/sentry.ts:8` — `telemetryEnabled = false` initial value.
-- `apps/mobile/src/lib/analytics/sentry.ts:43-49` — `captureException` returns early when `!telemetryEnabled`.
-- `apps/mobile/app/_layout.tsx:24` — imports `hydrateEnabled`.
-- `apps/mobile/app/_layout.tsx:38-39` — `ErrorBoundary` calls `captureException(error, { context: "RootErrorBoundary" })` before any hydration runs.
+- `apps/mobile/src/lib/analytics/index.ts:20` — module-level `enabled = !__DEV__` (prod default-on, dev default-off).
+- `apps/mobile/src/lib/analytics/index.ts:234-239` — `captureException` returns early when `!enabled || !sdksInitialized`.
+- `apps/mobile/src/lib/analytics/sentry.ts:8` — `telemetryEnabled = false` until `setEnabled` is called.
+- `apps/mobile/src/lib/analytics/sentry.ts:43-49` — `captureException` returns early when `!initialized || !telemetryEnabled`.
+- `apps/mobile/app/_layout.tsx:152-171` — `bootstrapAnalytics()` runs in `useEffect`, calling `hydrateEnabled()` then `initAnalytics()` (which calls `sentry.init()` and `sentry.setEnabled(true)`).
+- `apps/mobile/app/_layout.tsx:38-39` — `ErrorBoundary` calls `captureException(error, { context: "RootErrorBoundary" })` during render; render-phase crashes fire before any `useEffect` runs.
 
 **Impact:**
-1. Cold-start crashes (the most reviewer-visible kind) are dropped.
-2. Users with telemetry off contribute zero crash signal — even when triaging a submission rejection would benefit from it.
+1. Render-phase crashes (the most reviewer-visible kind) fire before `useEffect` runs `initAnalytics()`. `sdksInitialized` is `false`, so `captureException` short-circuits and the event is dropped — even though prod default is enabled.
+2. Users with telemetry off (persisted via `hydrateEnabled`) contribute zero crash signal — even when triaging a submission rejection would benefit from it.
+3. In `__DEV__`, `enabled = false` initial value masks the bug during dev testing.
 
 **Severity:** HIGH — directly affects ability to diagnose crashes that cause App Review rejections.
 
