@@ -41,7 +41,12 @@
   ],
   "exclude": [
     "node_modules",
-    "**/__tests__/**"
+    "**/__tests__/**",
+    "supabase/functions/**",
+    "ios/**",
+    "android/**",
+    "dist/**",
+    "**/.expo/**"
   ],
   "extends": "expo/tsconfig.base"
 }
