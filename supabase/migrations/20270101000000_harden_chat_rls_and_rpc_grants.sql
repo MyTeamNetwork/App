@@ -14,9 +14,10 @@
 --    without WITH CHECK reuse USING against the post-image, and the self/author
 --    branch (user_id = auth.uid() / author_id = auth.uid()) passes both images.
 --    A plain member could self-promote to group admin; a message author could
---    flip status to 'approved' (moderation bypass) or repoint their row at
---    another group in the same org. WITH CHECK below keeps the privileged
---    branches unchanged and pins the self/author branch. Verified app flows:
+--    flip status to 'approved' (moderation bypass) or repoint rows across
+--    chat/org boundaries. WITH CHECK below keeps the privileged branches
+--    unchanged, pins the self/author branch, and requires the post-update chat
+--    group to belong to the row's organization. Verified app flows:
 --    the only chat_messages UPDATE is moderation (moderator/admin branch); the
 --    only chat_group_members UPDATEs are moderator/creator add/remove flows.
 --
@@ -50,17 +51,26 @@ CREATE POLICY chat_group_members_update ON public.chat_group_members
     OR user_id = (SELECT auth.uid())
   )
   WITH CHECK (
-    has_active_role(organization_id, ARRAY['admin'])
-    OR is_chat_group_moderator(chat_group_id) = TRUE
-    OR is_chat_group_creator(chat_group_id) = TRUE
-    OR (
-      -- Self-service is limited to non-privileged rows in a group the user is
-      -- already an active member of (blocks role escalation and repointing the
-      -- row at another group; leave-group still passes — the pre-update row is
-      -- still active in the statement snapshot is_chat_group_member reads).
-      user_id = (SELECT auth.uid())
-      AND role = 'member'::public.chat_group_role
-      AND is_chat_group_member(chat_group_id) = TRUE
+    EXISTS (
+      SELECT 1
+      FROM public.chat_groups cg
+      WHERE cg.id = chat_group_id
+        AND cg.organization_id = organization_id
+        AND cg.deleted_at IS NULL
+    )
+    AND (
+      has_active_role(organization_id, ARRAY['admin'])
+      OR is_chat_group_moderator(chat_group_id) = TRUE
+      OR is_chat_group_creator(chat_group_id) = TRUE
+      OR (
+        -- Self-service is limited to non-privileged rows in a group the user is
+        -- already an active member of (blocks role escalation and repointing the
+        -- row at another group; leave-group still passes — the pre-update row is
+        -- still active in the statement snapshot is_chat_group_member reads).
+        user_id = (SELECT auth.uid())
+        AND role = 'member'::public.chat_group_role
+        AND is_chat_group_member(chat_group_id) = TRUE
+      )
     )
   );
 
@@ -81,6 +91,13 @@ CREATE POLICY chat_messages_update ON public.chat_messages
   )
   WITH CHECK (
     (deleted_at IS NULL)
+    AND EXISTS (
+      SELECT 1
+      FROM public.chat_groups cg
+      WHERE cg.id = chat_group_id
+        AND cg.organization_id = organization_id
+        AND cg.deleted_at IS NULL
+    )
     AND has_active_role(organization_id, ARRAY['admin','active_member','alumni','parent'])
     AND (
       is_chat_group_moderator(chat_group_id)

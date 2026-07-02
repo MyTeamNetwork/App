@@ -58,3 +58,16 @@ test("latest chat RLS policies include parent role access", () => {
   assert.match(pollVotesInsert, /'parent'/i);
   assert.match(formResponsesInsert, /'parent'/i);
 });
+
+test("latest chat update policies pin rows to the owning chat group organization", () => {
+  const membersUpdate = getLatestPolicySql("chat_group_members_update");
+  const messagesUpdate = getLatestPolicySql("chat_messages_update");
+
+  for (const policySql of [membersUpdate, messagesUpdate]) {
+    assert.match(policySql, /WITH CHECK\s*\(/i);
+    assert.match(policySql, /FROM public\.chat_groups cg/i);
+    assert.match(policySql, /cg\.id = chat_group_id/i);
+    assert.match(policySql, /cg\.organization_id = organization_id/i);
+    assert.match(policySql, /cg\.deleted_at IS NULL/i);
+  }
+});
