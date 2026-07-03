@@ -6,6 +6,7 @@ import { validateJson, ValidationError, validationErrorResponse } from "@/lib/se
 import { errorIngestRequestSchema, type ErrorEnv } from "@/lib/schemas/errors";
 import { generateFingerprint } from "@/lib/telemetry/fingerprint";
 import { checkAndNotify } from "@/lib/errors/notify";
+import { runWithoutCapture } from "@/lib/errors/sanitize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,6 +14,14 @@ export const runtime = "nodejs";
 const MINUTE_MS = 60_000;
 
 export async function POST(request: Request) {
+  // Recursion guard: this route IS the error-capture pipeline. The
+  // no-capture scope suppresses any captureSanitized call made while
+  // handling ingest (including transitively), so a failure here can never
+  // feed back into error_groups/error_events. Failures log to console only.
+  return runWithoutCapture(() => handleIngest(request));
+}
+
+async function handleIngest(request: Request): Promise<Response> {
   try {
     // Rate limit: 50/min per IP, 100/min per user
     const supabase = await createClient();
@@ -64,6 +73,7 @@ export async function POST(request: Request) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         errors.push(msg);
+        // No self-capture (recursion guard) — console.error only.
         console.error("[errors/ingest] Error processing event:", msg);
       }
     }
@@ -80,6 +90,7 @@ export async function POST(request: Request) {
       }
     );
   } catch (err) {
+    // No self-capture (recursion guard) — console.error only.
     console.error("[errors/ingest] Error:", err);
 
     if (err instanceof ValidationError) {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { captureSanitized, type SanitizeOptions } from "@/lib/errors/sanitize";
 
 /**
  * Standard Cache-Control header presets.
@@ -131,16 +132,52 @@ export function orgReadOnly(message = "Organization is in read-only mode. Please
 }
 
 /**
- * 500 Internal Error response
+ * Fire-and-forget error capture for 5xx response helpers.
+ *
+ * Additive: never throws and never alters the response. `captureSanitized`
+ * bounds the message, allowlists meta, and swallows capture failures
+ * (console.error only).
  */
-export function internalError(message = "An unexpected error occurred."): NextResponse<ApiError> {
+function captureResponseError(error: unknown, code: ErrorCode, context?: SanitizeOptions["context"]): void {
+  captureSanitized(error, {
+    severity: "high",
+    context: { ...context, module: `api-response:${code.toLowerCase()}` },
+  });
+}
+
+/**
+ * 500 Internal Error response
+ *
+ * Pass the caught `error` (and optionally allowlisted `context` identifiers,
+ * e.g. requestId/orgId/userId) to record it in error_groups/error_events.
+ * Capture is fire-and-forget and cannot change the response.
+ */
+export function internalError(
+  message = "An unexpected error occurred.",
+  error?: unknown,
+  context?: SanitizeOptions["context"]
+): NextResponse<ApiError> {
+  if (error !== undefined) {
+    captureResponseError(error, "INTERNAL_ERROR", context);
+  }
   return errorResponse("INTERNAL_ERROR", message, 500);
 }
 
 /**
  * 500 Database Error response
+ *
+ * Pass the caught `error` (and optionally allowlisted `context` identifiers)
+ * to record it in error_groups/error_events. Capture is fire-and-forget and
+ * cannot change the response.
  */
-export function databaseError(message = "A database error occurred."): NextResponse<ApiError> {
+export function databaseError(
+  message = "A database error occurred.",
+  error?: unknown,
+  context?: SanitizeOptions["context"]
+): NextResponse<ApiError> {
+  if (error !== undefined) {
+    captureResponseError(error, "DATABASE_ERROR", context);
+  }
   return errorResponse("DATABASE_ERROR", message, 500);
 }
 
@@ -169,7 +206,11 @@ export function createResponder(headers?: Record<string, string>) {
       errorResponse("BAD_REQUEST", message, 400, details, headers),
     orgReadOnly: () =>
       errorResponse("ORG_READ_ONLY", "Organization is in read-only mode. Please resubscribe to make changes.", 403, undefined, headers),
-    internalError: (message?: string) =>
-      errorResponse("INTERNAL_ERROR", message ?? "An unexpected error occurred.", 500, undefined, headers),
+    internalError: (message?: string, error?: unknown, context?: SanitizeOptions["context"]) => {
+      if (error !== undefined) {
+        captureResponseError(error, "INTERNAL_ERROR", context);
+      }
+      return errorResponse("INTERNAL_ERROR", message ?? "An unexpected error occurred.", 500, undefined, headers);
+    },
   };
 }
