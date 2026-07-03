@@ -128,7 +128,10 @@ export function sanitizeError(error: unknown, options: SanitizeOptions = {}): Ca
   }
 
   const combined = messagePrefix ? `${messagePrefix}: ${rawMessage}` : rawMessage;
-  const userId = context && typeof context.userId === "string" ? context.userId : undefined;
+  const userId =
+    context && typeof context.userId === "string"
+      ? context.userId.slice(0, MAX_META_STRING_LENGTH)
+      : undefined;
 
   return {
     name,
