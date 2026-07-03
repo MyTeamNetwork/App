@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { validateCronAuth } from "@/lib/security/cron-auth";
+import { captureSanitized } from "@/lib/errors/sanitize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -94,6 +95,11 @@ export async function GET(request: Request) {
     });
   } catch (err) {
     console.error("[cron/account-deletion] Error:", err);
+    captureSanitized(err, {
+      severity: "high",
+      messagePrefix: "cron/account-deletion",
+      context: { module: "api:cron/account-deletion" },
+    });
     return NextResponse.json(
       { error: "Failed to process account deletions" },
       { status: 500 },

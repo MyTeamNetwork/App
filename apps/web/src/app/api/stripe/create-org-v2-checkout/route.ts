@@ -26,6 +26,7 @@ import {
 import { buildOrgV2CheckoutFingerprintPayload } from "@/lib/payments/org-v2-checkout-fingerprint";
 import { quote, isSelfServeSalesLed } from "@/lib/pricing-v2";
 import { createOrgV2Schema } from "@/lib/schemas/organization-v2";
+import { captureSanitized } from "@/lib/errors/sanitize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -332,6 +333,11 @@ export async function POST(req: Request) {
     if (error instanceof ValidationError) {
       return validationErrorResponse(error);
     }
+    captureSanitized(error, {
+      severity: "high",
+      messagePrefix: "create-org-v2-checkout",
+      context: { module: "api:stripe/create-org-v2-checkout" },
+    });
     throw error;
   }
 }

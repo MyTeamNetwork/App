@@ -7,6 +7,7 @@ import {
 import { validateJson, ValidationError, validationErrorResponse } from "@/lib/security/validation";
 import { deleteAccountSchema } from "@/lib/schemas/auth";
 import { resolveEnterpriseOwnershipCheck } from "@/lib/auth/enterprise-ownership-check";
+import { captureSanitized } from "@/lib/errors/sanitize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -257,6 +258,11 @@ Thank you for using TeamNetwork.
       return validationErrorResponse(err);
     }
 
+    captureSanitized(err, {
+      severity: "high",
+      messagePrefix: "delete-account DELETE",
+      context: { module: "api:user/delete-account:DELETE" },
+    });
     return NextResponse.json(
       { error: "Failed to process account deletion request" },
       { status: 500 }
@@ -330,7 +336,12 @@ export async function GET(request: Request) {
       },
       { headers: rateLimit.headers }
     );
-  } catch {
+  } catch (err) {
+    captureSanitized(err, {
+      severity: "high",
+      messagePrefix: "delete-account GET",
+      context: { module: "api:user/delete-account:GET" },
+    });
     return NextResponse.json(
       { error: "Failed to check deletion status" },
       { status: 500 }
@@ -436,6 +447,11 @@ Thank you for staying with TeamNetwork!
       return validationErrorResponse(err);
     }
 
+    captureSanitized(err, {
+      severity: "high",
+      messagePrefix: "delete-account POST",
+      context: { module: "api:user/delete-account:POST" },
+    });
     return NextResponse.json(
       { error: "Failed to cancel deletion request" },
       { status: 500 }

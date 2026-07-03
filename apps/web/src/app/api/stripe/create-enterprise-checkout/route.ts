@@ -29,6 +29,7 @@ import {
   waitForExistingStripeResource,
 } from "@/lib/payments/idempotency";
 import { buildEnterpriseCheckoutFingerprintPayload } from "@/lib/payments/enterprise-checkout-fingerprint";
+import { captureSanitized } from "@/lib/errors/sanitize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -313,6 +314,11 @@ export async function POST(req: Request) {
     if (error instanceof ValidationError) {
       return validationErrorResponse(error);
     }
+    captureSanitized(error, {
+      severity: "high",
+      messagePrefix: "create-enterprise-checkout",
+      context: { module: "api:stripe/create-enterprise-checkout" },
+    });
     throw error;
   }
 }

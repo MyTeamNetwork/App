@@ -33,6 +33,7 @@ import {
 import { getStripeOrigin } from "@/lib/stripe-origin";
 import { z } from "zod";
 import type { AlumniBucket, SubscriptionInterval } from "@/types/database";
+import { captureSanitized } from "@/lib/errors/sanitize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -381,6 +382,11 @@ export async function POST(req: Request) {
     if (error instanceof ValidationError) {
       return validationErrorResponse(error);
     }
+    captureSanitized(error, {
+      severity: "high",
+      messagePrefix: "create-org-checkout",
+      context: { module: "api:stripe/create-org-checkout" },
+    });
     throw error;
   }
 }
