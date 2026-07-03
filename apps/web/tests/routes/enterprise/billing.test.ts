@@ -2,8 +2,8 @@
 import test from "node:test";
 import assert from "node:assert";
 import { z } from "zod";
-import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "@/types/enterprise";
-import type { BillingInterval } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "@teammeet/types";
+import type { BillingInterval } from "@teammeet/types";
 import {
   isSalesLed,
   getAlumniBucketPricing,

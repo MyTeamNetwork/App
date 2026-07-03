@@ -1,7 +1,7 @@
 import { resolveActionLabel, resolveLabel } from "@/lib/navigation/label-resolver";
 import { type NavConfig } from "@/lib/navigation/nav-items";
 import { getVisibleOrgNavItems } from "@/lib/navigation/visible-items";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 import { getActionGuidance } from "./action-guidance";
 
 export interface NavigationTarget {

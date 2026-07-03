@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui";
-import { ENTERPRISE_SEAT_PRICING, type BillingInterval } from "@/types/enterprise";
+import { ENTERPRISE_SEAT_PRICING, type BillingInterval } from "@teammeet/types";
 import { getFreeSubOrgCount, formatSeatPrice } from "@/lib/enterprise/pricing";
 
 function formatPaidOrgPrice(interval: BillingInterval): string {

@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { filterAnnouncementsForUserViaRpc } from "@/lib/announcements";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 import type { Announcement, MembershipStatus } from "@/types/database";
 import type { ServerSupabase } from "@/lib/supabase/types";
 

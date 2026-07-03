@@ -1,4 +1,4 @@
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 import type { NavConfig } from "./nav-items";
 
 export function getNavEditRoles(navConfig: NavConfig | null | undefined, href: string, fallback: OrgRole[] = ["admin"]) {

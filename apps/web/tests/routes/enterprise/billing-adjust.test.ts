@@ -3,7 +3,7 @@ import assert from "node:assert";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { ALUMNI_BUCKET_PRICING } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING } from "@teammeet/types";
 import { getBillableOrgCount, getSubOrgPricing } from "@/lib/enterprise/pricing";
 
 /**

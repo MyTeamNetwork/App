@@ -1,4 +1,4 @@
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 import { ORG_NAV_ITEMS, getConfigKey, type NavConfig, type OrgNavItem } from "./nav-items";
 
 interface GetVisibleOrgNavItemsInput {

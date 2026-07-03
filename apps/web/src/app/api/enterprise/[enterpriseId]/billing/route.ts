@@ -7,8 +7,8 @@ import { validateJson, ValidationError, validationErrorResponse } from "@/lib/se
 import { getEnterpriseApiContext, ENTERPRISE_BILLING_ROLE } from "@/lib/auth/enterprise-api-context";
 import { getEnterpriseQuota } from "@/lib/enterprise/quota";
 import { getAlumniBucketPricing, getSubOrgPricing, isSalesLed } from "@/lib/enterprise/pricing";
-import { ALUMNI_BUCKET_PRICING } from "@/types/enterprise";
-import type { BillingInterval } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING } from "@teammeet/types";
+import type { BillingInterval } from "@teammeet/types";
 import { requireEnv } from "@/lib/env";
 import { CACHE_HEADERS } from "@/lib/api/response";
 

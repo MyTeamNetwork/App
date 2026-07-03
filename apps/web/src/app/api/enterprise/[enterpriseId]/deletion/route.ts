@@ -6,7 +6,7 @@ import { validateJson, ValidationError, validationErrorResponse } from "@/lib/se
 import { getEnterpriseApiContext, ENTERPRISE_OWNER_ROLE } from "@/lib/auth/enterprise-api-context";
 import { logEnterpriseAuditAction, extractRequestContext } from "@/lib/audit/enterprise-audit";
 import { enterpriseDeleteSchema } from "@/lib/schemas/enterprise";
-import type { EnterpriseDeletionStatus } from "@/types/enterprise";
+import type { EnterpriseDeletionStatus } from "@teammeet/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

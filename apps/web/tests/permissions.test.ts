@@ -12,7 +12,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 import fc from "fast-check";
 import { canEditOrgName } from "../src/lib/validation/role-editability.ts";
-import type { OrgRole } from "../src/lib/auth/role-utils.ts";
+import type { OrgRole } from "@teammeet/core";
 
 // Mock role types
 type MembershipStatus = "active" | "revoked";

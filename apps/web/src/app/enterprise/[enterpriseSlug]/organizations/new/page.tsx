@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/layout";
 import { CreateSubOrgForm } from "@/components/enterprise/CreateSubOrgForm";
 import { getEnterpriseContext } from "@/lib/auth/enterprise-context";
-import { getEnterprisePermissions } from "@/types/enterprise";
+import { getEnterprisePermissions } from "@teammeet/types";
 
 interface NewOrganizationPageProps {
   params: Promise<{ enterpriseSlug: string }>;

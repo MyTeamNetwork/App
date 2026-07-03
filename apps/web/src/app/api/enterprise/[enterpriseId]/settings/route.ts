@@ -12,7 +12,7 @@ import {
   ENTERPRISE_OWNER_ROLE,
 } from "@/lib/auth/enterprise-api-context";
 import { extractRequestContext } from "@/lib/audit/enterprise-audit";
-import type { Enterprise } from "@/types/enterprise";
+import type { Enterprise } from "@teammeet/types";
 import { updateEnterprise, isUpdateError } from "@/lib/enterprise/update-enterprise";
 import { enterprisePatchSchema } from "@/lib/schemas/enterprise";
 import { CACHE_HEADERS } from "@/lib/api/response";

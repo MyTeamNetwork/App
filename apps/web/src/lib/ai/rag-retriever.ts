@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 import { generateEmbedding } from "./embeddings";
 import { aiLog, type AiLogContext } from "./logger";
 

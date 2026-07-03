@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getEnterpriseContext } from "@/lib/auth/enterprise-context";
-import { getEnterprisePermissions } from "@/types/enterprise";
+import { getEnterprisePermissions } from "@teammeet/types";
 import { AdoptClient } from "./AdoptClient";
 
 interface PageProps {

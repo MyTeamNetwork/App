@@ -5,7 +5,7 @@ import {
   getEnterpriseApiContext,
   ENTERPRISE_ANY_ROLE,
 } from "@/lib/auth/enterprise-api-context";
-import type { AdoptionRequestStatus } from "@/types/enterprise";
+import type { AdoptionRequestStatus } from "@teammeet/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

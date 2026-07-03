@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeRole } from "@/lib/auth/role-utils";
+import { normalizeRole } from "@teammeet/core";
 import { createSupabaseStub } from "./utils/supabaseStub";
 
 describe("normalizeRole — parent role support", () => {

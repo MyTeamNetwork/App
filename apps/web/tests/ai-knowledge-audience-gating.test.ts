@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { audienceFilterForRole } from "../src/lib/ai/rag-retriever";
-import type { OrgRole } from "../src/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 
 /**
  * Audience-gating invariant for the knowledge_documents RAG source.

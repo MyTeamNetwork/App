@@ -24,8 +24,8 @@ import {
 } from "@/lib/stripe/invoice-email-templates";
 import { sendEmail } from "@/lib/notifications";
 import { sendInvoiceEmailToAdmins } from "@/lib/stripe/invoice-email-sender";
-import type { BillingInterval } from "@/types/enterprise";
-import { ALUMNI_BUCKET_PRICING } from "@/types/enterprise";
+import type { BillingInterval } from "@teammeet/types";
+import { ALUMNI_BUCKET_PRICING } from "@teammeet/types";
 import {
   isOrgTrialMetadata,
   shouldProvisionOrgCheckoutOnCompletion,

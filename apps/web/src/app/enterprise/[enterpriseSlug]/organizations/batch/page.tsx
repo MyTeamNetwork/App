@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/layout";
 import { BatchOrgWizard } from "@/components/enterprise/BatchOrgWizard";
 import { getEnterpriseContext } from "@/lib/auth/enterprise-context";
-import { getEnterprisePermissions } from "@/types/enterprise";
+import { getEnterprisePermissions } from "@teammeet/types";
 
 interface BatchOrganizationsPageProps {
   params: Promise<{ enterpriseSlug: string }>;

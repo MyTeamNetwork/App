@@ -12,7 +12,7 @@ import {
 } from "@/lib/ai/route-entity";
 import type { CacheSurface } from "@/lib/ai/semantic-cache-utils";
 import type { TurnExecutionPolicy } from "@/lib/ai/turn-execution-policy";
-import { getEnterprisePermissions, type EnterpriseRole } from "@/types/enterprise";
+import { getEnterprisePermissions, type EnterpriseRole } from "@teammeet/types";
 import {
   SCHEDULE_ATTACHMENT_MIME_TYPES,
   type ChatAttachment,

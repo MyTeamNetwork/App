@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeRole, roleFlags, type OrgRole } from "@/lib/auth/role-utils";
+import { normalizeRole, roleFlags, type OrgRole } from "@teammeet/core";
 
 describe("normalizeRole — parent is a distinct OrgRole", () => {
   it('normalizeRole("parent") returns "parent"', () => {

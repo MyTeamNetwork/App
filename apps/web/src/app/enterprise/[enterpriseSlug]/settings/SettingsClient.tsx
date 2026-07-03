@@ -6,7 +6,7 @@ import { useTranslations, useFormatter } from "next-intl";
 import { Card, Button, Input, Badge, EmptyState } from "@/components/ui";
 import { PageHeader } from "@/components/layout";
 import { EnterpriseBrandingCard, EnterpriseDangerZoneCard } from "@/components/enterprise";
-import type { EnterpriseDeletionStatus } from "@/types/enterprise";
+import type { EnterpriseDeletionStatus } from "@teammeet/types";
 
 interface EnterpriseAdmin {
   user_id: string;

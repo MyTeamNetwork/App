@@ -9,7 +9,7 @@ import { logEnterpriseAuditAction, logEnterpriseAuditActionAwaited, extractReque
 import { adjustEnterpriseSubOrgQuantity, type EnterpriseSubscriptionRow } from "@/lib/enterprise/adjust-sub-org-quantity";
 import { extractSubscriptionPeriodEndIso } from "@/lib/stripe/subscription-period";
 import { getBillableOrgCount } from "@/lib/enterprise/pricing";
-import { ALUMNI_BUCKET_PRICING } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING } from "@teammeet/types";
 import { requireEnv } from "@/lib/env";
 
 export const dynamic = "force-dynamic";

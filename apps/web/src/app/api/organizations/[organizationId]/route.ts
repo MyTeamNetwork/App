@@ -14,7 +14,7 @@ import {
 import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
 import { deleteOrganizationData } from "@/lib/subscription/delete-organization";
 import type { NavConfig } from "@/lib/navigation/nav-items";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 import {
   canDevAdminPerform,
   logDevAdminAction,

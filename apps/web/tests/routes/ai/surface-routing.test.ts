@@ -8,7 +8,7 @@ import {
 import type { ChatAttachment } from "../../../src/app/api/ai/[orgId]/chat/handler/shared";
 import type { CacheSurface } from "../../../src/lib/ai/semantic-cache-utils";
 import type { TurnExecutionPolicy } from "../../../src/lib/ai/turn-execution-policy";
-import type { EnterpriseRole } from "../../../src/types/enterprise";
+import type { EnterpriseRole } from "@teammeet/types";
 
 type ToolPolicy = TurnExecutionPolicy["toolPolicy"];
 type IntentType = TurnExecutionPolicy["intentType"];

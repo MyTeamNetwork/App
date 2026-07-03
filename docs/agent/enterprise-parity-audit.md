@@ -2,9 +2,9 @@
 type: audit
 title: Enterprise AI Parity Audit
 description: Tracks enterprise UI mutations against AI tool coverage and role gates.
-resource: apps/web/src/types/enterprise.ts
+resource: packages/types/src/enterprise.ts
 tags: [ai, enterprise, parity-audit, write-tools]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-02T00:00:00Z
 ---
 
 # Enterprise AI Parity Audit
@@ -48,4 +48,4 @@ Adoption-request mutations are explicitly excluded from the AI surface. These st
 
 - Pause/resume of managed orgs is not a current UI capability — no `is_paused` column exists.
 - All tracked items are expected to follow the `prepare_*` + pending-actions confirmation flow already used by content/chat writes.
-- Role gates should mirror the enterprise UI: owner-only vs owner+org_admin vs owner+billing_admin as already encoded in `src/types/enterprise.ts` role presets.
+- Role gates should mirror the enterprise UI: owner-only vs owner+org_admin vs owner+billing_admin as already encoded in `packages/types/src/enterprise.ts` role presets.

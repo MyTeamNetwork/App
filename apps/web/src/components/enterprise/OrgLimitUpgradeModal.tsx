@@ -6,7 +6,7 @@ import {
   ALUMNI_BUCKET_PRICING,
   ENTERPRISE_SEAT_PRICING,
   type BillingInterval,
-} from "@/types/enterprise";
+} from "@teammeet/types";
 import { getFreeSubOrgCount, formatSeatPrice } from "@/lib/enterprise/pricing";
 
 export interface PendingOrgData {

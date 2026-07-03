@@ -1,5 +1,5 @@
-import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "@/types/enterprise";
-import type { BillingInterval } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "@teammeet/types";
+import type { BillingInterval } from "@teammeet/types";
 
 /**
  * Get the alumni capacity for a given bucket quantity.

@@ -6,7 +6,7 @@ import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limi
 import { baseSchemas } from "@/lib/security/validation";
 import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
 import { acceptAdoptionRequest } from "@/lib/enterprise/adoption";
-import type { AdoptionRequestStatus } from "@/types/enterprise";
+import type { AdoptionRequestStatus } from "@teammeet/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

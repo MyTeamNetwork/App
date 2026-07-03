@@ -4,8 +4,8 @@ import type { RateLimitResult } from "@/lib/security/rate-limit";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { ServerSupabase, ServiceSupabase } from "@/lib/supabase/types";
 import { aiLog, type AiLogContext } from "@/lib/ai/logger";
-import type { EnterpriseRole } from "@/types/enterprise";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { EnterpriseRole } from "@teammeet/types";
+import type { OrgRole } from "@teammeet/core";
 import { isMemberAccessKilled } from "@/lib/ai/access-policy";
 import { isDevAdmin } from "@/lib/auth/dev-admin";
 

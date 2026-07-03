@@ -4,7 +4,7 @@ import {
   getEnterprisePermissions,
   type EnterpriseRole,
   type EnterpriseRolePermissions,
-} from "../../src/types/enterprise.ts";
+} from "@teammeet/types";
 
 /**
  * Tests for enterprise role utilities

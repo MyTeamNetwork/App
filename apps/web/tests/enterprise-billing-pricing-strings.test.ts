@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "../src/types/enterprise";
+import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "@teammeet/types";
 import { formatSeatPrice } from "../src/lib/enterprise/pricing";
-import type { BillingInterval } from "../src/types/enterprise";
+import type { BillingInterval } from "@teammeet/types";
 
 /**
  * U8: enterprise billing pricing DISPLAY strings must derive from the pricing

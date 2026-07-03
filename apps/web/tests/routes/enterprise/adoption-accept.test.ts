@@ -7,7 +7,7 @@ import {
   createAuthContext,
 } from "../../utils/authMock.ts";
 import { createSupabaseStub } from "../../utils/supabaseStub.ts";
-import type { AdoptionRequestStatus, EnterpriseRole } from "../../../src/types/enterprise.ts";
+import type { AdoptionRequestStatus, EnterpriseRole } from "@teammeet/types";
 
 /**
  * Tests for enterprise adoption acceptance routes:

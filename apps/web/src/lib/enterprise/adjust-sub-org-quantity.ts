@@ -8,7 +8,7 @@ import { getBillableOrgCount, getSubOrgPricing } from "@/lib/enterprise/pricing"
 import { stripe } from "@/lib/stripe";
 import { extractSubscriptionPeriodEndEpoch } from "@/lib/stripe/subscription-period";
 import type { Tables } from "@/types/database";
-import type { BillingInterval } from "@/types/enterprise";
+import type { BillingInterval } from "@teammeet/types";
 
 export type EnterpriseSubscriptionRow = Pick<
   Tables<"enterprise_subscriptions">,

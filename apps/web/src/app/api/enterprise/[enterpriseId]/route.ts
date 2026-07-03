@@ -11,7 +11,7 @@ import {
   ENTERPRISE_ANY_ROLE,
   ENTERPRISE_OWNER_ROLE,
 } from "@/lib/auth/enterprise-api-context";
-import type { Enterprise, EnterpriseSubscription } from "@/types/enterprise";
+import type { Enterprise, EnterpriseSubscription } from "@teammeet/types";
 import { extractRequestContext } from "@/lib/audit/enterprise-audit";
 import { updateEnterprise, isUpdateError } from "@/lib/enterprise/update-enterprise";
 import { enterprisePatchSchema } from "@/lib/schemas/enterprise";

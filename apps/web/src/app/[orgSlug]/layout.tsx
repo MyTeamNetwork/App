@@ -21,7 +21,7 @@ import { MediaUploadManagerProvider } from "@/components/media/MediaUploadManage
 import { pickCurrentOrgProfile } from "@/lib/auth/current-org-profile";
 import { AIEdgeTab, AIPanel, OrgGlobalSearch } from "@/components/layout/OrgClientShell";
 import { computeOrgThemeVariables, safeCssValue, safeHexColor } from "@/lib/theming/org-colors";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 
 interface OrgLayoutProps {
   children: React.ReactNode;

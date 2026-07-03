@@ -7,7 +7,7 @@ import { animate, stagger } from "animejs";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import type { NotificationPreference, UserRole } from "@/types/database";
-import { normalizeRole, type OrgRole } from "@/lib/auth/role-utils";
+import { normalizeRole, type OrgRole } from "@teammeet/core";
 import { Card, Button, Select } from "@/components/ui";
 import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
 import { PermissionRoleCard } from "@/components/ui/PermissionRoleCard";

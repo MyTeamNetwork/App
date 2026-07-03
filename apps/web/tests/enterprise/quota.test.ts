@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { ALUMNI_BUCKET_PRICING } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING } from "@teammeet/types";
 import {
   buildQuotaInfo,
   checkAlumniCapacity,

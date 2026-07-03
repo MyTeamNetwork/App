@@ -3,8 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import type { EnterpriseRole } from "@/types/enterprise";
-import { getEnterprisePermissions } from "@/types/enterprise";
+import type { EnterpriseRole } from "@teammeet/types";
+import { getEnterprisePermissions } from "@teammeet/types";
 import { HoverSidebar, PinButton } from "@/components/layout/HoverSidebar";
 
 function HomeIcon({ className }: { className?: string }) {

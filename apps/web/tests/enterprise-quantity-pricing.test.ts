@@ -9,8 +9,8 @@ import assert from "node:assert";
  * business rules are tested against the real implementation, not duplicated logic.
  */
 
-import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "@/types/enterprise";
-import type { BillingInterval } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "@teammeet/types";
+import type { BillingInterval } from "@teammeet/types";
 import {
   getAlumniBucketCapacity,
   getRequiredBucketQuantity,

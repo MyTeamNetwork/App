@@ -12,7 +12,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 import { canEditNavItem, getNavEditRoles } from "../src/lib/navigation/permissions.ts";
 import type { NavConfig } from "../src/lib/navigation/nav-items.tsx";
-import type { OrgRole } from "../src/lib/auth/role-utils.ts";
+import type { OrgRole } from "@teammeet/core";
 
 const ALUMNI_PATH = "/alumni";
 const ALUMNI_FALLBACK: OrgRole[] = ["admin"];

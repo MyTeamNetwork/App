@@ -7,7 +7,7 @@ import {
   ENTERPRISE_ANY_ROLE,
   ENTERPRISE_OWNER_ROLE,
 } from "@/lib/auth/enterprise-api-context";
-import type { AdoptionRequestStatus } from "@/types/enterprise";
+import type { AdoptionRequestStatus } from "@teammeet/types";
 import { logEnterpriseAuditAction, extractRequestContext } from "@/lib/audit/enterprise-audit";
 
 export const dynamic = "force-dynamic";

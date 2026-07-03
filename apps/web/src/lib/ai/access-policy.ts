@@ -1,5 +1,5 @@
-import type { OrgRole } from "@/lib/auth/role-utils";
-import type { EnterpriseRole } from "@/types/enterprise";
+import type { OrgRole } from "@teammeet/core";
+import type { EnterpriseRole } from "@teammeet/types";
 import { AI_TOOL_MAP, type ToolName } from "./tools/definitions";
 
 export type AiActorRole = OrgRole;

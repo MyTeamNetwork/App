@@ -4,7 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { baseSchemas } from "@/lib/security/validation";
 import { getOrgMemberRole } from "@/lib/parents/auth";
-import { normalizeRole } from "@/lib/auth/role-utils";
+import { normalizeRole } from "@teammeet/core";
 import type { UserRole } from "@/types/database";
 import { getOrgDataHealth } from "@/lib/health/org-data-health";
 

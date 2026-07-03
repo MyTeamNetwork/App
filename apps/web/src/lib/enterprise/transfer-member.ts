@@ -10,7 +10,7 @@
  * user_organization_roles has NO deleted_at column, so moves use hard DELETE.
  */
 
-import type { EnterpriseRole } from "@/types/enterprise";
+import type { EnterpriseRole } from "@teammeet/types";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SupabaseClient = any;

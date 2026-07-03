@@ -1,6 +1,6 @@
 import type { AlumniBucket, Tables } from "@/types/database";
 import { createServiceClient } from "@/lib/supabase/service";
-import { ALUMNI_BUCKET_PRICING } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING } from "@teammeet/types";
 
 export const ALUMNI_LIMITS: Record<AlumniBucket, number | null> = {
   none: 0,

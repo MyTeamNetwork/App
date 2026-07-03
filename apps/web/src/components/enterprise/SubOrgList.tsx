@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Card, Badge, EmptyState } from "@/components/ui";
-import type { EnterpriseRelationshipType, SubOrgBillingType } from "@/types/enterprise";
+import type { EnterpriseRelationshipType, SubOrgBillingType } from "@teammeet/types";
 
 interface SubOrg {
   id: string;

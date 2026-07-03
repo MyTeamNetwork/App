@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
-import { normalizeRole } from "./role-utils";
+import { normalizeRole } from "@teammeet/core";
 
 export type ActiveAdminReason = "missing" | "not_admin" | "inactive" | "error";
 

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Enterprise } from "@/types/enterprise";
+import type { Enterprise } from "@teammeet/types";
 import { logEnterpriseAuditAction } from "@/lib/audit/enterprise-audit";
 
 interface UpdateEnterprisePayload {

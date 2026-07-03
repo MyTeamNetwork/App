@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Card } from "@/components/ui";
 import { Badge } from "@/components/ui";
-import type { EnterpriseRole } from "@/types/enterprise";
+import type { EnterpriseRole } from "@teammeet/types";
 
 /** Only render next/image for hostnames configured in next.config.mjs remotePatterns. */
 function isAllowedImageHost(url: string): boolean {

@@ -1,4 +1,4 @@
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 
 type ProfileRecord = {
   id: string;

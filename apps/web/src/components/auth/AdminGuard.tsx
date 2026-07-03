@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { normalizeRole } from "@/lib/auth/role-utils";
+import { normalizeRole } from "@teammeet/core";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 import type { UserRole } from "@/types/database";
 

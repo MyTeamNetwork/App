@@ -14,7 +14,7 @@ import type { SSEEvent } from "@/lib/ai/sse";
 import type { SuccessfulToolSummary } from "@/lib/ai/grounding/tool/verifier";
 import type { AiAuditStageTimings, AiToolAuthMode } from "@/lib/ai/chat-telemetry";
 import { addToolCallTiming } from "@/lib/ai/chat-telemetry";
-import type { EnterpriseRole } from "@/types/enterprise";
+import type { EnterpriseRole } from "@teammeet/types";
 import type {
   DraftSessionRecord,
   DraftSessionType,

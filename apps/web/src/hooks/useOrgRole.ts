@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { MembershipStatus, UserRole } from "@/types/database";
-import { normalizeRole, roleFlags, type OrgRole } from "@/lib/auth/role-utils";
+import { normalizeRole, roleFlags, type OrgRole } from "@teammeet/core";
 
 type State = {
   role: OrgRole | null;

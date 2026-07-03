@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui";
-import { ALUMNI_BUCKET_PRICING } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING } from "@teammeet/types";
 import { formatBucketRange } from "@/lib/enterprise/pricing";
 
 interface AlumniUsageBarProps {

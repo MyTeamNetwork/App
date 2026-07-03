@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { OrgSidebar } from "./OrgSidebar";
 import type { Organization } from "@/types/database";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 
 interface MobileNavProps {
   organization: Organization;

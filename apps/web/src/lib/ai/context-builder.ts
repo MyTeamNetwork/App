@@ -8,7 +8,7 @@ import { aiLog, type AiLogContext } from "./logger";
 import { normalizeTransportNoise } from "./message-safety";
 import { buildQuotaInfo } from "@/lib/enterprise/quota-logic";
 import { getFreeSubOrgCount } from "@/lib/enterprise/pricing";
-import { getEnterprisePermissions, type EnterpriseRole } from "@/types/enterprise";
+import { getEnterprisePermissions, type EnterpriseRole } from "@teammeet/types";
 
 export interface PromptAttachment {
   fileName: string;

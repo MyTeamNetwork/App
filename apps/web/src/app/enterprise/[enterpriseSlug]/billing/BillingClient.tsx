@@ -5,7 +5,7 @@ import { Card, Button, Badge, ButtonLink } from "@/components/ui";
 import { PageHeader } from "@/components/layout";
 import { AlumniUsageBar } from "@/components/enterprise/AlumniUsageBar";
 import { SeatUsageBar } from "@/components/enterprise/SeatUsageBar";
-import { type BillingInterval } from "@/types/enterprise";
+import { type BillingInterval } from "@teammeet/types";
 
 const SALES_EMAIL = "sales@myteamnetwork.com";
 

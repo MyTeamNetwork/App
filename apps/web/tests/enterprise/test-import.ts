@@ -1,2 +1,2 @@
-import { ALUMNI_BUCKET_PRICING } from "../../src/types/enterprise.ts";
+import { ALUMNI_BUCKET_PRICING } from "@teammeet/types";
 console.log("capacityPerBucket:", ALUMNI_BUCKET_PRICING.capacityPerBucket);

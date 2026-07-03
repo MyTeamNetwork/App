@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Announcement, MembershipStatus } from "@/types/database";
-import type { OrgRole } from "./auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 
 export type AnnouncementViewerContext = {
   role: OrgRole | null;

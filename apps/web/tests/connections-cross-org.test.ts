@@ -26,7 +26,7 @@
  *   - 401 Unauthorized / 403 Forbidden status codes from both route handlers
  *       (suggestions/route.ts, networking-consent/route.ts)
  *   - normalizeRole mapping member→active_member, viewer→alumni
- *       (src/lib/auth/role-utils.ts)
+ *       (packages/core/src/auth/role-utils.ts)
  *
  * Run: node --import ./tests/register-ts-loader.mjs --test tests/connections-cross-org.test.ts
  */

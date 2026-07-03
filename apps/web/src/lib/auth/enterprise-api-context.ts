@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
-import type { EnterpriseRole } from "@/types/enterprise";
+import type { EnterpriseRole } from "@teammeet/types";
 import type { RateLimitResult } from "@/lib/security/rate-limit";
 import { createServiceClient } from "@/lib/supabase/service";
 import {

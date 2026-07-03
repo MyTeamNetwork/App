@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getOrgMembership } from "@/lib/auth/api-helpers";
-import { normalizeRole } from "@/lib/auth/role-utils";
+import { normalizeRole } from "@teammeet/core";
 import { CHAT_ELIGIBLE_ORG_ROLES } from "@/lib/chat/recipient-eligibility";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { baseSchemas, validateJson, ValidationError } from "@/lib/security/validation";

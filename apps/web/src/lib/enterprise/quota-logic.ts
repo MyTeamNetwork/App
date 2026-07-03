@@ -1,4 +1,4 @@
-import { ALUMNI_BUCKET_PRICING } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING } from "@teammeet/types";
 
 /**
  * Pure computation functions for enterprise quota checks.

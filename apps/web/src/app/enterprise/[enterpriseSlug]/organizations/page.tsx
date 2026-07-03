@@ -4,9 +4,9 @@ import { Card, Button } from "@/components/ui";
 import { PageHeader } from "@/components/layout";
 import { SubOrgList } from "@/components/enterprise/SubOrgList";
 import { getEnterpriseContext } from "@/lib/auth/enterprise-context";
-import { getEnterprisePermissions } from "@/types/enterprise";
+import { getEnterprisePermissions } from "@teammeet/types";
 import { createServiceClient } from "@/lib/supabase/service";
-import type { EnterpriseRelationshipType, SubOrgBillingType } from "@/types/enterprise";
+import type { EnterpriseRelationshipType, SubOrgBillingType } from "@teammeet/types";
 
 interface OrganizationsPageProps {
   params: Promise<{ enterpriseSlug: string }>;

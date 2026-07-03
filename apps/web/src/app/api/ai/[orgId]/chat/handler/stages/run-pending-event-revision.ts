@@ -11,7 +11,7 @@ import type {
   AiToolAuthMode,
 } from "@/lib/ai/chat-telemetry";
 import { addToolCallTiming, skipStage } from "@/lib/ai/chat-telemetry";
-import type { EnterpriseRole } from "@/types/enterprise";
+import type { EnterpriseRole } from "@teammeet/types";
 import type { ChatAttachment } from "../shared";
 import type { TurnRuntimeState } from "../sse-runtime";
 import {

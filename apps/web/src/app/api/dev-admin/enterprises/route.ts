@@ -10,7 +10,7 @@ import type {
   Enterprise,
   EnterpriseSubscription,
   EnterpriseRole,
-} from "@/types/enterprise";
+} from "@teammeet/types";
 import type { Tables } from "@/types/database";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 

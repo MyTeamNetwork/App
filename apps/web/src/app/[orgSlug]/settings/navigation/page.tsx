@@ -10,7 +10,7 @@ import { AdminGuard } from "@/components/auth";
 import { ORG_NAV_ITEMS, ORG_NAV_GROUPS, type NavConfig, type NavConfigEntry, type NavGroupId, getConfigKey } from "@/lib/navigation/nav-items";
 import { bucketItemsByGroup, type VisibleNavItem } from "@/lib/navigation/sidebar-groups";
 import { getSettingsGroupKey, reorderItemWithinGroup } from "@/lib/navigation/navigation-settings-order";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 import {
   getAgeBracketFromUserMetadata,
   normalizeOrgType,

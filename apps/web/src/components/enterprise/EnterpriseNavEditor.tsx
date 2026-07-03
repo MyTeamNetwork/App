@@ -6,7 +6,7 @@ import { NavItemRow } from "./NavItemRow";
 import { NavPreviewPanel } from "./NavPreviewPanel";
 import { OrgSyncStatus } from "./OrgSyncStatus";
 import { ORG_NAV_ITEMS } from "@/lib/navigation/nav-items";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 
 interface Organization {

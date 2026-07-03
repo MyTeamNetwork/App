@@ -7,7 +7,7 @@ import { AlumniUsageBar } from "@/components/enterprise/AlumniUsageBar";
 import { SeatUsageBar } from "@/components/enterprise/SeatUsageBar";
 import { getEnterpriseContext } from "@/lib/auth/enterprise-context";
 import { createServiceClient } from "@/lib/supabase/service";
-import { ALUMNI_BUCKET_PRICING, getEnterprisePermissions } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING, getEnterprisePermissions } from "@teammeet/types";
 
 interface EnterpriseDashboardProps {
   params: Promise<{ enterpriseSlug: string }>;

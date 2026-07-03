@@ -13,7 +13,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "crypto";
-import { normalizeRole } from "@/lib/auth/role-utils";
+import { normalizeRole } from "@teammeet/core";
 
 // ── 1. Role normalization ─────────────────────────────────────────────────────
 

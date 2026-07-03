@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import type { EnterpriseContext, EnterpriseRole, Enterprise, EnterpriseSubscription } from "@/types/enterprise";
+import type { EnterpriseContext, EnterpriseRole, Enterprise, EnterpriseSubscription } from "@teammeet/types";
 
 // Type aliases for queries (until types regenerated)
 type EnterpriseRow = Enterprise;

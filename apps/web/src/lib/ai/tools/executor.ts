@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ToolName } from "./definitions";
 import { TOOL_NAMES } from "./definitions";
-import { getEnterprisePermissions, type EnterpriseRole } from "@/types/enterprise";
+import { getEnterprisePermissions, type EnterpriseRole } from "@teammeet/types";
 import { isToolAllowed, type AiActorRole } from "@/lib/ai/access-policy";
 import {
   EXTRACTION_TOOL_TIMEOUT_MS,

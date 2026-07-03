@@ -22,7 +22,7 @@ import { createMockCheckoutSession } from "../../utils/stripeMock.ts";
  * - Returns "message" (not "error") for sales mode, matching the actual route
  */
 
-import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "@/types/enterprise";
+import { ALUMNI_BUCKET_PRICING, ENTERPRISE_SEAT_PRICING } from "@teammeet/types";
 import { getBillableOrgCount, isSalesLed } from "@/lib/enterprise/pricing";
 import { baseSchemas, safeString } from "@/lib/security/validation";
 

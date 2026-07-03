@@ -14,7 +14,7 @@ import {
 import { z } from "zod";
 import type { AlumniBucket, SubscriptionInterval } from "@/types/database";
 import { canEditNavItem } from "@/lib/navigation/permissions";
-import { normalizeRole } from "@/lib/auth/role-utils";
+import { normalizeRole } from "@teammeet/core";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import type { UserRole } from "@/types/database";
 import { canDevAdminPerform, logDevAdminAction, extractRequestContext } from "@/lib/auth/dev-admin";

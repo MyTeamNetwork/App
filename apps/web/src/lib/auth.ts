@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { UserRole } from "@/types/database";
-import { normalizeRole } from "./auth/role-utils";
+import { normalizeRole } from "@teammeet/core";
 
 // Re-export the cached version from roles.ts — all callers get deduplication
 export { getCurrentUser } from "./auth/roles";

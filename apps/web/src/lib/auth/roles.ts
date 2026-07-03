@@ -2,7 +2,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { MembershipStatus, Organization, UserRole } from "@/types/database";
-import { normalizeRole, roleFlags, type OrgRole } from "./role-utils";
+import { normalizeRole, roleFlags, type OrgRole } from "@teammeet/core";
 import { getGracePeriodInfo, type GracePeriodInfo, type SubscriptionStatus } from "@/lib/subscription/grace-period";
 import { resolveCheck } from "@/lib/supabase/resolve-check";
 

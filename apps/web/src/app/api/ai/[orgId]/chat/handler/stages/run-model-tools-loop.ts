@@ -21,7 +21,7 @@ import type {
 } from "@/lib/ai/grounding/tool/verifier";
 import type { TurnExecutionPolicy } from "@/lib/ai/turn-execution-policy";
 import type { trackOpsEventServer } from "@/lib/analytics/events-server";
-import type { EnterpriseRole } from "@/types/enterprise";
+import type { EnterpriseRole } from "@teammeet/types";
 import type {
   DraftSessionRecord,
   saveDraftSession,

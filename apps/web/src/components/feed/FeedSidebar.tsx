@@ -1,6 +1,6 @@
 import { loadFeedSidebarData, type FeedSidebarData } from "@/lib/feed/load-feed-sidebar-data";
 import { FeedSidebarWidgets } from "./FeedSidebarWidgets";
-import type { OrgRole } from "@/lib/auth/role-utils";
+import type { OrgRole } from "@teammeet/core";
 
 interface FeedSidebarProps {
   orgSlug: string;
