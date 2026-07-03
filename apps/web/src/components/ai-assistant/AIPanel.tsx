@@ -6,7 +6,9 @@ import { X, MessageSquare, List, Sparkles } from "lucide-react";
 import { useAIStream } from "@/hooks/useAIStream";
 import { getAssistantCapabilitySnapshot } from "@/lib/ai/capabilities";
 import { prepareImageUpload } from "@/lib/media/image-preparation";
+import { ASSISTANT_TEMPORARILY_DISABLED } from "@/lib/ai/assistant-availability";
 import { useAIPanel } from "./AIPanelContext";
+import { AssistantDisabledNotice } from "./AssistantDisabledNotice";
 import { isFullPageAssistantRoute, routeToSurface } from "./route-surface";
 import {
   clearPersistedActiveThreadId,
@@ -799,7 +801,9 @@ export function AIPanel({ orgId }: AIPanelProps) {
         </div>
 
         {/* Content */}
-        {view === "chat" ? (
+        {ASSISTANT_TEMPORARILY_DISABLED ? (
+          <AssistantDisabledNotice />
+        ) : view === "chat" ? (
           <div className="flex flex-1 flex-col overflow-hidden">
             <MessageList
               messages={messages}

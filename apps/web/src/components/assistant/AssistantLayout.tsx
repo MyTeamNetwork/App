@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Sparkles, PanelLeftClose, PanelLeft } from "lucide-react";
 import { useAIStream } from "@/hooks/useAIStream";
+import { ASSISTANT_TEMPORARILY_DISABLED } from "@/lib/ai/assistant-availability";
+import { AssistantDisabledNotice } from "@/components/ai-assistant/AssistantDisabledNotice";
 import { getAssistantCapabilitySnapshot } from "@/lib/ai/capabilities";
 import { prepareImageUpload } from "@/lib/media/image-preparation";
 import { routeToSurface } from "@/components/ai-assistant/route-surface";
@@ -592,6 +594,10 @@ export function AssistantLayout({ orgId, orgSlug }: AssistantLayoutProps) {
         </header>
 
         {/* Chat area */}
+        {ASSISTANT_TEMPORARILY_DISABLED ? (
+          <AssistantDisabledNotice />
+        ) : (
+          <>
         <ChatArea
           messages={messages}
           loading={messagesLoading}
@@ -628,6 +634,8 @@ export function AssistantLayout({ orgId, orgSlug }: AssistantLayoutProps) {
           onCancel={cancel}
           onClearError={clearError}
         />
+          </>
+        )}
       </div>
     </div>
   );
