@@ -5,6 +5,7 @@ import {
   buildMemberProfileUpdate,
   buildParentProfileUpdate,
   buildProfileFormValues,
+  buildSharedProfileSyncUpdates,
   resolveProfileOrganization,
   toEditableProfileRole,
   validateProfileForm,
@@ -206,6 +207,95 @@ describe("mobile profile helpers", () => {
       expect(alumniPayload.phone_number).toBeNull();
       expect(parentPayload.student_name).toBe("Casey Student");
       expect(parentPayload.photo_url).toBe("https://cdn.example.com/parent.jpg");
+    });
+  });
+
+  describe("buildSharedProfileSyncUpdates", () => {
+    it("propagates member identity fields to every profile table", () => {
+      const updates = buildSharedProfileSyncUpdates(
+        "member",
+        {
+          ...INITIAL_PROFILE_FORM_VALUES,
+          first_name: "Matt",
+          last_name: "Leonard",
+          graduation_year: "2025",
+          expected_graduation_date: "2025-06-01",
+          linkedin_url: "https://www.linkedin.com/in/matt",
+        },
+        "https://cdn.example.com/avatar.jpg"
+      );
+
+      const identity = {
+        first_name: "Matt",
+        last_name: "Leonard",
+        linkedin_url: "https://www.linkedin.com/in/matt",
+        photo_url: "https://cdn.example.com/avatar.jpg",
+      };
+
+      expect(updates.members).toMatchObject({
+        ...identity,
+        graduation_year: 2025,
+        expected_graduation_date: "2025-06-01",
+      });
+      expect(updates.alumni).toMatchObject({ ...identity, graduation_year: 2025 });
+      expect(updates.parents).toMatchObject(identity);
+      // Org-directed fields must never propagate across organizations.
+      expect(updates.alumni).not.toHaveProperty("notes");
+      expect(updates.parents).not.toHaveProperty("student_name");
+      expect(updates.parents).not.toHaveProperty("relationship");
+    });
+
+    it("propagates alumni career fields to alumni rows only", () => {
+      const updates = buildSharedProfileSyncUpdates(
+        "alumni",
+        {
+          ...INITIAL_PROFILE_FORM_VALUES,
+          first_name: "Ali",
+          last_name: "Alumni",
+          graduation_year: "2020",
+          current_company: "Acme",
+          phone_number: "+1 555 000 1111",
+          notes: "org-specific note",
+        },
+        null
+      );
+
+      expect(updates.alumni).toMatchObject({
+        graduation_year: 2020,
+        current_company: "Acme",
+        phone_number: "+1 555 000 1111",
+      });
+      expect(updates.alumni).not.toHaveProperty("notes");
+      expect(updates.members).toMatchObject({ graduation_year: 2020 });
+      expect(updates.members).not.toHaveProperty("current_company");
+      expect(updates.parents).toMatchObject({ phone_number: "+1 555 000 1111" });
+    });
+
+    it("keeps parent org-scoped fields out of the shared sync", () => {
+      const updates = buildSharedProfileSyncUpdates(
+        "parent",
+        {
+          ...INITIAL_PROFILE_FORM_VALUES,
+          first_name: "Pat",
+          last_name: "Parent",
+          phone_number: "+1 555 222 3333",
+          student_name: "Casey Student",
+          relationship: "Guardian",
+        },
+        null
+      );
+
+      expect(updates.parents).toMatchObject({
+        first_name: "Pat",
+        last_name: "Parent",
+        phone_number: "+1 555 222 3333",
+        photo_url: null,
+      });
+      expect(updates.parents).not.toHaveProperty("student_name");
+      expect(updates.parents).not.toHaveProperty("relationship");
+      expect(updates.members).not.toHaveProperty("phone_number");
+      expect(updates.members).not.toHaveProperty("graduation_year");
+      expect(updates.alumni).toMatchObject({ phone_number: "+1 555 222 3333" });
     });
   });
 });

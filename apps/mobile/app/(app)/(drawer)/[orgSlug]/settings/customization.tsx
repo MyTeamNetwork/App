@@ -161,6 +161,11 @@ export default function CustomizationScreen() {
   useEffect(() => {
     let isMounted = true;
 
+    // Reset on org switch so stale admin state from the previous org
+    // never gates the admin-only UI while the new role loads.
+    setIsAdmin(false);
+    setRoleLoading(true);
+
     async function fetchRole() {
       if (!orgId || !user) {
         setRoleLoading(false);

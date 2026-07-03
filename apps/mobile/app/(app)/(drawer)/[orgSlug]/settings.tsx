@@ -54,6 +54,11 @@ export default function SettingsScreen() {
   useEffect(() => {
     let isMounted = true;
 
+    // Reset on org switch — the route component is reused across [orgSlug]
+    // values, so stale admin state from the previous org must not leak.
+    setIsAdmin(false);
+    setRoleLoading(true);
+
     async function fetchRole() {
       if (!orgId || !user) {
         setRoleLoading(false);

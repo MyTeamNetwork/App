@@ -45,6 +45,7 @@ import {
   buildMemberProfileUpdate,
   buildParentProfileUpdate,
   buildProfileFormValues,
+  buildSharedProfileSyncUpdates,
   getEditableProfileRoleLabel,
   resolveProfileOrganization,
   toEditableProfileRole,
@@ -129,7 +130,7 @@ export default function ProfileScreen() {
   const routeSlug = getParamValue(currentSlug);
   const { user, isLoading: authLoading } = useAuth();
   const { organizations, loading: organizationsLoading } = useOrganizations();
-  const { neutral, semantic } = useAppColorScheme();
+  const { neutral, semantic, colorScheme } = useAppColorScheme();
   const [selectedOrgSlug, setSelectedOrgSlug] = useState<string | null>(null);
   const [profileRole, setProfileRole] = useState<EditableProfileRole | null>(null);
   const [profileRecordId, setProfileRecordId] = useState<string | null>(null);
@@ -589,7 +590,7 @@ export default function ProfileScreen() {
           options: [...labels, "Cancel"],
           cancelButtonIndex: labels.length,
           title: "Switch organization",
-          userInterfaceStyle: "light",
+          userInterfaceStyle: colorScheme,
         },
         (idx) => {
           if (idx === labels.length) return;
@@ -609,7 +610,7 @@ export default function ProfileScreen() {
         { text: "Cancel", style: "cancel" as const },
       ],
     );
-  }, [organizations, resolvedOrganization]);
+  }, [colorScheme, organizations, resolvedOrganization]);
 
   const handleFieldChange = useCallback(
     <K extends keyof ProfileFormValues>(field: K, value: ProfileFormValues[K]) => {
@@ -687,6 +688,33 @@ export default function ProfileScreen() {
 
         if (updateError) throw updateError;
       }
+
+      // Profile identity is account-level: propagate the shared fields to the
+      // user's profile rows in every organization so all orgs stay in sync.
+      const sharedUpdates = buildSharedProfileSyncUpdates(
+        profileRole,
+        validationResult.data,
+        nextAvatarUrl
+      );
+      const syncResults = await Promise.all([
+        supabase
+          .from("members")
+          .update(sharedUpdates.members)
+          .eq("user_id", currentUser.id)
+          .is("deleted_at", null),
+        supabase
+          .from("alumni")
+          .update(sharedUpdates.alumni)
+          .eq("user_id", currentUser.id)
+          .is("deleted_at", null),
+        supabase
+          .from("parents")
+          .update(sharedUpdates.parents)
+          .eq("user_id", currentUser.id)
+          .is("deleted_at", null),
+      ]);
+      const syncError = syncResults.find((result) => result.error)?.error;
+      if (syncError) throw syncError;
 
       const { error: authUpdateError } = await supabase.auth.updateUser({
         data: buildAuthMetadataUpdate(

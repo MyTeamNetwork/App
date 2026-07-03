@@ -96,8 +96,10 @@ export function SettingsOrganizationSection({ org, orgLoading, updateName, isAdm
 
   if (!isAdmin) return null;
 
+  const nameSaveDisabled = !editedName.trim() || editedName.trim() === org?.name;
+
   const handleSaveName = async () => {
-    if (!editedName.trim() || editedName === org?.name) return;
+    if (nameSaveDisabled) return;
     setNameSaving(true);
     setNameError(null);
     const result = await updateName(editedName);
@@ -143,9 +145,9 @@ export function SettingsOrganizationSection({ org, orgLoading, updateName, isAdm
                 />
                 {nameError && <Text style={styles.errorText}>{nameError}</Text>}
                 <Pressable
-                  style={[styles.button, editedName === org?.name && styles.buttonDisabled]}
+                  style={[styles.button, nameSaveDisabled && styles.buttonDisabled]}
                   onPress={handleSaveName}
-                  disabled={nameSaving || editedName === org?.name}
+                  disabled={nameSaving || nameSaveDisabled}
                 >
                   {nameSaving ? (
                     <ActivityIndicator size="small" color={colors.primaryForeground} />

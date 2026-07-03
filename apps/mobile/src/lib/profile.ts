@@ -313,6 +313,74 @@ export function buildAuthMetadataUpdate(
   };
 }
 
+export interface SharedProfileSyncUpdates {
+  members: Database["public"]["Tables"]["members"]["Update"];
+  alumni: Database["public"]["Tables"]["alumni"]["Update"];
+  parents: Database["public"]["Tables"]["parents"]["Update"];
+}
+
+/**
+ * A user's profile is account-level: the personal fields edited on the profile
+ * screen must stay identical across every organization they belong to. This
+ * builds the per-table updates applied to ALL of the user's profile rows
+ * (scoped by user_id, RLS filters rows they cannot touch). Org-directed fields
+ * (notes, student_name, relationship) are intentionally excluded — they stay
+ * scoped to the organization being edited.
+ */
+export function buildSharedProfileSyncUpdates(
+  role: EditableProfileRole,
+  values: ProfileFormValues,
+  avatarUrl: string | null
+): SharedProfileSyncUpdates {
+  const identity = {
+    first_name: values.first_name.trim(),
+    last_name: values.last_name.trim(),
+    linkedin_url: trimOrNull(values.linkedin_url),
+    photo_url: avatarUrl,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (role === "member") {
+    const graduationYear = parseGraduationYear(values.graduation_year);
+    return {
+      members: {
+        ...identity,
+        graduation_year: graduationYear,
+        expected_graduation_date: trimOrNull(values.expected_graduation_date),
+      },
+      alumni: { ...identity, graduation_year: graduationYear },
+      parents: { ...identity },
+    };
+  }
+
+  if (role === "alumni") {
+    const graduationYear = parseGraduationYear(values.graduation_year);
+    const phoneNumber = trimOrNull(values.phone_number);
+    return {
+      members: { ...identity, graduation_year: graduationYear },
+      alumni: {
+        ...identity,
+        graduation_year: graduationYear,
+        major: trimOrNull(values.major),
+        job_title: trimOrNull(values.job_title),
+        position_title: trimOrNull(values.position_title),
+        current_company: trimOrNull(values.current_company),
+        industry: trimOrNull(values.industry),
+        current_city: trimOrNull(values.current_city),
+        phone_number: phoneNumber,
+      },
+      parents: { ...identity, phone_number: phoneNumber },
+    };
+  }
+
+  const phoneNumber = trimOrNull(values.phone_number);
+  return {
+    members: { ...identity },
+    alumni: { ...identity, phone_number: phoneNumber },
+    parents: { ...identity, phone_number: phoneNumber },
+  };
+}
+
 export function buildMemberProfileUpdate(
   values: ProfileFormValues,
   avatarUrl: string | null
