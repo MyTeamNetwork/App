@@ -1,9 +1,14 @@
 import type OpenAI from "openai";
+// Import the field allowlists from the client-safe data module, NOT from
+// `shared.ts` — `definitions.ts` is reachable from a client component
+// (AIPanel → capabilities → definitions), and `shared.ts` pulls in the
+// server-only `aiLog` → `errors/sanitize` → `node:async_hooks` chain, which
+// breaks the client/webpack build.
 import {
   EVENT_OUTPUT_FIELDS,
   MEMBER_OUTPUT_FIELDS,
   MEMBER_PREFERENCE_OUTPUT_FIELDS,
-} from "@/lib/ai/tools/shared";
+} from "@/lib/ai/tools/output-fields";
 
 export interface ListMembersArgs {
   limit?: number;
