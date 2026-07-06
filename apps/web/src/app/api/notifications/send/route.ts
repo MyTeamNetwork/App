@@ -280,8 +280,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Block mutations if org is in grace period (read-only mode)
-    const { isReadOnly } = await checkOrgReadOnly(organizationId);
+    // Block mutations if org is in grace period (read-only mode).
+    // Pass the request client: this route accepts bearer auth (mobile),
+    // and the default cookie client is anonymous for those requests.
+    const { isReadOnly } = await checkOrgReadOnly(organizationId, supabase);
     if (isReadOnly) {
       return respond(readOnlyResponse(), 403);
     }

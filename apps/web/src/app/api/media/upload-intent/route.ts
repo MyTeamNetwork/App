@@ -105,8 +105,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Block uploads if org is in read-only mode
-    const { isReadOnly } = await checkOrgReadOnly(body.orgId);
+    // Block uploads if org is in read-only mode.
+    // Pass the request client: this route accepts bearer auth (mobile),
+    // and the default cookie client is anonymous for those requests.
+    const { isReadOnly } = await checkOrgReadOnly(body.orgId, supabase);
     if (isReadOnly) {
       console.warn("[media/upload-intent] rejected", {
         orgId: body.orgId,

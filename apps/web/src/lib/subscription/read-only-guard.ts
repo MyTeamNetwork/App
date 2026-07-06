@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { ServerSupabase } from "@/lib/supabase/types";
 import { isOrgReadOnly, type SubscriptionStatus } from "@/lib/subscription/grace-period";
 
 /**
@@ -10,14 +11,23 @@ import { isOrgReadOnly, type SubscriptionStatus } from "@/lib/subscription/grace
  * Querying organization_subscriptions directly would be blocked by
  * admin-only RLS for active_member / alumni callers.
  *
+ * Routes that authenticate via `Authorization: Bearer` (mobile) MUST pass
+ * their request-scoped client: the default cookie client is anonymous for
+ * bearer requests, the RPC's EXECUTE grant is `authenticated`-only, and the
+ * fail-closed path below then reports every active org as read-only.
+ *
+ * @param client Request-scoped client; defaults to the cookie SSR client.
  * @returns { isReadOnly: boolean, subscription: SubscriptionStatus | null, error?: string }
  */
-export async function checkOrgReadOnly(organizationId: string): Promise<{
+export async function checkOrgReadOnly(
+  organizationId: string,
+  client?: ServerSupabase
+): Promise<{
   isReadOnly: boolean;
   subscription: SubscriptionStatus | null;
   error?: string;
 }> {
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
 
   const { data: subscriptionRows, error: queryError } = await supabase
     .rpc("get_subscription_status", { p_org_id: organizationId });
