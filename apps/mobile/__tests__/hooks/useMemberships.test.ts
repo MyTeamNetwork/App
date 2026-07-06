@@ -92,6 +92,114 @@ describe("Membership Helper Functions", () => {
   });
 });
 
+describe("mergePendingIdentities", () => {
+  let mergePendingIdentities: typeof import("../../src/hooks/useMemberships").mergePendingIdentities;
+  type Membership = import("../../src/hooks/useMemberships").Membership;
+  type PendingApprovalIdentity = import("../../src/hooks/useMemberships").PendingApprovalIdentity;
+
+  beforeAll(() => {
+    jest.mock("@/lib/supabase", () => ({
+      supabase: {
+        from: jest.fn(),
+        rpc: jest.fn(),
+        channel: jest.fn(() => ({ on: jest.fn().mockReturnThis(), subscribe: jest.fn() })),
+        removeChannel: jest.fn(),
+      },
+    }));
+    jest.mock("react", () => ({
+      useEffect: jest.fn(),
+      useState: jest.fn(),
+      useRef: jest.fn(),
+      useCallback: jest.fn(),
+    }));
+
+    const mod = require("../../src/hooks/useMemberships");
+    mergePendingIdentities = mod.mergePendingIdentities;
+  });
+
+  afterAll(() => {
+    jest.unmock("@/lib/supabase");
+    jest.unmock("react");
+  });
+
+  const pendingRow = (overrides: Partial<Membership> = {}): Membership => ({
+    id: "row-1",
+    user_id: "user-1",
+    role: "alumni",
+    status: "pending",
+    created_at: "2026-06-05T12:46:29Z",
+    user: null,
+    ...overrides,
+  });
+
+  const identity = (
+    overrides: Partial<PendingApprovalIdentity> = {}
+  ): PendingApprovalIdentity => ({
+    user_id: "user-1",
+    role: "alumni",
+    status: "pending",
+    created_at: "2026-06-05T12:46:29Z",
+    name: "Diego Semporini",
+    email: "diego@example.com",
+    ...overrides,
+  });
+
+  it("fills name/email on a pending row whose users join was hidden by RLS", () => {
+    const result = mergePendingIdentities([pendingRow()], [identity()]);
+    expect(result).toHaveLength(1);
+    expect(result[0].user).toEqual({
+      id: "user-1",
+      email: "diego@example.com",
+      name: "Diego Semporini",
+      avatar_url: null,
+    });
+  });
+
+  it("keeps existing user fields when the join did resolve", () => {
+    const existing = pendingRow({
+      user: { id: "user-1", email: "joined@example.com", name: "Joined Name", avatar_url: "http://a" },
+    });
+    const result = mergePendingIdentities([existing], [identity()]);
+    expect(result[0].user).toEqual({
+      id: "user-1",
+      email: "joined@example.com",
+      name: "Joined Name",
+      avatar_url: "http://a",
+    });
+  });
+
+  it("never touches non-pending rows", () => {
+    const active = pendingRow({ id: "row-2", user_id: "user-2", status: "active" });
+    const result = mergePendingIdentities([active], [identity({ user_id: "user-2" })]);
+    expect(result[0]).toBe(active);
+  });
+
+  it("appends a synthetic pending row when the base query cannot see it", () => {
+    const result = mergePendingIdentities([], [identity()]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      id: "pending:user-1",
+      user_id: "user-1",
+      role: "alumni",
+      status: "pending",
+      created_at: "2026-06-05T12:46:29Z",
+      user: { id: "user-1", email: "diego@example.com", name: "Diego Semporini", avatar_url: null },
+    });
+  });
+
+  it("returns memberships unchanged when there are no approvals", () => {
+    const rows = [pendingRow()];
+    expect(mergePendingIdentities(rows, [])).toBe(rows);
+  });
+
+  it("leaves a pending row intact when the RPC has no identity for it", () => {
+    const row = pendingRow({ user_id: "user-9" });
+    const result = mergePendingIdentities([row], [identity()]);
+    expect(result[0]).toEqual(row);
+    expect(result).toHaveLength(2); // identity for user-1 appended as synthetic row
+  });
+});
+
 describe("Membership Status Lifecycle", () => {
   let getRoleLabel: typeof import("../../src/hooks/useMemberships").getRoleLabel;
   let getStatusLabel: typeof import("../../src/hooks/useMemberships").getStatusLabel;

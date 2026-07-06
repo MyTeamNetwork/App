@@ -16,6 +16,58 @@ export interface Membership {
   } | null;
 }
 
+export interface PendingApprovalIdentity {
+  user_id: string;
+  role: string;
+  status: string;
+  created_at: string | null;
+  name: string | null;
+  email: string | null;
+}
+
+// The users_select RLS policy hides non-active users, so the embedded
+// user:users(...) join returns null for pending rows. The admin-gated
+// get_pending_approvals RPC (SECURITY DEFINER) supplies name/email for
+// those rows; merge it in without ever dropping a pending membership.
+export function mergePendingIdentities(
+  memberships: Membership[],
+  approvals: PendingApprovalIdentity[]
+): Membership[] {
+  if (approvals.length === 0) return memberships;
+
+  const identityByUserId = new Map(approvals.map((a) => [a.user_id, a]));
+
+  const merged = memberships.map((m) => {
+    if (m.status !== "pending") return m;
+    const identity = identityByUserId.get(m.user_id);
+    if (!identity) return m;
+    return {
+      ...m,
+      user: {
+        id: m.user_id,
+        email: m.user?.email ?? identity.email,
+        name: m.user?.name ?? identity.name,
+        avatar_url: m.user?.avatar_url ?? null,
+      },
+    };
+  });
+
+  // A pending row the base query couldn't see must still reach the approver.
+  const knownUserIds = new Set(memberships.map((m) => m.user_id));
+  const extras: Membership[] = approvals
+    .filter((a) => !knownUserIds.has(a.user_id))
+    .map((a) => ({
+      id: `pending:${a.user_id}`,
+      user_id: a.user_id,
+      role: a.role,
+      status: "pending" as const,
+      created_at: a.created_at,
+      user: { id: a.user_id, email: a.email, name: a.name, avatar_url: null },
+    }));
+
+  return extras.length > 0 ? [...merged, ...extras] : merged;
+}
+
 interface UseMembershipsReturn {
   memberships: Membership[];
   pendingMembers: Membership[];
@@ -52,10 +104,11 @@ export function useMemberships(orgId: string | null): UseMembershipsReturn {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase
-        .from("user_organization_roles")
-        .select(
-          `
+      const [membershipsResult, approvalsResult] = await Promise.all([
+        supabase
+          .from("user_organization_roles")
+          .select(
+            `
           id,
           user_id,
           role,
@@ -63,11 +116,29 @@ export function useMemberships(orgId: string | null): UseMembershipsReturn {
           created_at,
           user:users(id, email, name, avatar_url)
         `
-        )
-        .eq("organization_id", orgId)
-        .order("created_at", { ascending: false });
+          )
+          .eq("organization_id", orgId)
+          .order("created_at", { ascending: false }),
+        supabase.rpc("get_pending_approvals", { p_organization_id: orgId }),
+      ]);
 
+      const { data, error: fetchError } = membershipsResult;
       if (fetchError) throw fetchError;
+
+      // Non-admins get 42501 from the admin gate inside the RPC — expected,
+      // they have no approvals UI. Any other RPC failure degrades to the
+      // pre-RPC behavior (pending rows without identity) instead of blanking
+      // the whole list.
+      let pendingIdentities: PendingApprovalIdentity[] = [];
+      if (approvalsResult.error) {
+        if (approvalsResult.error.code !== "42501") {
+          sentry.captureException(new Error(approvalsResult.error.message), {
+            context: "useMemberships.getPendingApprovals",
+          });
+        }
+      } else {
+        pendingIdentities = approvalsResult.data ?? [];
+      }
 
       if (isMountedRef.current) {
         const normalizedMemberships: Membership[] =
@@ -90,7 +161,7 @@ export function useMemberships(orgId: string | null): UseMembershipsReturn {
             };
           }) || [];
 
-        setMemberships(normalizedMemberships);
+        setMemberships(mergePendingIdentities(normalizedMemberships, pendingIdentities));
         setError(null);
       }
     } catch (e) {
