@@ -42,6 +42,20 @@ function normalizeOrigin(siteUrl: string): string {
   return siteUrl.endsWith("/") ? siteUrl.slice(0, -1) : siteUrl;
 }
 
+/**
+ * Mid-flight browser callback for mobile OAuth (the Supabase `redirectTo`).
+ *
+ * Deliberately `/auth/mobile-callback`, NOT `/auth/callback`: the latter is
+ * registered as a universal link / app link on both mobile platforms (for email
+ * magic links, which carry an on-device PKCE verifier). If the OAuth mid-flight
+ * redirect landed there, iOS could intercept it out of the in-app browser and
+ * hand it to the app as a deep link — the app then has no PKCE verifier for the
+ * code ("PKCE code verifier not found in storage") and the handoff never mints.
+ * Observed in production with LinkedIn, whose consent-screen tap makes the
+ * redirect chain eligible for universal-link interception. The dedicated path
+ * is not in the app's universal-link config, so the browser always completes
+ * the exchange server-side and deep-links back via teammeet://callback.
+ */
 export function buildMobileAuthCallbackUrl(
   siteUrl: string,
   params: {
@@ -52,7 +66,7 @@ export function buildMobileAuthCallbackUrl(
     ageToken?: string | null;
   }
 ): string {
-  const url = new URL("/auth/callback", normalizeOrigin(siteUrl));
+  const url = new URL("/auth/mobile-callback", normalizeOrigin(siteUrl));
   url.searchParams.set("mobile", "1");
   url.searchParams.set("mode", params.mode);
   url.searchParams.set("redirect", sanitizeRedirectPath(params.redirect ?? null));

@@ -41,6 +41,7 @@ jest.mock("@teammeet/validation", () => ({
 }));
 
 import { parseTeammeetUrl, routeIntent } from "@/lib/deep-link";
+import { supabase } from "@/lib/supabase";
 import { consumeMobileAuthHandoff } from "@/lib/mobile-auth";
 import { surfaceMobileAuthError } from "@/lib/mobile-auth-errors";
 import { showToast } from "@/components/ui/Toast";
@@ -409,6 +410,58 @@ describe("routeIntent", () => {
       pathname: "/(auth)/claim",
       params: {},
     });
+  });
+});
+
+describe("routeIntent auth-pkce (trusted web host / universal link)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("surfaces the error and returns to login when the exchange fails (no local PKCE verifier)", async () => {
+    const router = { push: jest.fn(), replace: jest.fn() };
+    (supabase.auth.exchangeCodeForSession as jest.Mock).mockResolvedValue({
+      error: { message: "PKCE code verifier not found in storage." },
+    });
+
+    await routeIntent(
+      router,
+      { kind: "auth-pkce", code: "stolen-oauth-code" },
+      "https://www.myteamnetwork.com/auth/callback?code=stolen-oauth-code&mobile=1&mode=login"
+    );
+
+    // Previously this only captured to Sentry, stranding the user on the
+    // Unmatched Route screen (production LinkedIn sign-in failure).
+    expect(surfaceMobileAuthError).toHaveBeenCalledTimes(1);
+    const [errArg, contextArg] = (surfaceMobileAuthError as jest.Mock).mock.calls[0];
+    expect((errArg as Error).message).toContain("PKCE code verifier not found");
+    expect(contextArg).toMatchObject({ context: "routeIntent.auth-pkce" });
+    expect(router.replace).toHaveBeenCalledWith("/(auth)/login");
+  });
+
+  it("surfaces thrown exchange errors the same way", async () => {
+    const router = { push: jest.fn(), replace: jest.fn() };
+    const thrown = new Error("network down");
+    (supabase.auth.exchangeCodeForSession as jest.Mock).mockRejectedValue(thrown);
+
+    await routeIntent(router, { kind: "auth-pkce", code: "abc" });
+
+    expect(surfaceMobileAuthError).toHaveBeenCalledTimes(1);
+    expect((surfaceMobileAuthError as jest.Mock).mock.calls[0][0]).toBe(thrown);
+    expect(router.replace).toHaveBeenCalledWith("/(auth)/login");
+  });
+
+  it("does not surface or navigate when the exchange succeeds (root layout routes on session)", async () => {
+    const router = { push: jest.fn(), replace: jest.fn() };
+    (supabase.auth.exchangeCodeForSession as jest.Mock).mockResolvedValue({
+      error: null,
+    });
+
+    await routeIntent(router, { kind: "auth-pkce", code: "good-code" });
+
+    expect(surfaceMobileAuthError).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
   });
 });
 

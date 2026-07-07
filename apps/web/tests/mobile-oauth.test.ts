@@ -27,9 +27,12 @@ describe("mapMobileOAuthProvider", () => {
 });
 
 describe("buildMobileAuthCallbackUrl", () => {
-  it("targets /auth/callback with mobile=1 so the callback takes the handoff branch", () => {
+  it("targets /auth/mobile-callback (not the universal-link /auth/callback path) with mobile=1", () => {
     const url = new URL(buildMobileAuthCallbackUrl(SITE, { mode: "login" }));
-    assert.equal(url.pathname, "/auth/callback");
+    // /auth/callback is a registered universal link; if the OAuth mid-flight
+    // redirect used it, iOS could steal the URL from the in-app browser and the
+    // app would fail with "PKCE code verifier not found" (prod LinkedIn bug).
+    assert.equal(url.pathname, "/auth/mobile-callback");
     assert.equal(url.searchParams.get("mobile"), "1");
     assert.equal(url.searchParams.get("mode"), "login");
     assert.equal(url.searchParams.get("redirect"), "/app");

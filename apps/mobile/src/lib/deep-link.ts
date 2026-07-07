@@ -350,16 +350,21 @@ export async function routeIntent(
       try {
         const { error } = await supabase.auth.exchangeCodeForSession(intent.code);
         if (error) {
-          captureException(new Error(error.message), {
-            context: "routeIntent.auth-pkce",
-            ...sanitizeUrlForTelemetry(originalUrl),
-          });
+          throw new Error(error.message);
         }
       } catch (err) {
-        captureException(err as Error, {
+        // A code this client can't exchange ("PKCE code verifier not found") means
+        // the flow was initiated elsewhere — e.g. iOS universal-link interception
+        // stealing the mid-flight web OAuth callback from the in-app browser (the
+        // production LinkedIn sign-in failure; the web side now uses the
+        // non-universal-link /auth/mobile-callback path to prevent it). Expired
+        // magic links land here too. Surface a toast and return the user to
+        // login instead of stranding them with only a Sentry breadcrumb.
+        surfaceMobileAuthError(err, {
           context: "routeIntent.auth-pkce",
           ...sanitizeUrlForTelemetry(originalUrl),
         });
+        router.replace("/(auth)/login" as never);
       }
       return;
 
