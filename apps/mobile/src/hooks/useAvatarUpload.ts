@@ -5,7 +5,7 @@ import { validatePickedImage } from "@/hooks/useMediaUpload";
 import * as sentry from "@/lib/analytics/sentry";
 import {
   buildCacheBustedUrl,
-  readBlobFromUri,
+  readArrayBufferFromUri,
   uploadToStorage,
 } from "@/lib/uploads";
 
@@ -62,12 +62,15 @@ export function useAvatarUpload(userId: string | undefined) {
       const ext = (asset.fileName?.split(".").pop() ?? "jpg").toLowerCase();
       const path = `${userId}/avatar.${ext}`;
 
-      const blob = await readBlobFromUri(uri);
+      // Read bytes via readArrayBufferFromUri, NOT readBlobFromUri: RN's
+      // fetch(file://).blob() returns a 0-byte Blob on iOS, which silently
+      // writes an empty object to storage and breaks the avatar everywhere.
+      const bytes = await readArrayBufferFromUri(uri);
       await uploadToStorage({
         storage: supabase.storage,
         bucket: "avatars",
         path,
-        body: blob,
+        body: bytes,
         contentType: asset.mimeType ?? "image/jpeg",
         upsert: true,
       });
