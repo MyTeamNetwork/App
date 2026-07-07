@@ -4,6 +4,7 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   CalendarPlus,
   Megaphone,
@@ -12,6 +13,8 @@ import {
   CalendarCheck,
   MapPin,
   Share2,
+  ChevronRight,
+  type LucideIcon,
 } from "lucide-react-native";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
@@ -30,13 +33,16 @@ interface ActionSheetProps {
   onShareOrg?: () => void;
 }
 
+// A distinct third accent that reads well on both light and dark surfaces;
+// matches the admin/role violet used elsewhere in the app.
+const ACCENT_VIOLET = "#8b5cf6";
+
 interface ActionItem {
-  icon: React.ReactNode;
+  Icon: LucideIcon;
   label: string;
+  tint: string;
   onPress: () => void;
 }
-
-const ICON_COLOR = "#ffffff";
 
 export const ActionSheet = forwardRef<BottomSheet, ActionSheetProps>(
   (
@@ -54,58 +60,61 @@ export const ActionSheet = forwardRef<BottomSheet, ActionSheetProps>(
     ref
   ) => {
     const { neutral, semantic } = useAppColorScheme();
-    const styles = useThemedStyles((n, s) => ({
+    const insets = useSafeAreaInsets();
+
+    const styles = useThemedStyles((n) => ({
       background: {
         backgroundColor: n.surface,
-        borderTopLeftRadius: RADIUS.xl,
-        borderTopRightRadius: RADIUS.xl,
+        borderTopLeftRadius: RADIUS.xxl,
+        borderTopRightRadius: RADIUS.xxl,
       },
       indicator: {
-        backgroundColor: n.border,
-        width: 40,
+        backgroundColor: n.borderStrong,
+        width: 36,
       },
       content: {
-        flex: 1,
         paddingHorizontal: SPACING.lg,
-        paddingTop: SPACING.sm,
+        paddingTop: SPACING.xs,
       },
       title: {
-        ...TYPOGRAPHY.titleMedium,
-        color: n.foreground,
-        marginBottom: SPACING.lg,
-        textAlign: "center" as const,
+        ...TYPOGRAPHY.labelMedium,
+        color: n.muted,
+        textTransform: "uppercase" as const,
+        letterSpacing: 0.8,
+        marginBottom: SPACING.md,
       },
-      grid: {
+      row: {
         flexDirection: "row" as const,
-        flexWrap: "wrap" as const,
-        justifyContent: "space-between" as const,
-      },
-      actionTile: {
-        width: "48%" as const,
-        backgroundColor: s.success,
-        borderRadius: RADIUS.md,
-        padding: SPACING.md,
-        marginBottom: SPACING.sm,
         alignItems: "center" as const,
+        backgroundColor: n.surfaceElevated,
+        borderRadius: RADIUS.lg,
+        borderCurve: "continuous" as const,
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.md,
+        marginBottom: SPACING.sm,
+        gap: SPACING.md,
       },
-      iconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: "rgba(0, 0, 0, 0.15)",
+      rowPressed: {
+        opacity: 0.6,
+      },
+      iconBadge: {
+        width: 40,
+        height: 40,
+        borderRadius: RADIUS.md,
+        borderCurve: "continuous" as const,
         alignItems: "center" as const,
         justifyContent: "center" as const,
-        marginBottom: SPACING.sm,
       },
-      actionLabel: {
-        ...TYPOGRAPHY.labelMedium,
-        color: "#ffffff",
-        textAlign: "center" as const,
+      label: {
+        ...TYPOGRAPHY.bodyLarge,
+        color: n.foreground,
+        flex: 1,
+        fontWeight: "600" as const,
       },
     }));
 
-    const snapPoints = useMemo(() => ["40%"], []);
-
+    // Dynamic-sized sheet: content height drives the snap point, so 3 or 4
+    // rows never crop and short lists don't leave a gaping sheet.
     const renderBackdrop = useCallback(
       (props: any) => (
         <BottomSheetBackdrop
@@ -118,41 +127,38 @@ export const ActionSheet = forwardRef<BottomSheet, ActionSheetProps>(
       []
     );
 
+    const withClose = (fn?: () => void) => () => {
+      fn?.();
+      onClose();
+    };
+
     const adminActions: ActionItem[] = [
       {
-        icon: <CalendarPlus size={24} color={ICON_COLOR} />,
+        Icon: CalendarPlus,
         label: "Create Event",
-        onPress: () => {
-          onCreateEvent?.();
-          onClose();
-        },
+        tint: semantic.success,
+        onPress: withClose(onCreateEvent),
       },
       {
-        icon: <Megaphone size={24} color={ICON_COLOR} />,
+        Icon: Megaphone,
         label: "Post Announcement",
-        onPress: () => {
-          onPostAnnouncement?.();
-          onClose();
-        },
+        tint: semantic.info,
+        onPress: withClose(onPostAnnouncement),
       },
       {
-        icon: <UserPlus size={24} color={ICON_COLOR} />,
+        Icon: UserPlus,
         label: "Invite Member",
-        onPress: () => {
-          onInviteMember?.();
-          onClose();
-        },
+        tint: ACCENT_VIOLET,
+        onPress: withClose(onInviteMember),
       },
       // Apple Guideline 3.2.2(iv): no in-app contribution entry point on iOS.
       ...(Platform.OS !== "ios"
         ? [
             {
-              icon: <HandCoins size={24} color={ICON_COLOR} />,
+              Icon: HandCoins,
               label: "Record Contribution",
-              onPress: () => {
-                onRecordDonation?.();
-                onClose();
-              },
+              tint: semantic.warning,
+              onPress: withClose(onRecordDonation),
             },
           ]
         : []),
@@ -160,57 +166,64 @@ export const ActionSheet = forwardRef<BottomSheet, ActionSheetProps>(
 
     const memberActions: ActionItem[] = [
       {
-        icon: <CalendarCheck size={24} color={ICON_COLOR} />,
+        Icon: CalendarCheck,
         label: "RSVP to Event",
-        onPress: () => {
-          onRsvpEvent?.();
-          onClose();
-        },
+        tint: semantic.success,
+        onPress: withClose(onRsvpEvent),
       },
       {
-        icon: <MapPin size={24} color={ICON_COLOR} />,
+        Icon: MapPin,
         label: "Check In",
-        onPress: () => {
-          onCheckIn?.();
-          onClose();
-        },
+        tint: semantic.info,
+        onPress: withClose(onCheckIn),
       },
       {
-        icon: <Share2 size={24} color={ICON_COLOR} />,
+        Icon: Share2,
         label: "Share Org",
-        onPress: () => {
-          onShareOrg?.();
-          onClose();
-        },
+        tint: semantic.warning,
+        onPress: withClose(onShareOrg),
       },
     ];
 
     const actions = isAdmin ? adminActions : memberActions;
 
+    const contentStyle = useMemo(
+      () => [
+        styles.content,
+        { paddingBottom: Math.max(insets.bottom, SPACING.md) + SPACING.sm },
+      ],
+      [styles.content, insets.bottom]
+    );
+
     return (
       <BottomSheet
         ref={ref}
         index={-1}
-        snapPoints={snapPoints}
+        enableDynamicSizing
         enablePanDownToClose
         backdropComponent={renderBackdrop}
         backgroundStyle={styles.background}
         handleIndicatorStyle={styles.indicator}
       >
-        <BottomSheetView style={styles.content}>
+        <BottomSheetView style={contentStyle}>
           <Text style={styles.title}>Quick Actions</Text>
-          <View style={styles.grid}>
-            {actions.map((action, index) => (
-              <Pressable
-                key={index}
-                style={({ pressed }) => [styles.actionTile, pressed && { opacity: 0.7 }]}
-                onPress={action.onPress}
+          {actions.map((action) => (
+            <Pressable
+              key={action.label}
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+              onPress={action.onPress}
+              accessibilityRole="button"
+              accessibilityLabel={action.label}
+            >
+              <View
+                style={[styles.iconBadge, { backgroundColor: action.tint + "22" }]}
               >
-                <View style={styles.iconContainer}>{action.icon}</View>
-                <Text style={styles.actionLabel}>{action.label}</Text>
-              </Pressable>
-            ))}
-          </View>
+                <action.Icon size={22} color={action.tint} />
+              </View>
+              <Text style={styles.label}>{action.label}</Text>
+              <ChevronRight size={20} color={neutral.placeholder} />
+            </Pressable>
+          ))}
         </BottomSheetView>
       </BottomSheet>
     );
