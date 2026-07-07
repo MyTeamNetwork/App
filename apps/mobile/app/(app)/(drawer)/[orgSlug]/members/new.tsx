@@ -264,7 +264,12 @@ export default function NewMemberInviteScreen() {
   const handleShare = async () => {
     if (!inviteLink) return;
     try {
-      await Share.share({ message: inviteLink });
+      // iOS: pass both `url` and `message` so the target (iMessage, Mail,
+      // etc.) gets a real link to preview/copy, not just inline text.
+      await Share.share({
+        url: inviteLink,
+        message: `Join us on TeamNetwork: ${inviteLink}`,
+      });
     } catch (shareError) {
       console.warn("Share failed:", shareError);
     }

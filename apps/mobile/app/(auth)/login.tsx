@@ -476,7 +476,6 @@ export default function LoginScreen() {
             />
             <View style={styles.backButtonSpacer} />
           </View>
-          <Text style={styles.gradientSubhead}>Sign in to your account</Text>
         </SafeAreaView>
       </LinearGradient>
 
@@ -491,6 +490,10 @@ export default function LoginScreen() {
             showsVerticalScrollIndicator={false}
             automaticallyAdjustKeyboardInsets
           >
+            {/* Title lives inside the sheet (not the gradient) so the sheet's
+                overlap can never clip it — matches the signup screen. */}
+            <Text style={styles.sheetTitle}>Sign in to your account</Text>
+
             {/* Success message from signup */}
             {params.message && (
               <View style={styles.successBox}>
@@ -759,11 +762,10 @@ const styles = StyleSheet.create({
   headerLogo: {
     // width/height set inline based on screen size
   },
-  gradientSubhead: {
-    ...TYPOGRAPHY.bodyMedium,
-    color: "rgba(255, 255, 255, 0.65)",
-    textAlign: "center",
-    marginTop: SPACING.sm,
+  sheetTitle: {
+    ...TYPOGRAPHY.headlineMedium,
+    color: NEUTRAL.foreground,
+    marginBottom: SPACING.lg,
   },
 
   // Keyboard + sheet
