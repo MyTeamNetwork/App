@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { baseSchemas } from "@/lib/security/validation";
 import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
+import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
 import { reinstateToActiveMember } from "@/lib/graduation/queries";
 import { debugLog, maskPII } from "@/lib/debug";
 
@@ -63,6 +64,11 @@ export async function POST(_req: Request, { params }: RouteParams) {
 
   if (!(await requireActiveOrgAdmin(supabase, user.id, organizationId))) {
     return respond({ error: "Forbidden" }, 403);
+  }
+
+  const { isReadOnly } = await checkOrgReadOnly(organizationId);
+  if (isReadOnly) {
+    return respond(readOnlyResponse(), 403);
   }
 
   const serviceSupabase = createServiceClient();

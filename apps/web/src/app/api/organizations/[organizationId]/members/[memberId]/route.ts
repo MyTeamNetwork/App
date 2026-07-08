@@ -6,6 +6,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { validateJson, ValidationError, baseSchemas } from "@/lib/security/validation";
 import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
+import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
 import { executeMemberRoleChange, type MemberRoleChangeClient } from "@/lib/members/role-change";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,11 @@ export async function PATCH(req: Request, { params }: RouteParams) {
 
   if (!(await requireActiveOrgAdmin(supabase, user.id, organizationId))) {
     return respond({ error: "Forbidden" }, 403);
+  }
+
+  const { isReadOnly } = await checkOrgReadOnly(organizationId);
+  if (isReadOnly) {
+    return respond(readOnlyResponse(), 403);
   }
 
   let body: z.infer<typeof patchSchema>;
