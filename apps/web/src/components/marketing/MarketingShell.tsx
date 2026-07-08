@@ -19,7 +19,7 @@ export function MarketingShell({ children }: { children: ReactNode }) {
   return (
     <div
       id="top"
-      className="landing-page relative min-h-screen overflow-x-clip bg-landing-navy text-landing-cream"
+      className="landing-page relative min-h-screen overflow-x-clip text-landing-cream"
     >
       <LandingAnimations />
 

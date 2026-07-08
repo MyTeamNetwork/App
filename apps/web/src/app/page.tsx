@@ -67,7 +67,7 @@ export default async function LandingPage() {
   }
 
   return (
-    <div id="top" className="landing-page relative min-h-screen overflow-x-clip bg-landing-navy text-landing-cream">
+    <div id="top" className="landing-page relative min-h-screen overflow-x-clip text-landing-cream">
       <LandingAnimations />
 
       {/* Pronounced animated gradient mesh — sits behind everything (-z-20) */}

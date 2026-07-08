@@ -14,7 +14,11 @@
   --landing-cream-muted-rgb: 229 229 229;
   --landing-green-rgb: 34 197 94;
   --landing-green-dark-rgb: 22 163 74;
-  background: var(--landing-navy);
+  /* NOTE: the opaque navy base is painted on `body:has(.landing-page)` below,
+     NOT here. An opaque background on this isolate-stacking-context wrapper
+     gets composited OVER the content by iOS Safari's GPU compositor (the
+     fixed, negative-z background layers trigger it), blanking the page to
+     solid navy. Keeping this wrapper transparent lets content stay on top. */
 }
 
 .font-display {
@@ -1045,6 +1049,11 @@ noscript~.scroll-reveal {
    not a scroll container) — scoped to marketing pages only. */
 body:has(.landing-page) {
   overflow-x: clip;
+  /* Opaque navy base for the marketing shell. Lives here (behind the whole
+     .landing-page stacking context) rather than on .landing-page itself so
+     iOS Safari can't composite it over the content — see the .landing-page
+     note above. The fixed mesh/constellation (negative z) paint above this. */
+  background-color: #0a0a0a;
 }
 
 /* ── Animated background mesh (pronounced, GPU-only transform/opacity) ── */

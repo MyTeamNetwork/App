@@ -13,6 +13,23 @@ interface UseOrganizationsReturn {
   refetch: () => void;
 }
 
+/**
+ * Derive the organization list shown on the mobile "your organizations" screen
+ * from user_organization_roles rows. A user with no rows for a given status
+ * yields an empty list — which the app renders as "you are in no orgs". Rows
+ * whose joined organization is null (deleted/inaccessible) are dropped.
+ *
+ * Extracted as a pure function so the derivation is unit-testable without a
+ * React Native environment. See __tests__/hooks/useOrganizations.test.ts.
+ */
+export function extractOrganizations(
+  rows: { organization: Organization | null }[] | null | undefined
+): Organization[] {
+  return (rows || [])
+    .map((row) => row.organization)
+    .filter((org): org is Organization => org !== null);
+}
+
 export function useOrganizations(): UseOrganizationsReturn {
   const isMountedRef = useRef(true);
   const { user } = useAuth();
@@ -54,12 +71,8 @@ export function useOrganizations(): UseOrganizationsReturn {
       if (pendingResult.error) throw pendingResult.error;
 
       if (isMountedRef.current && isCurrentRequest(requestId)) {
-        const orgs = (activeResult.data || [])
-          .map((row) => row.organization)
-          .filter((org): org is Organization => org !== null);
-        const pendingOrgs = (pendingResult.data || [])
-          .map((row) => row.organization)
-          .filter((org): org is Organization => org !== null);
+        const orgs = extractOrganizations(activeResult.data);
+        const pendingOrgs = extractOrganizations(pendingResult.data);
 
         setOrganizations(orgs);
         setPendingOrganizations(pendingOrgs);
