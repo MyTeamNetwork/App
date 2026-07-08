@@ -12,6 +12,14 @@ import { claimOrgInviteUse } from "./claim-org-invite-use";
 // to the caller so support can match user reports to logs.
 const ROLLBACK_ORPHAN_TAG = "[parent-invite-accept rollback orphan]";
 
+// Uniform 200 body for both the real success path and the "email already
+// registered" path. The two cases are indistinguishable to the caller by
+// design — see the comment at the email_exists branch for why. Any
+// response-shape difference (status code, body keys, or a data-bearing
+// field like parentId present in one branch but not the other) would leak
+// account existence to anyone holding a valid invite code.
+const UNIFORM_ACCEPT_RESPONSE = { success: true } as const;
+
 type StepResult = { ok: true } | { ok: false; reason: string };
 
 const acceptInviteSchema = z.object({
@@ -387,10 +395,14 @@ export async function POST(req: Request, { params }: RouteParams) {
       await claimResult.rollback();
       // Reject rather than silently granting org membership to an email the caller may not own.
       // An existing user must sign in and accept the invite via an authenticated endpoint.
-      return respond(
-        { error: "This email is already registered. Please sign in to accept this invite." },
-        409
-      );
+      //
+      // Response is deliberately identical in status + body shape to the
+      // success response below (UNIFORM_ACCEPT_RESPONSE / 200 + {success:true}).
+      // A distinct 409 "already registered" message would let anyone holding
+      // a valid invite code probe arbitrary emails for account existence.
+      // The client already treats any res.ok as "show success screen"; an
+      // existing owner of the email will simply need to sign in separately.
+      return respond(UNIFORM_ACCEPT_RESPONSE);
     }
     await claimResult.rollback();
     console.error("[org/parents/invite/accept] Auth user creation error:", createError);
@@ -519,6 +531,9 @@ export async function POST(req: Request, { params }: RouteParams) {
     return parentResult.response;
   }
 
-  const parentId = parentResult.parentId;
-  return respond({ success: true, parentId });
+  // parentId is intentionally not included in the response body — see
+  // UNIFORM_ACCEPT_RESPONSE above. Keeping the success body free of
+  // data-bearing fields ensures it stays identical to the email-exists
+  // branch's response.
+  return respond(UNIFORM_ACCEPT_RESPONSE);
 }
