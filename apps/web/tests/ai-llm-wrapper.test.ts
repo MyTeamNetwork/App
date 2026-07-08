@@ -76,11 +76,21 @@ test("Profiles.pass1Tools defaults to temperature 0", () => {
   if (previous !== undefined) process.env.AI_PASS1_TEMPERATURE = previous;
 });
 
-test("Profiles.pass2Compose defaults to temperature 0.7", () => {
+test("Profiles.pass2Compose defaults to temperature 0.4", () => {
   const previous = process.env.AI_PASS2_TEMPERATURE;
   delete process.env.AI_PASS2_TEMPERATURE;
-  assert.equal(Profiles.pass2Compose().temperature, 0.7);
+  assert.equal(Profiles.pass2Compose().temperature, 0.4);
   if (previous !== undefined) process.env.AI_PASS2_TEMPERATURE = previous;
+});
+
+test("Profiles.pass2Compose uses the compose model, honoring LLM_MODEL_PASS2", () => {
+  const previous = process.env.LLM_MODEL_PASS2;
+  delete process.env.LLM_MODEL_PASS2;
+  assert.equal(Profiles.pass2Compose().model, "us.amazon.nova-lite-v1:0");
+  process.env.LLM_MODEL_PASS2 = "us.amazon.nova-pro-v1:0";
+  assert.equal(Profiles.pass2Compose().model, "us.amazon.nova-pro-v1:0");
+  if (previous === undefined) delete process.env.LLM_MODEL_PASS2;
+  else process.env.LLM_MODEL_PASS2 = previous;
 });
 
 test("runLlmCompletion returns completion + actualModel on success", async () => {

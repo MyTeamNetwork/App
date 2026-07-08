@@ -6,6 +6,10 @@ const DEFAULT_LLM_MODEL = "us.amazon.nova-micro-v1:0";
 // Cheapest Nova model with image support — used for the vision (schedule
 // image extraction) path.
 const DEFAULT_LLM_IMAGE_MODEL = "us.amazon.nova-lite-v1:0";
+// Model for the user-facing pass-2 compose step. Nova Lite is steadier and
+// more concise than Micro at the higher sampling temperature compose uses,
+// while staying far cheaper than the prior provider. Routing stays on Micro.
+const DEFAULT_LLM_COMPOSE_MODEL = "us.amazon.nova-lite-v1:0";
 
 function validateLlmImageModel(value: string): string {
   const normalized = value.trim();
@@ -48,4 +52,8 @@ export function getLlmModel(): string {
 
 export function getLlmImageModel(): string {
   return validateLlmImageModel(process.env.BEDROCK_IMAGE_MODEL || DEFAULT_LLM_IMAGE_MODEL);
+}
+
+export function getLlmComposeModel(): string {
+  return process.env.LLM_MODEL_PASS2 || DEFAULT_LLM_COMPOSE_MODEL;
 }

@@ -7,7 +7,7 @@
 // transient errors (429 / 5xx / timeout) with optional fallback model.
 
 import type OpenAI from "openai";
-import { createLlmClient, getLlmModel } from "@/lib/ai/client";
+import { createLlmClient, getLlmComposeModel, getLlmModel } from "@/lib/ai/client";
 
 export type LlmTrackOpsEventFn = (
   event: "api_error",
@@ -97,9 +97,12 @@ export const Profiles = {
   pass2Compose(): LlmProfile {
     return {
       name: "pass2_compose",
-      model: defaultModel(),
+      // Pass-2 composes the user-facing answer — run it on the steadier compose
+      // model (Nova Lite by default) at a lower temperature for consistency.
+      // Pass-1 tool routing stays on the cheap default model.
+      model: getLlmComposeModel(),
       fallbackModel: defaultFallback(),
-      temperature: envNumber("AI_PASS2_TEMPERATURE", 0.7),
+      temperature: envNumber("AI_PASS2_TEMPERATURE", 0.4),
       // Reasoning/output tokens count toward max_tokens; 2000 truncated real
       // multi-tool answers mid-word (visible text is a fraction of the spend).
       maxTokens: envInt("AI_PASS2_MAX_TOKENS", 4000),
