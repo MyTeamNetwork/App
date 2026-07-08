@@ -1,14 +1,13 @@
 import { Users, GraduationCap, CalendarClock, HandHeart, Heart } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
 import { getOrgContext, getCurrentUser } from "@/lib/auth/roles";
 import { resolveDataClient } from "@/lib/auth/dev-admin";
-import { fetchMediaForEntities } from "@/lib/media/fetch";
 
 import { getCachedDonationStats } from "@/lib/cached-queries";
 import { loadFeedSidebarData } from "@/lib/feed/load-feed-sidebar-data";
 import { loadJumpBackInData } from "@/lib/feed/load-jump-back-in";
+import { loadFeedPage } from "@/lib/feed/load-feed-page";
 
 import { FeedComposer } from "@/components/feed/FeedComposer";
 import { JumpBackIn } from "@/components/feed/JumpBackIn";
@@ -19,7 +18,6 @@ import { OrgHomeMobileOverview } from "@/components/feed/OrgHomeMobileOverview";
 import { CompactStatsWidget } from "@/components/feed/CompactStatsWidget";
 import type { StatItem } from "@/components/feed/CompactStatsWidget";
 import type { MobileStatChip } from "@/components/feed/feed-mobile-stat-types";
-import type { PollMetadata } from "@/components/feed/types";
 
 export const dynamic = "force-dynamic";
 
@@ -41,18 +39,13 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
   const queryClient = resolveDataClient(user, supabase, "view_org");
   const membersClient = resolveDataClient(user, supabase, "view_members");
 
-  // Parse pagination
-  const page = parseInt(pageParam || "1", 10);
-  const limit = 25;
-  const offset = (page - 1) * limit;
-
   // Fetch stats + feed posts + sidebar widget data in parallel
   const [
     { count: membersCount },
     { count: alumniCount },
     { count: parentsCount },
     { count: eventsCount },
-    { data: posts, error: postsError, count: postsCount },
+    feedPageResult,
     userName,
     feedSidebarData,
     jumpBackInData,
@@ -61,13 +54,7 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
     queryClient.from("alumni").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null),
     queryClient.from("parents").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null),
     queryClient.from("events").select("*", { count: "exact", head: true }).eq("organization_id", org.id).is("deleted_at", null).gte("start_date", new Date().toISOString()),
-    supabase
-      .from("feed_posts")
-      .select(`*, author:users!feed_posts_author_id_fkey(name)`, { count: "exact", head: false })
-      .eq("organization_id", org.id)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1),
+    loadFeedPage({ supabase, orgId: org.id, viewerId: orgCtx.userId, page: pageParam }),
     orgCtx.userId
       ? supabase.from("users").select("name").eq("id", orgCtx.userId).maybeSingle().then((r) => r.data)
       : Promise.resolve(null),
@@ -90,87 +77,8 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
     getTranslations("pages.dashboard"),
   ]);
 
-  if (postsError) {
-    throw new Error("Failed to load feed");
-  }
-
-  // Fetch user likes + media for posts
-  const postIds = (posts || []).map((p) => p.id);
-  let userLikedPostIds: Set<string> = new Set();
-
-  if (postIds.length > 0 && orgCtx.userId) {
-    const { data: likes, error: likesError } = await supabase
-      .from("feed_likes")
-      .select("post_id")
-      .eq("user_id", orgCtx.userId)
-      .in("post_id", postIds);
-
-    if (likesError) {
-      console.error("Failed to fetch user likes:", likesError);
-    }
-
-    userLikedPostIds = new Set((likes || []).map((l) => l.post_id));
-  }
-
-  const mediaMap = postIds.length > 0
-    ? await fetchMediaForEntities(createServiceClient(), "feed_post", postIds, org.id)
-    : new Map();
-
-  // Augment poll data for poll-type posts
-  const pollPostIds = (posts || []).filter((p) => (p as Record<string, unknown>).post_type === "poll").map((p) => p.id);
-  const userVoteMap = new Map<string, number>();
-  const voteCountsMap = new Map<string, number[]>();
-  const totalVotesMap = new Map<string, number>();
-
-  if (pollPostIds.length > 0 && orgCtx.userId) {
-    const [{ data: userVotes }, { data: allVotes }] = await Promise.all([
-      supabase
-        .from("feed_poll_votes")
-        .select("post_id, option_index")
-        .eq("user_id", orgCtx.userId)
-        .in("post_id", pollPostIds),
-      supabase
-        .from("feed_poll_votes")
-        .select("post_id, option_index")
-        .in("post_id", pollPostIds)
-        .limit(5000),
-    ]);
-
-    for (const v of userVotes || []) {
-      userVoteMap.set(v.post_id, v.option_index);
-    }
-
-    for (const v of allVotes || []) {
-      if (!voteCountsMap.has(v.post_id)) {
-        const postForMeta = (posts || []).find((p) => p.id === v.post_id);
-        const meta = (postForMeta as Record<string, unknown>)?.metadata as PollMetadata | null;
-        voteCountsMap.set(v.post_id, new Array(meta?.options.length || 0).fill(0));
-        totalVotesMap.set(v.post_id, 0);
-      }
-      const counts = voteCountsMap.get(v.post_id)!;
-      if (v.option_index < counts.length) {
-        counts[v.option_index]++;
-      }
-      totalVotesMap.set(v.post_id, (totalVotesMap.get(v.post_id) || 0) + 1);
-    }
-  }
-
-  const augmentedPosts = (posts || []).map((post) => ({
-    ...post,
-    liked_by_user: userLikedPostIds.has(post.id),
-    media: mediaMap.get(post.id) ?? [],
-    ...((post as Record<string, unknown>).post_type === "poll"
-      ? {
-          poll_meta: (post as Record<string, unknown>).metadata as PollMetadata | null,
-          user_vote: userVoteMap.get(post.id) ?? null,
-          vote_counts: voteCountsMap.get(post.id) ?? [],
-          total_votes: totalVotesMap.get(post.id) ?? 0,
-        }
-      : {}),
-  }));
-
-  const total = postsCount || 0;
-  const totalPages = Math.ceil(total / limit);
+  const { posts: augmentedPosts, pagination } = feedPageResult;
+  const { page, total, totalPages } = pagination;
 
   // Determine if user can create posts
   const feedPostRoles: string[] =

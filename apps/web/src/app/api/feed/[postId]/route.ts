@@ -5,6 +5,10 @@ import { createPostSchema } from "@/lib/schemas/feed";
 import { validateJson, validationErrorResponse, ValidationError } from "@/lib/security/validation";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { getOrgMembership } from "@/lib/auth/api-helpers";
+import {
+  getBlockedUserIds,
+  blockedIdsInFilter,
+} from "@/lib/moderation/blocked-users";
 import { z } from "zod";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ postId: string }> }) {
@@ -57,8 +61,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Not a member of this organization" }, { status: 403 });
     }
 
+    // Hide posts/comments authored by users in a mutual block with the viewer
+    // (Apple 1.2). A blocked author's post reads as "not found" — same 404
+    // shape as a missing post, so block state isn't leaked.
+    const blockedIds = await getBlockedUserIds(supabase, user.id);
+    if (blockedIds.includes(post.author_id)) {
+      return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    }
+
+    const blockedFilter = blockedIdsInFilter(blockedIds);
+
     // Fetch comments
-    const { data: comments, error: commentsError } = await supabase
+    let commentsQuery = supabase
       .from("feed_comments")
       .select(
         `
@@ -67,8 +81,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       `,
       )
       .eq("post_id", postId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: true });
+      .is("deleted_at", null);
+
+    if (blockedFilter) {
+      commentsQuery = commentsQuery.not("author_id", "in", blockedFilter);
+    }
+
+    const { data: comments, error: commentsError } = await commentsQuery.order("created_at", {
+      ascending: true,
+    });
 
     if (commentsError) {
       return NextResponse.json({ error: "Failed to fetch comments" }, { status: 500 });

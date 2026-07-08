@@ -7,16 +7,12 @@ import { validateJson, validationErrorResponse, ValidationError, baseSchemas } f
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { getOrgMembership } from "@/lib/auth/api-helpers";
 import { getAllowedOrgRoles } from "@/lib/auth/org-role-config";
-import {
-  getBlockedUserIds,
-  blockedIdsInFilter,
-} from "@/lib/moderation/blocked-users";
 import { linkMediaToEntity } from "@/lib/media/link";
-import { fetchMediaForEntities } from "@/lib/media/fetch";
-import type { PollMetadata } from "@/components/feed/types";
+import { loadFeedPage } from "@/lib/feed/load-feed-page";
 import { z } from "zod";
 
 export async function GET(request: NextRequest) {
+  let orgId: string | undefined;
   try {
     // Rate limit check BEFORE auth
     const rateLimit = checkRateLimit(request, {
@@ -53,12 +49,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid orgId format" }, { status: 400 });
     }
 
-    const { orgId } = parsed.data;
+    orgId = parsed.data.orgId;
 
     // Parse pagination params
     const page = Math.max(1, parseInt(pageParam || "1", 10));
     const limit = Math.min(100, Math.max(1, parseInt(limitParam || "25", 10)));
-    const offset = (page - 1) * limit;
 
     // Check org membership
     const membership = await getOrgMembership(supabase, user.id, orgId);
@@ -66,128 +61,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Not a member of this organization" }, { status: 403 });
     }
 
-    // Hide posts authored by users in a mutual block with the viewer (Apple 1.2).
-    const blockedFilter = blockedIdsInFilter(
-      await getBlockedUserIds(supabase, user.id),
-    );
-
-    // Fetch posts with author info and count
-    let postsQuery = supabase
-      .from("feed_posts")
-      .select(
-        `
-        *,
-        author:users!feed_posts_author_id_fkey(name)
-      `,
-        { count: "exact", head: false },
-      )
-      .eq("organization_id", orgId)
-      .is("deleted_at", null);
-
-    if (blockedFilter) {
-      postsQuery = postsQuery.not("author_id", "in", blockedFilter);
-    }
-
-    const { data: posts, error, count } = await postsQuery
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) {
+    let posts: Awaited<ReturnType<typeof loadFeedPage>>["posts"];
+    let pagination: Awaited<ReturnType<typeof loadFeedPage>>["pagination"];
+    try {
+      ({ posts, pagination } = await loadFeedPage({
+        supabase,
+        orgId,
+        viewerId: user.id,
+        page,
+        limit,
+      }));
+    } catch {
       return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });
     }
 
-    // Fetch user's likes for these posts
-    const postIds = (posts || []).map((p) => p.id);
-    let userLikedPostIds: Set<string> = new Set();
-
-    if (postIds.length > 0) {
-      const { data: likes } = await supabase
-        .from("feed_likes")
-        .select("post_id")
-        .eq("user_id", user.id)
-        .in("post_id", postIds);
-
-      userLikedPostIds = new Set((likes || []).map((l) => l.post_id));
-    }
-
-    // Fetch media attachments for all posts
-    const serviceClient = createServiceClient();
-    const mediaMap = postIds.length > 0
-      ? await fetchMediaForEntities(serviceClient, "feed_post", postIds)
-      : new Map();
-
-    // Augment poll data for poll-type posts
-    const pollPostIds = (posts || []).filter((p) => p.post_type === "poll").map((p) => p.id);
-    const userVoteMap = new Map<string, number>();
-    const voteCountsMap = new Map<string, number[]>();
-    const totalVotesMap = new Map<string, number>();
-
-    if (pollPostIds.length > 0) {
-      const [{ data: userVotes }, { data: allVotes }] = await Promise.all([
-        supabase
-          .from("feed_poll_votes")
-          .select("post_id, option_index")
-          .eq("user_id", user.id)
-          .in("post_id", pollPostIds),
-        supabase
-          .from("feed_poll_votes")
-          .select("post_id, option_index")
-          .in("post_id", pollPostIds),
-      ]);
-
-      for (const v of userVotes || []) {
-        userVoteMap.set(v.post_id, v.option_index);
-      }
-
-      for (const v of allVotes || []) {
-        if (!voteCountsMap.has(v.post_id)) {
-          const post = (posts || []).find((p) => p.id === v.post_id);
-          const meta = post?.metadata as PollMetadata | null;
-          voteCountsMap.set(v.post_id, new Array(meta?.options.length || 0).fill(0));
-          totalVotesMap.set(v.post_id, 0);
-        }
-        const counts = voteCountsMap.get(v.post_id)!;
-        if (v.option_index < counts.length) {
-          counts[v.option_index]++;
-        }
-        totalVotesMap.set(v.post_id, (totalVotesMap.get(v.post_id) || 0) + 1);
-      }
-    }
-
-    // Augment posts with liked_by_user, media, and poll data
-    const augmentedPosts = (posts || []).map((post) => ({
-      ...post,
-      liked_by_user: userLikedPostIds.has(post.id),
-      media: mediaMap.get(post.id) ?? [],
-      ...(post.post_type === "poll"
-        ? {
-            poll_meta: post.metadata as PollMetadata | null,
-            user_vote: userVoteMap.get(post.id) ?? null,
-            vote_counts: voteCountsMap.get(post.id) ?? new Array(
-              ((post.metadata as PollMetadata | null)?.options ?? []).length
-            ).fill(0),
-            total_votes: totalVotesMap.get(post.id) ?? 0,
-          }
-        : {}),
-    }));
-
-    const total = count || 0;
-    const totalPages = Math.ceil(total / limit);
-
     return NextResponse.json(
       {
-        data: augmentedPosts,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages,
-        },
+        data: posts,
+        pagination,
       },
       { headers: rateLimit.headers },
     );
   } catch (error) {
-    console.error("[FEED API DEBUG] GET error:", error);
+    console.error("[feed] GET failed", { error, orgId });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
