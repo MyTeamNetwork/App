@@ -29,7 +29,7 @@ real users on a config typo).
 Single env var with in-code defaults that match production:
 
 ```
-AI_PRICES_JSON='{"glm-5v":{"in":2000,"out":6000},"glm-5":{"in":600,"out":2200},"embed":{"in":150,"out":0}}'
+AI_PRICES_JSON='{"nova-lite":{"in":6,"out":24},"nova-micro":{"in":3.5,"out":14},"embed":{"in":150,"out":0}}'
 ```
 
 - Keys matched case-insensitively by substring against the model name.

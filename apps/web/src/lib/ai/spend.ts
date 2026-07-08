@@ -51,8 +51,8 @@ interface ModelPrice {
   out: number; // cents per million output tokens
 }
 const DEFAULT_PRICES: Record<string, ModelPrice> = {
-  "glm-5v": { in: 2000, out: 6000 },
-  "glm-5": { in: 600, out: 2200 },
+  "nova-lite": { in: 6, out: 24 },
+  "nova-micro": { in: 3.5, out: 14 },
   "embed": { in: 150, out: 0 },
   "gemini": { in: 150, out: 0 },
 };
@@ -80,7 +80,7 @@ function loadPrices(): Record<string, ModelPrice> {
       cachedPrices = DEFAULT_PRICES;
     }
   }
-  // Match longest key first so "glm-5v" wins over "glm-5" for vision models.
+  // Match longest key first so "nova-micro" wins over a shorter "nova" prefix.
   cachedPricesKeys = Object.keys(cachedPrices).sort((a, b) => b.length - a.length);
   return cachedPrices;
 }

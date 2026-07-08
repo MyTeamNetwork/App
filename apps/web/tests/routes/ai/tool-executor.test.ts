@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { getZaiImageModel } from "../../../src/lib/ai/client.ts";
+import { getLlmImageModel } from "../../../src/lib/ai/client.ts";
 import { executeToolCall } from "../../../src/lib/ai/tools/executor.ts";
 import { getSuggestionObservabilityByOrg } from "../../../src/lib/people-graph/suggestions.ts";
 import { resetSuggestionTelemetryForTests } from "../../../src/lib/people-graph/telemetry.ts";
@@ -368,7 +368,7 @@ beforeEach(() => {
   ctx = makeCtx(stub as any);
 });
 
-test("schedule extraction uses separate Z.AI models for text and image sources", async () => {
+test("schedule extraction uses separate models for text and image sources", async () => {
   const completionCalls: Array<{ model: string; messages: unknown[] }> = [];
   const fakeClient = {
     chat: {
@@ -395,8 +395,8 @@ test("schedule extraction uses separate Z.AI models for text and image sources",
 
   setScheduleExtractionDepsForTests({
     createClient: () => fakeClient,
-    getTextModel: () => "glm-5.1",
-    getImageModel: () => "glm-5v-turbo",
+    getTextModel: () => "us.amazon.nova-micro-v1:0",
+    getImageModel: () => "us.amazon.nova-lite-v1:0",
   });
 
   await extractScheduleFromText("Varsity match schedule", {
@@ -415,8 +415,8 @@ test("schedule extraction uses separate Z.AI models for text and image sources",
     }
   );
 
-  assert.equal(completionCalls[0]?.model, "glm-5.1");
-  assert.equal(completionCalls[1]?.model, "glm-5v-turbo");
+  assert.equal(completionCalls[0]?.model, "us.amazon.nova-micro-v1:0");
+  assert.equal(completionCalls[1]?.model, "us.amazon.nova-lite-v1:0");
   assert.match(JSON.stringify(completionCalls[1]?.messages), /image_url/);
 });
 
@@ -619,20 +619,20 @@ test("extractScheduleFromText returns parser candidate rows for partial PDF sche
   ]);
 });
 
-test("getZaiImageModel rejects token-like configuration values", () => {
-  const previous = process.env.ZAI_IMAGE_MODEL;
-  process.env.ZAI_IMAGE_MODEL = "7f7732de249c4bc1a2a434bf7014818b.NDlA78k4ON44EGQQ";
+test("getLlmImageModel rejects token-like configuration values", () => {
+  const previous = process.env.BEDROCK_IMAGE_MODEL;
+  process.env.BEDROCK_IMAGE_MODEL = "7f7732de249c4bc1a2a434bf7014818b.NDlA78k4ON44EGQQ";
 
   try {
     assert.throws(
-      () => getZaiImageModel(),
-      /Invalid ZAI_IMAGE_MODEL value .*Expected a Z\.AI vision model such as glm-5v-turbo/i
+      () => getLlmImageModel(),
+      /Invalid BEDROCK_IMAGE_MODEL value .*Expected an Amazon Nova vision model such as us\.amazon\.nova-lite-v1:0/i
     );
   } finally {
     if (previous === undefined) {
-      delete process.env.ZAI_IMAGE_MODEL;
+      delete process.env.BEDROCK_IMAGE_MODEL;
     } else {
-      process.env.ZAI_IMAGE_MODEL = previous;
+      process.env.BEDROCK_IMAGE_MODEL = previous;
     }
   }
 });
@@ -3133,12 +3133,12 @@ test("extract_schedule_pdf returns a mapped tool_error when image extraction fai
   });
 });
 
-test("extract_schedule_pdf returns a configuration error for invalid ZAI image model settings", async () => {
+test("extract_schedule_pdf returns a configuration error for invalid Bedrock image model settings", async () => {
   setScheduleExtractionDepsForTests({
     createClient: () => ({}) as any,
     getImageModel: () => {
       throw new Error(
-        'Invalid ZAI_IMAGE_MODEL value "bad-token". Expected a Z.AI vision model such as glm-5v-turbo.'
+        'Invalid BEDROCK_IMAGE_MODEL value "bad-token". Expected an Amazon Nova vision model such as us.amazon.nova-lite-v1:0.'
       );
     },
   });
@@ -3171,7 +3171,7 @@ test("extract_schedule_pdf returns a configuration error for invalid ZAI image m
   assert.deepEqual(result, {
     kind: "tool_error",
     error:
-      "Schedule image extraction is misconfigured. Set ZAI_IMAGE_MODEL to a Z.AI vision model such as glm-5v-turbo.",
+      "Schedule image extraction is misconfigured. Set BEDROCK_IMAGE_MODEL to an Amazon Nova vision model such as us.amazon.nova-lite-v1:0.",
     code: "image_model_misconfigured",
   });
 });

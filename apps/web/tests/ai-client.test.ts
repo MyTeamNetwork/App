@@ -1,17 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-test("getZaiModel defaults to glm-5.2", async () => {
-  const previous = process.env.ZAI_MODEL;
-  delete process.env.ZAI_MODEL;
+test("getLlmModel defaults to Nova Micro", async () => {
+  const previous = process.env.BEDROCK_MODEL;
+  delete process.env.BEDROCK_MODEL;
 
-  const { getZaiModel } = await import("../src/lib/ai/client.ts");
+  const { getLlmModel } = await import("../src/lib/ai/client.ts");
 
-  assert.equal(getZaiModel(), "glm-5.2");
+  assert.equal(getLlmModel(), "us.amazon.nova-micro-v1:0");
 
   if (previous === undefined) {
-    delete process.env.ZAI_MODEL;
+    delete process.env.BEDROCK_MODEL;
   } else {
-    process.env.ZAI_MODEL = previous;
+    process.env.BEDROCK_MODEL = previous;
   }
 });

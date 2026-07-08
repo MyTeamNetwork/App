@@ -274,8 +274,8 @@ function buildDefaultDeps(overrides: Record<string, any> = {}) {
       orgContextMessage: null,
       metadata: { surface: input.surface, estimatedTokens: 100 },
     }),
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5.1",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5.1",
     composeResponse: async function* (options: any) {
       composeResponseCalls.push(options);
       // First call: yield a tool call if tools are provided
@@ -599,7 +599,7 @@ beforeEach(() => {
 
   POST = createChatPostHandler(buildDefaultDeps());
 
-  process.env.ZAI_API_KEY = "test-key";
+  process.env.AWS_REGION = "test-key";
   process.env.DISABLE_AI_CACHE = "true";
   delete process.env.EMBEDDING_API_KEY;
 });

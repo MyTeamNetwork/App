@@ -1,6 +1,6 @@
 import type OpenAI from "openai";
 import { z } from "zod";
-import { createZaiClient, getZaiImageModel, getZaiModel } from "@/lib/ai/client";
+import { createLlmClient, getLlmImageModel, getLlmModel } from "@/lib/ai/client";
 import { chargeAiSpend, checkAiSpend } from "@/lib/ai/spend";
 import { Profiles, runLlmCompletion, type LlmProfile } from "@/lib/ai/llm";
 
@@ -58,9 +58,9 @@ const PDF_TEAM_LEVEL_PATTERN = /\b(?:varsity|junior|freshman|jv)\b/i;
 const PDF_SPORT_PATTERN =
   /\b(?:baseball|basketball|football|soccer|lacrosse|softball|volleyball|wrestling|tennis|golf|track|cross country|swimming|rowing|crew|hockey|rugby)\b/i;
 const defaultDeps: ScheduleExtractionDeps = {
-  createClient: createZaiClient,
-  getTextModel: getZaiModel,
-  getImageModel: getZaiImageModel,
+  createClient: createLlmClient,
+  getTextModel: getLlmModel,
+  getImageModel: getLlmImageModel,
 };
 let testDeps: ScheduleExtractionDeps | null = null;
 

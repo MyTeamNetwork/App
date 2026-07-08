@@ -15,7 +15,7 @@
  */
 import { setStageStatus, finalizeStageTimings, skipStage, type AiAuditStageTimings } from "@/lib/ai/chat-telemetry";
 import type { logAiRequest as logAiRequestDefault } from "@/lib/ai/audit";
-import type { getZaiModel } from "@/lib/ai/client";
+import { isLlmConfigured, type getLlmModel } from "@/lib/ai/client";
 import type { CacheStatus } from "@/lib/ai/sse";
 import type { CacheSurface } from "@/lib/ai/semantic-cache-utils";
 import type { AiOrgContext } from "@/lib/ai/context";
@@ -56,7 +56,7 @@ export interface FinalizeAuditInput {
   requestLogContext: AiLogContext;
 
   logAiRequestFn: typeof logAiRequestDefault;
-  getZaiModelFn: typeof getZaiModel;
+  getLlmModelFn: typeof getLlmModel;
 }
 
 export async function finalizeTurnAudit(input: FinalizeAuditInput): Promise<void> {
@@ -168,7 +168,7 @@ export async function finalizeTurnAudit(input: FinalizeAuditInput): Promise<void
       intentType: input.resolvedIntentType,
       toolCalls: input.auditToolCalls.length > 0 ? input.auditToolCalls : undefined,
       latencyMs: Date.now() - input.startTime,
-      model: process.env.ZAI_API_KEY ? input.getZaiModelFn() : undefined,
+      model: isLlmConfigured() ? input.getLlmModelFn() : undefined,
       inputTokens: input.runtimeState.usage?.inputTokens,
       outputTokens: input.runtimeState.usage?.outputTokens,
       error: finalAuditError,

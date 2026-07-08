@@ -216,10 +216,10 @@ function validateBuildEnv() {
     );
   }
 
-  // Optional: warn if z.ai (AI assistant) API key is missing
-  if (!process.env.ZAI_API_KEY) {
+  // Optional: warn if AWS Bedrock (AI assistant) is not configured
+  if (!process.env.AWS_REGION) {
     logOptionalEnvInfo(
-      "ℹ️  ZAI_API_KEY not set — AI assistant features disabled",
+      "ℹ️  AWS_REGION not set — AI assistant features (Bedrock Nova) disabled",
       shouldEmitOptionalEnvLogs
     );
   }

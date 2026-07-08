@@ -266,8 +266,8 @@ function rebuildHandler(opts: BuildHandlerOpts = {}): void {
       orgContextMessage: null,
       metadata: { surface: input.surface, estimatedTokens: 100 },
     }),
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: opts.composeResponse ?? composeResponseDefault,
     executeToolCall: opts.executeToolCall,
     logAiRequest: async (_s: unknown, entry: unknown) => {
@@ -325,7 +325,7 @@ async function runFixture(
 
 beforeEach(() => {
   (globalThis as { __rateLimitStore?: Map<string, unknown> }).__rateLimitStore?.clear();
-  process.env.ZAI_API_KEY = "test-key";
+  process.env.AWS_REGION = "test-key";
   process.env.DISABLE_AI_CACHE = "true";
   delete process.env.EMBEDDING_API_KEY;
 });

@@ -5,7 +5,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import type { getAiOrgContext } from "@/lib/ai/context";
 import type { buildPromptContext } from "@/lib/ai/context-builder";
-import type { createZaiClient, getZaiModel } from "@/lib/ai/client";
+import type { createLlmClient, getLlmModel } from "@/lib/ai/client";
 import type { composeResponse } from "@/lib/ai/response-composer";
 import type { logAiRequest } from "@/lib/ai/audit";
 import type { resolveOwnThread } from "@/lib/ai/thread-resolver";
@@ -27,8 +27,8 @@ export interface ChatRouteDeps {
   createClient?: typeof createClient;
   getAiOrgContext?: typeof getAiOrgContext;
   buildPromptContext?: typeof buildPromptContext;
-  createZaiClient?: typeof createZaiClient;
-  getZaiModel?: typeof getZaiModel;
+  createLlmClient?: typeof createLlmClient;
+  getLlmModel?: typeof getLlmModel;
   composeResponse?: typeof composeResponse;
   logAiRequest?: typeof logAiRequest;
   resolveOwnThread?: typeof resolveOwnThread;

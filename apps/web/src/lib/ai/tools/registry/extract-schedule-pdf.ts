@@ -48,7 +48,7 @@ async function getScheduleExtractionModule(): Promise<ScheduleExtractionModule> 
 
 function isScheduleImageConfigurationError(error: unknown): boolean {
   const message = getSafeErrorMessage(error);
-  return /ZAI_IMAGE_MODEL|vision model|model such as glm-5v-turbo/i.test(message);
+  return /BEDROCK_IMAGE_MODEL|vision model|nova/i.test(message);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -248,7 +248,7 @@ export const extractSchedulePdfModule: ToolModule<Args> = {
             mimeType: attachment.mimeType,
           });
           return toolError(
-            "Schedule image extraction is misconfigured. Set ZAI_IMAGE_MODEL to a Z.AI vision model such as glm-5v-turbo.",
+            "Schedule image extraction is misconfigured. Set BEDROCK_IMAGE_MODEL to an Amazon Nova vision model such as us.amazon.nova-lite-v1:0.",
             "image_model_misconfigured"
           );
         }

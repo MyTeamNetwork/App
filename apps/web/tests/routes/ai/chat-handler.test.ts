@@ -394,8 +394,8 @@ beforeEach(() => {
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: {
       onUsage?: (usage: { inputTokens: number; outputTokens: number }) => void;
     }) {
@@ -431,7 +431,7 @@ beforeEach(() => {
       trackedOpsEvents.push(args);
     },
   });
-  process.env.ZAI_API_KEY = "test-key";
+  process.env.AWS_REGION = "test-key";
   process.env.DISABLE_AI_CACHE = "true";
   delete process.env.EMBEDDING_API_KEY;
 });
@@ -664,8 +664,8 @@ test("POST /api/ai/[orgId]/chat serves eligible exact cache hits before prompt b
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       throw new Error("cache hit should not invoke the model");
     }) as any,
@@ -845,8 +845,8 @@ test("POST /api/ai/[orgId]/chat returns 409 when an idempotent replay has no ass
     buildPromptContext: async () => {
       throw new Error("buildPromptContext should not run for idempotent replay");
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       throw new Error("composeResponse should not run for idempotent replay");
     }) as any,
@@ -953,8 +953,8 @@ test("POST /api/ai/[orgId]/chat continues when history load fails for an existin
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { messages: Array<{ role: string; content: string }> }) {
       capturedMessages = options.messages;
       yield { type: "chunk", content: "Hello world" };
@@ -1062,8 +1062,8 @@ test("POST /api/ai/[orgId]/chat records cache_write_skipped_too_large when miss 
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: {
       onUsage?: (usage: { inputTokens: number; outputTokens: number }) => void;
     }) {
@@ -1200,8 +1200,8 @@ test("POST /api/ai/[orgId]/chat logs grounding failures for unsupported tool sum
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       if (!options.toolResults) {
         yield {
@@ -1302,8 +1302,8 @@ test("POST /api/ai/[orgId]/chat does not log grounding warnings for grounded too
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       yield {
         type: "tool_call_requested",
@@ -1376,8 +1376,8 @@ test("POST /api/ai/[orgId]/chat uses member-specific fallback for list_members g
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       yield {
         type: "tool_call_requested",
@@ -1445,8 +1445,8 @@ test("POST /api/ai/[orgId]/chat deterministically formats successful schedule im
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       composeCalls += 1;
       if (!options.toolResults) {
@@ -1582,8 +1582,8 @@ test("POST /api/ai/[orgId]/chat revises pending imported schedule events and req
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       composeCalls += 1;
       yield { type: "chunk", content: "fallback revision prose should not appear" };
@@ -1719,8 +1719,8 @@ test("POST /api/ai/[orgId]/chat revises a single pending event in place and emit
       orgContextMessage: null,
       metadata: { surface: "general", estimatedTokens: 100 },
     }),
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       composeCalls += 1;
       yield { type: "chunk", content: "should not appear — revise path skips compose" };
@@ -1851,8 +1851,8 @@ test("POST /api/ai/[orgId]/chat asks for clarification before revising an ambigu
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       composeCalls += 1;
       yield { type: "chunk", content: "ambiguous fallback prose should not appear" };
@@ -1939,8 +1939,8 @@ test("POST /api/ai/[orgId]/chat revises imported schedule batches larger than te
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       composeCalls += 1;
       yield { type: "chunk", content: "large batch fallback prose should not appear" };
@@ -2036,8 +2036,8 @@ test("POST /api/ai/[orgId]/chat explains unsupported event types during schedule
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       composeCalls += 1;
       yield { type: "chunk", content: "unsupported fallback prose should not appear" };
@@ -2105,8 +2105,8 @@ test("POST /api/ai/[orgId]/chat deterministically formats no-events schedule ima
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       composeCalls += 1;
       if (!options.toolResults) {
@@ -2187,8 +2187,8 @@ test("POST /api/ai/[orgId]/chat deterministically formats partial schedule image
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       composeCalls += 1;
       if (!options.toolResults) {
@@ -2278,8 +2278,8 @@ test("POST /api/ai/[orgId]/chat deterministically formats schedule image extract
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       composeCalls += 1;
       if (!options.toolResults) {
@@ -2358,8 +2358,8 @@ test("POST /api/ai/[orgId]/chat deterministically formats schedule image extract
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       composeCalls += 1;
       if (!options.toolResults) {
@@ -2439,8 +2439,8 @@ test("POST /api/ai/[orgId]/chat deterministically formats attachment_unavailable
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       composeCalls += 1;
       if (!options.toolResults) {
@@ -2519,8 +2519,8 @@ test("POST /api/ai/[orgId]/chat deterministically formats PDF schedule timeout f
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       composeCalls += 1;
       if (!options.toolResults) {
@@ -2600,8 +2600,8 @@ test("POST /api/ai/[orgId]/chat deterministically formats schedule image configu
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       composeCalls += 1;
       if (!options.toolResults) {
@@ -2619,7 +2619,7 @@ test("POST /api/ai/[orgId]/chat deterministically formats schedule image configu
     executeToolCall: async () => ({
       kind: "tool_error",
       error:
-        "Schedule image extraction is misconfigured. Set ZAI_IMAGE_MODEL to a Z.AI vision model such as glm-5v-turbo.",
+        "Schedule image extraction is misconfigured. Set BEDROCK_IMAGE_MODEL to an Amazon Nova vision model such as us.amazon.nova-lite-v1:0.",
       code: "image_model_misconfigured",
     }),
     logAiRequest: async (_serviceSupabase: unknown, entry: unknown) => {
@@ -2663,7 +2663,7 @@ test("POST /api/ai/[orgId]/chat deterministically formats schedule image configu
   assert.equal(response.status, 200);
   const body = await response.text();
   assert.match(body, /Schedule image extraction is misconfigured in this environment/i);
-  assert.match(body, /ZAI_IMAGE_MODEL/);
+  assert.match(body, /BEDROCK_IMAGE_MODEL/);
   assert.doesNotMatch(body, /generic fallback should not appear/i);
   assert.equal(composeCalls, 1);
 });
@@ -2682,8 +2682,8 @@ test("POST /api/ai/[orgId]/chat deterministically formats oversize schedule imag
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { toolResults?: unknown[] }) {
       composeCalls += 1;
       if (!options.toolResults) {
@@ -2762,8 +2762,8 @@ test("POST /api/ai/[orgId]/chat short-circuits suspicious prompt-injection attem
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       composeCalls += 1;
       yield { type: "chunk", content: "should not run" };
@@ -2852,8 +2852,8 @@ test("POST /api/ai/[orgId]/chat sanitizes risky user history before prompt assem
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { messages: Array<{ role: string; content: string }> }) {
       capturedMessages = options.messages;
       yield { type: "chunk", content: "Hello world" };
@@ -2917,8 +2917,8 @@ test("POST /api/ai/[orgId]/chat does not splice attachment metadata into the use
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* (options: { messages: Array<{ role: string; content: string }> }) {
       capturedMessages = options.messages;
       yield { type: "chunk", content: "ok" };
@@ -3017,8 +3017,8 @@ test("POST /api/ai/[orgId]/chat falls back when the model emits no content", asy
         metadata: { surface: input.surface, estimatedTokens: 100 },
       };
     },
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {}) as any,
     logAiRequest: async (_serviceSupabase: unknown, entry: unknown) => {
       auditEntries.push(entry);
@@ -3090,8 +3090,8 @@ test("POST /api/ai/[orgId]/chat overwrites freeform response when safety gate re
       orgContextMessage: null,
       metadata: { surface: input.surface, estimatedTokens: 100 },
     }),
-    createZaiClient: () => ({ client: "fake" } as any),
-    getZaiModel: () => "glm-5",
+    createLlmClient: () => ({ client: "fake" } as any),
+    getLlmModel: () => "glm-5",
     composeResponse: (async function* () {
       yield { type: "chunk", content: "Some ordinary answer about the roster." };
     }) as any,
@@ -3140,8 +3140,8 @@ test("POST /api/ai/[orgId]/chat in safety shadow mode records verdict but passes
         orgContextMessage: null,
         metadata: { surface: input.surface, estimatedTokens: 100 },
       }),
-      createZaiClient: () => ({ client: "fake" } as any),
-      getZaiModel: () => "glm-5",
+      createLlmClient: () => ({ client: "fake" } as any),
+      getLlmModel: () => "glm-5",
       composeResponse: (async function* () {
         yield { type: "chunk", content: "Some ordinary answer about the roster." };
       }) as any,
@@ -3193,8 +3193,8 @@ test("POST /api/ai/[orgId]/chat with DISABLE_SAFETY_GATE=1 does not invoke the c
         orgContextMessage: null,
         metadata: { surface: input.surface, estimatedTokens: 100 },
       }),
-      createZaiClient: () => ({ client: "fake" } as any),
-      getZaiModel: () => "glm-5",
+      createLlmClient: () => ({ client: "fake" } as any),
+      getLlmModel: () => "glm-5",
       composeResponse: (async function* () {
         yield { type: "chunk", content: "Some ordinary answer." };
       }) as any,
@@ -3243,8 +3243,8 @@ test("POST /api/ai/[orgId]/chat overwrites freeform response when RAG grounding 
         orgContextMessage: null,
         metadata: { surface: input.surface, estimatedTokens: 100 },
       }),
-      createZaiClient: () => ({ client: "fake" } as any),
-      getZaiModel: () => "glm-5",
+      createLlmClient: () => ({ client: "fake" } as any),
+      getLlmModel: () => "glm-5",
       composeResponse: (async function* () {
         yield { type: "chunk", content: "Contact fabricated@nowhere.com for details." };
       }) as any,
@@ -3313,8 +3313,8 @@ test("POST /api/ai/[orgId]/chat in RAG shadow mode audits but passes ungrounded 
         orgContextMessage: null,
         metadata: { surface: input.surface, estimatedTokens: 100 },
       }),
-      createZaiClient: () => ({ client: "fake" } as any),
-      getZaiModel: () => "glm-5",
+      createLlmClient: () => ({ client: "fake" } as any),
+      getLlmModel: () => "glm-5",
       composeResponse: (async function* () {
         yield { type: "chunk", content: "Paraphrased content that is not grounded." };
       }) as any,
@@ -3382,8 +3382,8 @@ test("POST /api/ai/[orgId]/chat with RAG_GROUNDING_MODE=bypass does not invoke g
         orgContextMessage: null,
         metadata: { surface: input.surface, estimatedTokens: 100 },
       }),
-      createZaiClient: () => ({ client: "fake" } as any),
-      getZaiModel: () => "glm-5",
+      createLlmClient: () => ({ client: "fake" } as any),
+      getLlmModel: () => "glm-5",
       composeResponse: (async function* () {
         yield { type: "chunk", content: "Ungrounded-looking content that should pass through." };
       }) as any,
@@ -3464,8 +3464,8 @@ test("POST /api/ai/[orgId]/chat safety gate does NOT allowlist phone numbers fro
         orgContextMessage: null,
         metadata: { surface: input.surface, estimatedTokens: 100 },
       }),
-      createZaiClient: () => ({ client: "fake" } as any),
-      getZaiModel: () => "glm-5",
+      createLlmClient: () => ({ client: "fake" } as any),
+      getLlmModel: () => "glm-5",
       composeResponse: (async function* () {
         yield { type: "chunk", content: "Call the office at 415-555-2671 for details." };
       }) as any,

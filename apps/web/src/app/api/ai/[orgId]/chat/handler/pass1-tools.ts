@@ -781,10 +781,10 @@ export const FORCED_PASS1_TOOL_CHOICE_ELIGIBLE: ReadonlySet<ToolName> = new Set<
  * mentorship suggestions must come from the matching engine. Without a guard
  * the model can skip the tool and imitate prior suggestion turns in the
  * thread, fabricating plausible member names — and tool-grounding never runs
- * because there is no tool result to ground against. z.ai only supports
- * tool_choice "auto" (named-function forcing aside), so this cannot be
- * enforced at the API layer; the tools loop fails closed instead when pass-1
- * answered one of these intents without calling a tool.
+ * because there is no tool result to ground against. Amazon Nova effectively
+ * only supports tool_choice "auto" (named-function forcing aside), so this
+ * cannot be enforced at the API layer; the tools loop fails closed instead when
+ * pass-1 answered one of these intents without calling a tool.
  */
 const TOOL_REQUIRED_PASS1_TOOL_NAMES: ReadonlySet<ToolName> = new Set<ToolName>([
   "suggest_mentors",

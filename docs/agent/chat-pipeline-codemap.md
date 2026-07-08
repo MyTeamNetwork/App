@@ -4,7 +4,7 @@ title: Chat Pipeline
 description: Full chat request lifecycle — auth, policy, RAG, tool execution, SSE streaming, persistence, grounding.
 resource: apps/web/src/app/api/ai/[orgId]/chat/handler.ts
 tags: [ai, chat-pipeline, sse, tools]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-07T00:00:00Z
 ---
 
 # Chat Pipeline — Code Map
@@ -23,7 +23,8 @@ For the connection-suggestions engine, see `docs/agent/people-graph-suggestions.
 
 | File | Purpose | Key Exports (line) |
 |---|---|---|
-| `src/lib/ai/client.ts` | LLM client factory (OpenAI-compatible, z.ai endpoint) | `createZaiClient` (L3), `getZaiModel` (L15) |
+| `src/lib/ai/client.ts` | LLM client factory (OpenAI-shaped adapter over AWS Bedrock Converse) | `createLlmClient`, `getLlmModel`, `getLlmImageModel`, `isLlmConfigured` |
+| `src/lib/ai/bedrock-adapter.ts` | Translates OpenAI Chat Completions shapes ⇄ Bedrock Converse/ConverseStream | `createBedrockChatClient` |
 | `src/lib/ai/context.ts` | Admin auth helper — validates user has admin role in org and returns trusted org name / slug / donor-privacy bits for downstream reuse | `getAiOrgContext` (L41), `AiOrgContext` type (L9), `AiOrgContextDeps` type (L23) |
 | `src/lib/ai/context-builder.ts` | Prompt context assembly — surface-gated queries, bounded route-entity context, token budget, ContextMetadata, and minimal `tool_first` reuse of trusted org metadata | `buildPromptContext`, `buildSystemPrompt`, `buildUntrustedOrgContextMessage`, `ContextMetadata` |
 | `src/lib/ai/route-entity.ts` | Trusted route parsing for current entity pages plus shared current-route helpers | `extractRouteEntity`, `extractCurrentMemberRouteId`, `extractCurrentDiscussionThreadRouteId`, `getCurrentPathFeatureSegment` |
@@ -86,13 +87,13 @@ src/app/api/ai/[orgId]/chat/route.ts  (entrypoint)
   └── src/app/api/ai/[orgId]/chat/handler.ts (orchestrator)
   ├── src/lib/ai/context.ts             (getAiOrgContext — admin auth)
   │     └── src/lib/supabase/service.ts (createServiceClient)
-  ├── src/lib/ai/client.ts              (createZaiClient, getZaiModel)
+  ├── src/lib/ai/client.ts              (createLlmClient, getLlmModel)
   ├── src/lib/ai/context-builder.ts     (buildPromptContext)
   │     └── Supabase queries: organizations, users, members, alumni, parents, events, announcements, donation stats (`tool_first` can reuse trusted org metadata and skip the org query)
   ├── src/lib/ai/route-entity.ts        (trusted route parsing + shared route helpers)
   ├── src/lib/ai/route-entity-loaders.ts (RLS-scoped route entity lookup)
   ├── src/lib/ai/response-composer.ts   (composeResponse — async generator)
-  │     └── src/lib/ai/client.ts        (getZaiModel)
+  │     └── src/lib/ai/client.ts        (getLlmModel)
   ├── src/lib/ai/sse.ts                 (createSSEStream, SSE_HEADERS, encodeSSE)
   ├── src/lib/ai/audit.ts               (logAiRequest)
   │     └── src/lib/ai/sse.ts           (CacheStatus type)
@@ -253,7 +254,7 @@ Client POST /api/ai/{orgId}/chat
 
 | Parameter | Value |
 |---|---|
-| Model | `glm-5.1` (configurable via `ZAI_MODEL`) |
+| Model | `us.amazon.nova-micro-v1:0` (configurable via `BEDROCK_MODEL`) |
 | Temperature | 0.7 |
 | Max tokens | 2000 |
 | Stream | `true` (with `include_usage`) |
@@ -272,8 +273,9 @@ Timeouts are launch-time code constants, not env-configurable knobs.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ZAI_API_KEY` | (required) | LLM provider key — if unset, returns config-error message |
-| `ZAI_MODEL` | `glm-5.1` | Model identifier |
+| `AWS_REGION` | (required) | Bedrock region — if unset, returns config-error message. IAM credentials come from the standard AWS provider chain (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` or role) |
+| `BEDROCK_MODEL` | `us.amazon.nova-micro-v1:0` | Text model identifier |
+| `BEDROCK_IMAGE_MODEL` | `us.amazon.nova-lite-v1:0` | Vision model for schedule-image extraction |
 | `DISABLE_AI_CACHE` | `undefined` | Set `"true"` to disable cache (kill switch) |
 | `AI_PASS1_BYPASS` | `off` | `on` skips the pass-1 model round-trip for forced single-tool turns where args are derivable or zero; `shadow` runs the model path but tags telemetry as bypass-eligible for parity validation; any other value (or read error) resolves to `off` (fail-closed) |
 
@@ -479,7 +481,7 @@ type ToolExecutionResult =
 
 | Test File | Cases | Coverage |
 |---|---|---|
-| `tests/ai-client.test.ts` | 3 | `createZaiClient`, `getZaiModel` |
+| `tests/ai-client.test.ts` | 3 | `createLlmClient`, `getLlmModel` |
 | `tests/ai-context.test.ts` | 5 | `getAiOrgContext` — auth, role validation, fail-closed |
 | `tests/ai-context-builder.test.ts` | 17 | `buildPromptContext`, `shared_static` mode, surface selection, token budget, metadata, section rendering |
 | `tests/ai-audit.test.ts` | 6 | `logAiRequest` — insert, error handling, secret redaction |

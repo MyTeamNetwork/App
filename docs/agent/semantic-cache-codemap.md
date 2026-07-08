@@ -4,7 +4,7 @@ title: Semantic Cache
 description: Exact-match semantic cache for general first-turn prompts — eligibility, TTLs, invalidation, purge cron.
 resource: apps/web/src/lib/ai/semantic-cache.ts
 tags: [ai, semantic-cache, caching, ttl]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-07T00:00:00Z
 ---
 
 # Semantic Cache — Code Map
@@ -222,7 +222,7 @@ RLS enabled, **no policies** — service-role only access. The `service_role` ke
 | Variable | Default | Purpose |
 |---|---|---|
 | `DISABLE_AI_CACHE` | `undefined` | Set to `"true"` to disable cache (kill switch). Checked in route handler (L31). |
-| `ZAI_API_KEY` | (required) | LLM provider key — if unset, returns config-error message (no cache write attempted) |
+| `AWS_REGION` | (required) | Bedrock region (config signal); if unset, returns config-error message (no cache write attempted). IAM credentials via the standard AWS provider chain |
 | `CRON_SECRET` | (required) | Auth header for cron purge endpoint |
 
 ### TTLs (in `CACHE_TTL_HOURS`)

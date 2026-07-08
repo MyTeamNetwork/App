@@ -109,7 +109,7 @@ export function formatDeterministicToolErrorResponse(
     case "image_unreadable":
       return "I couldn't read that schedule image. Try a clearer photo, better lighting, or upload a PDF version of the schedule.";
     case "image_model_misconfigured":
-      return "Schedule image extraction is misconfigured in this environment. Set ZAI_IMAGE_MODEL to a Z.AI vision model like glm-5v-turbo and restart the server.";
+      return "Schedule image extraction is misconfigured in this environment. Set BEDROCK_IMAGE_MODEL to an Amazon Nova vision model like us.amazon.nova-lite-v1:0 and restart the server.";
     case "pdf_timeout":
       return "The attached PDF schedule timed out during extraction. Please try again, or send the event details in text if the PDF keeps failing.";
     case "pdf_unreadable":
@@ -132,9 +132,9 @@ export function formatDeterministicToolErrorResponse(
 
   if (
     error ===
-    "Schedule image extraction is misconfigured. Set ZAI_IMAGE_MODEL to a Z.AI vision model such as glm-5v-turbo."
+    "Schedule image extraction is misconfigured. Set BEDROCK_IMAGE_MODEL to an Amazon Nova vision model such as us.amazon.nova-lite-v1:0."
   ) {
-    return "Schedule image extraction is misconfigured in this environment. Set ZAI_IMAGE_MODEL to a Z.AI vision model like glm-5v-turbo and restart the server.";
+    return "Schedule image extraction is misconfigured in this environment. Set BEDROCK_IMAGE_MODEL to an Amazon Nova vision model like us.amazon.nova-lite-v1:0 and restart the server.";
   }
 
   if (error === "Unable to read attached PDF") {

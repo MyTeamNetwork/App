@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { getZaiModel } from "./client";
+import { getLlmModel } from "./client";
 import type { SSEEvent } from "./sse";
 import { aiLog, type AiLogContext } from "./logger";
 import {
@@ -42,7 +42,7 @@ interface ComposeOptions {
   temperature?: number;
   /** Max output tokens. Defaults to 2000. */
   maxTokens?: number;
-  /** Override model. Defaults to getZaiModel(). */
+  /** Override model. Defaults to getLlmModel(). */
   model?: string;
   /**
    * Optional LLM profile. When supplied, retry/fallback/timeout/ops behavior
@@ -57,7 +57,7 @@ interface ComposeOptions {
 }
 
 /**
- * Streams a composed response from z.ai as SSE chunk/error events.
+ * Streams a composed response from the LLM as SSE chunk/error events.
  * The route owns completion semantics and emits the final done event.
  *
  * When `tools` is provided, the LLM may choose to call a tool instead of
@@ -118,7 +118,7 @@ export async function* composeResponse(
 
   const effectiveProfile: LlmProfile = profile ?? {
     name: "compose_default",
-    model: model ?? getZaiModel(),
+    model: model ?? getLlmModel(),
     temperature,
     maxTokens,
     timeoutMs: 30_000,

@@ -4,7 +4,7 @@ title: AI Assistant Architecture Overview
 description: Architecture of the admin AI assistant — scope policy, tools, enterprise extension, and pipeline.
 resource: apps/web/src/app/api/ai/[orgId]/chat/handler.ts
 tags: [ai, assistant, architecture, tools]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-07T00:00:00Z
 ---
 
 # AI Assistant — Architecture Overview
@@ -82,7 +82,7 @@ Two sibling tools answer different "who?" questions about members and the pass1 
 
 | Layer | Technology |
 |---|---|
-| LLM | z.ai (OpenAI-compatible API via `glm-5.1` for chat/text and `ZAI_IMAGE_MODEL` for schedule-image extraction) |
+| LLM | AWS Bedrock — Amazon Nova via the Converse API (`us.amazon.nova-micro-v1:0` for chat/text, `BEDROCK_IMAGE_MODEL` / Nova Lite for schedule-image extraction). Called through an OpenAI-shaped adapter (`src/lib/ai/bedrock-adapter.ts`) |
 | Backend | Next.js 14 App Router, Node.js runtime |
 | Database | Supabase (PostgreSQL + RLS) |
 | Auth | Supabase Auth — admin role required |
@@ -144,9 +144,10 @@ Negative AI feedback can now be exported into reviewable eval candidates with `n
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `ZAI_API_KEY` | Yes | LLM provider API key |
-| `ZAI_MODEL` | No | Model override (default: `glm-5.1`) |
-| `ZAI_IMAGE_MODEL` | No | Vision-model override for uploaded schedule images (default: `glm-5v-turbo`) |
+| `AWS_REGION` | Yes | Bedrock region (config signal for the AI assistant) |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Yes* | IAM credentials (or an IAM role via the standard AWS provider chain) with `bedrock:InvokeModel` + `bedrock:InvokeModelWithResponseStream` |
+| `BEDROCK_MODEL` | No | Model override (default: `us.amazon.nova-micro-v1:0`) |
+| `BEDROCK_IMAGE_MODEL` | No | Vision-model override for uploaded schedule images (default: `us.amazon.nova-lite-v1:0`) |
 | `DISABLE_AI_CACHE` | No | Set `"true"` to disable semantic cache |
 | `AI_PASS1_BYPASS` | No | `on` skips pass-1 model round-trip for forced single-tool reads with derivable args; `shadow` runs model + tags telemetry; default / unknown → `off` (fail-closed) |
 | `CRON_SECRET` | Yes (for purge) | Auth header for the cache purge cron endpoint |

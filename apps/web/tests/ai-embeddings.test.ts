@@ -9,7 +9,7 @@ beforeEach(() => {
     EMBEDDING_BASE_URL: process.env.EMBEDDING_BASE_URL,
     EMBEDDING_API_KEY: process.env.EMBEDDING_API_KEY,
     EMBEDDING_MODEL: process.env.EMBEDDING_MODEL,
-    ZAI_API_KEY: process.env.ZAI_API_KEY,
+    AWS_REGION: process.env.AWS_REGION,
   };
 });
 
@@ -27,7 +27,7 @@ describe("embeddings", () => {
   describe("createEmbeddingClient", () => {
     it("throws when no API key is configured", async () => {
       delete process.env.EMBEDDING_API_KEY;
-      delete process.env.ZAI_API_KEY;
+      delete process.env.AWS_REGION;
 
       // Dynamic import to get fresh module state
       const { createEmbeddingClient } = await import(
@@ -52,9 +52,9 @@ describe("embeddings", () => {
       assert.ok(client, "Client should be created");
     });
 
-    it("throws without EMBEDDING_API_KEY even if ZAI_API_KEY is set", async () => {
+    it("throws without EMBEDDING_API_KEY even if AWS_REGION is set", async () => {
       delete process.env.EMBEDDING_API_KEY;
-      process.env.ZAI_API_KEY = "test-zai-key";
+      process.env.AWS_REGION = "test-zai-key";
 
       const { createEmbeddingClient } = await import(
         "../src/lib/ai/embeddings"

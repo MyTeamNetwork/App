@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getAiOrgContext } from "@/lib/ai/context";
-import { createZaiClient, getZaiModel } from "@/lib/ai/client";
+import { createLlmClient, getLlmModel, isLlmConfigured } from "@/lib/ai/client";
 import { buildPromptContext } from "@/lib/ai/context-builder";
 import { composeResponse } from "@/lib/ai/response-composer";
 import { logAiRequest } from "@/lib/ai/audit";
@@ -113,8 +113,8 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
   const createClientFn = deps.createClient ?? createClient;
   const getAiOrgContextFn = deps.getAiOrgContext ?? getAiOrgContext;
   const buildPromptContextFn = deps.buildPromptContext ?? buildPromptContext;
-  const createZaiClientFn = deps.createZaiClient ?? createZaiClient;
-  const getZaiModelFn = deps.getZaiModel ?? getZaiModel;
+  const createLlmClientFn = deps.createLlmClient ?? createLlmClient;
+  const getLlmModelFn = deps.getLlmModel ?? getLlmModel;
   const composeResponseFn = deps.composeResponse ?? composeResponse;
   const logAiRequestFn = deps.logAiRequest ?? logAiRequest;
   const resolveOwnThreadFn = deps.resolveOwnThread ?? resolveOwnThread;
@@ -489,7 +489,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         spendWrites.push(
           chargeAiSpend({
             orgId: ctx.orgId,
-            model: getZaiModelFn(),
+            model: getLlmModelFn(),
             inputTokens: usage.inputTokens ?? 0,
             outputTokens: usage.outputTokens ?? 0,
             bypass: ctx.aiSpendBypass,
@@ -509,9 +509,9 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         });
 
     try {
-      if (!process.env.ZAI_API_KEY) {
+      if (!isLlmConfigured()) {
         const msg =
-          "AI assistant is not configured. Please set the ZAI_API_KEY environment variable.";
+          "AI assistant is not configured. Please set the AWS_REGION environment variable and AWS credentials.";
         enqueue({ type: "chunk", content: msg });
         fullContent = msg;
         enqueue({
@@ -527,7 +527,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
         return;
       }
 
-      const client = createZaiClientFn();
+      const client = createLlmClientFn();
 
       const { error: streamingStatusError } = await ctx.supabase
         .from("ai_messages")
@@ -750,7 +750,7 @@ export function createChatPostHandler(deps: ChatRouteDeps = {}) {
           startTime,
           requestLogContext,
           logAiRequestFn,
-          getZaiModelFn,
+          getLlmModelFn,
         });
       }
     }, request.signal);

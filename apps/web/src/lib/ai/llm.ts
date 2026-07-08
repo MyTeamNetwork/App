@@ -7,7 +7,7 @@
 // transient errors (429 / 5xx / timeout) with optional fallback model.
 
 import type OpenAI from "openai";
-import { createZaiClient, getZaiModel } from "@/lib/ai/client";
+import { createLlmClient, getLlmModel } from "@/lib/ai/client";
 
 export type LlmTrackOpsEventFn = (
   event: "api_error",
@@ -67,26 +67,26 @@ function envInt(name: string, fallback: number): number {
 }
 
 function defaultModel(): string {
-  return getZaiModel();
+  return getLlmModel();
 }
 
 function defaultFallback(): string | undefined {
-  return process.env.ZAI_MODEL_FALLBACK || undefined;
+  return process.env.LLM_MODEL_FALLBACK || undefined;
 }
 
 function defaultTimeout(fallbackMs: number): number {
-  return envInt("ZAI_TIMEOUT_MS", fallbackMs);
+  return envInt("LLM_TIMEOUT_MS", fallbackMs);
 }
 
 function defaultMaxRetries(fallback: number): number {
-  return envInt("ZAI_MAX_RETRIES", fallback);
+  return envInt("LLM_MAX_RETRIES", fallback);
 }
 
 export const Profiles = {
   pass1Tools(): LlmProfile {
     return {
       name: "pass1_tools",
-      model: process.env.ZAI_MODEL_PASS1 || defaultModel(),
+      model: process.env.LLM_MODEL_PASS1 || defaultModel(),
       fallbackModel: defaultFallback(),
       temperature: envNumber("AI_PASS1_TEMPERATURE", 0),
       maxTokens: envInt("AI_PASS1_MAX_TOKENS", 2000),
@@ -100,7 +100,7 @@ export const Profiles = {
       model: defaultModel(),
       fallbackModel: defaultFallback(),
       temperature: envNumber("AI_PASS2_TEMPERATURE", 0.7),
-      // glm reasoning tokens count toward max_tokens; 2000 truncated real
+      // Reasoning/output tokens count toward max_tokens; 2000 truncated real
       // multi-tool answers mid-word (visible text is a fraction of the spend).
       maxTokens: envInt("AI_PASS2_MAX_TOKENS", 4000),
       timeoutMs: defaultTimeout(30_000),
@@ -158,7 +158,7 @@ export const Profiles = {
   signalBackfill(): LlmProfile {
     return {
       name: "signal_backfill",
-      model: process.env.ZAI_MODEL_SIGNAL_BACKFILL || defaultModel(),
+      model: process.env.LLM_MODEL_SIGNAL_BACKFILL || defaultModel(),
       temperature: 0,
       maxTokens: 300,
       responseFormat: { type: "json_object" },
@@ -169,7 +169,7 @@ export const Profiles = {
   whyGen(): LlmProfile {
     return {
       name: "why_gen",
-      model: process.env.ZAI_MODEL_WHY_GEN || defaultModel(),
+      model: process.env.LLM_MODEL_WHY_GEN || defaultModel(),
       temperature: 0.3,
       maxTokens: 400,
       responseFormat: { type: "json_object" },
@@ -252,7 +252,7 @@ export async function runLlmCompletion(
   profile: LlmProfile,
   opts: LlmRunOptions,
 ): Promise<LlmRunResult> {
-  const client = opts.client ?? createZaiClient();
+  const client = opts.client ?? createLlmClient();
   const temperature = opts.overrides?.temperature ?? profile.temperature;
   const maxTokens = opts.overrides?.maxTokens ?? profile.maxTokens;
   const baseModel = opts.overrides?.model ?? profile.model;
@@ -388,7 +388,7 @@ export async function* runLlmStream(
   profile: LlmProfile,
   opts: LlmStreamOptions,
 ): AsyncGenerator<LlmStreamEvent> {
-  const client = opts.client ?? createZaiClient();
+  const client = opts.client ?? createLlmClient();
   const temperature = opts.overrides?.temperature ?? profile.temperature;
   const maxTokens = opts.overrides?.maxTokens ?? profile.maxTokens;
   const baseModel = opts.overrides?.model ?? profile.model;

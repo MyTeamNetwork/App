@@ -319,8 +319,8 @@ export async function runModelToolsLoop(
     // Fail closed for tool-required intents (mentorship suggestions): a
     // free-text pass-1 answer here is the model imitating earlier suggestion
     // turns with fabricated member names, and there is no tool result to
-    // ground it against. z.ai does not support tool_choice "required", so the
-    // fabricated text is suppressed after the fact instead.
+    // ground it against. Amazon Nova does not reliably support tool_choice
+    // "required", so the fabricated text is suppressed after the fact instead.
     if (pass1RequiresToolBackedAnswer(input.pass1Tools, input.message)) {
       aiLog(
         "warn",

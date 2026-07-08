@@ -1,10 +1,10 @@
 ---
 type: reference
 title: AI Data Flow — Privacy and Compliance
-description: PII entering the AI pipeline, what is stored, and what is sent to the z.ai provider.
+description: PII entering the AI pipeline, what is stored, and what is sent to the AWS Bedrock provider.
 resource: apps/web/src/lib/ai/context-builder.ts
 tags: [ai, privacy, compliance, pii]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-07T00:00:00Z
 ---
 
 # AI Data Flow — Privacy & Compliance Documentation
@@ -15,7 +15,7 @@ timestamp: 2026-06-17T00:00:00Z
 
 ## 1. Overview
 
-The AI assistant is an org-scoped chat feature, currently **admin-only in production** (member access exists behind the `AI_MEMBER_ACCESS_KILL` switch, default on — see §4). This document describes what PII enters the AI pipeline, what is stored, what is sent to the external LLM provider (z.ai), and the retention/access controls in place.
+The AI assistant is an org-scoped chat feature, currently **admin-only in production** (member access exists behind the `AI_MEMBER_ACCESS_KILL` switch, default on — see §4). This document describes what PII enters the AI pipeline, what is stored, what is sent to the external LLM provider (AWS Bedrock), and the retention/access controls in place.
 
 This document describes **shipped behavior**, including the parts that send PII to the external provider. Earlier revisions understated §3.2; do not regress it to aspirational claims.
 
@@ -30,12 +30,12 @@ User → Chat Panel (client)
     → Semantic Cache Check (exact hash of prompt)
       → Cache HIT: return cached response (no external API call)
       → Cache MISS:
-        → Pass 1: LLM call (z.ai) — may select tools
+        → Pass 1: LLM call (AWS Bedrock) — may select tools
         → Tool execution (service-role client for admins;
           RLS-bound client for non-admins on read tools)
         → EITHER deterministic template render (single-tool answers;
           no second LLM call, skips the grounding self-check)
-        → OR Pass 2: LLM call (z.ai) with FULL TOOL RESULT JSON
+        → OR Pass 2: LLM call (AWS Bedrock) with FULL TOOL RESULT JSON
           → deterministic grounding check on the model's prose
         → Response streamed via SSE
     → Message persisted to ai_messages
@@ -59,7 +59,7 @@ User → Chat Panel (client)
 | Mentee goals free text | `mentee_preferences.goals` | Mentorship signal extraction |
 | Organization metadata | `organizations` table | Org name, settings, member counts |
 
-### 3.2 What is Sent to the External API (z.ai)
+### 3.2 What is Sent to the External API (AWS Bedrock)
 
 **Pass 1** (tool selection) sends:
 - System prompt (static template, no PII)
@@ -73,15 +73,15 @@ User → Chat Panel (client)
 - **Donor names, emails, and amounts** (`list_donations`, unless the org enables `hide_donor_names`)
 - Mentorship suggestion payloads (names, match reasons, confidence scores)
 
-**Deterministic path:** single-tool questions matching a known shape are rendered from a server-side template without a Pass-2 LLM call — for those, tool data is **not** sent to z.ai a second time (the Pass-1 prompt was already sent).
+**Deterministic path:** single-tool questions matching a known shape are rendered from a server-side template without a Pass-2 LLM call — for those, tool data is **not** sent to AWS Bedrock a second time (the Pass-1 prompt was already sent).
 
 **Not sent:** passwords, payment card data, auth tokens, data from other organizations, or education records (grades, transcripts, attendance).
 
-### 3.3 Other z.ai Pipelines (outside chat)
+### 3.3 Other AWS Bedrock Pipelines (outside chat)
 
-Three server-side features also call z.ai with org PII:
+Three server-side features also call AWS Bedrock with org PII:
 
-| Pipeline | File | Data sent to z.ai |
+| Pipeline | File | Data sent to AWS Bedrock |
 |---|---|---|
 | **Mentor bio generation** | `lib/mentorship/bio-generator.ts` (cron `mentor-bio-process`, explicit regenerate endpoint) | Mentor name, job title, company, industry, graduation year, sanitized LinkedIn headline/summary, custom attributes, chosen expertise/topics/sports/positions |
 | **Match "why" generation** | `lib/mentorship/why-generator.ts` | Mentor/mentee names plus match-signal labels/values |
@@ -156,10 +156,10 @@ When a user account is deleted:
 
 | Property | Value |
 |---|---|
-| Provider | z.ai |
-| Model | glm-5.1 family (per-profile overrides in `lib/ai/llm.ts`) |
-| API format | OpenAI-compatible |
-| Data retention by provider | Per z.ai terms of service |
+| Provider | AWS Bedrock |
+| Model | Amazon Nova (per-profile overrides in `lib/ai/llm.ts`) |
+| API format | AWS Bedrock Converse (OpenAI shapes translated by `lib/ai/bedrock-adapter.ts`) |
+| Data retention by provider | Per AWS Bedrock terms of service |
 | Encryption in transit | TLS 1.2+ |
 
 **Note:** No education records (grades, transcripts, attendance) are sent to the external API. However, per §3.2–3.3, member/donor emails, LinkedIn-derived profile data, and mentee goals text **are** sent when the relevant tools or pipelines run. Review the provider DPA against this surface before expanding access beyond admins.
