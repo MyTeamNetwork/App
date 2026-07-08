@@ -7,7 +7,7 @@ export async function requireEventAdmin(input: {
   supabase: any;
   orgId: string;
   actorUserId: string;
-  action: "edit" | "delete";
+  action: "create" | "edit" | "delete";
 }): Promise<EventPermissionResult> {
   const { data: membership, error: membershipError } = await input.supabase
     .from("organization_members")

@@ -108,6 +108,106 @@ describe("createRecurringEvents", () => {
   });
 });
 
+describe("createRecurringEvents bounds validation", () => {
+  let stub: ReturnType<typeof createSupabaseStub>;
+
+  beforeEach(() => {
+    stub = createSupabaseStub();
+  });
+
+  it("rejects a day_of_week value above 6", async () => {
+    const rule: RecurrenceRule = {
+      occurrence_type: "weekly",
+      day_of_week: [1, 7],
+      recurrence_end_date: "2026-04-06",
+    };
+
+    const result = await createRecurringEvents(stub as never, makeBaseEvent(), rule);
+
+    assert.equal(result.eventIds.length, 0);
+    assert.match(String(result.error), /day_of_week/i);
+    assert.equal(stub.getRows("events").length, 0, "Should not insert any rows");
+  });
+
+  it("rejects a negative day_of_week value", async () => {
+    const rule: RecurrenceRule = {
+      occurrence_type: "weekly",
+      day_of_week: [-1],
+      recurrence_end_date: "2026-04-06",
+    };
+
+    const result = await createRecurringEvents(stub as never, makeBaseEvent(), rule);
+
+    assert.equal(result.eventIds.length, 0);
+    assert.match(String(result.error), /day_of_week/i);
+  });
+
+  it("rejects a non-integer day_of_week value", async () => {
+    const rule: RecurrenceRule = {
+      occurrence_type: "weekly",
+      day_of_week: [1.5],
+      recurrence_end_date: "2026-04-06",
+    };
+
+    const result = await createRecurringEvents(stub as never, makeBaseEvent(), rule);
+
+    assert.equal(result.eventIds.length, 0);
+    assert.match(String(result.error), /day_of_week/i);
+  });
+
+  it("rejects a day_of_month value above 31", async () => {
+    const rule: RecurrenceRule = {
+      occurrence_type: "monthly",
+      day_of_month: 32,
+      recurrence_end_date: "2026-09-06",
+    };
+
+    const result = await createRecurringEvents(stub as never, makeBaseEvent(), rule);
+
+    assert.equal(result.eventIds.length, 0);
+    assert.match(String(result.error), /day_of_month/i);
+    assert.equal(stub.getRows("events").length, 0, "Should not insert any rows");
+  });
+
+  it("rejects a day_of_month value of 0", async () => {
+    const rule: RecurrenceRule = {
+      occurrence_type: "monthly",
+      day_of_month: 0,
+      recurrence_end_date: "2026-09-06",
+    };
+
+    const result = await createRecurringEvents(stub as never, makeBaseEvent(), rule);
+
+    assert.equal(result.eventIds.length, 0);
+    assert.match(String(result.error), /day_of_month/i);
+  });
+
+  it("accepts boundary values 0 and 6 for day_of_week", async () => {
+    const rule: RecurrenceRule = {
+      occurrence_type: "weekly",
+      day_of_week: [0, 6],
+      recurrence_end_date: "2026-04-06",
+    };
+
+    const result = await createRecurringEvents(stub as never, makeBaseEvent(), rule);
+
+    assert.equal(result.error, null);
+    assert.ok(result.eventIds.length > 0);
+  });
+
+  it("accepts boundary values 1 and 31 for day_of_month", async () => {
+    const rule: RecurrenceRule = {
+      occurrence_type: "monthly",
+      day_of_month: 31,
+      recurrence_end_date: "2026-12-31",
+    };
+
+    const result = await createRecurringEvents(stub as never, makeBaseEvent(), rule);
+
+    assert.equal(result.error, null);
+  });
+});
+
 describe("updateFutureEvents", () => {
   let stub: ReturnType<typeof createSupabaseStub>;
   const groupId = "group-abc";

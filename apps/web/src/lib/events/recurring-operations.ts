@@ -1,3 +1,18 @@
+/**
+ * Authorization contract: these functions perform no internal authorization
+ * check of their own — callers are responsible for verifying the actor may
+ * perform the operation before invoking them.
+ *
+ *  - UI-driven callers (e.g. Server Components/Actions using the request's
+ *    auth-bound Supabase client) are covered by row-level security policies
+ *    on the `events` table, so RLS is the enforcement point.
+ *  - Service-role callers (e.g. the AI assistant confirm handler, which uses
+ *    a service-role client that bypasses RLS) MUST check authorization
+ *    themselves before calling into this module. See ./permissions.ts
+ *    (`requireEventAdmin`) and its use in ./create-event.ts, ./update-event.ts,
+ *    and ./delete-event.ts for the expected pattern.
+ */
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { expandRecurrence, type RecurrenceRule } from "./recurrence";
@@ -32,6 +47,27 @@ export async function createRecurringEvents(
   rule: RecurrenceRule,
 ): Promise<{ groupId: string; eventIds: string[]; error: string | null }> {
   const groupId = crypto.randomUUID();
+
+  if (rule.occurrence_type === "weekly" && rule.day_of_week) {
+    const invalid = rule.day_of_week.filter((d) => !Number.isInteger(d) || d < 0 || d > 6);
+    if (invalid.length > 0) {
+      return {
+        groupId,
+        eventIds: [],
+        error: `Invalid day_of_week value(s): ${invalid.join(", ")}. Must be integers 0-6 (Sunday-Saturday).`,
+      };
+    }
+  }
+
+  if (rule.occurrence_type === "monthly" && rule.day_of_month !== undefined) {
+    if (!Number.isInteger(rule.day_of_month) || rule.day_of_month < 1 || rule.day_of_month > 31) {
+      return {
+        groupId,
+        eventIds: [],
+        error: `Invalid day_of_month value: ${rule.day_of_month}. Must be an integer 1-31.`,
+      };
+    }
+  }
 
   const instances = expandRecurrence(baseEvent.start_date, baseEvent.end_date ?? null, rule);
 

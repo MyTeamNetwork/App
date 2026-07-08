@@ -1,16 +1,13 @@
 import { assistantPreparedEventSchema, type AssistantPreparedEvent } from "@/lib/schemas/events-ai";
 import { updateFutureEvents, type DeleteEventScope } from "./recurring-operations";
 import { requireEventAdmin } from "./permissions";
+import { localToUtcIso, resolveOrgTimezone } from "@/lib/utils/timezone";
 
 export type UpdateEventScope = Exclude<DeleteEventScope, "all_in_series">;
 
 export type UpdateEventResult =
   | { ok: true; event: Record<string, unknown>; affectedEventIds: string[]; syncWarnings: string[] }
   | { ok: false; status: number; error: string; details?: string[] };
-
-function toIso(date: string, time: string): string {
-  return new Date(`${date}T${time}`).toISOString();
-}
 
 export async function updateEvent(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,14 +36,38 @@ export async function updateEvent(input: {
     };
   }
 
+  const { data: orgRow, error: orgError } = await input.supabase
+    .from("organizations")
+    .select("timezone")
+    .eq("id", input.orgId)
+    .maybeSingle();
+
+  if (orgError) {
+    return { ok: false, status: 500, error: "Failed to resolve organization timezone" };
+  }
+
+  const orgTimezone = resolveOrgTimezone(orgRow?.timezone);
+
+  let startDate: string;
+  let endDate: string | null;
+  try {
+    startDate = localToUtcIso(parsed.data.start_date, parsed.data.start_time, orgTimezone);
+    endDate =
+      parsed.data.end_date && parsed.data.end_time
+        ? localToUtcIso(parsed.data.end_date, parsed.data.end_time, orgTimezone)
+        : null;
+  } catch (err) {
+    if (err instanceof RangeError) {
+      return { ok: false, status: 400, error: err.message };
+    }
+    throw err;
+  }
+
   const update = {
     title: parsed.data.title,
     description: parsed.data.description ?? null,
-    start_date: toIso(parsed.data.start_date, parsed.data.start_time),
-    end_date:
-      parsed.data.end_date && parsed.data.end_time
-        ? toIso(parsed.data.end_date, parsed.data.end_time)
-        : null,
+    start_date: startDate,
+    end_date: endDate,
     location: parsed.data.location ?? null,
     event_type: parsed.data.event_type,
     is_philanthropy: parsed.data.is_philanthropy,

@@ -4,6 +4,8 @@ import {
   assistantPreparedEventSchema,
   type AssistantPreparedEvent,
 } from "@/lib/schemas/events-ai";
+import { requireEventAdmin } from "./permissions";
+import { localToUtcIso, resolveOrgTimezone } from "@/lib/utils/timezone";
 
 export interface CreateEventInput {
   supabase: any;
@@ -70,6 +72,20 @@ function isUnsupportedEventTypeInsertError(
 }
 
 export async function createEvent(req: CreateEventInput): Promise<CreateEventResult> {
+  const permission = await requireEventAdmin({
+    supabase: req.supabase,
+    orgId: req.orgId,
+    actorUserId: req.userId,
+    action: "create",
+  });
+  if (!permission.ok) {
+    return {
+      ok: false,
+      status: permission.status === 403 ? 403 : 500,
+      error: permission.error,
+    };
+  }
+
   const validationResult = assistantPreparedEventSchema.safeParse(req.input);
   if (!validationResult.success) {
     const details = validationResult.error.issues.map(
@@ -86,16 +102,36 @@ export async function createEvent(req: CreateEventInput): Promise<CreateEventRes
 
   const input = validationResult.data;
 
-  // Treat as wall-clock time (no timezone shift) — matches browser form behavior
-  const startDateTime = `${input.start_date}T${input.start_time}:00.000Z`;
+  const { data: orgRow, error: orgError } = await req.serviceSupabase
+    .from("organizations")
+    .select("timezone")
+    .eq("id", req.orgId)
+    .maybeSingle();
+
+  if (orgError) {
+    return { ok: false, status: 500, error: "Failed to resolve organization timezone" };
+  }
+
+  const orgTimezone = resolveOrgTimezone(orgRow?.timezone);
 
   // Handle partial end info: fill in missing half from start values
   const effectiveEndDate = input.end_date || input.start_date;
   const effectiveEndTime = input.end_time || input.start_time;
-  const endDateTime =
-    input.end_date || input.end_time
-      ? `${effectiveEndDate}T${effectiveEndTime}:00.000Z`
+  const hasEnd = Boolean(input.end_date || input.end_time);
+
+  let startDateTime: string;
+  let endDateTime: string | null;
+  try {
+    startDateTime = localToUtcIso(input.start_date, input.start_time, orgTimezone);
+    endDateTime = hasEnd
+      ? localToUtcIso(effectiveEndDate, effectiveEndTime, orgTimezone)
       : null;
+  } catch (err) {
+    if (err instanceof RangeError) {
+      return { ok: false, status: 400, error: err.message };
+    }
+    throw err;
+  }
 
   // Validate dates are real calendar dates
   const startCheck = new Date(startDateTime);
