@@ -6,5 +6,6 @@ export { SettingsBillingSection } from "./SettingsBillingSection";
 export { SettingsDangerSection } from "./SettingsDangerSection";
 export { SettingsSecuritySection } from "./SettingsSecuritySection";
 export { SettingsCalendarSection } from "./SettingsCalendarSection";
+export { SettingsNetworkingSection } from "./SettingsNetworkingSection";
 export { buildSettingsColors, type SettingsColors } from "./settingsColors";
 export { useBaseStyles, formatDate, formatBucket, fontSize, fontWeight, spacing } from "./settingsShared";

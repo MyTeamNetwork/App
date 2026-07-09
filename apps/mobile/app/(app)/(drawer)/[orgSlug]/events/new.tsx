@@ -80,6 +80,21 @@ function formatTimeLabel(value: Date | null) {
   return formatTimePickerLabel(value, "Select time");
 }
 
+/** Wall-clock "YYYY-MM-DD" from a Date's local components (no UTC conversion). */
+function toWallClockDateString(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Wall-clock "HH:mm" from a Date's local components (no UTC conversion). */
+function toWallClockTimeString(value: Date) {
+  const hours = String(value.getHours()).padStart(2, "0");
+  const minutes = String(value.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
 export default function NewEventScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -476,58 +491,65 @@ export default function NewEventScreen() {
       return;
     }
 
-    const startDateTimeValue = mergeDateAndTime(startDate, startTime);
-    const startDateTime = startDateTimeValue.toISOString();
-
-    let endDateTime: string | null = null;
     if (endDate || endTime) {
       if (!endDate || !endTime) {
         setError("End date and time must both be provided.");
         return;
       }
+      const startDateTimeValue = mergeDateAndTime(startDate, startTime);
       const endValue = mergeDateAndTime(endDate, endTime);
       if (endValue.getTime() < startDateTimeValue.getTime()) {
         setError("End time must be after the start time.");
         return;
       }
-      endDateTime = endValue.toISOString();
     }
 
     setIsSaving(true);
     setError(null);
 
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const createdByUserId = userData.user?.id || null;
-
       const audienceValue = audience === "specific" ? "both" : audience;
       const targetIds = audience === "specific" ? targetUserIds : null;
 
-      const { data: event, error: insertError } = await supabase
-        .from("events")
-        .insert({
+      const response = await fetchWithAuth("/api/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
           organization_id: orgId,
           title: title.trim(),
-          description: description.trim() || null,
-          start_date: startDateTime,
-          end_date: endDateTime,
-          location: location.trim() || null,
+          event_type: eventType,
+          start_date: toWallClockDateString(startDate),
+          start_time: toWallClockTimeString(startTime),
+          end_date: endDate ? toWallClockDateString(endDate) : undefined,
+          end_time: endTime ? toWallClockTimeString(endTime) : undefined,
+          description: description.trim() || undefined,
+          location: location.trim() || undefined,
           geofence_enabled: checkInMode === "qr" ? geofenceEnabled : false,
           geofence_radius_m: radiusM,
-          latitude: checkInMode === "qr" && geofenceEnabled ? latitude : null,
-          longitude: checkInMode === "qr" && geofenceEnabled ? longitude : null,
-          event_type: eventType,
-          is_philanthropy: eventType === "philanthropy",
+          latitude: checkInMode === "qr" && geofenceEnabled ? latitude : undefined,
+          longitude: checkInMode === "qr" && geofenceEnabled ? longitude : undefined,
           audience: audienceValue,
-          target_user_ids: targetIds,
-          created_by_user_id: createdByUserId,
+          target_user_ids: targetIds || undefined,
           check_in_mode: checkInMode,
-        })
-        .select()
-        .single();
+        }),
+      });
 
-      if (insertError || !event) {
-        throw insertError || new Error("Failed to create event.");
+      const responseData = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error(
+            responseData?.error || "You don't have permission to create events for this organization."
+          );
+        }
+        throw new Error(responseData?.error || "Failed to create event.");
+      }
+
+      const event = responseData?.event;
+      if (!event?.id) {
+        throw new Error("Failed to create event.");
       }
 
       if (sendNotification) {

@@ -115,7 +115,7 @@ export async function updateFutureEvents(
   supabase: SupabaseClient<Database>,
   eventId: string,
   orgId: string,
-  updates: Pick<EventUpdate, "title" | "description" | "location" | "event_type" | "is_philanthropy" | "check_in_mode">,
+  updates: Partial<Pick<EventUpdate, "title" | "description" | "location" | "event_type" | "is_philanthropy" | "check_in_mode">>,
 ): Promise<{ updatedIds: string[]; error: string | null }> {
   // First, get the event to find its group and index
   const { data: event, error: fetchError } = await supabase

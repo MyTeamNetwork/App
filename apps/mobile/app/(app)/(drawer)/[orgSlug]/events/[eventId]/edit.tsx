@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
+import { fetchWithAuth } from "@/lib/web-api";
 import { useOrgTheme } from "@/hooks/useOrgTheme";
 import { SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
 import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
@@ -61,6 +62,21 @@ function formatDateLabel(value: Date | null) {
 
 function formatTimeLabel(value: Date | null) {
   return formatTimePickerLabel(value, "Select time");
+}
+
+/** Wall-clock "YYYY-MM-DD" from a Date's local components (no UTC conversion). */
+function toWallClockDateString(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Wall-clock "HH:mm" from a Date's local components (no UTC conversion). */
+function toWallClockTimeString(value: Date) {
+  const hours = String(value.getHours()).padStart(2, "0");
+  const minutes = String(value.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
 }
 
 export default function EditEventScreen() {
@@ -221,49 +237,59 @@ export default function EditEventScreen() {
       return;
     }
 
-    const startDateTimeValue = mergeDateAndTime(startDate, startTime);
-    const startDateTime = startDateTimeValue.toISOString();
-
-    let endDateTime: string | null = null;
     if (endDate || endTime) {
       if (!endDate || !endTime) {
         setError("End date and time must both be provided.");
         return;
       }
+      const startDateTimeValue = mergeDateAndTime(startDate, startTime);
       const endValue = mergeDateAndTime(endDate, endTime);
       if (endValue.getTime() < startDateTimeValue.getTime()) {
         setError("End time must be after the start time.");
         return;
       }
-      endDateTime = endValue.toISOString();
     }
 
     setIsSaving(true);
     setError(null);
 
     try {
-      const { error: updateError } = await supabase
-        .from("events")
-        .update({
-          title: title.trim(),
-          description: description.trim() || null,
-          start_date: startDateTime,
-          end_date: endDateTime,
-          location: location.trim() || null,
-          geofence_enabled: checkInMode === "qr" ? geofenceEnabled : false,
-          geofence_radius_m: radiusM,
-          latitude: checkInMode === "qr" && geofenceEnabled ? latitude : null,
-          longitude: checkInMode === "qr" && geofenceEnabled ? longitude : null,
-          event_type: eventType,
-          is_philanthropy: eventType === "philanthropy",
-          audience,
-          check_in_mode: checkInMode,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", eventId)
-        .eq("organization_id", orgId);
+      const response = await fetchWithAuth(`/api/events/${eventId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          organization_id: orgId,
+          updates: {
+            title: title.trim(),
+            event_type: eventType,
+            start_date: toWallClockDateString(startDate),
+            start_time: toWallClockTimeString(startTime),
+            end_date: endDate ? toWallClockDateString(endDate) : undefined,
+            end_time: endTime ? toWallClockTimeString(endTime) : undefined,
+            description: description.trim() || undefined,
+            location: location.trim() || undefined,
+            geofence_enabled: checkInMode === "qr" ? geofenceEnabled : false,
+            geofence_radius_m: radiusM,
+            latitude: checkInMode === "qr" && geofenceEnabled ? latitude : undefined,
+            longitude: checkInMode === "qr" && geofenceEnabled ? longitude : undefined,
+            audience,
+            check_in_mode: checkInMode,
+          },
+        }),
+      });
 
-      if (updateError) throw updateError;
+      const responseData = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error(
+            responseData?.error || "You don't have permission to edit this event."
+          );
+        }
+        throw new Error(responseData?.error || "Failed to update event.");
+      }
 
       Alert.alert("Success", "Event updated successfully", [
         { text: "OK", onPress: () => router.back() },

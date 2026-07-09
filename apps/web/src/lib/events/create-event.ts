@@ -4,15 +4,32 @@ import {
   assistantPreparedEventSchema,
   type AssistantPreparedEvent,
 } from "@/lib/schemas/events-ai";
+import {
+  eventMutationExtrasSchema,
+  type EventMutationExtras,
+} from "@/lib/schemas/events-mutation";
 import { requireEventAdmin } from "./permissions";
 import { localToUtcIso, resolveOrgTimezone } from "@/lib/utils/timezone";
+import { buildEventExtrasInsert } from "./event-extras";
+
+/**
+ * Event fields accepted by `createEvent`. Callers may pass the full
+ * `AssistantPreparedEvent` (the AI-assistant path) or the same core fields with
+ * `is_philanthropy` omitted plus any of the optional persisted extras (the
+ * mobile route path). `is_philanthropy` is derived from `event_type` when
+ * absent; unset extras fall back to their DB defaults.
+ */
+export type CreateEventFields =
+  & Omit<AssistantPreparedEvent, "is_philanthropy">
+  & { is_philanthropy?: boolean }
+  & Partial<EventMutationExtras>;
 
 export interface CreateEventInput {
   supabase: any;
   serviceSupabase: any;
   orgId: string;
   userId: string;
-  input: AssistantPreparedEvent;
+  input: CreateEventFields;
   orgSlug?: string | null;
 }
 
@@ -86,7 +103,18 @@ export async function createEvent(req: CreateEventInput): Promise<CreateEventRes
     };
   }
 
-  const validationResult = assistantPreparedEventSchema.safeParse(req.input);
+  // Derive is_philanthropy from event_type when the caller omits it (mobile
+  // does), so the required-field core schema still parses.
+  const rawEventType = (req.input as { event_type?: unknown }).event_type;
+  const coreCandidate = {
+    ...req.input,
+    is_philanthropy:
+      typeof req.input.is_philanthropy === "boolean"
+        ? req.input.is_philanthropy
+        : rawEventType === "philanthropy",
+  };
+
+  const validationResult = assistantPreparedEventSchema.safeParse(coreCandidate);
   if (!validationResult.success) {
     const details = validationResult.error.issues.map(
       (issue) => `${issue.path.join(".") || "body"}: ${issue.message}`,
@@ -100,7 +128,20 @@ export async function createEvent(req: CreateEventInput): Promise<CreateEventRes
     };
   }
 
+  const extrasResult = eventMutationExtrasSchema.safeParse(req.input);
+  if (!extrasResult.success) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Invalid event data",
+      details: extrasResult.error.issues.map(
+        (issue) => `${issue.path.join(".") || "body"}: ${issue.message}`,
+      ),
+    };
+  }
+
   const input = validationResult.data;
+  const extras = extrasResult.data;
 
   const { data: orgRow, error: orgError } = await req.serviceSupabase
     .from("organizations")
@@ -160,7 +201,7 @@ export async function createEvent(req: CreateEventInput): Promise<CreateEventRes
       event_type: input.event_type,
       is_philanthropy: input.is_philanthropy || input.event_type === "philanthropy",
       created_by_user_id: req.userId,
-      audience: "both",
+      ...buildEventExtrasInsert(extras),
     })
     .select("id, title")
     .single();
