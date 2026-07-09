@@ -23,9 +23,20 @@ test("route validates the body with zod (uuid user_id) via validateJson", () => 
   assert.match(routeSource, /validateJson\(req, linkUserSchema/);
 });
 
-test("route is admin-only", () => {
-  assert.match(routeSource, /membership\?\.role !== "admin"/);
-  assert.match(routeSource, /Forbidden/);
+test("route is admin-only, grace-period gated (via the org-context resolver)", () => {
+  // Admin authorization + read-only gating go through the shared org-context
+  // resolver (U14 migration) instead of a hand-rolled
+  // `membership?.role !== "admin"` check. resolveAdminContext enforces the
+  // active-admin bar (denialResponse maps a non-admin to 403 Forbidden), and
+  // readOnlyGuard blocks the write during a grace-period freeze — asserted in
+  // order (admin denial before read-only) so a future edit can't silently drop
+  // or reorder the gate.
+  const resolveIdx = routeSource.indexOf("resolveAdminContext(supabase, user.id, parsed.orgId)");
+  const denialIdx = routeSource.indexOf("denialResponse(ctx.denial)");
+  const readOnlyIdx = routeSource.indexOf("readOnlyGuard(ctx.ctx)");
+  assert.ok(resolveIdx !== -1, "route must resolve admin context");
+  assert.ok(denialIdx !== -1 && denialIdx > resolveIdx, "denial must follow resolution");
+  assert.ok(readOnlyIdx !== -1 && readOnlyIdx > denialIdx, "read-only guard must follow the admin denial");
 });
 
 test("route performs the link via the service client", () => {

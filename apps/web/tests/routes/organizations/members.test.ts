@@ -1,354 +1,358 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { randomUUID } from "crypto";
+import { patchMember, reinstateMember } from "@/lib/organizations/members";
+import { createSupabaseStub } from "../../utils/supabaseStub";
 
 /**
- * Tests for PATCH /api/organizations/[organizationId]/members/[memberId]
+ * Characterization tests for the members mutation service layer (U12).
  *
- * This route handles role and status updates for org members. It was introduced
- * to replace direct Supabase client writes in the invites settings page, so that
- * revalidatePath() is called server-side and the Next.js router cache is
- * invalidated for the dashboard, members, and parents pages.
+ * These REPLACE the former hand-rolled `simulatePatchMember()` mirror that
+ * duplicated route logic inside the test file and could not catch route drift.
+ * They drive the REAL extracted service functions (`patchMember`,
+ * `reinstateMember`) through the shared Supabase stub, exercising the same
+ * `executeMemberRoleChange` engine and `reinstate_alumni_to_active` RPC the
+ * production routes use.
  *
- * Tests simulate route handler logic without making real HTTP calls.
- * This matches the project-wide testing pattern (see tests/routes/organizations/parents.test.ts).
+ * Scope note: UUID param validation, the 401 (no authenticated user), the
+ * resolver's admin denial (mapped to a neutral 404 for non-members, 403 for
+ * non-admins), and the read-only gate now live in the ROUTE layer, delegating
+ * to the shared resolver + `denialResponse`/`readOnlyGuard` mappers whose
+ * denial→HTTP contract is locked in settings-service.test.ts and
+ * organizations-context.test.ts. This file locks the SERVICE behavior —
+ * role-change engine outcomes and their status/body mapping.
  */
 
-// ── Shared types ──────────────────────────────────────────────────────────────
+const ORG_ID = "11111111-1111-4111-8111-111111111111";
+const ADMIN_ID = "22222222-2222-4222-8222-222222222222";
+const TARGET_ID = "33333333-3333-4333-8333-333333333333";
+const SECOND_ADMIN_ID = "44444444-4444-4444-8444-444444444444";
+const MEMBER_ROW_ID = "55555555-5555-4555-8555-555555555555";
 
-type OrgRole = "admin" | "active_member" | "alumni" | "parent" | null;
-type MemberStatus = "active" | "revoked" | "pending";
+/** Build a stub whose `execute_member_role_change` RPC mirrors the Postgres
+ * function: update the membership row, raise P0002 when the target is absent.
+ * Matches tests/members/role-change.test.ts. */
+function client() {
+  const stub = createSupabaseStub();
+  stub.registerRpc("execute_member_role_change", async (params: Record<string, unknown>) => {
+    const orgId = params.p_organization_id as string;
+    const targetUserId = params.p_target_user_id as string;
+    const newRole = params.p_new_role as string;
+    const newStatus = params.p_new_status as string;
 
-interface PatchMemberRequest {
-  /** Authenticated user making the request (null = unauthenticated) */
-  userId: string | null;
-  /** The user's role in the org */
-  role: OrgRole;
-  /** The org ID param from the URL */
-  organizationId: string;
-  /** The user ID of the member being updated */
-  memberId: string;
-  /** At least one of role or status must be present */
-  body: {
-    role?: string;
-    status?: string;
-  };
-  /** Simulate a DB update error */
-  dbError?: boolean;
+    const existing = stub
+      .getRows("user_organization_roles")
+      .find((r) => r.organization_id === orgId && r.user_id === targetUserId);
+    if (!existing) {
+      const err = new Error("member_not_found") as Error & { code?: string };
+      err.code = "P0002";
+      throw err;
+    }
+
+    await stub
+      .from("user_organization_roles")
+      .update({ role: newRole, status: newStatus })
+      .eq("organization_id", orgId)
+      .eq("user_id", targetUserId);
+    return "audit-id";
+  });
+  return stub;
 }
 
-interface PatchMemberResult {
-  status: number;
-  success?: boolean;
-  error?: string;
-  details?: unknown;
+type ServiceClient = Parameters<typeof patchMember>[0];
+
+function seedActiveOrg(stub: ReturnType<typeof client>) {
+  stub.seed("organizations", [{ id: ORG_ID, name: "Test Org", slug: "test-org" }]);
+  stub.seed("organization_subscriptions", [
+    { organization_id: ORG_ID, status: "active", alumni_bucket: "0-250", parents_bucket: "0-250" },
+  ]);
 }
 
-// ── Route simulation ──────────────────────────────────────────────────────────
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const VALID_ROLES = new Set(["admin", "active_member", "alumni", "parent"]);
-const VALID_STATUSES = new Set(["active", "revoked", "pending"]);
-
-function simulatePatchMember(req: PatchMemberRequest): PatchMemberResult {
-  // UUID param validation
-  if (!UUID_PATTERN.test(req.organizationId)) {
-    return { status: 400, error: "Invalid organization id" };
-  }
-  if (!UUID_PATTERN.test(req.memberId)) {
-    return { status: 400, error: "Invalid user id" };
-  }
-
-  // Auth check
-  if (!req.userId) return { status: 401, error: "Unauthorized" };
-  if (req.role !== "admin") return { status: 403, error: "Forbidden" };
-
-  // Body validation: at least one of role or status required
-  if (req.body.role === undefined && req.body.status === undefined) {
-    return { status: 400, error: "At least one of role or status is required" };
-  }
-  if (req.body.role !== undefined && !VALID_ROLES.has(req.body.role)) {
-    return { status: 400, error: "Invalid request body" };
-  }
-  if (req.body.status !== undefined && !VALID_STATUSES.has(req.body.status)) {
-    return { status: 400, error: "Invalid request body" };
-  }
-
-  // DB error simulation
-  if (req.dbError) return { status: 500, error: "Failed to update member" };
-
-  return { status: 200, success: true };
+function seedAdmin(stub: ReturnType<typeof client>, userId: string) {
+  stub.seed("user_organization_roles", [
+    { organization_id: ORG_ID, user_id: userId, role: "admin", status: "active" },
+  ]);
 }
 
-// ── PATCH /members/[memberId] tests ───────────────────────────────────────────
+// -- patchMember ---------------------------------------------------------------
 
-const validOrgId = randomUUID();
-const validMemberId = randomUUID();
+describe("patchMember service", () => {
+  it("returns ok + slug when an admin changes a member's role", async () => {
+    const stub = client();
+    seedActiveOrg(stub);
+    seedAdmin(stub, ADMIN_ID);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: TARGET_ID, role: "active_member", status: "active" },
+    ]);
 
-describe("PATCH /api/organizations/[organizationId]/members/[memberId]", () => {
-  // ── Auth & authz ────────────────────────────────────────────────────────────
-
-  it("returns 401 for unauthenticated request", () => {
-    const result = simulatePatchMember({
-      userId: null, role: null,
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "alumni" },
+    const result = await patchMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      actorUserId: ADMIN_ID,
+      targetUserId: TARGET_ID,
+      role: "alumni",
     });
-    assert.strictEqual(result.status, 401);
-    assert.strictEqual(result.error, "Unauthorized");
+
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.ok && result.slug, "test-org");
+    const row = stub
+      .getRows("user_organization_roles")
+      .find((r) => r.user_id === TARGET_ID);
+    assert.strictEqual(row?.role, "alumni");
   });
 
-  it("returns 403 for active_member role", () => {
-    const result = simulatePatchMember({
-      userId: "u1", role: "active_member",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "alumni" },
+  it("returns ok when an admin revokes a member's access", async () => {
+    const stub = client();
+    seedActiveOrg(stub);
+    seedAdmin(stub, ADMIN_ID);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: TARGET_ID, role: "active_member", status: "active" },
+    ]);
+
+    const result = await patchMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      actorUserId: ADMIN_ID,
+      targetUserId: TARGET_ID,
+      status: "revoked",
     });
-    assert.strictEqual(result.status, 403);
-    assert.strictEqual(result.error, "Forbidden");
+
+    assert.strictEqual(result.ok, true);
   });
 
-  it("returns 403 for alumni role", () => {
-    const result = simulatePatchMember({
-      userId: "u1", role: "alumni",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "active_member" },
+  it("maps a non-admin actor to 403 Forbidden (engine re-checks the actor)", async () => {
+    const stub = client();
+    seedActiveOrg(stub);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: ADMIN_ID, role: "active_member", status: "active" },
+      { organization_id: ORG_ID, user_id: TARGET_ID, role: "active_member", status: "active" },
+    ]);
+
+    const result = await patchMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      actorUserId: ADMIN_ID,
+      targetUserId: TARGET_ID,
+      role: "alumni",
     });
-    assert.strictEqual(result.status, 403);
-    assert.strictEqual(result.error, "Forbidden");
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 403);
+    assert.strictEqual(result.ok === false && result.error, "Forbidden");
   });
 
-  it("returns 403 for parent role", () => {
-    const result = simulatePatchMember({
-      userId: "u1", role: "parent",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { status: "revoked" },
+  it("maps a missing target membership to 404 target_not_found", async () => {
+    const stub = client();
+    seedActiveOrg(stub);
+    seedAdmin(stub, ADMIN_ID);
+    // No target row seeded.
+
+    const result = await patchMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      actorUserId: ADMIN_ID,
+      targetUserId: TARGET_ID,
+      role: "alumni",
     });
-    assert.strictEqual(result.status, 403);
-    assert.strictEqual(result.error, "Forbidden");
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 404);
+    assert.strictEqual(result.ok === false && result.error, "target_not_found");
   });
 
-  it("returns 403 for user with no membership in this org (role=null)", () => {
-    const result = simulatePatchMember({
-      userId: "u1", role: null,
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "alumni" },
+  it("maps a no-op change to 400 no_change", async () => {
+    const stub = client();
+    seedActiveOrg(stub);
+    seedAdmin(stub, ADMIN_ID);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: TARGET_ID, role: "active_member", status: "active" },
+    ]);
+
+    const result = await patchMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      actorUserId: ADMIN_ID,
+      targetUserId: TARGET_ID,
+      role: "active_member",
     });
-    assert.strictEqual(result.status, 403);
-    assert.strictEqual(result.error, "Forbidden");
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 400);
+    assert.strictEqual(result.ok === false && result.error, "no_change");
   });
 
-  // ── Param validation ────────────────────────────────────────────────────────
-
-  it("returns 400 for invalid organizationId UUID", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: "not-a-uuid", memberId: validMemberId,
-      body: { role: "alumni" },
+  it("LOCKS current behavior: last-admin self-demotion is blocked with 400", async () => {
+    // Characterization only -- whatever today's behavior is, it is locked here.
+    const stub = client();
+    seedActiveOrg(stub);
+    seedAdmin(stub, ADMIN_ID); // sole admin
+    const result = await patchMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      actorUserId: ADMIN_ID,
+      targetUserId: ADMIN_ID,
+      role: "active_member",
     });
-    assert.strictEqual(result.status, 400);
-    assert.strictEqual(result.error, "Invalid organization id");
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 400);
+    assert.strictEqual(
+      result.ok === false && result.error,
+      "You are the only admin in this organization."
+    );
   });
 
-  it("returns 400 for invalid memberId UUID", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: "not-a-uuid",
-      body: { role: "alumni" },
+  it("allows demoting an admin when another active admin remains", async () => {
+    const stub = client();
+    seedActiveOrg(stub);
+    seedAdmin(stub, ADMIN_ID);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: SECOND_ADMIN_ID, role: "admin", status: "active" },
+    ]);
+
+    const result = await patchMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      actorUserId: ADMIN_ID,
+      targetUserId: SECOND_ADMIN_ID,
+      role: "active_member",
     });
-    assert.strictEqual(result.status, 400);
-    assert.strictEqual(result.error, "Invalid user id");
+
+    assert.strictEqual(result.ok, true);
   });
 
-  // ── Body validation ─────────────────────────────────────────────────────────
+  it("LOCKS current behavior: alumni promotion blocked when alumni bucket is 'none'", async () => {
+    const stub = client();
+    stub.seed("organizations", [{ id: ORG_ID, name: "Test Org", slug: "test-org" }]);
+    stub.seed("organization_subscriptions", [
+      { organization_id: ORG_ID, status: "active", alumni_bucket: "none", parents_bucket: "0-250" },
+    ]);
+    seedAdmin(stub, ADMIN_ID);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: TARGET_ID, role: "active_member", status: "active" },
+    ]);
 
-  it("returns 400 when body is empty (no role or status)", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: {},
+    const result = await patchMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      actorUserId: ADMIN_ID,
+      targetUserId: TARGET_ID,
+      role: "alumni",
     });
-    assert.strictEqual(result.status, 400);
-    assert.ok(result.error?.includes("role or status"), `unexpected error: ${result.error}`);
-  });
 
-  it("returns 400 for invalid role value", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "superuser" },
-    });
-    assert.strictEqual(result.status, 400);
-  });
-
-  it("returns 400 for invalid status value", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { status: "suspended" },
-    });
-    assert.strictEqual(result.status, 400);
-  });
-
-  // ── Successful updates ──────────────────────────────────────────────────────
-
-  it("returns 200 when admin updates role to alumni", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "alumni" },
-    });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
-  });
-
-  it("returns 200 when admin updates role to active_member", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "active_member" },
-    });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
-  });
-
-  it("returns 200 when admin promotes member to admin", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "admin" },
-    });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
-  });
-
-  it("returns 200 when admin updates role to parent", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "parent" },
-    });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
-  });
-
-  it("returns 200 when admin revokes access", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { status: "revoked" },
-    });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
-  });
-
-  it("returns 200 when admin restores access", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { status: "active" },
-    });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
-  });
-
-  it("returns 200 when both role and status are provided", () => {
-    // Edge case: both fields in a single request
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "alumni", status: "active" },
-    });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
-  });
-
-  // ── Error paths ─────────────────────────────────────────────────────────────
-
-  it("returns 500 on DB error", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "alumni" },
-      dbError: true,
-    });
-    assert.strictEqual(result.status, 500);
-    assert.strictEqual(result.error, "Failed to update member");
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 400);
+    assert.strictEqual(result.ok === false && result.error, "Upgrade required for alumni role.");
   });
 });
 
-// ── Invites page mutation behaviour simulation ────────────────────────────────
-// These tests verify the logic that was previously embedded directly in the
-// client component (updateAccess, updateRole, confirmAdminPromotion) now routes
-// through the PATCH endpoint correctly.
+// -- reinstateMember -----------------------------------------------------------
 
-describe("Invites page — updateAccess mutation", () => {
-  it("calls PATCH with status=revoked and updates local state on success", () => {
-    // Simulate the route handler receiving the revokeAccess payload
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { status: "revoked" },
+/** Register the reinstate RPC to mirror the Postgres function's success shape. */
+function reinstateClient() {
+  const stub = createSupabaseStub();
+  stub.registerRpc("reinstate_alumni_to_active", () => ({ success: true }));
+  return stub;
+}
+
+describe("reinstateMember service", () => {
+  it("reinstates an alumni member with a linked account", async () => {
+    const stub = reinstateClient();
+    stub.seed("members", [
+      { id: MEMBER_ROW_ID, organization_id: ORG_ID, user_id: TARGET_ID, graduated_at: null },
+    ]);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: TARGET_ID, role: "alumni", status: "active" },
+    ]);
+
+    const result = await reinstateMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      memberId: MEMBER_ROW_ID,
     });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
+
+    assert.strictEqual(result.ok, true);
   });
 
-  it("reports error when PATCH fails — previously swallowed silently", () => {
-    // The old updateAccess had no error handling at all. Now errors surface.
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { status: "revoked" },
-      dbError: true,
-    });
-    assert.strictEqual(result.status, 500);
-    assert.ok(result.error, "error should be defined (was previously swallowed)");
-  });
-});
+  it("reinstates a graduated (non-alumni) member", async () => {
+    const stub = reinstateClient();
+    stub.seed("members", [
+      {
+        id: MEMBER_ROW_ID,
+        organization_id: ORG_ID,
+        user_id: TARGET_ID,
+        graduated_at: "2025-06-01T00:00:00Z",
+      },
+    ]);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: TARGET_ID, role: "active_member", status: "active" },
+    ]);
 
-describe("Invites page — updateRole mutation", () => {
-  it("calls PATCH with role=alumni and updates local state on success", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "alumni" },
+    const result = await reinstateMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      memberId: MEMBER_ROW_ID,
     });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
+
+    assert.strictEqual(result.ok, true);
   });
 
-  it("rejects non-admin callers (cross-org protection)", () => {
-    const result = simulatePatchMember({
-      userId: "random-user", role: "active_member",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "alumni" },
+  it("returns 404 when the member row does not exist", async () => {
+    const stub = reinstateClient();
+    const result = await reinstateMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      memberId: MEMBER_ROW_ID,
     });
-    assert.strictEqual(result.status, 403);
-  });
-});
 
-describe("Invites page — confirmAdminPromotion mutation", () => {
-  it("calls PATCH with role=admin after confirmation", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "admin" },
-    });
-    assert.strictEqual(result.status, 200);
-    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 404);
+    assert.strictEqual(result.ok === false && result.error, "Member not found");
   });
 
-  it("returns error response on DB failure", () => {
-    const result = simulatePatchMember({
-      userId: "admin", role: "admin",
-      organizationId: validOrgId, memberId: validMemberId,
-      body: { role: "admin" },
-      dbError: true,
+  it("returns 400 when the member has no linked user account", async () => {
+    const stub = reinstateClient();
+    stub.seed("members", [
+      { id: MEMBER_ROW_ID, organization_id: ORG_ID, user_id: null, graduated_at: "2025-06-01T00:00:00Z" },
+    ]);
+
+    const result = await reinstateMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      memberId: MEMBER_ROW_ID,
     });
-    assert.strictEqual(result.status, 500);
-    assert.strictEqual(result.error, "Failed to update member");
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 400);
+    assert.strictEqual(
+      result.ok === false && result.error,
+      "Member does not have a linked user account"
+    );
+  });
+
+  it("returns 400 when the member is neither graduated nor alumni", async () => {
+    const stub = reinstateClient();
+    stub.seed("members", [
+      { id: MEMBER_ROW_ID, organization_id: ORG_ID, user_id: TARGET_ID, graduated_at: null },
+    ]);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: TARGET_ID, role: "active_member", status: "active" },
+    ]);
+
+    const result = await reinstateMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      memberId: MEMBER_ROW_ID,
+    });
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 400);
+    assert.strictEqual(result.ok === false && result.error, "Member is not graduated or alumni");
+  });
+
+  it("returns 500 when the reinstate RPC fails", async () => {
+    const stub = createSupabaseStub();
+    stub.registerRpc("reinstate_alumni_to_active", () => ({ success: false, error: "rpc boom" }));
+    stub.seed("members", [
+      { id: MEMBER_ROW_ID, organization_id: ORG_ID, user_id: TARGET_ID, graduated_at: "2025-06-01T00:00:00Z" },
+    ]);
+    stub.seed("user_organization_roles", [
+      { organization_id: ORG_ID, user_id: TARGET_ID, role: "alumni", status: "active" },
+    ]);
+
+    const result = await reinstateMember(stub as unknown as ServiceClient, {
+      organizationId: ORG_ID,
+      memberId: MEMBER_ROW_ID,
+    });
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.ok === false && result.status, 500);
+    assert.strictEqual(result.ok === false && result.error, "rpc boom");
   });
 });

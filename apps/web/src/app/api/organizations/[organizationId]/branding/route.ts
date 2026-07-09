@@ -4,9 +4,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { baseSchemas } from "@/lib/security/validation";
-import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
-import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  readOnlyGuard,
+  unauthorizedResponse,
+} from "@/lib/organizations";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -65,8 +69,8 @@ function normalizeHexColor(value: FormDataEntryValue | null): { color: string | 
 
 export async function POST(req: Request, { params }: RouteParams) {
   const { organizationId } = await params;
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
@@ -88,17 +92,16 @@ export async function POST(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
-  if (!(await requireActiveOrgAdmin(supabase, user.id, organizationId))) {
-    return respond({ error: "Forbidden" }, 403);
+  const ctx = await resolveAdminContext(supabase, user.id, organizationId);
+  if (!ctx.ok) {
+    return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
   }
-
-  // Block mutations if org is in grace period (read-only mode)
-  const { isReadOnly } = await checkOrgReadOnly(organizationId);
-  if (isReadOnly) {
-    return respond(readOnlyResponse(), 403);
+  const readOnly = readOnlyGuard(ctx.ctx);
+  if (readOnly) {
+    return withHeaders(readOnly, rateLimit.headers);
   }
 
   const formData = await req.formData();
@@ -215,4 +218,14 @@ export async function POST(req: Request, { params }: RouteParams) {
   }
 
   return respond({ organization: updatedOrg });
+}
+
+
+/** Attach rate-limit headers onto a resolver-produced NextResponse without
+ * re-serializing its already-contract-correct body. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

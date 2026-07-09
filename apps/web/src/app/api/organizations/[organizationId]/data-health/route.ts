@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { baseSchemas } from "@/lib/security/validation";
-import { getOrgMemberRole } from "@/lib/parents/auth";
-import { normalizeRole } from "@teammeet/core";
-import type { UserRole } from "@/types/database";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  unauthorizedResponse,
+} from "@/lib/organizations";
+import { internalError } from "@/lib/api/response";
 import { getOrgDataHealth } from "@/lib/health/org-data-health";
 
 export const dynamic = "force-dynamic";
@@ -19,12 +22,16 @@ interface RouteParams {
  * Admin-only consolidated data-health report for an org: RAG index
  * coverage/audience tagging and enrichment tagging health. (The people-graph is
  * served from Postgres, so there is no separate store to drift-check.)
+ *
+ * Migrated onto the org-context resolver (U11): the bespoke `getOrgMemberRole`
+ * admin gate converges on `resolveAdminContext`, so a non-member now receives
+ * the neutral 404 (anti-enumeration) rather than a 403.
  */
 export async function GET(req: Request, { params }: RouteParams) {
   const { organizationId } = await params;
 
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
@@ -47,16 +54,34 @@ export async function GET(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
-  const role = await getOrgMemberRole(supabase, user.id, organizationId);
-  if (normalizeRole(role as UserRole | null) !== "admin") {
-    return respond({ error: "Forbidden" }, 403);
+  // Read-only report — skip the grace-period RPC round-trip.
+  const ctx = await resolveAdminContext(supabase, user.id, organizationId, { skipReadOnly: true });
+  if (!ctx.ok) {
+    return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
   }
 
-  const serviceSupabase = createServiceClient();
-  const report = await getOrgDataHealth(serviceSupabase, organizationId);
+  try {
+    const serviceSupabase = createServiceClient();
+    const report = await getOrgDataHealth(serviceSupabase, organizationId);
+    return respond(report);
+  } catch (error) {
+    return withHeaders(
+      internalError("Failed to build data-health report.", error, {
+        orgId: organizationId,
+        userId: user.id,
+      }),
+      rateLimit.headers
+    );
+  }
+}
 
-  return respond(report);
+/** Attach rate-limit headers onto a resolver/helper-produced NextResponse. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

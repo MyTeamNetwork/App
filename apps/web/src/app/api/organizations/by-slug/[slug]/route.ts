@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { baseSchemas } from "@/lib/security/validation";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
+import { getOrgIdBySlug, unauthorizedResponse } from "@/lib/organizations";
+import { internalError } from "@/lib/api/response";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,24 +51,31 @@ export async function GET(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
-  const { data: org, error } = await supabase
-    .from("organizations")
-    .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
+  const result = await getOrgIdBySlug(supabase, slug);
 
-  if (error) {
-    console.error("[by-slug] Failed to lookup organization:", error);
-    return respond({ error: "Failed to lookup organization" }, 500);
-  }
-
-  if (!org) {
+  if (!result.ok) {
+    if (result.kind === "db_error") {
+      // 500 body adopts the shared shape; capture fires (fire-and-forget).
+      return withHeaders(
+        internalError("Failed to lookup organization", { message: result.message }),
+        rateLimit.headers
+      );
+    }
     return respond({ error: "Organization not found" }, 404);
   }
 
   // Return only the ID to minimize data exposure
-  return respond({ id: org.id });
+  return respond({ id: result.id });
+}
+
+
+/** Attach rate-limit headers onto a resolver/helper-produced NextResponse. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

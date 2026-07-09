@@ -27,10 +27,16 @@ const cohortsSource = await readFile(
 
 // ── Source assertions: the route's authorization + safety invariants ─────────
 
-test("re-invite route exports POST and is admin-only", () => {
+test("re-invite route exports POST and is admin-only, grace-period gated", () => {
   assert.match(reInviteSource, /export async function POST/);
-  assert.match(reInviteSource, /membership\?\.role !== "admin"/);
-  assert.match(reInviteSource, /Forbidden/);
+  // Admin authorization + read-only gating now go through the shared
+  // org-context resolver (U14 migration) instead of a hand-rolled
+  // `membership?.role !== "admin"` check. denialResponse maps a non-admin to
+  // 403 Forbidden; readOnlyGuard blocks writes during a grace-period freeze
+  // (this route was previously ungated).
+  assert.match(reInviteSource, /resolveAdminContext\(supabase, user\.id, parsed\.orgId\)/);
+  assert.match(reInviteSource, /denialResponse\(ctx\.denial\)/);
+  assert.match(reInviteSource, /readOnlyGuard\(ctx\.ctx\)/);
 });
 
 test("re-invite route validates a bounded alumniIds uuid array", () => {

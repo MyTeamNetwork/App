@@ -8,9 +8,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Regression guard: every confirmed-vulnerable destructive admin route
- * must route its caller through requireActiveOrgAdmin (or the equivalent
- * status-aware check) so a revoked admin cannot retain access. If a route
- * gets refactored back to the old role-only pattern this test fails.
+ * must route its caller through a status-aware admin check so a revoked admin
+ * cannot retain access. Two forms satisfy this: the original
+ * `requireActiveOrgAdmin` helper, or the `lib/organizations` context resolver
+ * (`resolveAdminContext` / `resolveOrgContext(..., "admin", ...)`), which
+ * composes the same `getActiveAdminMembership` status check. If a route gets
+ * refactored back to a role-only pattern that ignores membership status this
+ * test fails.
  */
 
 const A1_ROUTES = [
@@ -31,10 +35,12 @@ const ROOT = resolve(__dirname, "../..");
 for (const relPath of A1_ROUTES) {
   test(`${relPath} uses requireActiveOrgAdmin`, () => {
     const source = readFileSync(resolve(ROOT, relPath), "utf8");
+    // Accept either the direct helper or the context resolver that composes it —
+    // both enforce the active-membership status check the guard protects.
     assert.match(
       source,
-      /requireActiveOrgAdmin/,
-      `${relPath} must import + call requireActiveOrgAdmin to enforce status check`
+      /requireActiveOrgAdmin|resolveAdminContext|resolveOrgContext/,
+      `${relPath} must enforce the status-aware admin check (requireActiveOrgAdmin or resolveAdminContext)`
     );
     assert.doesNotMatch(
       source,

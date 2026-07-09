@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthenticatedApiClient } from "@/lib/supabase/api";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { baseSchemas } from "@/lib/security/validation";
-import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
-import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
-import { reinstateToActiveMember } from "@/lib/graduation/queries";
-import { debugLog, maskPII } from "@/lib/debug";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  readOnlyGuard,
+  unauthorizedResponse,
+} from "@/lib/organizations";
+import { reinstateMember } from "@/lib/organizations/members";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,21 +22,21 @@ interface RouteParams {
 /**
  * Reinstate a graduated alumni back to active member status.
  *
- * Preconditions:
- * - User must be admin of the organization
+ * Preconditions (enforced in the `reinstateMember` service):
+ * - User must be admin of the organization (resolver)
  * - Member must have a user_id (linked user account)
  * - Member must be currently graduated (graduated_at is set) OR role is "alumni"
  *
  * Actions:
  * 1. Clear members.graduated_at and graduation_warning_sent_at
- * 2. Update user_organization_roles role = "active_member", status = "active"
+ * 2. Update user_organization_roles role = "active_member", status = "pending"
  * 3. Soft-delete alumni record
  */
-export async function POST(_req: Request, { params }: RouteParams) {
+export async function POST(req: Request, { params }: RouteParams) {
   const { organizationId, memberId } = await params;
 
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
@@ -41,10 +45,9 @@ export async function POST(_req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid member id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await createAuthenticatedApiClient(req);
 
-  const rateLimit = checkRateLimit(_req, {
+  const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "member reinstate",
     limitPerIp: 20,
@@ -59,77 +62,40 @@ export async function POST(_req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
-  if (!(await requireActiveOrgAdmin(supabase, user.id, organizationId))) {
-    return respond({ error: "Forbidden" }, 403);
+  const ctx = await resolveAdminContext(supabase, user.id, parsed.orgId);
+  if (!ctx.ok) {
+    return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
   }
-
-  const { isReadOnly } = await checkOrgReadOnly(organizationId);
-  if (isReadOnly) {
-    return respond(readOnlyResponse(), 403);
+  const readOnly = readOnlyGuard(ctx.ctx);
+  if (readOnly) {
+    return withHeaders(readOnly, rateLimit.headers);
   }
 
   const serviceSupabase = createServiceClient();
 
-  // Fetch member to check preconditions
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: member, error: memberError } = await (serviceSupabase.from("members") as any)
-    .select("id, user_id, graduated_at")
-    .eq("id", memberId)
-    .eq("organization_id", organizationId)
-    .is("deleted_at", null)
-    .single();
-
-  if (memberError || !member) {
-    return respond({ error: "Member not found" }, 404);
-  }
-
-  if (!member.user_id) {
-    return respond({ error: "Member does not have a linked user account" }, 400);
-  }
-
-  // Check current role
-  const { data: currentRole } = await serviceSupabase
-    .from("user_organization_roles")
-    .select("role, status")
-    .eq("organization_id", organizationId)
-    .eq("user_id", member.user_id)
-    .maybeSingle();
-
-  // Member must be alumni or have graduated_at set
-  const isAlumni = currentRole?.role === "alumni";
-  const hasGraduated = !!member.graduated_at;
-
-  debugLog("reinstate", "precondition check", {
-    memberId: maskPII(memberId),
-    hasUserId: !!member.user_id,
-    hasGraduatedAt: hasGraduated,
-    currentRole: currentRole?.role ?? null,
-    currentStatus: currentRole?.status ?? null,
-    isAlumni,
+  const result = await reinstateMember(serviceSupabase, {
+    organizationId: parsed.orgId,
+    memberId,
   });
 
-  if (!isAlumni && !hasGraduated) {
-    return respond({ error: "Member is not graduated or alumni" }, 400);
-  }
-
-  // Perform reinstatement (manual admin action → status = 'pending')
-  const result = await reinstateToActiveMember(
-    serviceSupabase,
-    memberId,
-    member.user_id,
-    organizationId,
-    "pending"
-  );
-
-  if (!result.success) {
-    return respond({ error: result.error || "Failed to reinstate member" }, 500);
+  if (!result.ok) {
+    return respond({ error: result.error }, result.status);
   }
 
   return respond({
     success: true,
     message: "Member reinstated successfully",
   });
+}
+
+/** Attach rate-limit headers onto a resolver-produced NextResponse (whose body
+ * already matches the current route contract) without re-serializing it. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

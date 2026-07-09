@@ -5,14 +5,23 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { ORG_NAV_ITEMS } from "@/lib/navigation/nav-items";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import {
-  baseSchemas,
   optionalSafeString,
   validateJson,
   ValidationError,
   validationErrorResponse,
 } from "@/lib/security/validation";
-import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
-import { deleteOrganizationData } from "@/lib/subscription/delete-organization";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  readOnlyGuard,
+  unauthorizedResponse,
+  updateOrgSettings,
+  getOrgAuditMetadata,
+  deleteOrganization,
+  type OrgSettingsUpdate,
+} from "@/lib/organizations";
+import { internalError } from "@/lib/api/response";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import type { OrgRole } from "@teammeet/core";
 import {
@@ -20,7 +29,6 @@ import {
   logDevAdminAction,
   extractRequestContext,
 } from "@/lib/auth/dev-admin";
-import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -105,11 +113,58 @@ function sanitizeNavConfig(payload: unknown): NavConfig {
   return config;
 }
 
+/** Assemble the settings-update payload from a validated PATCH body. Only
+ * fields the request provided are included; post-role arrays always force
+ * "admin" so an admin can never lock themselves out of a surface. */
+function buildUpdatePayload(
+  parsedBody: z.infer<typeof patchSchema>,
+  navConfig: NavConfig,
+  sanitizedName: string | undefined
+): OrgSettingsUpdate {
+  const update: OrgSettingsUpdate = {};
+
+  if (parsedBody.navConfig !== undefined || parsedBody.nav_config !== undefined) {
+    update.nav_config = navConfig;
+  }
+  if (sanitizedName !== undefined) {
+    update.name = sanitizedName;
+  }
+  if (parsedBody.feed_post_roles !== undefined) {
+    update.feed_post_roles = Array.from(new Set(["admin", ...parsedBody.feed_post_roles]));
+  }
+  if (parsedBody.job_post_roles !== undefined) {
+    update.job_post_roles = Array.from(new Set(["admin", ...parsedBody.job_post_roles]));
+  }
+  if (parsedBody.discussion_post_roles !== undefined) {
+    update.discussion_post_roles = Array.from(new Set(["admin", ...parsedBody.discussion_post_roles]));
+  }
+  if (parsedBody.media_upload_roles !== undefined) {
+    update.media_upload_roles = Array.from(new Set(["admin", ...parsedBody.media_upload_roles]));
+  }
+  if (parsedBody.linkedin_resync_enabled !== undefined) {
+    update.linkedin_resync_enabled = parsedBody.linkedin_resync_enabled;
+  }
+  if (parsedBody.require_invite_approval !== undefined) {
+    update.require_invite_approval = parsedBody.require_invite_approval;
+  }
+  if (parsedBody.hide_donor_names !== undefined) {
+    update.hide_donor_names = parsedBody.hide_donor_names;
+  }
+  if (parsedBody.timezone !== undefined) {
+    update.timezone = parsedBody.timezone;
+  }
+  if (parsedBody.default_language !== undefined) {
+    update.default_language = parsedBody.default_language;
+  }
+
+  return update;
+}
+
 export async function PATCH(req: Request, { params }: RouteParams) {
   try {
     const { organizationId } = await params;
-    const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-    if (!orgIdParsed.success) {
+    const parsed = parseOrgId(organizationId);
+    if (!parsed.ok) {
       return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
     }
 
@@ -118,7 +173,6 @@ export async function PATCH(req: Request, { params }: RouteParams) {
     const navConfig = sanitizeNavConfig(navConfigInput);
     const nameInput = parsedBody.name;
 
-    // Validate name if provided
     let sanitizedName: string | undefined;
     if (nameInput !== undefined) {
       const trimmedName = nameInput.trim();
@@ -148,151 +202,34 @@ export async function PATCH(req: Request, { params }: RouteParams) {
       NextResponse.json(payload, { status, headers: rateLimit.headers });
 
     if (!user) {
-      return respond({ error: "Unauthorized" }, 401);
+      return withHeaders(unauthorizedResponse(), rateLimit.headers);
     }
 
-    if (!(await requireActiveOrgAdmin(supabase, user.id, organizationId))) {
-      return respond({ error: "Forbidden" }, 403);
+    const ctx = await resolveAdminContext(supabase, user.id, parsed.orgId);
+    if (!ctx.ok) {
+      return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
+    }
+    const readOnly = readOnlyGuard(ctx.ctx);
+    if (readOnly) {
+      return withHeaders(readOnly, rateLimit.headers);
     }
 
-    // Block mutations if org is in grace period (read-only mode).
-    // Pass the request client: this route accepts bearer auth (mobile),
-    // and the default cookie client is anonymous for those requests.
-    const { isReadOnly } = await checkOrgReadOnly(organizationId, supabase);
-    if (isReadOnly) {
-      return respond(readOnlyResponse(), 403);
-    }
-
-    const serviceSupabase = createServiceClient();
-
-    // Build update payload - only include fields that were provided
-    const updatePayload: { nav_config?: NavConfig; name?: string; feed_post_roles?: string[]; job_post_roles?: string[]; discussion_post_roles?: string[]; media_upload_roles?: string[]; linkedin_resync_enabled?: boolean; require_invite_approval?: boolean; hide_donor_names?: boolean; timezone?: string; default_language?: string } = {};
-
-    // Only update nav_config if navConfig or nav_config was provided in the request
-    if (parsedBody.navConfig !== undefined || parsedBody.nav_config !== undefined) {
-      updatePayload.nav_config = navConfig;
-    }
-
-    // Only update name if it was provided
-    if (sanitizedName !== undefined) {
-      updatePayload.name = sanitizedName;
-    }
-
-    // Only update feed_post_roles if provided, ensuring admin is always included
-    if (parsedBody.feed_post_roles !== undefined) {
-      const roles = Array.from(new Set(["admin", ...parsedBody.feed_post_roles]));
-      updatePayload.feed_post_roles = roles;
-    }
-
-    // Only update job_post_roles if provided, ensuring admin is always included
-    if (parsedBody.job_post_roles !== undefined) {
-      const roles = Array.from(new Set(["admin", ...parsedBody.job_post_roles]));
-      updatePayload.job_post_roles = roles;
-    }
-
-    // Only update discussion_post_roles if provided, ensuring admin is always included
-    if (parsedBody.discussion_post_roles !== undefined) {
-      const roles = Array.from(new Set(["admin", ...parsedBody.discussion_post_roles]));
-      updatePayload.discussion_post_roles = roles;
-    }
-
-    // Only update media_upload_roles if provided, ensuring admin is always included
-    if (parsedBody.media_upload_roles !== undefined) {
-      const roles = Array.from(new Set(["admin", ...parsedBody.media_upload_roles]));
-      updatePayload.media_upload_roles = roles;
-    }
-
-    if (parsedBody.linkedin_resync_enabled !== undefined) {
-      updatePayload.linkedin_resync_enabled = parsedBody.linkedin_resync_enabled;
-    }
-
-    if (parsedBody.require_invite_approval !== undefined) {
-      updatePayload.require_invite_approval = parsedBody.require_invite_approval;
-    }
-
-    if (parsedBody.hide_donor_names !== undefined) {
-      updatePayload.hide_donor_names = parsedBody.hide_donor_names;
-    }
-
-    if (parsedBody.timezone !== undefined) {
-      updatePayload.timezone = parsedBody.timezone;
-    }
-    if (parsedBody.default_language !== undefined) {
-      updatePayload.default_language = parsedBody.default_language;
-    }
-
-    // If nothing to update, return early
+    const updatePayload = buildUpdatePayload(parsedBody, navConfig, sanitizedName);
     if (Object.keys(updatePayload).length === 0) {
       return respond({ error: "No valid fields to update" }, 400);
     }
 
-    const { data: updatedOrgRaw, error: updateError } = await serviceSupabase
-      .from("organizations")
-      .update(updatePayload)
-      .eq("id", organizationId)
-      .select("id, name, nav_config, feed_post_roles, job_post_roles, discussion_post_roles, media_upload_roles, linkedin_resync_enabled, require_invite_approval, hide_donor_names, timezone, default_language")
-      .maybeSingle();
+    const serviceSupabase = createServiceClient();
+    const result = await updateOrgSettings(serviceSupabase, parsed.orgId, updatePayload);
 
-    const updatedOrg = updatedOrgRaw as {
-      id: string;
-      name: string;
-      nav_config: NavConfig | null;
-      feed_post_roles: string[];
-      job_post_roles: string[];
-      discussion_post_roles: string[];
-      media_upload_roles: string[];
-      linkedin_resync_enabled?: boolean;
-      require_invite_approval?: boolean;
-      hide_donor_names?: boolean;
-      timezone?: string;
-      default_language?: string;
-    } | null;
-
-    if (updateError) {
-      return respond({ error: updateError.message }, 400);
-    }
-
-    if (!updatedOrg) {
+    if (!result.ok) {
+      if (result.kind === "db_error") {
+        return respond({ error: result.message }, 400);
+      }
       return respond({ error: "Organization not found" }, 404);
     }
 
-    // Return response with updated fields
-    const response: { navConfig?: NavConfig; name?: string; feed_post_roles?: string[]; job_post_roles?: string[]; discussion_post_roles?: string[]; media_upload_roles?: string[]; linkedin_resync_enabled?: boolean; require_invite_approval?: boolean; hide_donor_names?: boolean; timezone?: string; default_language?: string } = {};
-    if (updatePayload.nav_config !== undefined) {
-      response.navConfig = navConfig;
-    }
-    if (sanitizedName !== undefined) {
-      response.name = updatedOrg.name;
-    }
-    if (updatePayload.feed_post_roles !== undefined) {
-      response.feed_post_roles = updatedOrg.feed_post_roles as string[];
-    }
-    if (updatePayload.job_post_roles !== undefined) {
-      response.job_post_roles = updatedOrg.job_post_roles as string[];
-    }
-    if (updatePayload.discussion_post_roles !== undefined) {
-      response.discussion_post_roles = updatedOrg.discussion_post_roles as string[];
-    }
-    if (updatePayload.media_upload_roles !== undefined) {
-      response.media_upload_roles = updatedOrg.media_upload_roles as string[];
-    }
-    if (updatePayload.linkedin_resync_enabled !== undefined) {
-      response.linkedin_resync_enabled = updatedOrg.linkedin_resync_enabled as boolean;
-    }
-    if (updatePayload.require_invite_approval !== undefined) {
-      response.require_invite_approval = updatedOrg.require_invite_approval as boolean;
-    }
-    if (updatePayload.hide_donor_names !== undefined) {
-      response.hide_donor_names = updatedOrg.hide_donor_names as boolean;
-    }
-    if (updatePayload.timezone !== undefined) {
-      response.timezone = updatedOrg.timezone as string;
-    }
-    if (updatePayload.default_language !== undefined) {
-      response.default_language = updatedOrg.default_language as string;
-    }
-
-    return respond(response);
+    return respond(result.view);
   } catch (error) {
     if (error instanceof ValidationError) {
       return validationErrorResponse(error);
@@ -303,8 +240,8 @@ export async function PATCH(req: Request, { params }: RouteParams) {
 
 export async function DELETE(req: Request, { params }: RouteParams) {
   const { organizationId } = await params;
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
@@ -326,80 +263,53 @@ export async function DELETE(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
+  // Dev-admins may delete an org they are not a member of, so the platform-level
+  // bypass is evaluated first; only if it does NOT apply does a membership
+  // denial (404 for non-members, 403 for non-admins) short-circuit the request.
   const isDevAdminAllowed = canDevAdminPerform(user, "delete_org");
-  const isActiveAdmin = await requireActiveOrgAdmin(supabase, user.id, organizationId);
-  if (!isActiveAdmin && !isDevAdminAllowed) {
-    return respond({ error: "Forbidden" }, 403);
+  if (!isDevAdminAllowed) {
+    const ctx = await resolveAdminContext(supabase, user.id, parsed.orgId, { skipReadOnly: true });
+    if (!ctx.ok) {
+      return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
+    }
   }
 
   const serviceSupabase = createServiceClient();
 
-  // Log dev-admin action before deletion
   if (isDevAdminAllowed) {
-    // Fetch org name for audit metadata
-    const { data: org } = await serviceSupabase
-      .from("organizations")
-      .select("name, slug")
-      .eq("id", organizationId)
-      .maybeSingle();
-
+    const meta = await getOrgAuditMetadata(serviceSupabase, parsed.orgId);
     logDevAdminAction({
       adminUserId: user.id,
       adminEmail: user.email ?? "",
       action: "delete_org",
       targetType: "organization",
-      targetId: organizationId,
-      targetSlug: org?.slug ?? undefined,
+      targetId: parsed.orgId,
+      targetSlug: meta.slug ?? undefined,
       ...extractRequestContext(req),
-      metadata: { orgName: org?.name },
+      metadata: { orgName: meta.name },
     });
   }
 
-  // Fetch subscription to cancel on Stripe, if any
-  const { data: subscription } = await serviceSupabase
-    .from("organization_subscriptions")
-    .select("stripe_subscription_id")
-    .eq("organization_id", organizationId)
-    .maybeSingle();
-  const sub = subscription as { stripe_subscription_id: string | null } | null;
-
   try {
-    if (sub?.stripe_subscription_id) {
-      try {
-        const stripeSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
-        if (stripeSub.status !== "canceled") {
-          await stripe.subscriptions.cancel(sub.stripe_subscription_id);
-        }
-      } catch (stripeError) {
-        const isNotFound = stripeError instanceof Error &&
-          (stripeError.message.includes("No such subscription") ||
-           stripeError.message.includes("resource_missing"));
-        if (!isNotFound) {
-          throw stripeError;
-        }
-        // Subscription doesn't exist in Stripe - safe to continue with deletion
-      }
-    }
-
-    // Delete all related records across all tables with organization_id FK
-    await deleteOrganizationData(serviceSupabase, organizationId);
-
-    // Finally delete the organization
-    const { error: orgDeleteError } = await serviceSupabase
-      .from("organizations")
-      .delete()
-      .eq("id", organizationId);
-
-    if (orgDeleteError) {
-      throw new Error(orgDeleteError.message);
-    }
-
+    await deleteOrganization(serviceSupabase, parsed.orgId, stripe);
     return respond({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to delete organization";
+    // Capture the failure (fire-and-forget) while preserving the historical
+    // 400 + raw-message body the settings UI already renders.
+    internalError(message, error, { orgId: parsed.orgId, userId: user.id });
     return respond({ error: message }, 400);
   }
+}
+
+/** Attach rate-limit headers onto a resolver-produced NextResponse (whose body
+ * already matches the current route contract) without re-serializing it. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

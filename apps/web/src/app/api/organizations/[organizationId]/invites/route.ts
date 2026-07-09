@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthenticatedApiClient } from "@/lib/supabase/api";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { validateJson, ValidationError, baseSchemas } from "@/lib/security/validation";
-import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
+import { validateJson, ValidationError } from "@/lib/security/validation";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  readOnlyGuard,
+  unauthorizedResponse,
+} from "@/lib/organizations";
+import { createInvite } from "@/lib/organizations/invites";
 import { orgInviteCreateSchema } from "@/lib/schemas/invite";
 
 export const dynamic = "force-dynamic";
@@ -18,13 +25,12 @@ interface RouteParams {
 export async function POST(req: Request, { params }: RouteParams) {
   const { organizationId } = await params;
 
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await createAuthenticatedApiClient(req);
 
   const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,
@@ -41,14 +47,17 @@ export async function POST(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
-  if (!(await requireActiveOrgAdmin(supabase, user.id, organizationId))) {
-    return respond({ error: "Forbidden" }, 403);
+  const ctx = await resolveAdminContext(supabase, user.id, parsed.orgId);
+  if (!ctx.ok) {
+    return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
   }
-
-  const serviceSupabase = createServiceClient();
+  const readOnly = readOnlyGuard(ctx.ctx);
+  if (readOnly) {
+    return withHeaders(readOnly, rateLimit.headers);
+  }
 
   let body: z.infer<typeof orgInviteCreateSchema>;
   try {
@@ -60,31 +69,33 @@ export async function POST(req: Request, { params }: RouteParams) {
     return respond({ error: "Invalid request" }, 400);
   }
 
-  // Use the authenticated client so auth.uid() is available inside the RPC.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: invite, error: rpcError } = await (supabase as any).rpc("create_org_invite", {
-    p_organization_id: organizationId,
-    p_role: body.role,
-    p_uses: body.uses ?? null,
-    p_expires_at: body.expiresAt ?? null,
-    p_require_approval: body.requireApproval ?? null,
+  const serviceSupabase = createServiceClient();
+
+  const result = await createInvite(supabase, serviceSupabase, {
+    organizationId: parsed.orgId,
+    role: body.role,
+    uses: body.uses ?? null,
+    expiresAt: body.expiresAt ?? null,
+    requireApproval: body.requireApproval ?? null,
   });
 
-  if (rpcError || !invite) {
-    console.error("[org/invites POST] RPC error:", rpcError);
-    return respond({ error: rpcError?.message || "Failed to create invite" }, 400);
+  if (!result.ok) {
+    return respond({ error: result.error }, result.status);
   }
 
-  const { data: orgSlugRow } = await serviceSupabase
-    .from("organizations")
-    .select("slug")
-    .eq("id", organizationId)
-    .maybeSingle();
-
-  if (orgSlugRow?.slug) {
-    revalidatePath(`/${orgSlugRow.slug}/settings/invites`);
-    revalidatePath(`/${orgSlugRow.slug}/settings/approvals`);
+  if (result.slug) {
+    revalidatePath(`/${result.slug}/settings/invites`);
+    revalidatePath(`/${result.slug}/settings/approvals`);
   }
 
-  return respond({ invite });
+  return respond({ invite: result.invite });
+}
+
+/** Attach rate-limit headers onto a resolver-produced NextResponse (whose body
+ * already matches the current route contract) without re-serializing it. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

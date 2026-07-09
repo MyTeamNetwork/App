@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { baseSchemas } from "@/lib/security/validation";
-import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
-import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  readOnlyDenialResponse,
+  unauthorizedResponse,
+} from "@/lib/organizations";
 import { getDomain } from "@/lib/notifications/email-domains";
 import { invalidateSenderCache } from "@/lib/notifications/sender";
 
@@ -99,8 +103,8 @@ export async function guardEmailDomainAdmin(
   organizationId: string,
   options: { feature: string; limitPerIp: number; limitPerUser: number; blockReadOnly?: boolean }
 ): Promise<EmailDomainGuardSuccess | NextResponse> {
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
@@ -121,17 +125,30 @@ export async function guardEmailDomainAdmin(
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
-  if (!(await requireActiveOrgAdmin(supabase, user.id, organizationId))) {
-    return respond({ error: "Forbidden" }, 403);
+
+  // Resolve admin context (composes membership + role + read-only). Only fetch
+  // the read-only signal when this route actually gates on it, to avoid the
+  // extra RPC round-trip on the read paths (GET / verify).
+  const ctx = await resolveAdminContext(supabase, user.id, organizationId, {
+    skipReadOnly: !options.blockReadOnly,
+  });
+  if (!ctx.ok) {
+    return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
   }
-  if (options.blockReadOnly) {
-    const { isReadOnly } = await checkOrgReadOnly(organizationId);
-    if (isReadOnly) {
-      return respond(readOnlyResponse(), 403);
-    }
+  if (options.blockReadOnly && ctx.ctx.isReadOnly) {
+    return withHeaders(readOnlyDenialResponse(), rateLimit.headers);
   }
 
   return { respond, service: createServiceClient(), userId: user.id };
+}
+
+/** Attach rate-limit headers onto a resolver-produced NextResponse without
+ * re-serializing its already-contract-correct body. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

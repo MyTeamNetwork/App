@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { baseSchemas } from "@/lib/security/validation";
 import {
   canDevAdminPerform,
   logDevAdminAction,
   extractRequestContext,
 } from "@/lib/auth/dev-admin";
-import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  unauthorizedResponse,
+} from "@/lib/organizations";
 import type { Database } from "@/types/database";
 import { extractSubscriptionPeriodEndIso } from "@/lib/stripe/subscription-period";
 import {
@@ -31,17 +35,16 @@ const normalizeSubscriptionStatus = (subscription: { status?: string | null; can
 
 export async function POST(req: Request, { params }: RouteParams) {
   const { organizationId } = await params;
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
-  const { createClient } = await import("@/lib/supabase/server");
   const { createServiceClient } = await import("@/lib/supabase/service");
+  const { createAuthenticatedApiClient } = await import("@/lib/supabase/api");
   const { stripe } = await import("@/lib/stripe");
-  const supabase = await createClient();
   const serviceSupabase = createServiceClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await createAuthenticatedApiClient(req);
 
   const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,
@@ -58,13 +61,19 @@ export async function POST(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
+  // Dev-admins may reconcile an org they are not a member of, so the platform
+  // bypass is evaluated first; only if it does NOT apply does a membership
+  // denial (404 non-member / 403 non-admin) short-circuit. Reconciliation is a
+  // billing recovery path, so the read-only gate is skipped (skipReadOnly).
   const isDevAdminAllowed = canDevAdminPerform(user, "reconcile_subscription");
-  const isActiveAdmin = await requireActiveOrgAdmin(supabase, user.id, organizationId);
-  if (!isActiveAdmin && !isDevAdminAllowed) {
-    return respond({ error: "Forbidden" }, 403);
+  if (!isDevAdminAllowed) {
+    const ctx = await resolveAdminContext(supabase, user.id, parsed.orgId, { skipReadOnly: true });
+    if (!ctx.ok) {
+      return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
+    }
   }
 
   // Log dev-admin action after auth check
@@ -270,4 +279,13 @@ export async function POST(req: Request, { params }: RouteParams) {
     const message = error instanceof Error ? error.message : "Unable to reconcile subscription";
     return respond({ error: message }, 400);
   }
+}
+
+/** Attach rate-limit headers onto a resolver-produced NextResponse (whose body
+ * already matches the current route contract) without re-serializing it. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

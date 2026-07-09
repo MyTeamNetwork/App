@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthenticatedApiClient } from "@/lib/supabase/api";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getOrgMembership } from "@/lib/auth/api-helpers";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  readOnlyGuard,
+  unauthorizedResponse,
+} from "@/lib/organizations";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { baseSchemas, validateJson, ValidationError } from "@/lib/security/validation";
 import { sendEmail } from "@/lib/notifications";
@@ -71,14 +77,12 @@ interface OrgInviteRpc {
 // cooldown. Shaped so a future cron could reuse it; no background send ships.
 export async function POST(req: Request, { params }: RouteParams) {
   const { organizationId } = await params;
-  if (!baseSchemas.uuid.safeParse(organizationId).success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid identifier" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { supabase, user } = await createAuthenticatedApiClient(req);
 
   const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,
@@ -94,7 +98,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
   let body: z.infer<typeof reInviteSchema>;
@@ -107,19 +111,17 @@ export async function POST(req: Request, { params }: RouteParams) {
     return respond({ error: "Invalid request" }, 400);
   }
 
+  // Admin-only alumni write, now grace-period gated (previously ungated).
+  const ctx = await resolveAdminContext(supabase, user.id, parsed.orgId);
+  if (!ctx.ok) {
+    return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
+  }
+  const readOnly = readOnlyGuard(ctx.ctx);
+  if (readOnly) {
+    return withHeaders(readOnly, rateLimit.headers);
+  }
+
   const serviceSupabase = createServiceClient();
-
-  let membership;
-  try {
-    membership = await getOrgMembership(serviceSupabase, user.id, organizationId);
-  } catch (error) {
-    console.error("[alumni/re-invite POST] Failed to verify membership:", error);
-    return respond({ error: "Unable to verify permissions" }, 500);
-  }
-
-  if (membership?.role !== "admin") {
-    return respond({ error: "Forbidden" }, 403);
-  }
 
   const alumniIds = [...new Set(body.alumniIds)];
 
@@ -341,4 +343,13 @@ async function sendCohortInvites(input: SendCohortInput): Promise<ReInviteResult
   }
 
   return results;
+}
+
+/** Attach rate-limit headers onto a resolver-produced NextResponse (whose body
+ * already matches the current route contract) without re-serializing it. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

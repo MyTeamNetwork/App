@@ -1,13 +1,18 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthenticatedApiClient } from "@/lib/supabase/api";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { validateJson, ValidationError, baseSchemas } from "@/lib/security/validation";
-import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
-import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
-import { executeMemberRoleChange, type MemberRoleChangeClient } from "@/lib/members/role-change";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  readOnlyGuard,
+  unauthorizedResponse,
+} from "@/lib/organizations";
+import { patchMember } from "@/lib/organizations/members";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,8 +33,8 @@ const patchSchema = z
 export async function PATCH(req: Request, { params }: RouteParams) {
   const { organizationId, memberId: userId } = await params;
 
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
@@ -38,8 +43,7 @@ export async function PATCH(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid user id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await createAuthenticatedApiClient(req);
 
   const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,
@@ -56,16 +60,16 @@ export async function PATCH(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
-  if (!(await requireActiveOrgAdmin(supabase, user.id, organizationId))) {
-    return respond({ error: "Forbidden" }, 403);
+  const ctx = await resolveAdminContext(supabase, user.id, parsed.orgId);
+  if (!ctx.ok) {
+    return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
   }
-
-  const { isReadOnly } = await checkOrgReadOnly(organizationId);
-  if (isReadOnly) {
-    return respond(readOnlyResponse(), 403);
+  const readOnly = readOnlyGuard(ctx.ctx);
+  if (readOnly) {
+    return withHeaders(readOnly, rateLimit.headers);
   }
 
   let body: z.infer<typeof patchSchema>;
@@ -80,50 +84,21 @@ export async function PATCH(req: Request, { params }: RouteParams) {
 
   const serviceSupabase = createServiceClient();
 
-  const result = await executeMemberRoleChange(serviceSupabase as unknown as MemberRoleChangeClient, {
-    organizationId,
+  const result = await patchMember(serviceSupabase, {
+    organizationId: parsed.orgId,
     actorUserId: user.id,
     targetUserId: userId,
     role: body.role,
     status: body.status,
-    source: "manual",
   });
 
-  if (result.state === "invalid") {
-    return respond({ error: result.reason }, result.reason === "target_not_found" ? 404 : 400);
+  if (!result.ok) {
+    return respond({ error: result.error }, result.status);
   }
 
-  if (result.state === "error") {
-    if (result.reason === "actor_not_admin") {
-      return respond({ error: "Forbidden" }, 403);
-    }
-    if (result.reason === "target_not_found") {
-      return respond({ error: "target_not_found" }, 404);
-    }
-    if (result.reason === "stale_member_role") {
-      return respond({ error: result.message }, 409);
-    }
-    if (
-      result.reason === "last_admin_self_demotion" ||
-      result.reason === "last_admin_target_demotion" ||
-      result.reason === "alumni_upgrade_required" ||
-      result.reason === "parent_upgrade_required"
-    ) {
-      return respond({ error: result.message }, 400);
-    }
-    console.error("[members PATCH] Role change error:", result);
-    return respond({ error: "Failed to update member" }, 500);
-  }
-
-  // Invalidate router cache so navigating to other pages shows fresh data
-  const { data: orgSlugRow } = await serviceSupabase
-    .from("organizations")
-    .select("slug")
-    .eq("id", organizationId)
-    .single();
-
-  if (orgSlugRow?.slug) {
-    const slug = orgSlugRow.slug;
+  // Invalidate router cache so navigating to other pages shows fresh data.
+  if (result.slug) {
+    const slug = result.slug;
     revalidatePath(`/${slug}`);
     revalidatePath(`/${slug}/members`, "layout");
     revalidatePath(`/${slug}/parents`, "layout");
@@ -131,4 +106,13 @@ export async function PATCH(req: Request, { params }: RouteParams) {
   }
 
   return respond({ success: true });
+}
+
+/** Attach rate-limit headers onto a resolver-produced NextResponse (whose body
+ * already matches the current route contract) without re-serializing it. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }

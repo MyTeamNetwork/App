@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthenticatedApiClient } from "@/lib/supabase/api";
 import { createServiceClient } from "@/lib/supabase/service";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
-import { baseSchemas } from "@/lib/security/validation";
-import { requireActiveOrgAdmin } from "@/lib/auth/require-active-admin";
-import type { Database } from "@/types/database";
-import { extractSubscriptionPeriodEndEpoch } from "@/lib/stripe/subscription-period";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  unauthorizedResponse,
+} from "@/lib/organizations";
+import { cancelSubscription } from "@/lib/organizations/subscriptions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,17 +18,16 @@ interface RouteParams {
   params: Promise<{ organizationId: string }>;
 }
 
-export async function POST(_req: Request, { params }: RouteParams) {
+export async function POST(req: Request, { params }: RouteParams) {
   const { organizationId } = await params;
-  const orgIdParsed = baseSchemas.uuid.safeParse(organizationId);
-  if (!orgIdParsed.success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await createAuthenticatedApiClient(req);
 
-  const rateLimit = checkRateLimit(_req, {
+  const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "subscription cancellation",
     limitPerIp: 20,
@@ -40,86 +42,35 @@ export async function POST(_req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
-  if (!(await requireActiveOrgAdmin(supabase, user.id, organizationId))) {
-    return respond({ error: "Forbidden" }, 403);
+  // Billing recovery paths must work during a grace-period freeze, so the
+  // read-only gate is intentionally skipped (skipReadOnly). See subscriptions.ts.
+  const ctx = await resolveAdminContext(supabase, user.id, parsed.orgId, { skipReadOnly: true });
+  if (!ctx.ok) {
+    return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
   }
 
   const serviceSupabase = createServiceClient();
-  type OrgSubTable = Database["public"]["Tables"]["organization_subscriptions"];
-  type OrgSubUpdate = OrgSubTable["Update"];
+  const result = await cancelSubscription(serviceSupabase, stripe, parsed.orgId);
 
-  const { data: subscription, error: subscriptionError } = await serviceSupabase
-    .from("organization_subscriptions")
-    .select("stripe_subscription_id, status, current_period_end")
-    .eq("organization_id", organizationId)
-    .maybeSingle();
-
-  if (subscriptionError) {
-    console.error("[cancel-subscription] Failed to load subscription", {
-      organizationId,
-      code: subscriptionError.code,
-      message: subscriptionError.message,
-    });
-    return respond({ error: "Unable to load subscription details" }, 500);
+  if (!result.ok) {
+    return respond({ error: result.error }, result.status);
   }
 
-  const sub = subscription as { 
-    stripe_subscription_id: string | null; 
-    status?: string | null;
-    current_period_end?: string | null;
-  } | null;
+  return respond({
+    status: result.status,
+    currentPeriodEnd: result.currentPeriodEnd,
+    message: result.message,
+  });
+}
 
-  if (!sub) {
-    return respond({ error: "Subscription not found" }, 404);
+/** Attach rate-limit headers onto a resolver-produced NextResponse (whose body
+ * already matches the current route contract) without re-serializing it. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
   }
-
-  try {
-    let currentPeriodEnd = sub.current_period_end;
-
-    if (sub.stripe_subscription_id) {
-      // Schedule cancellation at period end instead of immediate cancel
-      const updatedSub = await stripe.subscriptions.update(sub.stripe_subscription_id, {
-        cancel_at_period_end: true,
-      });
-      
-      const periodEnd = extractSubscriptionPeriodEndEpoch(updatedSub);
-      if (periodEnd) {
-        currentPeriodEnd = new Date(periodEnd * 1000).toISOString();
-      }
-    }
-
-    // Update status to "canceling" to indicate scheduled cancellation
-    const payload: OrgSubUpdate = {
-      status: "canceling",
-      current_period_end: currentPeriodEnd,
-      updated_at: new Date().toISOString(),
-    };
-
-    const table = "organization_subscriptions" as const;
-    const { error: updateError } = await serviceSupabase
-      .from(table)
-      .update(payload)
-      .eq("organization_id", organizationId);
-
-    if (updateError) {
-      console.error("[cancel-subscription] Failed to update subscription", {
-        organizationId,
-        code: updateError.code,
-        message: updateError.message,
-      });
-      return respond({ error: "Unable to persist cancellation state" }, 500);
-    }
-
-    return respond({ 
-      status: "canceling",
-      currentPeriodEnd,
-      message: "Subscription will be cancelled at the end of the billing period",
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to cancel subscription";
-    return respond({ error: message }, 400);
-  }
+  return res;
 }

@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthenticatedApiClient } from "@/lib/supabase/api";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getOrgMembership } from "@/lib/auth/api-helpers";
-import { canMutateAlumni } from "@/lib/alumni/mutations";
 import { linkedInProfileUrlSchema, normalizeLinkedInProfileUrl } from "@/lib/alumni/linkedin-url";
-import { checkOrgReadOnly, readOnlyResponse } from "@/lib/subscription/read-only-guard";
+import {
+  parseOrgId,
+  resolveAdminContext,
+  denialResponse,
+  readOnlyGuard,
+  unauthorizedResponse,
+} from "@/lib/organizations";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 import { baseSchemas, validateJson, ValidationError } from "@/lib/security/validation";
 
@@ -25,12 +29,12 @@ interface RouteParams {
 
 export async function POST(req: Request, { params }: RouteParams) {
   const { organizationId } = await params;
-  if (!baseSchemas.uuid.safeParse(organizationId).success) {
+  const parsed = parseOrgId(organizationId);
+  if (!parsed.ok) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = await createAuthenticatedApiClient(req);
 
   const rateLimit = checkRateLimit(req, {
     userId: user?.id ?? null,
@@ -47,7 +51,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     NextResponse.json(payload, { status, headers: rateLimit.headers });
 
   if (!user) {
-    return respond({ error: "Unauthorized" }, 401);
+    return withHeaders(unauthorizedResponse(), rateLimit.headers);
   }
 
   let body: z.infer<typeof attachLinkedInSchema>;
@@ -60,31 +64,17 @@ export async function POST(req: Request, { params }: RouteParams) {
     return respond({ error: "Invalid request" }, 400);
   }
 
+  // Admin-only alumni write, grace-period gated (isSelf never applied here).
+  const ctx = await resolveAdminContext(supabase, user.id, parsed.orgId);
+  if (!ctx.ok) {
+    return withHeaders(denialResponse(ctx.denial), rateLimit.headers);
+  }
+  const readOnly = readOnlyGuard(ctx.ctx);
+  if (readOnly) {
+    return withHeaders(readOnly, rateLimit.headers);
+  }
+
   const serviceSupabase = createServiceClient();
-
-  let membership;
-  try {
-    membership = await getOrgMembership(serviceSupabase, user.id, organizationId);
-  } catch (error) {
-    console.error("[alumni/linkedin-url POST] Failed to verify membership:", error);
-    return respond({ error: "Unable to verify permissions" }, 500);
-  }
-
-  const policy = canMutateAlumni({
-    action: "update",
-    isAdmin: membership?.role === "admin",
-    isSelf: false,
-    isReadOnly: false,
-  });
-
-  if (!policy.allowed) {
-    return respond({ error: policy.error, code: policy.code }, policy.status);
-  }
-
-  const { isReadOnly } = await checkOrgReadOnly(organizationId);
-  if (isReadOnly) {
-    return respond(readOnlyResponse(), 403);
-  }
 
   const { data: alumni, error: alumniError } = await serviceSupabase
     .from("alumni")
@@ -153,4 +143,13 @@ export async function POST(req: Request, { params }: RouteParams) {
   }
 
   return respond({ success: true, replaced: Boolean(existingUrl) });
+}
+
+/** Attach rate-limit headers onto a resolver-produced NextResponse (whose body
+ * already matches the current route contract) without re-serializing it. */
+function withHeaders(res: NextResponse, headers: Record<string, string>): NextResponse {
+  for (const [key, value] of Object.entries(headers)) {
+    res.headers.set(key, value);
+  }
+  return res;
 }
