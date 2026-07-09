@@ -22,6 +22,15 @@ export function canMutateAlumni(params: {
 }): AlumniMutationDecision {
   const { action, isReadOnly, isAdmin, isSelf } = params;
 
+  if (isReadOnly) {
+    return {
+      allowed: false,
+      status: 403,
+      error: "Organization is in read-only mode. Please resubscribe to make changes.",
+      code: "ORG_READ_ONLY",
+    };
+  }
+
   if (action === "create") {
     if (!isAdmin) {
       return {
@@ -31,15 +40,6 @@ export function canMutateAlumni(params: {
       };
     }
     return { allowed: true };
-  }
-
-  if (isReadOnly) {
-    return {
-      allowed: false,
-      status: 403,
-      error: "Organization is in read-only mode. Please resubscribe to make changes.",
-      code: "ORG_READ_ONLY",
-    };
   }
 
   if (action === "update") {

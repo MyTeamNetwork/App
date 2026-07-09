@@ -10,3 +10,12 @@ export const ASSISTANT_TEMPORARILY_DISABLED = false;
 export const ASSISTANT_DISABLED_TITLE = "Assistant temporarily disabled";
 export const ASSISTANT_DISABLED_MESSAGE =
   "The AI assistant is offline for maintenance right now. Please check back soon.";
+export const ASSISTANT_DISABLED_CODE = "ASSISTANT_DISABLED";
+
+export function getAssistantDisabledPayload() {
+  return {
+    error: ASSISTANT_DISABLED_MESSAGE,
+    title: ASSISTANT_DISABLED_TITLE,
+    code: ASSISTANT_DISABLED_CODE,
+  };
+}

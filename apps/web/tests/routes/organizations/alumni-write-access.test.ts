@@ -27,14 +27,17 @@ function simulateAlumniWritePolicy(params: {
   });
 }
 
-test("alumni create stays allowed for admins during grace period", () => {
+test("alumni create is blocked during grace period", () => {
   const result = simulateAlumniWritePolicy({
     mutation: "create",
     role: "admin",
     isReadOnly: true,
   });
 
-  assert.deepStrictEqual(result, { allowed: true });
+  assert.strictEqual(result.allowed, false);
+  assert.strictEqual(result.status, 403);
+  assert.strictEqual(result.error, "Organization is in read-only mode. Please resubscribe to make changes.");
+  assert.strictEqual(result.code, "ORG_READ_ONLY");
 });
 
 test("alumni create still requires admin role during grace period", () => {

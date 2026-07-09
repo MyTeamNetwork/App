@@ -27,6 +27,18 @@ Operator judgment required before any ledger write:
 - `20261020200001_batch_create_enterprise_orgs.sql`
 - `20261020200002_enterprise_counts_function.sql`
 
+Resolved (ledger repaired after per-object remote verification):
+
+- `20261229000000_mobile_auth_handoffs.sql` — repaired 2026-07-02. Schema+function
+  migration (operator-judgment class): objects were created out-of-band in prod
+  and the migration backfills them idempotently. Verified remotely before the
+  ledger insert: table + RLS enabled with zero policies, both indexes
+  (`mobile_auth_handoffs_unconsumed_idx`, `idx_mobile_auth_handoffs_user_id`),
+  `consume_mobile_auth_handoff` definition byte-equivalent to the migration
+  (SECURITY DEFINER, `search_path=''`, `FOR UPDATE SKIP LOCKED`), and EXECUTE
+  granted to `postgres` + `service_role` only. Ledger row inserted with a
+  repair-note statement rather than replayed DDL.
+
 ## Remote Verification Workflow
 
 1. Diff local migrations against the linked remote:

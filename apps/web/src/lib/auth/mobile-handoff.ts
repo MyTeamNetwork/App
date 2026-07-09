@@ -65,11 +65,6 @@ export function logMobileHandoffFailure(
   console.error(`[mobile-handoff] ${message}`, context);
 }
 
-type ConsumeMobileAuthHandoffRow = {
-  encrypted_access_token: string;
-  encrypted_refresh_token: string;
-};
-
 /**
  * Result of exchanging a one-time handoff code for session tokens.
  * `ok` carries the decrypted tokens; every other variant maps to an HTTP status
@@ -106,19 +101,9 @@ export async function consumeMobileHandoff(
 ): Promise<ConsumeMobileHandoffResult> {
   const { serviceClient, codeHash, decrypt, logContext } = deps;
 
-  // Cast: consume_mobile_auth_handoff RPC is in the database but not yet in the
-  // generated Database types. Regenerate via `bun run gen:types` to drop.
-  const { data, error } = await (
-    serviceClient as unknown as {
-      rpc: (
-        fn: string,
-        args: { p_code_hash: string }
-      ) => Promise<{
-        data: ConsumeMobileAuthHandoffRow[] | null;
-        error: { message: string } | null;
-      }>;
-    }
-  ).rpc("consume_mobile_auth_handoff", { p_code_hash: codeHash });
+  const { data, error } = await serviceClient.rpc("consume_mobile_auth_handoff", {
+    p_code_hash: codeHash,
+  });
 
   if (error) {
     logMobileHandoffFailure("Consume RPC failed", {
@@ -130,9 +115,7 @@ export async function consumeMobileHandoff(
     return { status: "rpc_error" };
   }
 
-  const row = Array.isArray(data)
-    ? (data[0] as ConsumeMobileAuthHandoffRow | undefined)
-    : null;
+  const row = data?.[0];
   if (!row) {
     // Expected traffic: expired, already-consumed, or unknown code. Not an error.
     return { status: "not_found" };

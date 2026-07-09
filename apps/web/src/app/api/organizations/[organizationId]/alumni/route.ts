@@ -6,6 +6,7 @@ import { baseSchemas, validateJson, ValidationError } from "@/lib/security/valid
 import { newAlumniSchema, type NewAlumniForm } from "@/lib/schemas/member";
 import { buildAlumniWritePayload, canMutateAlumni } from "@/lib/alumni/mutations";
 import { getAlumniCapacitySnapshot } from "@/lib/alumni/capacity";
+import { checkOrgReadOnly } from "@/lib/subscription/read-only-guard";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -50,11 +51,15 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Unable to verify permissions" }, { status: 500 });
   }
 
+  // Real read-only signal (previously hardcoded false). canMutateAlumni owns the
+  // write gate, including fail-closed read-only denials.
+  const { isReadOnly } = await checkOrgReadOnly(organizationId);
+
   const policy = canMutateAlumni({
     action: "create",
     isAdmin: roleData?.role === "admin",
     isSelf: false,
-    isReadOnly: false,
+    isReadOnly,
   });
   if (!policy.allowed) {
     return NextResponse.json({ error: policy.error, code: policy.code }, { status: policy.status });
