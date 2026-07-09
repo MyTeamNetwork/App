@@ -280,3 +280,20 @@ export function captureMessage(
   if (!enabled || !sdksInitialized) return;
   sentry.captureMessage(...args);
 }
+
+/**
+ * Register the root navigation container with Sentry's screen-load tracing.
+ * NOT gated on `enabled`: the integration is inert until Sentry.init runs, and
+ * registration can legitimately happen before lazy init (opt-out users included).
+ */
+export function registerNavigationContainer(
+  ...args: Parameters<typeof sentry.registerNavigationContainer>
+): void {
+  sentry.registerNavigationContainer(...args);
+}
+
+/**
+ * Wrap the root component with Sentry's touch/profiler boundary. Inert until a
+ * Sentry client exists, so safe for opt-out users.
+ */
+export const wrap = sentry.wrap;

@@ -79,6 +79,7 @@ eas submit --platform ios --latest              # same as bun run eas:submit:ios
 If `eas build` fails with **`Distribution Certificate is not validated for non-interactive builds`**, run **`bun run eas:ios:production`** once from a terminal where you can authenticate (TTY); complete the prompts so Expo validates certs on Expo servers ([CI prerequisites](https://docs.expo.dev/build/building-on-ci/)). Subsequent builds can use `--non-interactive` in CI.
 
 Then in ASC:
+
 1. App → **TestFlight** tab → wait for processing (~10–30 min)
 2. Answer export compliance once (`ITSAppUsesNonExemptEncryption: false` already set in `app.config.ts` → auto-passes)
 3. Internal Testing group → add build → add testers (must be ASC users, up to 100, no review)
@@ -111,6 +112,7 @@ Then in ASC:
 **Animations:** `react-native-reanimated` (FadeIn, FadeInDown, etc.)
 
 **Provider hierarchy:**
+
 ```
 AuthProvider → GestureHandlerRootView → StripeProvider → Stack
   └─ (auth): login, signup, forgot-password, reset-password, callback
@@ -122,12 +124,12 @@ AuthProvider → GestureHandlerRootView → StripeProvider → Stack
 
 ## Routing
 
-| Route Group | Purpose |
-|---|---|
-| `(auth)` | Unauthenticated screens |
-| `(app)/(drawer)` | Authenticated — org list, profile, terms |
-| `(app)/(drawer)/[orgSlug]/(tabs)` | Org-scoped tab screens (primary nav) |
-| `(app)/(drawer)/[orgSlug]/[feature]` | Org-scoped feature stacks |
+| Route Group                          | Purpose                                  |
+| ------------------------------------ | ---------------------------------------- |
+| `(auth)`                             | Unauthenticated screens                  |
+| `(app)/(drawer)`                     | Authenticated — org list, profile, terms |
+| `(app)/(drawer)/[orgSlug]/(tabs)`    | Org-scoped tab screens (primary nav)     |
+| `(app)/(drawer)/[orgSlug]/[feature]` | Org-scoped feature stacks                |
 
 Drawer = secondary nav (org logo tap). Tabs = primary nav.
 
@@ -158,6 +160,7 @@ const styles = useThemedStyles((n, s) => ({
 ```
 
 **Design tokens** (`src/lib/design-tokens.ts`):
+
 - **NEUTRAL / NEUTRAL_DARK** — surface, background, foreground, border, muted (app chrome)
 - **SEMANTIC / SEMANTIC_DARK** — success, warning, error, info
 - **ENERGY** — live indicators, achievements
@@ -191,6 +194,7 @@ All org screens follow this layout:
 ```
 
 Requirements:
+
 1. `headerShown: false` in screen options
 2. Org logo opens drawer via `DrawerActions.toggleDrawer()`
 3. Content sheet uses `NEUTRAL.surface` background
@@ -244,6 +248,7 @@ Custom hooks in `src/hooks/` (e.g., `useEvents`, `useMembers`, `useAnnouncements
 **React Navigation Types:** Use `any` for nav props due to Expo Router / React Navigation type conflicts.
 
 **Expo SDK 54 APIs:**
+
 - Notifications: Include `shouldShowBanner` and `shouldShowList` in handler
 - Application: Use `Application.getAndroidId()` (not `.androidId`)
 - FileSystem: Use string `"base64"` (not `FileSystem.EncodingType.Base64`)
@@ -252,23 +257,27 @@ Custom hooks in `src/hooks/` (e.g., `useEvents`, `useMembers`, `useAnnouncements
 
 ## Analytics
 
-PostHog (product analytics) + Sentry (error tracking). Abstraction in `src/lib/analytics/`. Auto screen tracking via `src/hooks/useScreenTracking.ts`. Disabled in `__DEV__` by default. Init in `app/_layout.tsx`.
+PostHog (product analytics) + Sentry (error tracking + performance). Abstraction in `src/lib/analytics/`. Auto screen tracking via `src/hooks/useScreenTracking.ts`. Disabled in `__DEV__` by default. Init in `app/_layout.tsx`.
+
+**Sentry performance:** tracing (`tracesSampleRate` 0.2 prod) + profiling (`profilesSampleRate` 0.1) via expo-router navigation instrumentation (screen-load transactions, time-to-initial-display) and app-hang tracking. Sample rates tunable in `src/lib/analytics/sentry.ts`. Session replay is intentionally **off** — the App Store "Data Not Used to Track You" label (`docs/app-store-submission.md`) doesn't cover it without a label change + ATT prompt.
+
+**OTA source maps:** `@sentry/react-native/expo` (in `app.config.ts`) only uploads source maps for native builds. After `eas update`, run `npx sentry-expo-upload-sourcemaps dist` or OTA stack traces won't symbolicate. Ops details: `docs/runbooks/sentry-mobile.md`.
 
 ## Environment Variables
 
 Copy `.env.example` to `.env.local` (never commit `.env.local`).
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `EXPO_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
-| `EXPO_PUBLIC_WEB_URL` | No | Web app URL for API calls (default: `https://www.myteamnetwork.com`) |
-| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | No | Google OAuth web client ID (native Google Sign-In) |
-| `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | No | Google OAuth iOS client ID |
-| `EXPO_PUBLIC_POSTHOG_KEY` | No | PostHog product analytics key |
-| `EXPO_PUBLIC_SENTRY_DSN` | No | Sentry error tracking DSN |
-| `EXPO_PUBLIC_TURNSTILE_SITE_KEY` | Yes | Cloudflare Turnstile site key (auth + donations) |
-| `EXPO_PUBLIC_CAPTCHA_BASE_URL` | No | Document origin for the in-WebView captcha widget (default: web app URL) |
+| Variable                           | Required | Purpose                                                                  |
+| ---------------------------------- | -------- | ------------------------------------------------------------------------ |
+| `EXPO_PUBLIC_SUPABASE_URL`         | Yes      | Supabase project URL                                                     |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY`    | Yes      | Supabase anonymous key                                                   |
+| `EXPO_PUBLIC_WEB_URL`              | No       | Web app URL for API calls (default: `https://www.myteamnetwork.com`)     |
+| `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` | No       | Google OAuth web client ID (native Google Sign-In)                       |
+| `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` | No       | Google OAuth iOS client ID                                               |
+| `EXPO_PUBLIC_POSTHOG_KEY`          | No       | PostHog product analytics key                                            |
+| `EXPO_PUBLIC_SENTRY_DSN`           | No       | Sentry error tracking DSN                                                |
+| `EXPO_PUBLIC_TURNSTILE_SITE_KEY`   | Yes      | Cloudflare Turnstile site key (auth + donations)                         |
+| `EXPO_PUBLIC_CAPTCHA_BASE_URL`     | No       | Document origin for the in-WebView captcha widget (default: web app URL) |
 
 ## Testing
 
@@ -294,25 +303,25 @@ import { baseSchemas, z } from "@teammeet/validation";
 
 ## Key Files
 
-| File | Purpose |
-|---|---|
-| `app/_layout.tsx` | Root layout, auth, Stripe, analytics init |
-| `app/(app)/(drawer)/[orgSlug]/(tabs)/_layout.tsx` | Tab navigator |
-| `app/(app)/(drawer)/[orgSlug]/(tabs)/index.tsx` | Home screen (reference impl) |
-| `app/(app)/(drawer)/[orgSlug]/_layout.tsx` | Org stack — registers all feature screens |
-| `src/contexts/AuthContext.tsx` | Auth state |
-| `src/contexts/OrgContext.tsx` | Org scope |
-| `src/contexts/NetworkContext.tsx` | Online/offline state |
-| `src/contexts/ColorSchemeContext.tsx` | Light/dark mode, provides `neutral`/`semantic` |
-| `src/hooks/useThemedStyles.ts` | Dark-mode-ready StyleSheet factory |
-| `src/navigation/DrawerContent.tsx` | Drawer sections |
-| `src/lib/design-tokens.ts` | Colors, spacing, radius, shadows |
-| `src/lib/typography.ts` | Typography scale |
-| `src/lib/chrome.ts` | Header/tab bar colors |
-| `app.config.ts` | Expo config (authoritative — prebuild-only) |
-| `eas.json` | EAS Build profiles |
-| `metro.config.js` | Metro monorepo config |
-| `scripts/with-android-env.sh` | Auto-detects Android SDK/Java for `bun run android` |
+| File                                              | Purpose                                             |
+| ------------------------------------------------- | --------------------------------------------------- |
+| `app/_layout.tsx`                                 | Root layout, auth, Stripe, analytics init           |
+| `app/(app)/(drawer)/[orgSlug]/(tabs)/_layout.tsx` | Tab navigator                                       |
+| `app/(app)/(drawer)/[orgSlug]/(tabs)/index.tsx`   | Home screen (reference impl)                        |
+| `app/(app)/(drawer)/[orgSlug]/_layout.tsx`        | Org stack — registers all feature screens           |
+| `src/contexts/AuthContext.tsx`                    | Auth state                                          |
+| `src/contexts/OrgContext.tsx`                     | Org scope                                           |
+| `src/contexts/NetworkContext.tsx`                 | Online/offline state                                |
+| `src/contexts/ColorSchemeContext.tsx`             | Light/dark mode, provides `neutral`/`semantic`      |
+| `src/hooks/useThemedStyles.ts`                    | Dark-mode-ready StyleSheet factory                  |
+| `src/navigation/DrawerContent.tsx`                | Drawer sections                                     |
+| `src/lib/design-tokens.ts`                        | Colors, spacing, radius, shadows                    |
+| `src/lib/typography.ts`                           | Typography scale                                    |
+| `src/lib/chrome.ts`                               | Header/tab bar colors                               |
+| `app.config.ts`                                   | Expo config (authoritative — prebuild-only)         |
+| `eas.json`                                        | EAS Build profiles                                  |
+| `metro.config.js`                                 | Metro monorepo config                               |
+| `scripts/with-android-env.sh`                     | Auto-detects Android SDK/Java for `bun run android` |
 
 ## Coding Conventions
 
@@ -321,15 +330,18 @@ TypeScript strict, 2-space indent, semicolons, double quotes. PascalCase compone
 ## Agent Principles
 
 ### 1. Think Before Coding
+
 Don't assume. Don't hide confusion. Surface tradeoffs.
 
 Before implementing:
+
 - State your assumptions explicitly. If uncertain, ask.
 - If multiple interpretations exist, present them — don't pick silently.
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
 
 ### 2. Simplicity First
+
 Minimum code that solves the problem. Nothing speculative.
 
 - No features beyond what was asked.
@@ -340,29 +352,35 @@ Minimum code that solves the problem. Nothing speculative.
 - Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
 ### 3. Surgical Changes
+
 Touch only what you must. Clean up only your own mess.
 
 When editing existing code:
+
 - Don't "improve" adjacent code, comments, or formatting.
 - Don't refactor things that aren't broken.
 - Match existing style, even if you'd do it differently.
 - If you notice unrelated dead code, mention it — don't delete it.
 
 When your changes create orphans:
+
 - Remove imports/variables/functions that YOUR changes made unused.
 - Don't remove pre-existing dead code unless asked.
 
 The test: Every changed line should trace directly to the user's request.
 
 ### 4. Goal-Driven Execution
+
 Define success criteria. Loop until verified.
 
 Transform tasks into verifiable goals:
+
 - "Add validation" → "Write tests for invalid inputs, then make them pass"
 - "Fix the bug" → "Write a test that reproduces it, then make it pass"
 - "Refactor X" → "Ensure tests pass before and after"
 
 For multi-step tasks, state a brief plan:
+
 1. [Step] → verify: [check]
 2. [Step] → verify: [check]
 3. [Step] → verify: [check]

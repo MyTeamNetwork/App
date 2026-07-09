@@ -30,6 +30,8 @@ jest.mock("../src/lib/analytics/sentry", () => ({
   setUser: jest.fn(),
   captureException: jest.fn(),
   captureMessage: jest.fn(),
+  registerNavigationContainer: jest.fn(),
+  wrap: jest.fn((c) => c),
 }));
 
 const VALID_CONFIG = {
@@ -167,6 +169,22 @@ describe("Analytics Module", () => {
     asyncStorage.getItem.mockResolvedValueOnce("true");
     await analytics.hydrateEnabled();
     expect(analytics.isEnabled()).toBe(true);
+  });
+
+  describe("Sentry performance wiring", () => {
+    it("forwards navigation registration ungated by enabled state", () => {
+      // Screen-load tracing must be able to register the nav container even for
+      // opt-out users: the integration is inert until Sentry.init runs.
+      expect(analytics.isEnabled()).toBe(false);
+      const ref = { current: {} };
+      analytics.registerNavigationContainer(ref);
+      expect(sentry.registerNavigationContainer).toHaveBeenCalledWith(ref);
+    });
+
+    it("re-exports Sentry.wrap as a passthrough", () => {
+      const Root = () => null;
+      expect(analytics.wrap(Root)).toBe(Root);
+    });
   });
 
   describe("minor tracking levels (Apple 5.1.4)", () => {

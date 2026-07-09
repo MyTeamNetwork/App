@@ -8,7 +8,7 @@ import { LogBox, StyleSheet, Platform, View } from "react-native";
 LogBox.ignoreLogs([
   /forwardRef render functions accept exactly two parameters/,
 ]);
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useRouter, useSegments, useNavigationContainerRef } from "expo-router";
 import type { ErrorBoundaryProps } from "expo-router";
 import * as Linking from "expo-linking";
 import * as SplashScreen from "expo-splash-screen";
@@ -31,7 +31,7 @@ import { LiveActivityProvider } from "@/contexts/LiveActivityContext";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
 import { setGlobalShowToast } from "@/components/ui/Toast";
 import AuthLoadingScreen from "@/components/AuthLoadingScreen";
-import { init as initAnalytics, identify, reset as resetAnalytics, captureException, hydrateEnabled, setTrackingLevel } from "@/lib/analytics";
+import { init as initAnalytics, identify, reset as resetAnalytics, captureException, hydrateEnabled, setTrackingLevel, registerNavigationContainer, wrap as sentryWrap } from "@/lib/analytics";
 import { getAgeBracketFromUserMetadata, resolveTrackingLevel } from "@/lib/analytics/policy";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useActivityHeartbeat } from "@/hooks/useActivityHeartbeat";
@@ -121,7 +121,7 @@ function ToastBridge() {
   return null;
 }
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <ColorSchemeProvider>
       <AuthProvider>
@@ -142,6 +142,7 @@ export default function RootLayout() {
 function RootLayoutInner() {
   const router = useRouter();
   const segments = useSegments() as string[];
+  const navigationRef = useNavigationContainerRef();
   const { session, isLoading } = useAuth();
   const prevUserIdRef = useRef<string | undefined>(undefined);
   const [fontsLoaded, fontError] = useFonts({
@@ -157,6 +158,15 @@ function RootLayoutInner() {
 
   // Track screen views automatically
   useScreenTracking();
+
+  // Register the root navigation container with Sentry's screen-load tracing
+  // once expo-router's ref is ready. Inert until analytics opt-in triggers
+  // Sentry.init, so this runs unconditionally.
+  useEffect(() => {
+    if (navigationRef?.current) {
+      registerNavigationContainer(navigationRef);
+    }
+  }, [navigationRef]);
 
   // Reconnect Supabase realtime when app returns from background
   useSupabaseAppState();
@@ -345,3 +355,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+// Sentry.wrap adds a touch-event boundary + profiler around the app. It no-ops
+// until a Sentry client exists, so it is safe for analytics opt-out users where
+// Sentry.init never runs.
+export default sentryWrap(RootLayout);
