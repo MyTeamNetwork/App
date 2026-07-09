@@ -1,11 +1,9 @@
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { checkRateLimit } from "../src/lib/security/rate-limit.ts";
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __rateLimitStore: Map<string, { count: number; resetAt: number }> | undefined;
-}
+import {
+  checkRateLimit,
+  resetRateLimitStore,
+} from "../src/lib/security/rate-limit.ts";
 
 function buildRequest() {
   return new Request("http://localhost/api/ai/org-1/chat", {
@@ -16,13 +14,13 @@ function buildRequest() {
 }
 
 beforeEach(() => {
-  globalThis.__rateLimitStore?.clear();
+  resetRateLimitStore();
 });
 
-test("checkRateLimit enforces the per-org bucket independently of user and IP limits", () => {
+test("checkRateLimit enforces the per-org bucket independently of user and IP limits", async () => {
   const request = buildRequest();
 
-  const first = checkRateLimit(request, {
+  const first = await checkRateLimit(request, {
     orgId: "org-1",
     userId: "user-1",
     limitPerIp: 100,
@@ -30,7 +28,7 @@ test("checkRateLimit enforces the per-org bucket independently of user and IP li
     limitPerOrg: 2,
     feature: "ai-chat",
   });
-  const second = checkRateLimit(request, {
+  const second = await checkRateLimit(request, {
     orgId: "org-1",
     userId: "user-2",
     limitPerIp: 100,
@@ -38,7 +36,7 @@ test("checkRateLimit enforces the per-org bucket independently of user and IP li
     limitPerOrg: 2,
     feature: "ai-chat",
   });
-  const third = checkRateLimit(request, {
+  const third = await checkRateLimit(request, {
     orgId: "org-1",
     userId: "user-3",
     limitPerIp: 100,

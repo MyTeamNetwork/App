@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, { params }: Params) {
   try {
     const { albumId } = await params;
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "media album items",
       limitPerIp: 60,
       limitPerUser: 45,

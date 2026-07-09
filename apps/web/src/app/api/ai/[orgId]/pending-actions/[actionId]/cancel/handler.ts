@@ -36,7 +36,7 @@ export function createAiPendingActionCancelHandler(deps: AiPendingActionCancelRo
   ) {
     const { orgId, actionId } = await params;
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "AI pending action cancel",
       limitPerIp: 20,
       limitPerUser: 20,

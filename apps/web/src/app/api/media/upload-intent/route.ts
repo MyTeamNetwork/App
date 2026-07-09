@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "media upload intent",
       limitPerIp: 15,

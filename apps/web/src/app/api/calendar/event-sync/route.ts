@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
         // Rate limit before any external sync work. Caps both anonymous
         // probing (per IP) and authenticated abuse (per user).
-        const rateLimit = checkRateLimit(request, {
+        const rateLimit = await checkRateLimit(request, {
             userId: user?.id ?? null,
             feature: "calendar event-sync",
             limitPerIp: 60,

@@ -29,7 +29,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user.id,
     orgId: organizationId,
     feature: "mentorship tab view",

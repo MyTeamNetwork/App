@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       limitPerIp: 20,
       limitPerUser: 10,

@@ -204,7 +204,7 @@ export async function GET(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
 
     // Rate limit: 1 export per day per user
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "data export",
       limitPerIp: 3,

@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     const body = await validateJson(request, resendSchema, { maxBodyBytes: 2_000 });
 
     // Per-IP rate limit: keeps a single attacker from sweeping inboxes.
-    const ipLimit = checkRateLimit(request, {
+    const ipLimit = await checkRateLimit(request, {
       pathOverride: "/api/auth/resend-confirmation:ip",
       limitPerIp: 5,
       windowMs: 60 * 60 * 1000,
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     // Apply it only after captcha succeeds so unauthenticated attackers cannot
     // exhaust a victim's resend quota with forged captcha tokens.
     // Keyed via userId field so the limiter buckets on email rather than path.
-    const emailLimit = checkRateLimit(request, {
+    const emailLimit = await checkRateLimit(request, {
       pathOverride: "/api/auth/resend-confirmation:email",
       limitPerIp: 0,
       limitPerUser: 2,

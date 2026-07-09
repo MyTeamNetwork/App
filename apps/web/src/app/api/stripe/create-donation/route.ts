@@ -78,7 +78,7 @@ function getAppReviewReviewerIds(): string[] {
 export async function POST(req: Request) {
   const supabase = createServiceClient();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: null,
     feature: "donation checkout",
     limitPerIp: 45,

@@ -187,7 +187,7 @@ export async function PATCH(req: Request, { params }: RouteParams) {
 
     const { supabase, user } = await createAuthenticatedApiClient(req);
 
-    const rateLimit = checkRateLimit(req, {
+    const rateLimit = await checkRateLimit(req, {
       userId: user?.id ?? null,
       feature: "organization settings",
       limitPerIp: 40,
@@ -247,7 +247,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
 
   const { supabase, user } = await createAuthenticatedApiClient(req);
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "organization deletion",
     limitPerIp: 10,

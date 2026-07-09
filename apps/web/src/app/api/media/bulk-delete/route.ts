@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     limitPerIp: 20,
     limitPerUser: 10,
     userId: user?.id ?? null,

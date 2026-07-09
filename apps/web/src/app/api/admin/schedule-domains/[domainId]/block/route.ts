@@ -13,7 +13,7 @@ export async function POST(
   try {
     const { domainId } = await params;
     // IP-based rate limiting
-    const ipRateLimit = checkRateLimit(request, {
+    const ipRateLimit = await checkRateLimit(request, {
       limitPerIp: 15,
       limitPerUser: 0,
       windowMs: 60_000,
@@ -37,7 +37,7 @@ export async function POST(
     }
 
     // User-based rate limiting
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       limitPerIp: 0,
       limitPerUser: 10,

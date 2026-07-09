@@ -35,7 +35,7 @@ async function authorize(req: Request, organizationId: string) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     orgId: organizationId,
     feature: "networking consent",

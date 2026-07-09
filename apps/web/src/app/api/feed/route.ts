@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   let orgId: string | undefined;
   try {
     // Rate limit check BEFORE auth
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "feed list",
       limitPerIp: 60,
       limitPerUser: 45,
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Rate limit check AFTER auth for mutations
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "create feed post",
       limitPerIp: 15,

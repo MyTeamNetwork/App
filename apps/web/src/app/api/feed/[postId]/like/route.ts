@@ -16,7 +16,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Rate limit check AFTER auth for mutations
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "toggle feed like",
       limitPerIp: 60,

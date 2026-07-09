@@ -147,7 +147,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: anonymousOk ? "feedback submission (anonymous)" : "feedback submission",
       limitPerIp: anonymousOk ? 5 : 10,

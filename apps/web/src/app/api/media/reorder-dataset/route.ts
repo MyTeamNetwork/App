@@ -23,7 +23,7 @@ export const runtime = "nodejs";
  */
 export async function GET(request: NextRequest) {
   try {
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "media reorder dataset",
       limitPerIp: 30,
       limitPerUser: 25,

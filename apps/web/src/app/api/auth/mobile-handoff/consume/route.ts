@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   // by IP. The one-time code is a 256-bit secret so brute force is infeasible;
   // this limit only caps the decrypt/DB work an abusive caller can trigger.
   // Generous enough for a legitimate retry burst or a shared IP at a team signup.
-  const rateLimit = checkRateLimit(request, {
+  const rateLimit = await checkRateLimit(request, {
     limitPerIp: 30,
     windowMs: 60_000,
     feature: "mobile sign-in",

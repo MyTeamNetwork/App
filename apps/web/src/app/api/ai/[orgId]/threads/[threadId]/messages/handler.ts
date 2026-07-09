@@ -25,7 +25,7 @@ export function createAiThreadMessagesGetHandler(
     const { orgId, threadId } = await params;
 
   // Rate limit before touching the DB
-  const rateLimit = checkRateLimit(request, {
+  const rateLimit = await checkRateLimit(request, {
     feature: "AI messages list",
     limitPerIp: 30,
     limitPerUser: 30,

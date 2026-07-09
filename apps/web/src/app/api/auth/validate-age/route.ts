@@ -22,7 +22,7 @@ const requestSchema = z.object({
 export const POST = createApiRoute({
   body: requestSchema,
   before: async (request) => {
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       limitPerIp: 5,
       limitPerUser: 0,
       windowMs: 10 * 60 * 1000,

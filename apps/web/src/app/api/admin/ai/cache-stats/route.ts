@@ -18,7 +18,7 @@ export const runtime = "nodejs";
 
 export async function GET(req: Request): Promise<NextResponse> {
   try {
-    const ipRateLimit = checkRateLimit(req, {
+    const ipRateLimit = await checkRateLimit(req, {
       feature: "admin-ai-cache-stats",
       limitPerIp: 30,
       limitPerUser: 0,
@@ -36,7 +36,7 @@ export async function GET(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userRateLimit = checkRateLimit(req, {
+    const userRateLimit = await checkRateLimit(req, {
       userId: user.id,
       feature: "admin-ai-cache-stats",
       limitPerIp: 0,

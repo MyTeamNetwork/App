@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { resetRateLimitStore } from "../../../src/lib/security/rate-limit.ts";
 
 const ORG_ID = "00000000-0000-4000-a000-000000000001";
 const ADMIN_USER = { id: "00000000-0000-4000-a000-000000000099", email: "admin@example.com" };
@@ -50,7 +51,7 @@ function buildHandlerDeps(storage: Record<string, unknown>, now?: () => number) 
 }
 
 beforeEach(() => {
-  (globalThis as { __rateLimitStore?: Map<string, unknown> }).__rateLimitStore?.clear();
+  resetRateLimitStore();
 });
 
 test("upload-schedule accepts a valid PDF attachment", async () => {

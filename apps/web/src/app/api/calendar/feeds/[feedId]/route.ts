@@ -18,7 +18,7 @@ export async function DELETE(
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "calendar feed deletion",
       limitPerIp: 30,

@@ -47,7 +47,7 @@ export async function GET(
   }
   const eventId = idParse.data;
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: null,
     feature: "wallet event pass",
     limitPerIp: 30,

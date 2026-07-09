@@ -79,7 +79,7 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "calendar feeds",
       limitPerIp: 60,
@@ -151,7 +151,7 @@ export async function POST(request: Request) {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "calendar feed creation",
       limitPerIp: 30,

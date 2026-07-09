@@ -20,6 +20,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/api-rate-limit-cleanup",
+      "schedule": "30 3 * * *"
+    },
+    {
       "path": "/api/cron/calendar-sync",
       "schedule": "0 * * * *"
     },

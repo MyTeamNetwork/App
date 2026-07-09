@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: RouteParams) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "enterprise settings",
     limitPerIp: 60,
@@ -118,7 +118,7 @@ export async function PATCH(req: Request, { params }: RouteParams) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    const rateLimit = checkRateLimit(req, {
+    const rateLimit = await checkRateLimit(req, {
       userId: user?.id ?? null,
       feature: "enterprise settings update",
       limitPerIp: 30,

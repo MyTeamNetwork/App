@@ -36,7 +36,7 @@ export async function GET(req: Request, { params }: RouteParams) {
   const { data: { user } } = await supabase.auth.getUser();
 
   // Rate limit based on user (if authed) or IP
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "org-by-slug",
     limitPerIp: 30,

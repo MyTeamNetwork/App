@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { resetRateLimitStore } from "../../../src/lib/security/rate-limit.ts";
 import { NextResponse } from "next/server";
 import { REDACTED_HISTORY_MESSAGE } from "../../../src/lib/ai/message-safety.ts";
 
@@ -328,7 +329,7 @@ const { createChatPostHandler } = await import("../../../src/app/api/ai/[orgId]/
 let POST = createChatPostHandler();
 
 beforeEach(() => {
-  (globalThis as { __rateLimitStore?: Map<string, unknown> }).__rateLimitStore?.clear();
+  resetRateLimitStore();
   authUser = ADMIN_USER;
   supabaseStub = createSupabaseStub();
   auditEntries = [];

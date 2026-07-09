@@ -80,7 +80,7 @@ export async function GET(req: Request, { params }: RouteParams) {
   const { supabase, user } = await createAuthenticatedApiClient(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const rl = checkRateLimit(req, {
+  const rl = await checkRateLimit(req, {
     userId: user.id,
     orgId: organizationId,
     feature: "mentor profile read",
@@ -178,7 +178,7 @@ export async function PUT(req: Request, { params }: RouteParams) {
   const { user } = await createAuthenticatedApiClient(req);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const rl = checkRateLimit(req, {
+  const rl = await checkRateLimit(req, {
     userId: user.id,
     orgId: organizationId,
     feature: "mentor profile write",

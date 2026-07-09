@@ -34,7 +34,7 @@ type MediaItemUpdate = Database["public"]["Tables"]["media_items"]["Update"] & {
  */
 export async function GET(request: NextRequest) {
   try {
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "media list",
       limitPerIp: 60,
       limitPerUser: 45,
@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "media upload",
       ...GALLERY_ALBUM_BATCH_RATE_LIMIT,

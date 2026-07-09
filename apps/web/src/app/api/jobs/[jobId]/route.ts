@@ -12,7 +12,7 @@ export async function GET(
 ) {
   try {
     // Rate limit check BEFORE auth
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "job detail",
       limitPerIp: 60,
       limitPerUser: 45,
@@ -71,7 +71,7 @@ export async function PATCH(
     }
 
     // Rate limit check AFTER auth for mutations
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "update job",
       limitPerIp: 30,
@@ -117,7 +117,7 @@ export async function DELETE(
     }
 
     // Rate limit check AFTER auth for mutations
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "delete job",
       limitPerIp: 30,

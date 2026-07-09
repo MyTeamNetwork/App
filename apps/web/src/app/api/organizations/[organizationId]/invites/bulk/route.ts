@@ -32,7 +32,7 @@ export async function POST(req: Request, { params }: RouteParams) {
 
   const { supabase, user } = await createAuthenticatedApiClient(req);
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "org-bulk-invite",
     limitPerIp: 5,

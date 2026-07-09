@@ -147,7 +147,7 @@ export async function POST(request: Request) {
     const { supabase, user } = await createAuthenticatedApiClient(request);
     const service = createServiceClient();
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "notification send",
       limitPerIp: 15,

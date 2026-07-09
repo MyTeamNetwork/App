@@ -19,7 +19,7 @@ export async function GET(
   }
   const donationId = idParse.data;
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: null,
     feature: "wallet donation receipt",
     limitPerIp: 30,

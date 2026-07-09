@@ -104,7 +104,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Invalid organization id" }, { status: 400 });
   }
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     feature: "linkedin bulk sync",
     limitPerIp: 10,
     limitPerUser: 5,

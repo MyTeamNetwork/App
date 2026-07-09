@@ -34,7 +34,7 @@ export function createAiPendingActionsCleanupHandler(
       data: { user },
     } = await supabase.auth.getUser();
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       orgId,
       userId: user?.id ?? null,
       feature: "AI pending action cleanup",

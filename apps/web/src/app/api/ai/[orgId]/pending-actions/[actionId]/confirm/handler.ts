@@ -155,7 +155,7 @@ export function createAiPendingActionConfirmHandler(deps: AiPendingActionConfirm
     const requestId = crypto.randomUUID();
     const logContext = { requestId, orgId };
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "AI pending action confirm",
       limitPerIp: 60,
       limitPerUser: 60,

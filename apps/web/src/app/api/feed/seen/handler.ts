@@ -39,7 +39,7 @@ export function createFeedSeenPostHandler(deps: FeedSeenRouteDeps = {}) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      const rateLimit = checkRateLimit(request, {
+      const rateLimit = await checkRateLimit(request, {
         userId: user.id,
         feature: "mark feed seen",
         limitPerIp: 120,

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { resetRateLimitStore } from "../../../src/lib/security/rate-limit.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { StageTimeoutError } from "../../../src/lib/ai/timeout.ts";
 
@@ -591,7 +592,7 @@ function makeDraftSession(draftType: string, draftPayload: Record<string, unknow
 }
 
 beforeEach(() => {
-  (globalThis as { __rateLimitStore?: Map<string, unknown> }).__rateLimitStore?.clear();
+  resetRateLimitStore();
   supabaseStub = createSupabaseStub();
   auditEntries = [];
   executeToolCallCalls = [];

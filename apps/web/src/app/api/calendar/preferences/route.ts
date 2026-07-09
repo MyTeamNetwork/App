@@ -43,7 +43,7 @@ export async function GET(request: Request) {
         // Get the authenticated user (Bearer token or cookies)
         const { supabase, user } = await createAuthenticatedApiClient(request);
 
-        const rateLimit = checkRateLimit(request, {
+        const rateLimit = await checkRateLimit(request, {
             userId: user?.id ?? null,
             feature: "calendar preferences",
             limitPerIp: 60,
@@ -160,7 +160,7 @@ export async function PUT(request: Request) {
         // Get the authenticated user (Bearer token or cookies)
         const { supabase, user } = await createAuthenticatedApiClient(request);
 
-        const rateLimit = checkRateLimit(request, {
+        const rateLimit = await checkRateLimit(request, {
             userId: user?.id ?? null,
             feature: "calendar preferences update",
             limitPerIp: 30,

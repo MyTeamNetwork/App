@@ -14,7 +14,7 @@ import { z } from "zod";
 export async function GET(request: NextRequest) {
   try {
     // Rate limit check BEFORE auth
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "discussions list",
       limitPerIp: 60,
       limitPerUser: 45,
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Rate limit check AFTER auth for mutations
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "create discussion",
       limitPerIp: 15,

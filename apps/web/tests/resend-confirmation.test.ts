@@ -9,15 +9,13 @@
  */
 import test, { beforeEach, describe } from "node:test";
 import assert from "node:assert/strict";
-import { checkRateLimit } from "../src/lib/security/rate-limit.ts";
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __rateLimitStore: Map<string, { count: number; resetAt: number }> | undefined;
-}
+import {
+  checkRateLimit,
+  resetRateLimitStore,
+} from "../src/lib/security/rate-limit.ts";
 
 beforeEach(() => {
-  globalThis.__rateLimitStore?.clear();
+  resetRateLimitStore();
 });
 
 describe("resend-confirmation rate limiting", () => {
@@ -28,7 +26,7 @@ describe("resend-confirmation rate limiting", () => {
     });
   }
 
-  test("per-IP bucket allows up to 5 requests then blocks", () => {
+  test("per-IP bucket allows up to 5 requests then blocks", async () => {
     const request = buildRequest();
     const config = {
       pathOverride: "/api/auth/resend-confirmation:ip",
@@ -38,15 +36,15 @@ describe("resend-confirmation rate limiting", () => {
     } as const;
 
     for (let i = 0; i < 5; i++) {
-      const result = checkRateLimit(request, config);
+      const result = await checkRateLimit(request, config);
       assert.equal(result.ok, true, `attempt ${i + 1} should be allowed`);
     }
-    const blocked = checkRateLimit(request, config);
+    const blocked = await checkRateLimit(request, config);
     assert.equal(blocked.ok, false);
     assert.match(blocked.reason, /Too many requests/);
   });
 
-  test("per-email bucket independently rate limits the same email across IPs", () => {
+  test("per-email bucket independently rate limits the same email across IPs", async () => {
     const requestA = new Request("http://localhost/api/auth/resend-confirmation", {
       method: "POST",
       headers: { "x-forwarded-for": "203.0.113.10" },
@@ -64,9 +62,9 @@ describe("resend-confirmation rate limiting", () => {
       feature: "resend",
     } as const;
 
-    assert.equal(checkRateLimit(requestA, config).ok, true);
-    assert.equal(checkRateLimit(requestB, config).ok, true);
+    assert.equal((await checkRateLimit(requestA, config)).ok, true);
+    assert.equal((await checkRateLimit(requestB, config)).ok, true);
     // Third request — same email, different IP — must be blocked.
-    assert.equal(checkRateLimit(requestA, config).ok, false);
+    assert.equal((await checkRateLimit(requestA, config)).ok, false);
   });
 });

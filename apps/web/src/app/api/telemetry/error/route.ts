@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
   try {
     // IP rate limit (30/min) - applied before parsing body to prevent DoS
-    const ipRateLimit = checkRateLimit(request, {
+    const ipRateLimit = await checkRateLimit(request, {
       userId: null,
       feature: "error telemetry",
       limitPerIp: 30,
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
     // is the only secondary cap available until we add a server-issued
     // telemetry cookie.
     if (trustedUserId) {
-      const userRateLimit = checkRateLimit(request, {
+      const userRateLimit = await checkRateLimit(request, {
         userId: trustedUserId,
         feature: "error telemetry (user)",
         limitPerIp: 0, // Already checked above

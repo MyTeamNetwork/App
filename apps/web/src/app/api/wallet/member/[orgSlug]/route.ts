@@ -46,7 +46,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ orgSlug: string
   }
   const orgSlug = slugParse.data;
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: null,
     feature: "wallet member pass",
     limitPerIp: 30,

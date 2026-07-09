@@ -12,7 +12,7 @@ import { detectIntent, fetchIntentFallbackRows } from "@/lib/search/intent-fallb
 import { normalizeRepeatedTitle } from "@/lib/search/normalize-title";
 
 export async function handleGlobalSearchGet(request: NextRequest, orgSlug: string) {
-  const rateLimit = checkRateLimit(request, {
+  const rateLimit = await checkRateLimit(request, {
     feature: "global search",
     limitPerIp: 120,
     limitPerUser: 90,

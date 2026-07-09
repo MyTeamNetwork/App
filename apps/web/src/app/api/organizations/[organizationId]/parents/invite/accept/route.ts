@@ -320,7 +320,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   }
 
   // Rate limit by IP only (unauthenticated endpoint)
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: null,
     feature: "org parents invite accept",
     limitPerIp: 30,

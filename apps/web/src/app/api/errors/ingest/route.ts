@@ -29,7 +29,7 @@ async function handleIngest(request: Request): Promise<Response> {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "error ingestion",
       limitPerIp: 50,

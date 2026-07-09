@@ -16,6 +16,7 @@
  */
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { resetRateLimitStore } from "../src/lib/security/rate-limit.ts";
 import {
   captureSse,
   renderSnapshot,
@@ -324,7 +325,7 @@ async function runFixture(
 }
 
 beforeEach(() => {
-  (globalThis as { __rateLimitStore?: Map<string, unknown> }).__rateLimitStore?.clear();
+  resetRateLimitStore();
   process.env.AWS_REGION = "test-key";
   process.env.DISABLE_AI_CACHE = "true";
   delete process.env.EMBEDDING_API_KEY;

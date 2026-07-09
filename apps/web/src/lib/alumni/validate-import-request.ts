@@ -66,7 +66,7 @@ export async function validateAlumniImportRequest(
 
   // 3. Rate limiting
   const isPreview = new URL(req.url).searchParams.get("preview") === "1";
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: isPreview
       ? rateLimitConfig.featurePreview

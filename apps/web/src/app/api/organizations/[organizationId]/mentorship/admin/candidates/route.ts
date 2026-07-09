@@ -39,7 +39,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const rl = checkRateLimit(req, {
+  const rl = await checkRateLimit(req, {
     userId: user.id,
     orgId: organizationId,
     feature: "mentorship admin candidates",
@@ -108,7 +108,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const rl = checkRateLimit(req, {
+  const rl = await checkRateLimit(req, {
     userId: user.id,
     orgId: organizationId,
     feature: "mentorship admin pairing confirm",

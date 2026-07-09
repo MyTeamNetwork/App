@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "read feed comments",
       limitPerIp: 30,
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Rate limit check AFTER auth for mutations
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "create feed comment",
       limitPerIp: 15,

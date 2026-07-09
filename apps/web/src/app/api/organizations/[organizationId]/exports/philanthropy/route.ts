@@ -40,7 +40,7 @@ export async function GET(request: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Unauthorized", message: "You must be logged in to export philanthropy." }, { status: 401 });
   }
 
-  const rateLimit = checkRateLimit(request, {
+  const rateLimit = await checkRateLimit(request, {
     limitPerIp: 10,
     limitPerUser: 5,
     userId: user.id,

@@ -89,7 +89,7 @@ export function createAiFeedbackPostHandler(deps: AiFeedbackRouteDeps = {}) {
     const { orgId } = await params;
 
     // Rate limit
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "AI feedback",
       limitPerIp: 60,
       limitPerUser: 60,
@@ -174,7 +174,7 @@ export function createAiFeedbackGetHandler(deps: AiFeedbackRouteDeps = {}) {
     const { orgId } = await params;
 
     // Rate limit
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "AI feedback",
       limitPerIp: 60,
       limitPerUser: 60,
@@ -317,7 +317,7 @@ export function createAiFeedbackDeleteHandler(deps: AiFeedbackRouteDeps = {}) {
   ) {
     const { orgId } = await params;
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "AI feedback",
       limitPerIp: 60,
       limitPerUser: 60,

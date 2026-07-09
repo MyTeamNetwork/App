@@ -21,7 +21,7 @@ const querySchema = z.object({ orgId: baseSchemas.uuid });
  * enforcement so the UI bar and the quota guard never drift.
  */
 export async function GET(request: NextRequest) {
-  const rateLimit = checkRateLimit(request, {
+  const rateLimit = await checkRateLimit(request, {
     feature: "media storage stats",
     limitPerIp: 30,
     limitPerUser: 20,

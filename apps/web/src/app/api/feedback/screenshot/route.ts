@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     }
 
     const anonymous = !user;
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: anonymous
         ? "feedback screenshot upload (anonymous)"

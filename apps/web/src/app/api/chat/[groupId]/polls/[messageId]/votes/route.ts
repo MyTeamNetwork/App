@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "chat-poll-vote",
     limitPerIp: 30,
@@ -176,7 +176,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "chat-poll-vote-retract",
     limitPerIp: 30,

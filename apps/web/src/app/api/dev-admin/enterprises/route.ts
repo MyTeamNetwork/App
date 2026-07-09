@@ -83,7 +83,7 @@ interface EnterpriseResponse {
 export async function GET(req: Request) {
   try {
     // 1. Rate limit by IP before any auth backend calls
-    const ipRateLimit = checkRateLimit(req, {
+    const ipRateLimit = await checkRateLimit(req, {
       feature: "dev-admin",
       limitPerIp: 30,
       limitPerUser: 0,
@@ -99,7 +99,7 @@ export async function GET(req: Request) {
     } = await supabase.auth.getUser();
 
     // 3. Rate limit authenticated users (separate from IP limit above)
-    const userRateLimit = checkRateLimit(req, {
+    const userRateLimit = await checkRateLimit(req, {
       userId: user?.id ?? null,
       feature: "dev-admin",
       limitPerIp: 0,

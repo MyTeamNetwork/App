@@ -64,7 +64,7 @@ export async function runAuthContextStage(
     data: { user },
   } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(input.request, {
+  const rateLimit = await checkRateLimit(input.request, {
     orgId: input.orgId,
     userId: user?.id ?? null,
     feature: "ai-chat",

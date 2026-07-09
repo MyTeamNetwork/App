@@ -14,7 +14,7 @@ import { z } from "zod";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ postId: string }> }) {
   try {
     // Rate limit check BEFORE auth
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "feed post detail",
       limitPerIp: 60,
       limitPerUser: 45,
@@ -129,7 +129,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     // Rate limit check AFTER auth for mutations
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "update feed post",
       limitPerIp: 30,
@@ -205,7 +205,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     // Rate limit check AFTER auth for mutations
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       feature: "delete feed post",
       limitPerIp: 30,

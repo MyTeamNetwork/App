@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { resetRateLimitStore } from "../../../src/lib/security/rate-limit.ts";
 
 const ORG_ID = "00000000-0000-4000-a000-000000000001";
 const USER = { id: "00000000-0000-4000-a000-000000000099", email: "m@example.com" };
@@ -59,7 +60,7 @@ function postRequest(body: unknown): any {
 }
 
 beforeEach(() => {
-  (globalThis as { __rateLimitStore?: Map<string, unknown> }).__rateLimitStore?.clear();
+  resetRateLimitStore();
 });
 
 test("advances feed_last_seen_at for a member and returns ok", async () => {

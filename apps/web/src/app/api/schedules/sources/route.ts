@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     // IP-based rate limiting
-    const ipRateLimit = checkRateLimit(request, {
+    const ipRateLimit = await checkRateLimit(request, {
       limitPerIp: 30,
       limitPerUser: 0,
       windowMs: 60_000,
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     }
 
     // User-based rate limiting
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       limitPerIp: 0,
       limitPerUser: 20,

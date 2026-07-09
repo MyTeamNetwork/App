@@ -278,7 +278,7 @@ export function createAiScheduleUploadHandler(
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      const rateLimit = checkRateLimit(request, {
+      const rateLimit = await checkRateLimit(request, {
         userId: user.id,
         orgId,
         feature: "AI schedule upload",
@@ -408,7 +408,7 @@ export function createAiScheduleUploadDeleteHandler(
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      const rateLimit = checkRateLimit(request, {
+      const rateLimit = await checkRateLimit(request, {
         userId: user.id,
         orgId,
         feature: "AI schedule upload cleanup",

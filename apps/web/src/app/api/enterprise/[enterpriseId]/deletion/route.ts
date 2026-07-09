@@ -82,7 +82,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const rateLimit = checkRateLimit(req, {
+    const rateLimit = await checkRateLimit(req, {
       userId: user?.id ?? null,
       feature: "enterprise deletion",
       limitPerIp: 5,
@@ -249,7 +249,7 @@ export async function POST(req: Request, { params }: RouteParams) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const rateLimit = checkRateLimit(req, {
+    const rateLimit = await checkRateLimit(req, {
       userId: user?.id ?? null,
       feature: "cancel enterprise deletion",
       limitPerIp: 10,
@@ -342,7 +342,7 @@ export async function GET(req: Request, { params }: RouteParams) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "enterprise deletion status",
     limitPerIp: 60,

@@ -35,7 +35,7 @@ export async function GET(req: Request, { params }: RouteParams) {
 
   const { user } = await createAuthenticatedApiClient(req);
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     orgId: organizationId,
     feature: "connection suggestions",

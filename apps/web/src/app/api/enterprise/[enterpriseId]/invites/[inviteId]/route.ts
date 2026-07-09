@@ -23,7 +23,7 @@ export async function PATCH(req: Request, { params }: RouteParams) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "enterprise invite update",
     limitPerIp: 30,
@@ -101,7 +101,7 @@ export async function DELETE(req: Request, { params }: RouteParams) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "enterprise invite delete",
     limitPerIp: 30,

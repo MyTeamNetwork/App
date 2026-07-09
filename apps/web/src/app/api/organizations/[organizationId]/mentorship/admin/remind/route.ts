@@ -30,7 +30,7 @@ type SentEntry = { mentor_user_id: string; pending_count: number };
 type SkippedEntry = { mentor_user_id: string; reason: "rate_limited" | "no_pending" };
 
 export async function POST(req: Request, { params }: RouteParams) {
-  const ipRateLimit = checkRateLimit(req, {
+  const ipRateLimit = await checkRateLimit(req, {
     feature: "mentorship proposal reminders",
     limitPerIp: 20,
     limitPerUser: 0,
@@ -50,7 +50,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: ipRateLimit.headers });
   }
 
-  const userRateLimit = checkRateLimit(req, {
+  const userRateLimit = await checkRateLimit(req, {
     feature: "mentorship proposal reminders",
     limitPerIp: 0,
     limitPerUser: 10,

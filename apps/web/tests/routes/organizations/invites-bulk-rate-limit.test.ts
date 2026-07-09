@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert";
-import { checkRateLimit } from "../../../src/lib/security/rate-limit.ts";
+import {
+  checkRateLimit,
+  resetRateLimitStore,
+} from "../../../src/lib/security/rate-limit.ts";
 
 const BULK_INVITE_CONFIG = {
   feature: "org-bulk-invite",
@@ -15,13 +18,13 @@ function makeRequest(ip: string): Request {
 }
 
 function clearStore() {
-  globalThis.__rateLimitStore?.clear();
+  resetRateLimitStore();
 }
 
-test("bulk invite rate limit: first request is allowed", () => {
+test("bulk invite rate limit: first request is allowed", async () => {
   clearStore();
 
-  const result = checkRateLimit(makeRequest("1.1.1.1"), {
+  const result = await checkRateLimit(makeRequest("1.1.1.1"), {
     ...BULK_INVITE_CONFIG,
     userId: "user-a",
   });
@@ -31,44 +34,44 @@ test("bulk invite rate limit: first request is allowed", () => {
   assert.strictEqual(result.remaining, 2);
 });
 
-test("bulk invite rate limit: allows up to limitPerUser requests for the same user", () => {
+test("bulk invite rate limit: allows up to limitPerUser requests for the same user", async () => {
   clearStore();
 
   const req = makeRequest("2.2.2.2");
   const config = { ...BULK_INVITE_CONFIG, userId: "user-b" };
 
   for (let i = 0; i < BULK_INVITE_CONFIG.limitPerUser; i++) {
-    const result = checkRateLimit(req, config);
+    const result = await checkRateLimit(req, config);
     assert.strictEqual(result.ok, true, `request ${i + 1} should be allowed`);
   }
 });
 
-test("bulk invite rate limit: exceeding limitPerUser returns ok=false", () => {
+test("bulk invite rate limit: exceeding limitPerUser returns ok=false", async () => {
   clearStore();
 
   const req = makeRequest("3.3.3.3");
   const config = { ...BULK_INVITE_CONFIG, userId: "user-c" };
 
   for (let i = 0; i < BULK_INVITE_CONFIG.limitPerUser; i++) {
-    checkRateLimit(req, config);
+    await checkRateLimit(req, config);
   }
 
-  const result = checkRateLimit(req, config);
+  const result = await checkRateLimit(req, config);
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.remaining, 0);
 });
 
-test("bulk invite rate limit: exceeded result includes retryAfterSeconds", () => {
+test("bulk invite rate limit: exceeded result includes retryAfterSeconds", async () => {
   clearStore();
 
   const req = makeRequest("4.4.4.4");
   const config = { ...BULK_INVITE_CONFIG, userId: "user-d" };
 
   for (let i = 0; i < BULK_INVITE_CONFIG.limitPerUser; i++) {
-    checkRateLimit(req, config);
+    await checkRateLimit(req, config);
   }
 
-  const result = checkRateLimit(req, config);
+  const result = await checkRateLimit(req, config);
   assert.strictEqual(result.ok, false);
   assert.ok(
     typeof result.retryAfterSeconds === "number" && result.retryAfterSeconds > 0,
@@ -76,23 +79,23 @@ test("bulk invite rate limit: exceeded result includes retryAfterSeconds", () =>
   );
 });
 
-test("bulk invite rate limit: exceeded result includes Retry-After header", () => {
+test("bulk invite rate limit: exceeded result includes Retry-After header", async () => {
   clearStore();
 
   const req = makeRequest("5.5.5.5");
   const config = { ...BULK_INVITE_CONFIG, userId: "user-e" };
 
   for (let i = 0; i < BULK_INVITE_CONFIG.limitPerUser; i++) {
-    checkRateLimit(req, config);
+    await checkRateLimit(req, config);
   }
 
-  const result = checkRateLimit(req, config);
+  const result = await checkRateLimit(req, config);
   assert.strictEqual(result.ok, false);
   assert.ok("Retry-After" in result.headers, "headers should include Retry-After");
   assert.strictEqual(result.headers["Retry-After"], String(result.retryAfterSeconds));
 });
 
-test("bulk invite rate limit: different users share IP limit independently", () => {
+test("bulk invite rate limit: different users share IP limit independently", async () => {
   clearStore();
 
   // Each user has their own per-user bucket. User X exhausts their limit
@@ -102,19 +105,19 @@ test("bulk invite rate limit: different users share IP limit independently", () 
   const configY = { ...BULK_INVITE_CONFIG, userId: "user-y" };
 
   for (let i = 0; i < BULK_INVITE_CONFIG.limitPerUser; i++) {
-    checkRateLimit(makeRequest(ip), configX);
+    await checkRateLimit(makeRequest(ip), configX);
   }
 
   // user-x is now blocked
-  const blockedResult = checkRateLimit(makeRequest(ip), configX);
+  const blockedResult = await checkRateLimit(makeRequest(ip), configX);
   assert.strictEqual(blockedResult.ok, false);
 
   // user-y on the same IP still has their own quota
-  const allowedResult = checkRateLimit(makeRequest(ip), configY);
+  const allowedResult = await checkRateLimit(makeRequest(ip), configY);
   assert.strictEqual(allowedResult.ok, true);
 });
 
-test("bulk invite rate limit: allows up to limitPerIp for anonymous requests", () => {
+test("bulk invite rate limit: allows up to limitPerIp for anonymous requests", async () => {
   clearStore();
 
   const req = makeRequest("7.7.7.7");
@@ -122,26 +125,26 @@ test("bulk invite rate limit: allows up to limitPerIp for anonymous requests", (
   const config = { ...BULK_INVITE_CONFIG, userId: null };
 
   for (let i = 0; i < BULK_INVITE_CONFIG.limitPerIp; i++) {
-    const result = checkRateLimit(req, config);
+    const result = await checkRateLimit(req, config);
     assert.strictEqual(result.ok, true, `anonymous request ${i + 1} should be allowed`);
   }
 
-  const result = checkRateLimit(req, config);
+  const result = await checkRateLimit(req, config);
   assert.strictEqual(result.ok, false);
   assert.ok(result.retryAfterSeconds > 0);
 });
 
-test("bulk invite rate limit: reason string mentions the feature name when blocked", () => {
+test("bulk invite rate limit: reason string mentions the feature name when blocked", async () => {
   clearStore();
 
   const req = makeRequest("8.8.8.8");
   const config = { ...BULK_INVITE_CONFIG, userId: "user-f" };
 
   for (let i = 0; i < BULK_INVITE_CONFIG.limitPerUser; i++) {
-    checkRateLimit(req, config);
+    await checkRateLimit(req, config);
   }
 
-  const result = checkRateLimit(req, config);
+  const result = await checkRateLimit(req, config);
   assert.strictEqual(result.ok, false);
   assert.ok(
     result.reason.includes("org-bulk-invite"),

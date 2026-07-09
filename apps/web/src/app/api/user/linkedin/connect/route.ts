@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request) {
   try {
-    const ipRateLimit = checkRateLimit(request, {
+    const ipRateLimit = await checkRateLimit(request, {
       feature: "linkedin connect",
       limitPerIp: 20,
       limitPerUser: 0,
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: ipRateLimit.headers });
     }
 
-    const userRateLimit = checkRateLimit(request, {
+    const userRateLimit = await checkRateLimit(request, {
       feature: "linkedin connect",
       limitPerIp: 0,
       limitPerUser: 10,

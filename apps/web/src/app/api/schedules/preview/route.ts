@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   // Apply IP-based rate limiting FIRST (before auth) to protect against unauthenticated abuse
-  const ipRateLimit = checkRateLimit(request, {
+  const ipRateLimit = await checkRateLimit(request, {
     limitPerIp: 15,
     limitPerUser: 0, // IP-only, no user limit yet
     windowMs: 60_000,
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     // Apply stricter user-based rate limiting for authenticated users
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user.id,
       limitPerIp: 0, // Already checked above
       limitPerUser: 8,

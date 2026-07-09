@@ -70,7 +70,7 @@ export async function DELETE(request: Request) {
     const serviceSupabase = createServiceClient();
 
     // Rate limit: 3 deletion requests per hour per user
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "account deletion",
       limitPerIp: 5,
@@ -283,7 +283,7 @@ export async function GET(request: Request) {
     const serviceSupabase = createServiceClient();
 
     // Rate limit
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "deletion status check",
       limitPerIp: 30,
@@ -366,7 +366,7 @@ export async function POST(request: Request) {
     const serviceSupabase = createServiceClient();
 
     // Rate limit
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "cancel deletion",
       limitPerIp: 10,

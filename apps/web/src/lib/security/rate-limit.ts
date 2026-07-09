@@ -1,21 +1,24 @@
 /**
- * In-memory rate limiter using a global Map.
+ * Rate limiter with a durable Postgres-backed fixed-window store.
  *
- * IMPORTANT — Serverless limitation:
- * This store does NOT persist across serverless function instances.
- * Under multi-instance deployments (Vercel auto-scaling), the effective
- * rate limit per user/IP is `configured_limit × active_instances`.
+ * Primary path: a single `check_api_rate_limit` RPC per request evaluates
+ * every applicable scope (ip/user/org) atomically in the database
+ * (INSERT ... ON CONFLICT DO UPDATE ... WHERE count < limit), so limits hold
+ * across serverless instances. See
+ * supabase/migrations/20270102000000_api_rate_limit_buckets.sql.
  *
- * This provides per-instance burst protection, not distributed rate limiting.
- * For strict enforcement, migrate to Vercel KV or an external Redis store.
+ * Fallback path: if the RPC is unavailable (missing service env, network
+ * failure, migration not applied), the legacy in-memory Map takes over.
+ * The fallback is per-instance only — burst protection, not distributed
+ * enforcement — and every fallback is logged.
  *
  * NOTE — Database-level correctness:
  * For the enterprise invites system, database constraints (advisory locks,
- * CHECK constraints) provide the real enforcement layer. The rate limiter
- * slows down attack attempts per instance, but the database prevents
- * exceeding the 12-admin cap and alumni quota even under parallel creation.
+ * CHECK constraints) remain the real enforcement layer regardless of which
+ * store handles the rate limit.
  */
 import { NextResponse, type NextRequest } from "next/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 type RequestLike = Request | NextRequest;
 
@@ -53,6 +56,38 @@ type RateLimitConfig = {
   feature?: string;
 };
 
+type RateLimitScope = "ip" | "user" | "org";
+
+type ScopeCheck = {
+  scope: RateLimitScope;
+  key: string;
+  limit: number;
+};
+
+type ScopeResult = ConsumeResult & { scope: RateLimitScope };
+
+type RpcScopeResult = {
+  key: string;
+  allowed: boolean;
+  remaining: number;
+  reset_at_ms: number;
+};
+
+/**
+ * Minimal structural contract for the durable store's RPC client. Matches
+ * supabase-js `.rpc()` so the service-role client satisfies it via cast, and
+ * tests can inject an in-memory fake through `setRateLimitRpcClient`.
+ */
+export type RateLimitRpcClient = {
+  rpc(
+    fn: "check_api_rate_limit",
+    args: {
+      p_scopes: Array<{ key: string; limit: number }>;
+      p_window_ms: number;
+    },
+  ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+};
+
 declare global {
   // eslint-disable-next-line no-var
   var __rateLimitStore: Map<string, BucketState> | undefined;
@@ -66,6 +101,126 @@ const DEFAULT_USER_LIMIT = 45; // 45 req/min/user
 const CLEANUP_THRESHOLD = 5_000;
 const STORE_MAX_SIZE = 10_000;
 const CLEANUP_SCAN_LIMIT = 1_000;
+const RPC_TIMEOUT_MS = 150;
+const RPC_CIRCUIT_FAILURE_THRESHOLD = 2;
+const RPC_CIRCUIT_OPEN_MS = 300;
+
+// How long to keep serving the in-memory fallback after a failed service-client
+// construction before retrying. A cold-start env hiccup must not permanently
+// downgrade an instance to non-distributed rate limiting.
+const RPC_CLIENT_RETRY_MS = 60_000;
+
+let injectedRpcClient: RateLimitRpcClient | null = null;
+let defaultRpcClient: RateLimitRpcClient | null = null;
+// Timestamp (ms) of the most recent failed default-client construction, or null
+// if we have never failed. Cleared on success; a retry is attempted once
+// RPC_CLIENT_RETRY_MS has elapsed since the failure.
+let defaultRpcClientFailedAt: number | null = null;
+let durableRpcFailureCount = 0;
+let durableRpcCircuitOpenUntil = 0;
+
+/**
+ * Test seam: inject a fake RPC client for the durable store. Pass `null` to
+ * restore the default service-role client resolution.
+ */
+export function setRateLimitRpcClient(client: RateLimitRpcClient | null) {
+  injectedRpcClient = client;
+}
+
+/**
+ * Clears the in-memory fallback store. Intentionally a no-op for the durable
+ * Postgres store: tests exercise the DB path through an injected fake client
+ * (whose state they own), and production rows are pruned by the
+ * /api/cron/api-rate-limit-cleanup job.
+ */
+export function resetRateLimitStore() {
+  store.clear();
+  durableRpcFailureCount = 0;
+  durableRpcCircuitOpenUntil = 0;
+}
+
+function getRpcClient(): RateLimitRpcClient | null {
+  // An explicitly injected client always wins, so RATE_LIMIT_DISABLE_RPC never
+  // defeats a test that opts into the durable path via setRateLimitRpcClient.
+  if (injectedRpcClient) return injectedRpcClient;
+
+  // Suite-wide kill-switch: skip the network RPC entirely and use the in-memory
+  // path. Set in the test bootstrap so no suite makes live Supabase RPC calls
+  // even when CI injects real service-role credentials.
+  if (isRateLimitRpcDisabledForTests()) return null;
+
+  if (defaultRpcClient) return defaultRpcClient;
+
+  // A prior construction failed: keep serving the in-memory fallback until the
+  // retry window elapses, then try again (a cold-start hiccup must not stick).
+  if (
+    defaultRpcClientFailedAt !== null &&
+    Date.now() - defaultRpcClientFailedAt < RPC_CLIENT_RETRY_MS
+  ) {
+    return null;
+  }
+
+  try {
+    // Cast: check_api_rate_limit is not yet in the generated Database types
+    // (they are regenerated once the migration is applied). The structural
+    // RateLimitRpcClient contract matches supabase-js `.rpc()`.
+    defaultRpcClient = createServiceClient() as unknown as RateLimitRpcClient;
+    defaultRpcClientFailedAt = null;
+    return defaultRpcClient;
+  } catch (err) {
+    defaultRpcClientFailedAt = Date.now();
+    // TODO(U7): route through captureException once error-capture wiring lands.
+    console.error(
+      "[rate-limit] service client unavailable; using in-memory fallback store",
+      err,
+    );
+    return null;
+  }
+}
+
+function isRateLimitRpcDisabledForTests(): boolean {
+  return (
+    process.env.RATE_LIMIT_DISABLE_RPC === "1" &&
+    process.env.RATE_LIMIT_TEST_ENV === "1"
+  );
+}
+
+class RateLimitRpcTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`check_api_rate_limit RPC timed out after ${timeoutMs}ms`);
+    this.name = "RateLimitRpcTimeoutError";
+  }
+}
+
+async function withRpcTimeout<T>(promise: PromiseLike<T>, timeoutMs: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new RateLimitRpcTimeoutError(timeoutMs)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function isDurableRpcCircuitOpen(now: number): boolean {
+  return durableRpcCircuitOpenUntil > now;
+}
+
+function recordDurableRpcSuccess() {
+  durableRpcFailureCount = 0;
+  durableRpcCircuitOpenUntil = 0;
+}
+
+function recordDurableRpcFailure(now: number) {
+  durableRpcFailureCount += 1;
+  if (durableRpcFailureCount >= RPC_CIRCUIT_FAILURE_THRESHOLD) {
+    durableRpcCircuitOpenUntil = now + RPC_CIRCUIT_OPEN_MS;
+  }
+}
 
 function cleanupExpired(now: number) {
   if (store.size < CLEANUP_THRESHOLD) return;
@@ -171,7 +326,116 @@ function consume(key: string, limit: number, windowMs: number, now: number): Con
   };
 }
 
-export function checkRateLimit(request: RequestLike, config: RateLimitConfig = {}): RateLimitResult {
+function parseRpcScopeResults(data: unknown): RpcScopeResult[] | null {
+  if (!Array.isArray(data)) return null;
+  const rows: RpcScopeResult[] = [];
+  for (const entry of data) {
+    if (typeof entry !== "object" || entry === null) return null;
+    const row = entry as Record<string, unknown>;
+    if (
+      typeof row.key !== "string" ||
+      typeof row.allowed !== "boolean" ||
+      typeof row.remaining !== "number" ||
+      typeof row.reset_at_ms !== "number"
+    ) {
+      return null;
+    }
+    rows.push({
+      key: row.key,
+      allowed: row.allowed,
+      remaining: row.remaining,
+      reset_at_ms: row.reset_at_ms,
+    });
+  }
+  return rows;
+}
+
+/**
+ * Evaluates all scopes against the durable Postgres store in one RPC round
+ * trip. Returns `null` on any failure (logged, never thrown) so the caller
+ * can fall back to the in-memory store.
+ */
+async function checkScopesDurably(
+  scopes: ScopeCheck[],
+  windowMs: number,
+  now: number,
+): Promise<ScopeResult[] | null> {
+  const client = getRpcClient();
+  if (!client) return null;
+  if (isDurableRpcCircuitOpen(now)) return null;
+
+  // Deliberately no bucket keys in logs below — they embed IPs and user ids.
+  const logContext = { scopes: scopes.map((s) => s.scope), windowMs };
+
+  try {
+    const { data, error } = await withRpcTimeout(
+      client.rpc("check_api_rate_limit", {
+        p_scopes: scopes.map(({ key, limit }) => ({ key, limit })),
+        p_window_ms: windowMs,
+      }),
+      RPC_TIMEOUT_MS,
+    );
+
+    if (error) {
+      recordDurableRpcFailure(now);
+      // TODO(U7): route through captureException once error-capture wiring lands.
+      console.error(
+        "[rate-limit] check_api_rate_limit RPC failed; using in-memory fallback store",
+        { ...logContext, message: error.message },
+      );
+      return null;
+    }
+
+    const rows = parseRpcScopeResults(data);
+    if (!rows) {
+      recordDurableRpcFailure(now);
+      // TODO(U7): route through captureException once error-capture wiring lands.
+      console.error(
+        "[rate-limit] check_api_rate_limit returned malformed payload; using in-memory fallback store",
+        logContext,
+      );
+      return null;
+    }
+
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    const results: ScopeResult[] = [];
+    for (const scope of scopes) {
+      const row = byKey.get(scope.key);
+      if (!row) {
+        recordDurableRpcFailure(now);
+        // TODO(U7): route through captureException once error-capture wiring lands.
+        console.error(
+          "[rate-limit] check_api_rate_limit response missing a requested scope; using in-memory fallback store",
+          logContext,
+        );
+        return null;
+      }
+      results.push({
+        scope: scope.scope,
+        ok: row.allowed,
+        limit: scope.limit,
+        remaining: Math.max(row.remaining, 0),
+        resetAt: row.reset_at_ms,
+        retryAfterSeconds: Math.max(1, Math.ceil((row.reset_at_ms - now) / 1000)),
+      });
+    }
+    recordDurableRpcSuccess();
+    return results;
+  } catch (err) {
+    recordDurableRpcFailure(now);
+    // TODO(U7): route through captureException once error-capture wiring lands.
+    console.error(
+      "[rate-limit] check_api_rate_limit RPC threw; using in-memory fallback store",
+      { ...logContext, err },
+    );
+    return null;
+  }
+}
+
+export async function checkRateLimit(
+  request: RequestLike,
+  config: RateLimitConfig = {},
+): Promise<RateLimitResult> {
   const now = Date.now();
   const path = config.pathOverride || new URL(request.url).pathname;
   const windowMs = config.windowMs ?? DEFAULT_WINDOW_MS;
@@ -183,27 +447,29 @@ export function checkRateLimit(request: RequestLike, config: RateLimitConfig = {
   const orgId = config.orgId?.trim() || null;
   const feature = config.feature || "this endpoint";
 
-  const results: Array<ConsumeResult & { scope: "ip" | "user" | "org" }> = [];
+  const scopes: ScopeCheck[] = [];
 
   if (maxPerIp > 0) {
-    results.push({
-      scope: "ip",
-      ...consume(`ip:${path}:${ip}`, maxPerIp, windowMs, now),
-    });
+    scopes.push({ scope: "ip", key: `ip:${path}:${ip}`, limit: maxPerIp });
   }
 
   if (userId && maxPerUser > 0) {
-    results.push({
-      scope: "user",
-      ...consume(`user:${path}:${userId}`, maxPerUser, windowMs, now),
-    });
+    scopes.push({ scope: "user", key: `user:${path}:${userId}`, limit: maxPerUser });
   }
 
   if (orgId && maxPerOrg > 0) {
-    results.push({
-      scope: "org",
-      ...consume(`org:${path}:${orgId}`, maxPerOrg, windowMs, now),
-    });
+    scopes.push({ scope: "org", key: `org:${path}:${orgId}`, limit: maxPerOrg });
+  }
+
+  let results: ScopeResult[] | null = null;
+  if (scopes.length > 0) {
+    results = await checkScopesDurably(scopes, windowMs, now);
+  }
+  if (!results) {
+    results = scopes.map((scope) => ({
+      scope: scope.scope,
+      ...consume(scope.key, scope.limit, windowMs, now),
+    }));
   }
 
   const failure = results.find((result) => !result.ok);

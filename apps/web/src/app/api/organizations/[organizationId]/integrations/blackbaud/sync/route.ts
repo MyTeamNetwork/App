@@ -37,7 +37,7 @@ export async function POST(
     data: { user },
   } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "blackbaud-sync",
     limitPerIp: 5,

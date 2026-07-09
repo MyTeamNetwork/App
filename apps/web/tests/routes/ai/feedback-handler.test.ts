@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { resetRateLimitStore } from "../../../src/lib/security/rate-limit.ts";
 
 const ORG_A_ID = "00000000-0000-4000-a000-000000000001";
 const ORG_B_ID = "00000000-0000-4000-a000-000000000002";
@@ -193,7 +194,7 @@ function buildAiContext(orgId: string) {
 }
 
 beforeEach(() => {
-  (globalThis as { __rateLimitStore?: Map<string, unknown> }).__rateLimitStore?.clear();
+  resetRateLimitStore();
   supabaseStub = createSupabaseStub();
 });
 

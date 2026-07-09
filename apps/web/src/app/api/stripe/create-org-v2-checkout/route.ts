@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     const { supabase, user } = await createAuthenticatedApiClient(req);
     const serviceSupabase = createServiceClient();
 
-    const rateLimit = checkRateLimit(req, {
+    const rateLimit = await checkRateLimit(req, {
       userId: user?.id ?? null,
       feature: "org v2 checkout",
       limitPerIp: 45,

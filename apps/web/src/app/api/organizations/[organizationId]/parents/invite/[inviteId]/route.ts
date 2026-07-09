@@ -45,7 +45,7 @@ async function authorizeInviteMutation(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature,
     limitPerIp: 30,

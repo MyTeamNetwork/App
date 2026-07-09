@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const { supabase, user } = await createAuthenticatedApiClient(request);
     const serviceSupabase = createServiceClient();
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "content report",
       limitPerIp: 20,

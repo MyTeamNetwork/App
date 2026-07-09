@@ -22,7 +22,7 @@ export function createAiThreadDeleteHandler(deps: AiThreadDeleteRouteDeps = {}) 
     const { orgId, threadId } = await params;
 
   // Rate limit before touching the DB
-  const rateLimit = checkRateLimit(request, {
+  const rateLimit = await checkRateLimit(request, {
     feature: "AI thread delete",
     limitPerIp: 10,
     limitPerUser: 10,

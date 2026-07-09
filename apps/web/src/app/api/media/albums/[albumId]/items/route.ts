@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   try {
     const { albumId } = await params;
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "media album add items",
       ...GALLERY_ALBUM_BATCH_RATE_LIMIT,
     });

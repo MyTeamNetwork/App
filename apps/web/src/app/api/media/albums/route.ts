@@ -31,7 +31,7 @@ const albumsListQuerySchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "media albums list",
       limitPerIp: 60,
       limitPerUser: 45,
@@ -147,7 +147,7 @@ const createAlbumBodySchema = createAlbumSchema.extend({
  */
 export async function POST(request: NextRequest) {
   try {
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "media albums create",
       limitPerIp: 20,
       limitPerUser: 10,

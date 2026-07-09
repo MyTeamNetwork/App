@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     telemetry.setUserId(user?.id ?? null);
 
-    const rateLimit = checkRateLimit(req, {
+    const rateLimit = await checkRateLimit(req, {
       userId: user?.id ?? null,
       feature: "billing portal",
       limitPerIp: 40,

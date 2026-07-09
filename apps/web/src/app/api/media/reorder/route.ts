@@ -30,7 +30,7 @@ function mapRpcError(message: string | undefined): string {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       feature: "media gallery reorder",
       limitPerIp: 30,
       limitPerUser: 25,

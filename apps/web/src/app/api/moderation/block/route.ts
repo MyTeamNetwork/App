@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const { createAuthenticatedApiClient } = await import("@/lib/supabase/api");
     const { supabase, user } = await createAuthenticatedApiClient(request);
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "toggle block",
       limitPerIp: 90,
@@ -79,7 +79,7 @@ export async function GET(request: Request) {
     const { createAuthenticatedApiClient } = await import("@/lib/supabase/api");
     const { supabase, user } = await createAuthenticatedApiClient(request);
 
-    const rateLimit = checkRateLimit(request, {
+    const rateLimit = await checkRateLimit(request, {
       userId: user?.id ?? null,
       feature: "list blocks",
       limitPerIp: 120,

@@ -21,7 +21,7 @@ export function createAiThreadsGetHandler(deps: AiThreadsRouteDeps = {}) {
     const { orgId } = await params;
 
   // Rate limit before touching the DB
-  const rateLimit = checkRateLimit(request, {
+  const rateLimit = await checkRateLimit(request, {
     feature: "AI threads list",
     limitPerIp: 30,
     limitPerUser: 30,

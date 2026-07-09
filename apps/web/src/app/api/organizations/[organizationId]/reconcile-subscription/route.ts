@@ -46,7 +46,7 @@ export async function POST(req: Request, { params }: RouteParams) {
   const serviceSupabase = createServiceClient();
   const { supabase, user } = await createAuthenticatedApiClient(req);
 
-  const rateLimit = checkRateLimit(req, {
+  const rateLimit = await checkRateLimit(req, {
     userId: user?.id ?? null,
     feature: "subscription reconcile",
     limitPerIp: 15,

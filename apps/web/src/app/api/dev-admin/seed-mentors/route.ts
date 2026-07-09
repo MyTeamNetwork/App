@@ -62,7 +62,7 @@ const SEED_TEMPLATES = [
 
 export async function POST(req: Request) {
   try {
-    const ipRateLimit = checkRateLimit(req, {
+    const ipRateLimit = await checkRateLimit(req, {
       feature: "dev-admin",
       limitPerIp: 30,
       limitPerUser: 0,
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
-    const userRateLimit = checkRateLimit(req, {
+    const userRateLimit = await checkRateLimit(req, {
       userId: user?.id ?? null,
       feature: "dev-admin",
       limitPerIp: 0,
