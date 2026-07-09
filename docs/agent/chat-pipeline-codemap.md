@@ -4,7 +4,7 @@ title: Chat Pipeline
 description: Full chat request lifecycle — auth, policy, RAG, tool execution, SSE streaming, persistence, grounding.
 resource: apps/web/src/app/api/ai/[orgId]/chat/handler.ts
 tags: [ai, chat-pipeline, sse, tools]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-08T00:00:00Z
 ---
 
 # Chat Pipeline — Code Map
@@ -24,7 +24,8 @@ For the connection-suggestions engine, see `docs/agent/people-graph-suggestions.
 | File | Purpose | Key Exports (line) |
 |---|---|---|
 | `src/lib/ai/client.ts` | LLM client factory (OpenAI-shaped adapter over AWS Bedrock Converse) | `createLlmClient`, `getLlmModel`, `getLlmImageModel`, `isLlmConfigured` |
-| `src/lib/ai/bedrock-adapter.ts` | Translates OpenAI Chat Completions shapes ⇄ Bedrock Converse/ConverseStream | `createBedrockChatClient` |
+| `src/lib/ai/bedrock-adapter.ts` | Translates OpenAI Chat Completions shapes ⇄ Bedrock Converse/ConverseStream; strips `<thinking>` reasoning from non-streamed content | `createBedrockChatClient` |
+| `src/lib/ai/reasoning.ts` | Strips Nova's `<thinking>…</thinking>` chain-of-thought from buffered model text (Nova Micro narrates tool-routing reasoning before the tool call); applied to pass-1/pass-2 buffers and the non-streaming adapter output | `stripModelReasoning` |
 | `src/lib/ai/context.ts` | Admin auth helper — validates user has admin role in org and returns trusted org name / slug / donor-privacy bits for downstream reuse | `getAiOrgContext` (L41), `AiOrgContext` type (L9), `AiOrgContextDeps` type (L23) |
 | `src/lib/ai/context-builder.ts` | Prompt context assembly — surface-gated queries, bounded route-entity context, token budget, ContextMetadata, and minimal `tool_first` reuse of trusted org metadata | `buildPromptContext`, `buildSystemPrompt`, `buildUntrustedOrgContextMessage`, `ContextMetadata` |
 | `src/lib/ai/route-entity.ts` | Trusted route parsing for current entity pages plus shared current-route helpers | `extractRouteEntity`, `extractCurrentMemberRouteId`, `extractCurrentDiscussionThreadRouteId`, `getCurrentPathFeatureSegment` |
@@ -222,6 +223,10 @@ Client POST /api/ai/{orgId}/chat
   │       ├─ Forced pass-1 `tool_choice` is used only when the selected pass-1 tool set stays single-tool after routing; deterministic formatting itself does not depend on a forced choice
   │       ├─ Pass 2 runs with a 15s timeout budget for the remaining tool-backed turns and still receives an extra fixed-template contract for `suggest_connections` when mixed tool results require model synthesis
   │       ├─ Pass-2 text is buffered server-side, never streamed immediately
+  │       ├─ Pass-2 error after tool calls degrades to a deterministic fallback answer (`buildPass2ToolFallbackContent` in run-model-tools-loop.ts) instead of a terminal "Failed to generate response"; the composer error event is buffered and dropped on recovery, kept for turns with no tool results
+  │       ├─ Model-stage error-stops audit as stage status `failed` (onEvent disposition `stop_error` → outcome `stopped_error` in run-model-stage.ts); plain `stop` still audits `completed`
+  │       ├─ Non-UUID `recipient_member_id` / `target_member_id` / `target_user_id` args (Nova fabricates names/emails/slugs as ids) are coerced to `person_query` in run-tool-calls.ts before validation, so recipient resolution happens server-side by name/email
+  │       ├─ Identical duplicate tool calls (same name + argsJson) in one turn are deduped at the composer flush, keeping the first
   │       └─ `tool_status` SSE events still stream live during tool execution
   ├─ 13. Finalize — update assistant message to complete/error
   ├─ 13.2 If pass-2 used successful read tools: verifyToolBackedResponse()
@@ -490,6 +495,6 @@ type ToolExecutionResult =
 | `tests/ai-stream-failures.test.ts` | 2 | `parseAIChatFailure` — 409 handling, error fallback |
 | `tests/ai-middleware-noise.test.ts` | 1 | Middleware suppresses AI route console noise |
 | `tests/ai-feedback-evals.test.ts` | 6 | Negative feedback normalization into reviewable eval candidates |
-| `tests/ai-eval-fixtures.test.ts` | 3 | Promoted deterministic AI eval fixtures for routing, refusal, and pending-action behavior |
+| `tests/ai-eval-fixtures.test.ts` | 5 | Promoted deterministic AI eval fixtures for routing, refusal, pending-action, chat-message-by-name, and multi-tool summary behavior |
 | `tests/routes/ai/chat-handler.test.ts` | 21 | Route simulation: auth, validation, idempotency, cache flows, history fallback, grounding, safety |
-| `tests/routes/ai/chat-handler-tools.test.ts` | 43 | Tool routing, deterministic fast paths, pending-action flows, pass-2 fallbacks, timeout/error handling |
+| `tests/routes/ai/chat-handler-tools.test.ts` | 91 | Tool routing, deterministic fast paths, pending-action flows, pass-2 fallbacks (incl. deterministic fallback on pass-2 error after tools), non-UUID id→person_query coercion, timeout/error handling |

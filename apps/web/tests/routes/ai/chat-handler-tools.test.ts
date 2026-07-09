@@ -243,6 +243,9 @@ const { inferDraftSessionFromHistory } = await import(
 const { resolveSurfaceRouting } = await import(
   "../../../src/lib/ai/intent-router.ts"
 );
+const { dropPlaceholderPersonValue } = await import(
+  "../../../src/app/api/ai/[orgId]/chat/handler/stages/run-tool-calls.ts"
+);
 let POST: ReturnType<typeof createChatPostHandler>;
 
 function buildDefaultDeps(overrides: Record<string, any> = {}) {
@@ -4269,4 +4272,235 @@ test("tool-first pass preserves pass1 lead-in text emitted before the tool call"
 
   assert.match(body, /Let me check that for you\./);
   assert.match(body, /Recent announcements/);
+});
+
+test("fabricated non-UUID recipient_member_id is coerced to person_query before execution", async () => {
+  // Production incident: Nova invented recipient ids ("matthew-mckillop-id",
+  // made-up emails) instead of resolving a real UUID, failing zod validation.
+  POST = createChatPostHandler(
+    buildDefaultDeps({
+      composeResponse: async function* (options: any) {
+        composeResponseCalls.push(options);
+        if (options.tools && !options.toolResults) {
+          yield {
+            type: "tool_call_requested",
+            id: "call-1",
+            name: "prepare_chat_message",
+            argsJson:
+              '{"recipient_member_id":"matthew.mckillop@example.com","body":"hi how are you"}',
+          };
+          return;
+        }
+        options.onUsage?.({ inputTokens: 10, outputTokens: 5 });
+        yield { type: "chunk", content: "Drafted." };
+      },
+    })
+  );
+
+  const response = await POST(
+    makeRequest("Send a chat message to Matthew McKillop saying hi") as any,
+    { params: Promise.resolve({ orgId: ORG_ID }) }
+  );
+  await response.text();
+
+  assert.equal(executeToolCallCalls.length, 1);
+  assert.equal(executeToolCallCalls[0].call.name, "prepare_chat_message");
+  assert.deepEqual(executeToolCallCalls[0].call.args, {
+    person_query: "matthew.mckillop@example.com",
+    body: "hi how are you",
+  });
+});
+
+test("valid UUID recipient_member_id is passed through untouched", async () => {
+  const realId = "11111111-1111-4111-8111-111111111111";
+  POST = createChatPostHandler(
+    buildDefaultDeps({
+      composeResponse: async function* (options: any) {
+        composeResponseCalls.push(options);
+        if (options.tools && !options.toolResults) {
+          yield {
+            type: "tool_call_requested",
+            id: "call-1",
+            name: "prepare_chat_message",
+            argsJson: `{"recipient_member_id":"${realId}","body":"hi"}`,
+          };
+          return;
+        }
+        options.onUsage?.({ inputTokens: 10, outputTokens: 5 });
+        yield { type: "chunk", content: "Drafted." };
+      },
+    })
+  );
+
+  await (
+    await POST(
+      makeRequest("Send a chat message to Matthew McKillop saying hi") as any,
+      { params: Promise.resolve({ orgId: ORG_ID }) }
+    )
+  ).text();
+
+  assert.equal(executeToolCallCalls.length, 1);
+  assert.deepEqual(executeToolCallCalls[0].call.args, {
+    recipient_member_id: realId,
+    body: "hi",
+  });
+});
+
+test("pass-2 failure after successful tool calls degrades to a fallback answer, not an error", async () => {
+  // Production incident: pass-2 was rejected instantly by Bedrock after
+  // successful tool calls and the user saw a bare "Failed to generate
+  // response" terminal error.
+  POST = createChatPostHandler(
+    buildDefaultDeps({
+      composeResponse: async function* (options: any) {
+        composeResponseCalls.push(options);
+        if (options.tools && !options.toolResults) {
+          yield {
+            type: "tool_call_requested",
+            id: "call-1",
+            name: "list_members",
+            argsJson: '{"limit": 5}',
+          };
+          return;
+        }
+        // Pass-2 compose leg dies (e.g. Bedrock validation rejection).
+        yield {
+          type: "error",
+          message: "Failed to generate response",
+          retryable: true,
+        };
+      },
+    })
+  );
+
+  const response = await POST(makeRequest() as any, {
+    params: Promise.resolve({ orgId: ORG_ID }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.text();
+
+  assert.ok(!body.includes('"type":"error"'), "no terminal error event for a tool-backed turn");
+  assert.match(body, /ran into a problem composing the answer/);
+  assert.match(body, /"type":"done"/);
+
+  // The failure stays legible in the audit trail.
+  assert.equal(auditEntries.length, 1);
+  const entry = auditEntries[0] as any;
+  assert.equal(entry.error, "Failed to generate response");
+  assert.equal(entry.stageTimings?.stages?.pass2?.status ?? entry.stage_timings?.stages?.pass2?.status, "failed");
+});
+
+test("pass-2 failure on a turn WITHOUT tool results still surfaces the error", async () => {
+  POST = createChatPostHandler(
+    buildDefaultDeps({
+      composeResponse: async function* (options: any) {
+        composeResponseCalls.push(options);
+        yield {
+          type: "error",
+          message: "Failed to generate response",
+          retryable: true,
+        };
+      },
+    })
+  );
+
+  const body = await (
+    await POST(makeRequest("hi") as any, {
+      params: Promise.resolve({ orgId: ORG_ID }),
+    })
+  ).text();
+
+  assert.match(body, /"type":"error"/);
+  assert.ok(!body.includes('"type":"done"'), "errored turn must not emit done");
+});
+
+// --- dropPlaceholderPersonValue unit tests ---
+
+test("dropPlaceholderPersonValue: deletes bracketed placeholder [member name]", () => {
+  const args: Record<string, unknown> = { mentee_query: "[member name]" };
+  dropPlaceholderPersonValue(args, "mentee_query");
+  assert.equal(Object.prototype.hasOwnProperty.call(args, "mentee_query"), false);
+});
+
+test("dropPlaceholderPersonValue: deletes bare placeholder 'member name'", () => {
+  const args: Record<string, unknown> = { mentee_query: "member name" };
+  dropPlaceholderPersonValue(args, "mentee_query");
+  assert.equal(Object.prototype.hasOwnProperty.call(args, "mentee_query"), false);
+});
+
+test("dropPlaceholderPersonValue: deletes bare placeholder 'Name'", () => {
+  const args: Record<string, unknown> = { mentee_query: "Name" };
+  dropPlaceholderPersonValue(args, "mentee_query");
+  assert.equal(Object.prototype.hasOwnProperty.call(args, "mentee_query"), false);
+});
+
+test("dropPlaceholderPersonValue: deletes 'user name'", () => {
+  const args: Record<string, unknown> = { person_query: "user name" };
+  dropPlaceholderPersonValue(args, "person_query");
+  assert.equal(Object.prototype.hasOwnProperty.call(args, "person_query"), false);
+});
+
+test("dropPlaceholderPersonValue: preserves real name 'Louis Ciccone'", () => {
+  const args: Record<string, unknown> = { mentee_query: "Louis Ciccone" };
+  dropPlaceholderPersonValue(args, "mentee_query");
+  assert.equal(args.mentee_query, "Louis Ciccone");
+});
+
+test("dropPlaceholderPersonValue: preserves real name 'Matthew McKillop'", () => {
+  const args: Record<string, unknown> = { mentee_query: "Matthew McKillop" };
+  dropPlaceholderPersonValue(args, "mentee_query");
+  assert.equal(args.mentee_query, "Matthew McKillop");
+});
+
+test("dropPlaceholderPersonValue: preserves email address 'louis@example.com'", () => {
+  const args: Record<string, unknown> = { person_query: "louis@example.com" };
+  dropPlaceholderPersonValue(args, "person_query");
+  assert.equal(args.person_query, "louis@example.com");
+});
+
+test("dropPlaceholderPersonValue: preserves 'Anna Namey' (contains 'name' as a substring but is a real name)", () => {
+  const args: Record<string, unknown> = { mentee_query: "Anna Namey" };
+  dropPlaceholderPersonValue(args, "mentee_query");
+  assert.equal(args.mentee_query, "Anna Namey");
+});
+
+// --- Integration test: suggest_mentors placeholder preprocessing ---
+
+test("suggest_mentors tool call with placeholder mentee_query drops the field before execution", async () => {
+  POST = createChatPostHandler(
+    buildDefaultDeps({
+      composeResponse: async function* (options: any) {
+        composeResponseCalls.push(options);
+        if (options.tools && !options.toolResults) {
+          yield {
+            type: "tool_call_requested",
+            id: "call-placeholder-1",
+            name: "suggest_mentors",
+            argsJson: '{"mentee_query":"member name"}',
+          };
+          return;
+        }
+        options.onUsage?.({ inputTokens: 10, outputTokens: 5 });
+        yield { type: "chunk", content: "No mentee identified." };
+      },
+      executeToolCall: async (ctx: any, call: any) => {
+        executeToolCallCalls.push({ ctx, call });
+        return okToolResult({ state: "missing_fields", missing_fields: ["mentee_query"] });
+      },
+    })
+  );
+
+  await (
+    await POST(makeRequest("Suggest mentors for [member name] and explain the ranking") as any, {
+      params: Promise.resolve({ orgId: ORG_ID }),
+    })
+  ).text();
+
+  assert.equal(executeToolCallCalls.length, 1);
+  assert.equal(executeToolCallCalls[0].call.name, "suggest_mentors");
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(executeToolCallCalls[0].call.args, "mentee_query"),
+    false,
+    "mentee_query placeholder must be dropped before executeToolCall"
+  );
 });

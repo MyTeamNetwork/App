@@ -15,7 +15,7 @@ export const ASSISTANT_WORKFLOW_SHORTCUTS: AssistantWorkflowShortcut[] = [
   {
     id: "suggest-mentors",
     label: "Suggest mentors",
-    prompt: "Suggest mentors for [member name] and explain the ranking.",
+    prompt: "Suggest mentors for ",
     icon: UserCheck,
   },
   {

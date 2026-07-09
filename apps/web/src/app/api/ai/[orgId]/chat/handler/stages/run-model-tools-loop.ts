@@ -49,6 +49,7 @@ import {
   MENTOR_PASS2_TEMPLATE,
 } from "../sse-runtime";
 import type { RouteEntityContext } from "@/lib/ai/route-entity";
+import { stripModelReasoning } from "@/lib/ai/reasoning";
 import { runPass1 } from "./run-pass1";
 import { runPass2 } from "./run-pass2";
 import { runGroundingCheck } from "./run-grounding-check";
@@ -159,6 +160,38 @@ function getSingleNavigationTarget(data: unknown): { href: string; label: string
     .filter((target): target is { href: string; label: string } => target != null);
 
   return accessible.length === 1 ? accessible[0] : null;
+}
+
+/**
+ * Deterministic answer for a tool-backed turn whose pass-2 compose leg failed.
+ * Honest about what happened without exposing internals; strictly better than
+ * a terminal "Failed to generate response" when tool data was retrieved.
+ */
+export function buildPass2ToolFallbackContent(
+  toolResults: ToolResultMessage[],
+  successfulToolCount: number,
+): string {
+  const failedNames = Array.from(
+    new Set(
+      toolResults
+        .filter(
+          (result) =>
+            result.data &&
+            typeof result.data === "object" &&
+            "error" in result.data &&
+            typeof (result.data as { error?: unknown }).error === "string",
+        )
+        .map((result) => result.name.replace(/_/g, " ")),
+    ),
+  );
+  if (successfulToolCount === 0) {
+    const steps = failedNames.length > 0 ? failedNames.join(", ") : "lookup";
+    return `I couldn't complete that request — the ${steps} step failed. Please try again or rephrase your request.`;
+  }
+  if (failedNames.length > 0) {
+    return `I retrieved part of that information, but the ${failedNames.join(", ")} step failed and I ran into a problem composing the full answer. Please try again.`;
+  }
+  return "I retrieved the information you asked for, but ran into a problem composing the answer. Please try asking again.";
 }
 
 /**
@@ -310,6 +343,13 @@ export async function runModelToolsLoop(
   clearUnclaimedEagerStatus();
   // Clear eager-emit set so subsequent tool-loop iterations re-emit.
   input.runtimeState.eagerStatusEmittedFor.clear();
+
+  // Nova Micro narrates its tool-routing reasoning as a leading
+  // <thinking>...</thinking> text block before the tool call. Strip it here,
+  // once, so every downstream consumer (tool-required suppression check,
+  // grounding, safety gate, and the emit branches below) sees only the
+  // visible answer — commonly the empty string on a tool-calling turn.
+  pass1BufferedContent = stripModelReasoning(pass1BufferedContent);
 
   if (!input.runtimeState.toolCallMade) {
     skipStage(input.stageTimings, "tools");
@@ -479,6 +519,10 @@ export async function runModelToolsLoop(
           ? `${input.systemPrompt}\n\n${pass2Instructions}${toolErrorInstruction}`
           : `${input.systemPrompt}${toolErrorInstruction}`;
 
+      // Buffer the composer error event instead of enqueueing immediately:
+      // when tool results exist we recover with a deterministic fallback
+      // answer, and the client must not see a terminal error first.
+      let pass2ErrorEvent: Extract<SSEEvent, { type: "error" }> | null = null;
       const pass2Outcome = await runPass2({
         client: input.client,
         systemPrompt: pass2SystemPrompt,
@@ -499,14 +543,47 @@ export async function runModelToolsLoop(
         },
         onError: (event) => {
           input.runtimeState.auditErrorMessage = event.message;
-          input.enqueue(event);
+          pass2ErrorEvent = event;
         },
       });
 
       if (pass2Outcome !== "completed") {
-        return { fullContent, completed: false };
+        const canRecoverWithToolFallback =
+          pass2Outcome === "stopped_error" &&
+          toolResults.length > 0 &&
+          !input.streamSignal.aborted;
+        if (!canRecoverWithToolFallback) {
+          if (pass2ErrorEvent) {
+            input.enqueue(pass2ErrorEvent);
+          }
+          return { fullContent, completed: false };
+        }
+        // Tool data exists but the compose leg died (e.g. a Bedrock
+        // validation rejection). Never surface a bare "Failed to generate
+        // response" for a tool-backed turn — degrade to a deterministic
+        // acknowledgement instead.
+        aiLog(
+          "warn",
+          "ai-chat",
+          "pass-2 failed after tool calls; emitting deterministic fallback",
+          input.requestLogContext,
+          {
+            toolCount: toolResults.length,
+            successfulToolCount: input.successfulToolResults.length,
+          },
+        );
+        pass2BufferedContent = buildPass2ToolFallbackContent(
+          toolResults,
+          input.successfulToolResults.length,
+        );
+        renderedDeterministically = true;
       }
     }
+
+    // Defensive: pass-2 (Nova Lite) does not currently narrate reasoning, but
+    // strip before grounding/emit so a future model regression cannot leak a
+    // <thinking> block into the composed answer.
+    pass2BufferedContent = stripModelReasoning(pass2BufferedContent);
 
     if (!renderedDeterministically) {
       pass2BufferedContent = await runGroundingCheck({

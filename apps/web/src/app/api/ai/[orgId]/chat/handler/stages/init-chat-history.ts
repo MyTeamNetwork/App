@@ -20,6 +20,7 @@ import type { CacheSurface } from "@/lib/ai/semantic-cache-utils";
 import type { RouteEntityContext } from "@/lib/ai/route-entity";
 import type { RagChunkInput, buildPromptContext } from "@/lib/ai/context-builder";
 import type { ToolName } from "@/lib/ai/tools/definitions";
+import { stripModelReasoning } from "@/lib/ai/reasoning";
 import type { ChatAttachment } from "../shared";
 
 export interface HistoryRow {
@@ -159,7 +160,15 @@ export async function runInitChatHistoryStage(
     historyPromise,
   ]);
 
-  let historyRows: HistoryRow[] = (history as HistoryRow[] | null) ?? [];
+  // Assistant rows persisted before reasoning stripping shipped can contain
+  // raw <thinking> narration; replaying it verbatim teaches the model to
+  // narrate reasoning again, so re-strip on load.
+  let historyRows: HistoryRow[] = ((history as HistoryRow[] | null) ?? []).map(
+    (row) =>
+      row.role === "assistant" && row.content
+        ? { ...row, content: stripModelReasoning(row.content) }
+        : row,
+  );
   if (historyError) {
     aiLog(
       "error",

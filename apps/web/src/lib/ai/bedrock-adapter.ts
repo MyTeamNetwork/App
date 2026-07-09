@@ -31,6 +31,7 @@ import type {
   ToolResultContentBlock,
 } from "@aws-sdk/client-bedrock-runtime";
 import type OpenAI from "openai";
+import { stripModelReasoning } from "@/lib/ai/reasoning";
 
 // Max bytes we will inline into a Converse image block (Bedrock caps image
 // payloads; the upstream tool already rejects >2MB, this is a defensive bound).
@@ -125,9 +126,12 @@ function converseOutputToCompletion(
     }
   }
 
+  // Strip any <thinking> reasoning Nova emits alongside its answer/tool call.
+  // If the text was reasoning-only, fall back to null (tool call) or "".
+  const visibleText = stripModelReasoning(textParts.join(""));
   const message: OpenAI.Chat.Completions.ChatCompletionMessage = {
     role: "assistant",
-    content: textParts.length > 0 ? textParts.join("") : toolCalls.length > 0 ? null : "",
+    content: visibleText.length > 0 ? visibleText : toolCalls.length > 0 ? null : "",
     refusal: null,
     ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
   };
@@ -277,6 +281,25 @@ function usageChunk(
 async function buildConverseInput(body: CreateBody): Promise<ConverseCommandInput> {
   const system: SystemContentBlock[] = [];
   const messages: BedrockMessage[] = [];
+  const toolConfig = buildToolConfig(body);
+
+  // Converse rejects toolUse/toolResult content blocks unless toolConfig is
+  // defined. The pass-2 compose leg replays tool history WITHOUT registering
+  // tools (it must never trigger new calls — see run-pass2.ts), so when no
+  // tools are defined, translate that history to plain text turns instead of
+  // native blocks. Without this, every pass-2 compose over tool results fails
+  // with "The toolConfig field must be defined when using toolUse and
+  // toolResult content blocks" and the user gets an empty answer.
+  const nativeToolBlocks = toolConfig !== undefined;
+  const toolCallNames = new Map<string, string>();
+  if (!nativeToolBlocks) {
+    for (const msg of body.messages) {
+      if (msg.role !== "assistant") continue;
+      for (const call of msg.tool_calls ?? []) {
+        if (call.type === "function") toolCallNames.set(call.id, call.function.name);
+      }
+    }
+  }
 
   for (const msg of body.messages) {
     if (msg.role === "system" || msg.role === "developer") {
@@ -289,14 +312,20 @@ async function buildConverseInput(body: CreateBody): Promise<ConverseCommandInpu
       continue;
     }
     if (msg.role === "assistant") {
-      const content = assistantContentToBlocks(msg);
+      const content = nativeToolBlocks
+        ? assistantContentToBlocks(msg)
+        : assistantTextOnlyBlocks(msg);
       if (content.length > 0) messages.push({ role: "assistant", content });
       continue;
     }
     if (msg.role === "tool") {
       messages.push({
         role: "user",
-        content: [toolResultBlock(msg.tool_call_id, msg.content)],
+        content: [
+          nativeToolBlocks
+            ? toolResultBlock(msg.tool_call_id, msg.content)
+            : toolResultTextBlock(toolCallNames.get(msg.tool_call_id), msg.content),
+        ],
       });
       continue;
     }
@@ -318,7 +347,6 @@ async function buildConverseInput(body: CreateBody): Promise<ConverseCommandInpu
   if (typeof body.max_tokens === "number") inferenceConfig.maxTokens = body.max_tokens;
   if (Object.keys(inferenceConfig).length > 0) input.inferenceConfig = inferenceConfig;
 
-  const toolConfig = buildToolConfig(body);
   if (toolConfig) input.toolConfig = toolConfig;
 
   return input;
@@ -381,6 +409,22 @@ function assistantContentToBlocks(
     });
   }
   return blocks;
+}
+
+/** Assistant turn without native toolUse blocks — text only (toolUse is
+ *  illegal without toolConfig; the call is implied by the result turn). */
+function assistantTextOnlyBlocks(
+  msg: OpenAI.Chat.Completions.ChatCompletionAssistantMessageParam,
+): ContentBlock[] {
+  const text = openAiContentToText(msg.content);
+  return text.trim().length > 0 ? [{ text }] : [];
+}
+
+/** Tool result as a plain user-text turn for requests with no toolConfig. */
+function toolResultTextBlock(toolName: string | undefined, content: unknown): ContentBlock {
+  const text = typeof content === "string" ? content : openAiContentToText(content);
+  const label = toolName ? `Result from the ${toolName} tool` : "Tool result";
+  return { text: `${label}:\n${text.length > 0 ? text : "(empty)"}` };
 }
 
 function toolResultBlock(toolUseId: string, content: unknown): ContentBlock {

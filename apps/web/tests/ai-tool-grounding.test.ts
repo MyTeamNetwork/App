@@ -9,10 +9,12 @@ import {
   REASON_CODE_LABEL_PATTERNS,
 } from "../src/lib/mentorship/presentation.ts";
 
-function makeSuggestMentorsToolResult(suggestions: Array<{
-  name: string;
-  reasons: Array<{ code: string }>;
-}>) {
+function makeSuggestMentorsToolResult(
+  suggestions: Array<{
+    name: string;
+    reasons: Array<{ code: string }>;
+  }>
+) {
   return {
     name: "suggest_mentors" as const,
     data: {
@@ -26,10 +28,12 @@ function makeSuggestMentorsToolResult(suggestions: Array<{
   };
 }
 
-function makeSuggestMenteesToolResult(suggestions: Array<{
-  name: string;
-  reasons: Array<{ code: string }>;
-}>) {
+function makeSuggestMenteesToolResult(
+  suggestions: Array<{
+    name: string;
+    reasons: Array<{ code: string }>;
+  }>
+) {
   return {
     name: "suggest_mentees" as const,
     data: {
@@ -45,10 +49,12 @@ function makeSuggestMenteesToolResult(suggestions: Array<{
 
 const FRESH_FRESHNESS = { state: "fresh", as_of: "2026-03-24T00:00:00.000Z" } as const;
 
-function makeSuggestConnectionsToolResult(suggestions: Array<{
-  name: string;
-  reasons: Array<{ code: string; label: string; weight: number }>;
-}>) {
+function makeSuggestConnectionsToolResult(
+  suggestions: Array<{
+    name: string;
+    reasons: Array<{ code: string; label: string; weight: number }>;
+  }>
+) {
   return {
     name: "suggest_connections" as const,
     data: {
@@ -217,16 +223,11 @@ test("verifyToolBackedResponse still flags fabricated member names even when dec
   // first token "Jane" with real row Jane Smith) to prove the matcher
   // requires the *full* bare name, not just a prefix.
   const result = verifyToolBackedResponse({
-    content: [
-      "- Ghost Player (Wide Receiver)",
-      "- Jane Doe (Captain)",
-    ].join("\n"),
+    content: ["- Ghost Player (Wide Receiver)", "- Jane Doe (Captain)"].join("\n"),
     toolResults: [
       {
         name: "list_members",
-        data: [
-          { name: "Jane Smith", email: "jane@example.com" },
-        ],
+        data: [{ name: "Jane Smith", email: "jane@example.com" }],
       },
     ],
   });
@@ -300,9 +301,7 @@ test("verifyToolBackedResponse flags event dates absent from tool rows", () => {
     toolResults: [
       {
         name: "list_events",
-        data: [
-          { title: "Spring Gala", start_date: "2026-04-01T18:00:00.000Z" },
-        ],
+        data: [{ title: "Spring Gala", start_date: "2026-04-01T18:00:00.000Z" }],
       },
     ],
   });
@@ -345,7 +344,10 @@ test("verifyToolBackedResponse flags unsupported suggest_connections reasons", (
     ].join("\n"),
     toolResults: [
       makeSuggestConnectionsToolResult([
-        { name: "Dina Direct", reasons: [{ code: "shared_city", label: "shared city", weight: 15 }] },
+        {
+          name: "Dina Direct",
+          reasons: [{ code: "shared_city", label: "shared city", weight: 15 }],
+        },
       ]),
     ],
   });
@@ -390,8 +392,14 @@ test("verifyToolBackedResponse rejects out-of-order suggest_connections output",
     ].join("\n"),
     toolResults: [
       makeSuggestConnectionsToolResult([
-        { name: "Dina Direct", reasons: [{ code: "shared_industry", label: "shared industry", weight: 40 }] },
-        { name: "Sam Second", reasons: [{ code: "shared_city", label: "shared city", weight: 15 }] },
+        {
+          name: "Dina Direct",
+          reasons: [{ code: "shared_industry", label: "shared industry", weight: 40 }],
+        },
+        {
+          name: "Sam Second",
+          reasons: [{ code: "shared_city", label: "shared city", weight: 15 }],
+        },
       ]),
     ],
   });
@@ -409,7 +417,10 @@ test("verifyToolBackedResponse does not treat non-location 'both in' phrasing as
     ].join("\n"),
     toolResults: [
       makeSuggestConnectionsToolResult([
-        { name: "Dina Direct", reasons: [{ code: "shared_industry", label: "shared industry", weight: 40 }] },
+        {
+          name: "Dina Direct",
+          reasons: [{ code: "shared_industry", label: "shared industry", weight: 40 }],
+        },
       ]),
     ],
   });
@@ -426,7 +437,10 @@ test("verifyToolBackedResponse accepts shared graduation year phrasing as gradua
     ].join("\n"),
     toolResults: [
       makeSuggestConnectionsToolResult([
-        { name: "Dina Direct", reasons: [{ code: "graduation_proximity", label: "graduation proximity", weight: 10 }] },
+        {
+          name: "Dina Direct",
+          reasons: [{ code: "graduation_proximity", label: "graduation proximity", weight: 10 }],
+        },
       ]),
     ],
   });
@@ -444,7 +458,10 @@ test("verifyToolBackedResponse ignores adjacency wording that is not a scored re
     ].join("\n"),
     toolResults: [
       makeSuggestConnectionsToolResult([
-        { name: "Dina Direct", reasons: [{ code: "shared_industry", label: "shared industry", weight: 24 }] },
+        {
+          name: "Dina Direct",
+          reasons: [{ code: "shared_industry", label: "shared industry", weight: 24 }],
+        },
       ]),
     ],
   });
@@ -460,8 +477,22 @@ test("verifyToolBackedResponse accepts grounded list_discussions output", () => 
       {
         name: "list_discussions",
         data: [
-          { title: "Best practices for onboarding", body: "Let's discuss...", reply_count: 5, is_pinned: false, is_locked: false, last_activity_at: "2026-03-20T00:00:00.000Z" },
-          { title: "Event planning thread", body: "Planning...", reply_count: 12, is_pinned: true, is_locked: false, last_activity_at: "2026-03-18T00:00:00.000Z" },
+          {
+            title: "Best practices for onboarding",
+            body: "Let's discuss...",
+            reply_count: 5,
+            is_pinned: false,
+            is_locked: false,
+            last_activity_at: "2026-03-20T00:00:00.000Z",
+          },
+          {
+            title: "Event planning thread",
+            body: "Planning...",
+            reply_count: 12,
+            is_pinned: true,
+            is_locked: false,
+            last_activity_at: "2026-03-18T00:00:00.000Z",
+          },
         ],
       },
     ],
@@ -478,7 +509,13 @@ test("verifyToolBackedResponse accepts partial discussion title quote", () => {
       {
         name: "list_discussions",
         data: [
-          { title: "My new Thread - Check it out!", body: "...", reply_count: 2, is_pinned: false, is_locked: false },
+          {
+            title: "My new Thread - Check it out!",
+            body: "...",
+            reply_count: 2,
+            is_pinned: false,
+            is_locked: false,
+          },
         ],
       },
     ],
@@ -499,11 +536,9 @@ test("verifyToolBackedResponse accepts generated discussion title heads but reje
     "Donor",
     "Travel",
     "Engineering",
-    "Alumni",
+    "Alumni"
   );
-  const titlePart = fc
-    .tuple(word, word)
-    .map(([first, second]) => `${first} ${second}`);
+  const titlePart = fc.tuple(word, word).map(([first, second]) => `${first} ${second}`);
 
   fc.assert(
     fc.property(
@@ -552,9 +587,27 @@ test("verifyToolBackedResponse keeps repeated discussion title heads ambiguous",
       {
         name: "list_discussions",
         data: [
-          { title: "Sprint 3 - Backend", body: "...", reply_count: 2, is_pinned: false, is_locked: false },
-          { title: "Sprint 3 - Frontend", body: "...", reply_count: 2, is_pinned: false, is_locked: false },
-          { title: "Sprint 3 - Design", body: "...", reply_count: 2, is_pinned: false, is_locked: false },
+          {
+            title: "Sprint 3 - Backend",
+            body: "...",
+            reply_count: 2,
+            is_pinned: false,
+            is_locked: false,
+          },
+          {
+            title: "Sprint 3 - Frontend",
+            body: "...",
+            reply_count: 2,
+            is_pinned: false,
+            is_locked: false,
+          },
+          {
+            title: "Sprint 3 - Design",
+            body: "...",
+            reply_count: 2,
+            is_pinned: false,
+            is_locked: false,
+          },
         ],
       },
     ],
@@ -571,7 +624,13 @@ test("verifyToolBackedResponse accepts exact discussion titles containing reply-
       {
         name: "list_discussions",
         data: [
-          { title: "Forum has 5 replies per policy", body: "...", reply_count: 1, is_pinned: false, is_locked: false },
+          {
+            title: "Forum has 5 replies per policy",
+            body: "...",
+            reply_count: 1,
+            is_pinned: false,
+            is_locked: false,
+          },
         ],
       },
     ],
@@ -605,7 +664,13 @@ test("verifyToolBackedResponse flags incorrect discussion reply count", () => {
       {
         name: "list_discussions",
         data: [
-          { title: "Active Discussion", body: "...", reply_count: 5, is_pinned: false, is_locked: false },
+          {
+            title: "Active Discussion",
+            body: "...",
+            reply_count: 5,
+            is_pinned: false,
+            is_locked: false,
+          },
         ],
       },
     ],
@@ -617,12 +682,18 @@ test("verifyToolBackedResponse flags incorrect discussion reply count", () => {
 
 test("verifyToolBackedResponse accepts grounded list_job_postings output", () => {
   const result = verifyToolBackedResponse({
-    content: 'Current openings:\n- "Software Engineer" at "Acme Corp"\n- "Product Manager" at "Beta Inc"',
+    content:
+      'Current openings:\n- "Software Engineer" at "Acme Corp"\n- "Product Manager" at "Beta Inc"',
     toolResults: [
       {
         name: "list_job_postings",
         data: [
-          { title: "Software Engineer", company: "Acme Corp", location: "San Francisco", is_active: true },
+          {
+            title: "Software Engineer",
+            company: "Acme Corp",
+            location: "San Francisco",
+            is_active: true,
+          },
           { title: "Product Manager", company: "Beta Inc", location: "Remote", is_active: true },
         ],
       },
@@ -640,7 +711,12 @@ test("verifyToolBackedResponse flags fabricated company in job postings", () => 
       {
         name: "list_job_postings",
         data: [
-          { title: "Software Engineer", company: "Acme Corp", location: "San Francisco", is_active: true },
+          {
+            title: "Software Engineer",
+            company: "Acme Corp",
+            location: "San Francisco",
+            is_active: true,
+          },
         ],
       },
     ],
@@ -656,9 +732,7 @@ test("verifyToolBackedResponse flags inflated job posting count", () => {
     toolResults: [
       {
         name: "list_job_postings",
-        data: [
-          { title: "Engineer", company: "Acme", location: "NYC", is_active: true },
-        ],
+        data: [{ title: "Engineer", company: "Acme", location: "NYC", is_active: true }],
       },
     ],
   });
@@ -765,9 +839,7 @@ test("verifyToolBackedResponse flags hallucinated top purposes", () => {
             largest_successful_amount_cents: 10000,
           },
           trend: [],
-          top_purposes: [
-            { purpose: "Alumni Campaign", amount_cents: 10000, donation_count: 1 },
-          ],
+          top_purposes: [{ purpose: "Alumni Campaign", amount_cents: 10000, donation_count: 1 }],
         },
       },
     ],
@@ -797,16 +869,16 @@ test("verifyToolBackedResponse flags mismatched donation counts in top-purpose r
             largest_successful_amount_cents: 10000,
           },
           trend: [],
-          top_purposes: [
-            { purpose: "Alumni Campaign", amount_cents: 10000, donation_count: 1 },
-          ],
+          top_purposes: [{ purpose: "Alumni Campaign", amount_cents: 10000, donation_count: 1 }],
         },
       },
     ],
   });
 
   assert.equal(result.grounded, false);
-  assert.ok(result.failures.some((f) => /top purpose donation count claim 99 did not match 1/i.test(f)));
+  assert.ok(
+    result.failures.some((f) => /top purpose donation count claim 99 did not match 1/i.test(f))
+  );
 });
 
 test("verifyToolBackedResponse flags freeform donation paraphrase lacking formatter labels", () => {
@@ -1036,8 +1108,7 @@ test("'Same company: Acme' still maps to shared_company (true positive kept)", (
 
 test("suggest_mentors deterministic past-employer reason is no longer flagged", () => {
   const result = verifyToolBackedResponse({
-    content:
-      "Top mentors for Sam Student:\n- Mary Mentor\n  Why: Worked at the same company",
+    content: "Top mentors for Sam Student:\n- Mary Mentor\n  Why: Worked at the same company",
     toolResults: [
       makeSuggestMentorsToolResult([
         { name: "Mary Mentor", reasons: [{ code: "past_employer_overlap" }] },
@@ -1065,12 +1136,9 @@ test("suggest_mentors flags a 'same company' claim the tool never returned", () 
 
 test("verifier dispatches suggest_mentees and accepts grounded output", () => {
   const result = verifyToolBackedResponse({
-    content:
-      "Top mentees for Mary Mentor:\n- Sam Student\n  Why: Shared topics",
+    content: "Top mentees for Mary Mentor:\n- Sam Student\n  Why: Shared topics",
     toolResults: [
-      makeSuggestMenteesToolResult([
-        { name: "Sam Student", reasons: [{ code: "shared_topics" }] },
-      ]),
+      makeSuggestMenteesToolResult([{ name: "Sam Student", reasons: [{ code: "shared_topics" }] }]),
     ],
   });
 
@@ -1082,9 +1150,7 @@ test("suggest_mentees flags an invented mentee name not in tool rows", () => {
   const result = verifyToolBackedResponse({
     content: "- Sam Student\n- Invented Person",
     toolResults: [
-      makeSuggestMenteesToolResult([
-        { name: "Sam Student", reasons: [{ code: "shared_topics" }] },
-      ]),
+      makeSuggestMenteesToolResult([{ name: "Sam Student", reasons: [{ code: "shared_topics" }] }]),
     ],
   });
 
@@ -1096,14 +1162,14 @@ test("suggest_mentees flags an unsupported reason code", () => {
   const result = verifyToolBackedResponse({
     content: "- Sam Student\n  Why: Same company: Acme",
     toolResults: [
-      makeSuggestMenteesToolResult([
-        { name: "Sam Student", reasons: [{ code: "shared_topics" }] },
-      ]),
+      makeSuggestMenteesToolResult([{ name: "Sam Student", reasons: [{ code: "shared_topics" }] }]),
     ],
   });
 
   assert.equal(result.grounded, false);
-  assert.ok(result.failures.some((f) => /suggest_mentees.*unsupported reason shared_company/.test(f)));
+  assert.ok(
+    result.failures.some((f) => /suggest_mentees.*unsupported reason shared_company/.test(f))
+  );
 });
 
 /* ── projection tolerance: verifiers must not false-flag projected-away fields ─ */
@@ -1162,4 +1228,112 @@ test("verifyListEvents still flags a bogus title when title field IS present", (
   });
   assert.equal(result.grounded, false);
   assert.ok(result.failures.some((f) => /phantom event.*not present/i.test(f)));
+});
+
+test("verifyToolBackedResponse: multi-tool events+announcements does not false-flag event dates in announcement context", () => {
+  const result = verifyToolBackedResponse({
+    content: [
+      "## Upcoming Events",
+      "- Holiday Party on December 15, 2025",
+      "- New Year Kickoff on January 15, 2026",
+      "",
+      "## Recent Announcements",
+      "- Year-End Update",
+      "- Welcome 2026",
+    ].join("\n"),
+    toolResults: [
+      {
+        name: "list_events" as const,
+        data: [
+          { title: "Holiday Party", start_date: "2025-12-15T18:00:00.000Z" },
+          { title: "New Year Kickoff", start_date: "2026-01-15T18:00:00.000Z" },
+        ],
+      },
+      {
+        name: "list_announcements" as const,
+        data: [
+          { title: "Year-End Update", published_at: "2025-12-01T12:00:00.000Z" },
+          { title: "Welcome 2026", published_at: "2026-01-01T12:00:00.000Z" },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(result.grounded, true, result.failures.join("; "));
+  assert.deepEqual(result.failures, []);
+});
+
+test("verifyToolBackedResponse: multi-tool events+announcements still flags a date in neither tool", () => {
+  const result = verifyToolBackedResponse({
+    content: [
+      "## Upcoming Events",
+      "- Holiday Party on December 15, 2025",
+      "",
+      "## Recent Announcements",
+      "- Year-End Update",
+      "- Fabricated event on March 99, 2025",
+    ].join("\n"),
+    toolResults: [
+      {
+        name: "list_events" as const,
+        data: [{ title: "Holiday Party", start_date: "2025-12-15T18:00:00.000Z" }],
+      },
+      {
+        name: "list_announcements" as const,
+        data: [{ title: "Year-End Update", published_at: "2025-12-01T12:00:00.000Z" }],
+      },
+    ],
+  });
+
+  assert.equal(result.grounded, false);
+
+  // "march 99, 2025" is not a valid date so extractMentionedDates won't extract it.
+  // Use a valid-format but foreign ISO date instead.
+  // Re-run with a valid date that isn't in either tool.
+  const result2 = verifyToolBackedResponse({
+    content: [
+      "## Upcoming Events",
+      "- Holiday Party on December 15, 2025",
+      "",
+      "## Recent Announcements",
+      "- Year-End Update",
+      "- Some event happened on 2025-06-01",
+    ].join("\n"),
+    toolResults: [
+      {
+        name: "list_events" as const,
+        data: [{ title: "Holiday Party", start_date: "2025-12-15T18:00:00.000Z" }],
+      },
+      {
+        name: "list_announcements" as const,
+        data: [{ title: "Year-End Update", published_at: "2025-12-01T12:00:00.000Z" }],
+      },
+    ],
+  });
+
+  assert.equal(result2.grounded, false);
+  assert.ok(
+    result2.failures.some((f) => /2025-06-01/.test(f)),
+    result2.failures.join("; ")
+  );
+});
+
+test("verifyToolBackedResponse: single-tool list_announcements with foreign date still fails", () => {
+  const result = verifyToolBackedResponse({
+    content: ["## Announcements", "- Year-End Update", "- Something happened on 2025-06-01"].join(
+      "\n"
+    ),
+    toolResults: [
+      {
+        name: "list_announcements" as const,
+        data: [{ title: "Year-End Update", published_at: "2025-12-01T12:00:00.000Z" }],
+      },
+    ],
+  });
+
+  assert.equal(result.grounded, false);
+  assert.ok(
+    result.failures.some((f) => /2025-06-01/.test(f)),
+    result.failures.join("; ")
+  );
 });

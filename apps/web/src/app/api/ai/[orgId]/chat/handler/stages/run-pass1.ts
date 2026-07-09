@@ -82,7 +82,7 @@ export async function runPass1(
       }
       if (event.type === "error") {
         input.onError(event);
-        return "stop";
+        return "stop_error";
       }
       return await input.onToolCall(event as ToolCallRequestedEvent);
     },

@@ -577,12 +577,12 @@ const TOOL_BY_NAME = {
           recipient_member_id: {
             type: "string" as const,
             description:
-              "UUID of the member who should receive the chat message. Use this when the current member page already identifies the person.",
+              "UUID of the member who should receive the chat message. Only pass this when a real member UUID is already known from the current member page or a prior tool result. Never guess or construct an id — if you only know a name or email, pass person_query instead.",
           },
           person_query: {
             type: "string" as const,
             description:
-              "Recipient name or email when the user says who to message in natural language.",
+              "Recipient name or email when the user says who to message in natural language. Prefer this over recipient_member_id whenever no real UUID is known. Copy the person's name verbatim from the user's message. Never pass placeholder text such as 'member name' or bracketed template tokens.",
           },
           body: { type: "string" as const },
         },
@@ -602,16 +602,17 @@ const TOOL_BY_NAME = {
           target_member_id: {
             type: "string" as const,
             description:
-              "Member profile UUID from /members/<memberId> when the current page identifies the target person.",
+              "Member profile UUID from /members/<memberId> when the current page identifies the target person. Never guess or construct an id — pass person_query instead when only a name or email is known.",
           },
           target_user_id: {
             type: "string" as const,
             description:
-              "User UUID for the member whose organization role/status should change, when already known.",
+              "User UUID for the member whose organization role/status should change, only when a real UUID is already known from a prior tool result.",
           },
           person_query: {
             type: "string" as const,
-            description: "Target member name or email from the user's request.",
+            description:
+              "Target member name or email from the user's request. Prefer this over the id fields whenever no real UUID is known.",
           },
           role: {
             type: "string" as const,
@@ -1360,7 +1361,7 @@ const TOOL_BY_NAME = {
           mentee_query: {
             type: "string" as const,
             description:
-              "Name or email of the mentee when the user asked in natural language.",
+              "Name or email of the mentee when the user asked in natural language. Copy the person's name verbatim from the user's message. Never pass placeholder text such as 'member name' or bracketed template tokens.",
           },
           focus_areas: {
             type: "array" as const,
@@ -1470,7 +1471,7 @@ const TOOL_BY_NAME = {
           mentee_query: {
             type: "string" as const,
             description:
-              "Name or email of the mentee when the admin asked in natural language.",
+              "Name or email of the mentee when the admin asked in natural language. Copy the person's name verbatim from the user's message. Never pass placeholder text such as 'member name' or bracketed template tokens.",
           },
           mentor_id: {
             type: "string" as const,
@@ -1479,7 +1480,7 @@ const TOOL_BY_NAME = {
           mentor_query: {
             type: "string" as const,
             description:
-              "Name or email of the chosen mentor. When the admin refers to a previously suggested mentor by position ('the second one'), resolve it to that mentor's name from the prior suggest_mentors result.",
+              "Name or email of the chosen mentor. When the admin refers to a previously suggested mentor by position ('the second one'), resolve it to that mentor's name from the prior suggest_mentors result. Copy the person's name verbatim from the user's message. Never pass placeholder text such as 'member name' or bracketed template tokens.",
           },
         },
         additionalProperties: false as const,

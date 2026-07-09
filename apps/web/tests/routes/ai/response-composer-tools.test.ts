@@ -228,6 +228,72 @@ test("composeResponse yields every streamed tool call in index order", async () 
   );
 });
 
+test("composeResponse dedupes identical tool calls, keeping the first", async () => {
+  // Nova occasionally streams the same toolUse twice in one turn (observed:
+  // suggest_mentors duplicated with identical args). Only one should execute.
+  const client = createMockClient([
+    {
+      choices: [{
+        delta: {
+          tool_calls: [
+            { index: 0, id: "call-1", function: { name: "suggest_mentors", arguments: '{"mentee_query":"Louis Ciccone"}' } },
+            { index: 1, id: "call-2", function: { name: "suggest_mentors", arguments: '{"mentee_query":"Louis Ciccone"}' } },
+          ],
+        },
+      }],
+    },
+    { choices: [{ finish_reason: "tool_calls", delta: {} }] },
+  ]);
+
+  const events: ToolCallRequestedEvent[] = [];
+  for await (const event of composeResponse({
+    client,
+    systemPrompt: "test",
+    messages: [],
+    tools: [] as OpenAI.Chat.ChatCompletionTool[],
+  })) {
+    if (event.type === "tool_call_requested") {
+      events.push(event);
+    }
+  }
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].id, "call-1");
+  assert.equal(events[0].name, "suggest_mentors");
+});
+
+test("composeResponse keeps same-tool calls whose args differ", async () => {
+  // "Compare mentors for A and B" legitimately issues two suggest_mentors
+  // calls with different args — dedup must not collapse those.
+  const client = createMockClient([
+    {
+      choices: [{
+        delta: {
+          tool_calls: [
+            { index: 0, id: "call-1", function: { name: "suggest_mentors", arguments: '{"mentee_query":"Alice"}' } },
+            { index: 1, id: "call-2", function: { name: "suggest_mentors", arguments: '{"mentee_query":"Bob"}' } },
+          ],
+        },
+      }],
+    },
+    { choices: [{ finish_reason: "tool_calls", delta: {} }] },
+  ]);
+
+  const events: ToolCallRequestedEvent[] = [];
+  for await (const event of composeResponse({
+    client,
+    systemPrompt: "test",
+    messages: [],
+    tools: [] as OpenAI.Chat.ChatCompletionTool[],
+  })) {
+    if (event.type === "tool_call_requested") {
+      events.push(event);
+    }
+  }
+
+  assert.equal(events.length, 2);
+});
+
 test("composeResponse replays tool results as assistant and tool messages", async () => {
   let capturedParams: OpenAI.Chat.ChatCompletionCreateParamsStreaming | undefined;
   const client = {

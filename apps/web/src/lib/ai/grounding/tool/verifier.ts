@@ -3,7 +3,9 @@
 // and returned together.
 
 import type { ToolName } from "@/lib/ai/tools/definitions";
+import type { CrossToolEvidence } from "./claim-coverage";
 import {
+  buildCrossToolEvidence,
   verifyDonationAnalytics,
   verifyListAnnouncements,
   verifyListDiscussions,
@@ -16,6 +18,8 @@ import {
   verifySuggestMentees,
   verifySuggestMentors,
 } from "./claim-coverage";
+
+export type { CrossToolEvidence } from "./claim-coverage";
 
 export interface SuccessfulToolSummary {
   name: ToolName;
@@ -40,6 +44,7 @@ export function verifyToolBackedResponse(
   const hasSuggestConnections = input.toolResults.some(
     (result) => result.name === "suggest_connections"
   );
+  const evidence: CrossToolEvidence = buildCrossToolEvidence(input.toolResults);
 
   for (const result of input.toolResults) {
     switch (result.name) {
@@ -58,29 +63,29 @@ export function verifyToolBackedResponse(
         break;
       case "list_members":
         if (!hasSuggestConnections) {
-          failures.push(...verifyListMembers(input.content, result.data));
+          failures.push(...verifyListMembers(input.content, result.data, evidence));
         }
         break;
       case "list_events":
-        failures.push(...verifyListEvents(input.content, result.data));
+        failures.push(...verifyListEvents(input.content, result.data, evidence));
         break;
       case "list_announcements":
-        failures.push(...verifyListAnnouncements(input.content, result.data));
+        failures.push(...verifyListAnnouncements(input.content, result.data, evidence));
         break;
       case "list_discussions":
-        failures.push(...verifyListDiscussions(input.content, result.data));
+        failures.push(...verifyListDiscussions(input.content, result.data, evidence));
         break;
       case "list_job_postings":
-        failures.push(...verifyListJobPostings(input.content, result.data));
+        failures.push(...verifyListJobPostings(input.content, result.data, evidence));
         break;
       case "suggest_connections":
-        failures.push(...verifySuggestConnections(input.content, result.data));
+        failures.push(...verifySuggestConnections(input.content, result.data, evidence));
         break;
       case "suggest_mentors":
-        failures.push(...verifySuggestMentors(input.content, result.data));
+        failures.push(...verifySuggestMentors(input.content, result.data, evidence));
         break;
       case "suggest_mentees":
-        failures.push(...verifySuggestMentees(input.content, result.data));
+        failures.push(...verifySuggestMentees(input.content, result.data, evidence));
         break;
       default:
         // No grounding check for this tool

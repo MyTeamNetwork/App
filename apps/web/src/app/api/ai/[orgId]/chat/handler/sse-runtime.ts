@@ -179,6 +179,7 @@ export async function applySafetyGate(args: {
       orgId: args.orgId,
       spendBypass: args.spendBypass,
       trackOpsEvent: args.trackOpsEventServerFn,
+      toolBacked: args.successfulToolResults.length > 0,
     });
     args.state.safetyVerdict = result.verdict;
     args.state.safetyCategories = result.categories;

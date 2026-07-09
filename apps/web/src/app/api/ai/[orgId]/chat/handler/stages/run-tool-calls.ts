@@ -95,6 +95,50 @@ export interface CreateToolCallHandlerInput {
   saveDraftSessionFn: typeof saveDraftSession;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The model sometimes fabricates member ids (names, emails, slugs) instead of
+ * resolving a real UUID. A fabricated id would fail zod uuid validation and
+ * kill the turn, so recover it as a person_query the tool can resolve
+ * server-side by name/email.
+ */
+export function coerceNonUuidIdToPersonQuery(
+  parsedArgs: Record<string, unknown>,
+  idField: string,
+): void {
+  const rawId = getNonEmptyString(parsedArgs[idField]);
+  if (rawId == null || UUID_RE.test(rawId)) return;
+  if (getNonEmptyString(parsedArgs.person_query) == null) {
+    parsedArgs.person_query = rawId;
+  }
+  delete parsedArgs[idField];
+}
+
+/**
+ * The model sometimes fills person-lookup fields with placeholder text copied
+ * from UI shortcut templates (e.g. "member name", "[member name]"). Drop
+ * the field so the tool's own needs-input path can ask the user instead.
+ * Real names such as "Louis Ciccone" or "Anna Namey" must never match.
+ */
+export function dropPlaceholderPersonValue(
+  parsedArgs: Record<string, unknown>,
+  field: string,
+): void {
+  const val = getNonEmptyString(parsedArgs[field]);
+  if (val == null) return;
+  const trimmed = val.trim();
+  // Any fully-bracketed token: [foo], [member name], [recipient], etc.
+  if (/^\[[^\]]*\]$/.test(trimmed)) {
+    delete parsedArgs[field];
+    return;
+  }
+  // Common placeholder phrases (with or without brackets/extra whitespace).
+  if (/^\[?\s*(?:member|user|person|mentee|mentor|recipient|full)?\s*name\s*\]?$/i.test(trimmed)) {
+    delete parsedArgs[field];
+  }
+}
+
 /**
  * Build the onToolCall callback for runPass1. Exists as a factory so the
  * orchestrator keeps owning runtimeState / SSE enqueue / accumulators while
@@ -178,6 +222,8 @@ export function createToolCallHandler(input: CreateToolCallHandlerInput) {
     }
 
     if (toolEvent.name === "prepare_chat_message") {
+      coerceNonUuidIdToPersonQuery(parsedArgs, "recipient_member_id");
+      dropPlaceholderPersonValue(parsedArgs, "person_query");
       const currentMemberRouteId =
         input.routeEntityContext?.kind === "member"
           ? input.routeEntityContext.id
@@ -202,6 +248,9 @@ export function createToolCallHandler(input: CreateToolCallHandlerInput) {
     }
 
     if (toolEvent.name === "prepare_member_role_change") {
+      coerceNonUuidIdToPersonQuery(parsedArgs, "target_member_id");
+      coerceNonUuidIdToPersonQuery(parsedArgs, "target_user_id");
+      dropPlaceholderPersonValue(parsedArgs, "person_query");
       const currentMemberRouteId =
         input.routeEntityContext?.kind === "member"
           ? input.routeEntityContext.id
@@ -214,6 +263,15 @@ export function createToolCallHandler(input: CreateToolCallHandlerInput) {
       ) {
         parsedArgs.target_member_id = currentMemberRouteId;
       }
+    }
+
+    if (toolEvent.name === "suggest_mentors") {
+      dropPlaceholderPersonValue(parsedArgs, "mentee_query");
+    }
+
+    if (toolEvent.name === "prepare_mentorship_pairing") {
+      dropPlaceholderPersonValue(parsedArgs, "mentee_query");
+      dropPlaceholderPersonValue(parsedArgs, "mentor_query");
     }
 
     if (

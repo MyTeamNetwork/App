@@ -36,6 +36,7 @@ export interface ClassifySafetyInput {
   orgId?: string;
   /** Skip ledger write (dev-admin bypass). */
   spendBypass?: boolean;
+  toolBacked?: boolean;
   judge?: SafetyJudge;
   /** Optional fail-mode override (default resolves from env). */
   failMode?: SafetyFailMode;
@@ -67,6 +68,8 @@ const SAFETY_MIN_CHARS_FOR_LLM = Number.parseInt(
   process.env.SAFETY_MIN_CHARS_FOR_LLM ?? "60",
   10
 );
+const TOOL_BACKED_PII_CATEGORY_PATTERN =
+  /pii|personal|sensitive|privacy|contact/i;
 
 // ---------------------------------------------------------------------------
 // Deterministic primitives
@@ -174,8 +177,10 @@ export function isOrgOwnedIdentifier(
 // LLM judge
 // ---------------------------------------------------------------------------
 
-export function buildSafetyJudgePrompt(): string {
-  return [
+export function buildSafetyJudgePrompt(options?: {
+  toolBacked?: boolean;
+}): string {
+  const lines = [
     "You are a content safety classifier for assistant responses inside a",
     "private organizational SaaS app.",
     "",
@@ -191,7 +196,15 @@ export function buildSafetyJudgePrompt(): string {
     "Respond ONLY with compact JSON of the form:",
     '{ "verdict": "safe" | "controversial" | "unsafe", "categories": ["..."] }',
     "No prose, no markdown.",
-  ].join("\n");
+  ];
+
+  if (options?.toolBacked) {
+    lines.push(
+      "Context: this response was composed from the organization's own directory and tool data. Names, emails, and phone numbers of organization members sourced from that data are org-internal directory information and are NOT sensitive PII. Only treat PII as a violation when it plainly belongs to people outside the organization (e.g. SSNs, credit cards, or private individuals' contact info)."
+    );
+  }
+
+  return lines.join("\n");
 }
 
 async function defaultJudge(
@@ -364,7 +377,10 @@ export async function classifySafety(
 
   let outcome: JudgeOutcome;
   try {
-    const raw = await judge(buildSafetyJudgePrompt(), content);
+    const raw = await judge(
+      buildSafetyJudgePrompt({ toolBacked: input.toolBacked }),
+      content
+    );
     outcome = normalizeJudgeOutcome(raw);
   } catch {
     emitOpsEvent(input.trackOpsEvent, "safety_judge_throw", input.orgId);
@@ -391,6 +407,22 @@ export async function classifySafety(
     return {
       verdict: fallback,
       categories: ["judge_parse_failed", `fail_mode:${failMode}`],
+      latencyMs: Date.now() - started,
+      usedJudge: true,
+    };
+  }
+
+  if (
+    input.toolBacked === true &&
+    outcome.verdict === "unsafe" &&
+    outcome.categories.length > 0 &&
+    outcome.categories.every((category) =>
+      TOOL_BACKED_PII_CATEGORY_PATTERN.test(category)
+    )
+  ) {
+    return {
+      verdict: "controversial",
+      categories: [...outcome.categories, "pii_downgraded_tool_backed"],
       latencyMs: Date.now() - started,
       usedJudge: true,
     };

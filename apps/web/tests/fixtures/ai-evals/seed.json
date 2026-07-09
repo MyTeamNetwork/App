@@ -34,5 +34,37 @@
       "toolCalls": ["prepare_announcement"],
       "answerShape": "pending_action"
     }
+  },
+  {
+    "id": "seed-pending-action-chat-message-by-name",
+    "prompt": "Send a chat message to Matthew McKillop saying hi",
+    "requestedSurface": "general",
+    "expected": {
+      "surface": "members",
+      "intentType": "action_request",
+      "profile": "live_lookup",
+      "toolCalls": ["prepare_chat_message"],
+      "answerShape": "pending_action"
+    }
+  },
+  {
+    "id": "seed-multi-tool-events-announcements-summary",
+    "prompt": "Summarize upcoming events and recent announcements",
+    "requestedSurface": "general",
+    "expected": {
+      "surface": "events",
+      "intentType": "knowledge_query",
+      "profile": "live_lookup",
+      "toolCalls": [
+        "list_events",
+        "find_free_members",
+        "search_org_content",
+        "find_navigation_targets",
+        "list_members",
+        "list_alumni",
+        "list_parents"
+      ],
+      "answerShape": "tool_response"
+    }
   }
 ]

@@ -125,6 +125,130 @@ test("buildConverseInput merges consecutive same-role messages", async () => {
   assert.equal(input.messages?.[0]?.content?.length, 3);
 });
 
+test("buildConverseInput renders tool history as text when no tools are defined", async () => {
+  // The pass-2 compose leg replays tool history without registering tools;
+  // Converse rejects toolUse/toolResult blocks without toolConfig, so the
+  // adapter must fall back to plain text turns.
+  const body = {
+    model: "m",
+    messages: [
+      { role: "user", content: "how many members?" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "t1", type: "function", function: { name: "get_org_stats", arguments: "{}" } },
+        ],
+      },
+      { role: "tool", tool_call_id: "t1", content: '{"active_members":35}' },
+    ],
+  } as OpenAI.Chat.Completions.ChatCompletionCreateParams;
+
+  const input = await buildConverseInput(body);
+
+  assert.equal(input.toolConfig, undefined);
+  // user question + tool result merged into user turns; the empty-content
+  // assistant toolUse turn is dropped entirely.
+  const serialized = JSON.stringify(input.messages);
+  assert.ok(!serialized.includes("toolUse"), "must not emit toolUse blocks");
+  assert.ok(!serialized.includes("toolResult"), "must not emit toolResult blocks");
+  const lastMessage = input.messages?.[input.messages.length - 1];
+  assert.equal(lastMessage?.role, "user");
+  const lastText = JSON.stringify(lastMessage?.content);
+  assert.ok(lastText.includes("get_org_stats"), "tool name labels the result text");
+  assert.ok(lastText.includes("active_members"), "tool payload is preserved");
+});
+
+test("buildConverseInput renders a FAILED tool result as text when no tools are defined", async () => {
+  // Pattern A production shape: prepare_chat_message failed arg validation and
+  // its {error, error_code} payload rides to pass-2. The turn must still build
+  // a Converse-legal request (no toolUse/toolResult, no empty text blocks).
+  const body = {
+    model: "m",
+    messages: [
+      { role: "user", content: "message matthew saying hi" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          {
+            id: "t1",
+            type: "function",
+            function: {
+              name: "prepare_chat_message",
+              arguments: '{"recipient_member_id":"matthew-mckillop-id","body":"hi"}',
+            },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        tool_call_id: "t1",
+        content: '{"error":"Invalid tool arguments: Invalid uuid","error_code":"invalid_arguments"}',
+      },
+    ],
+  } as OpenAI.Chat.Completions.ChatCompletionCreateParams;
+
+  const input = await buildConverseInput(body);
+
+  assert.equal(input.toolConfig, undefined);
+  const serialized = JSON.stringify(input.messages);
+  assert.ok(!serialized.includes("toolUse"), "must not emit toolUse blocks");
+  assert.ok(!serialized.includes("toolResult"), "must not emit toolResult blocks");
+  assert.ok(serialized.includes("prepare_chat_message"), "tool name labels the result text");
+  assert.ok(serialized.includes("Invalid tool arguments"), "error payload is preserved");
+  for (const message of input.messages ?? []) {
+    for (const block of message.content ?? []) {
+      if ("text" in block) {
+        assert.ok((block.text ?? "").length > 0, "no empty text blocks");
+      }
+    }
+  }
+});
+
+test("buildConverseInput renders mixed success/error multi-tool history as text without tools", async () => {
+  // Pattern B production shape: multiple tool calls in one turn, replayed to
+  // pass-2 with no toolConfig. Roles must strictly alternate after merging.
+  const body = {
+    model: "m",
+    messages: [
+      { role: "user", content: "summarize upcoming events and announcements" },
+      {
+        role: "assistant",
+        content: "",
+        tool_calls: [
+          { id: "t1", type: "function", function: { name: "list_events", arguments: '{"limit":5}' } },
+          { id: "t2", type: "function", function: { name: "list_announcements", arguments: '{"limit":5}' } },
+          { id: "t3", type: "function", function: { name: "list_discussions", arguments: '{"limit":5}' } },
+        ],
+      },
+      { role: "tool", tool_call_id: "t1", content: '{"events":[{"title":"Pizza Party"}]}' },
+      { role: "tool", tool_call_id: "t2", content: '{"announcements":[]}' },
+      { role: "tool", tool_call_id: "t3", content: '{"error":"timeout","error_code":"timeout"}' },
+    ],
+  } as OpenAI.Chat.Completions.ChatCompletionCreateParams;
+
+  const input = await buildConverseInput(body);
+
+  assert.equal(input.toolConfig, undefined);
+  const serialized = JSON.stringify(input.messages);
+  assert.ok(!serialized.includes("toolUse"), "must not emit toolUse blocks");
+  assert.ok(!serialized.includes("toolResult"), "must not emit toolResult blocks");
+  assert.ok(serialized.includes("Pizza Party"), "successful payloads preserved");
+  assert.ok(serialized.includes("list_discussions"), "failed tool named");
+  const roles = (input.messages ?? []).map((message) => message.role);
+  for (let i = 1; i < roles.length; i++) {
+    assert.notEqual(roles[i], roles[i - 1], "roles must strictly alternate");
+  }
+  for (const message of input.messages ?? []) {
+    for (const block of message.content ?? []) {
+      if ("text" in block) {
+        assert.ok((block.text ?? "").length > 0, "no empty text blocks");
+      }
+    }
+  }
+});
+
 test("converseOutputToCompletion maps text, tool use, usage and finish reason", () => {
   const completion = converseOutputToCompletion(
     {
@@ -151,6 +275,45 @@ test("converseOutputToCompletion maps text, tool use, usage and finish reason", 
   assert.equal(choice.message.tool_calls?.[0]?.function.arguments, '{"a":1}');
   assert.equal(completion.usage?.prompt_tokens, 10);
   assert.equal(completion.usage?.completion_tokens, 4);
+});
+
+test("converseOutputToCompletion strips <thinking> reasoning from content", () => {
+  const completion = converseOutputToCompletion(
+    {
+      output: {
+        message: {
+          content: [
+            { text: "<thinking>I will call foo.</thinking>" },
+            { toolUse: { toolUseId: "t1", name: "foo", input: { a: 1 } } },
+          ],
+        },
+      },
+      stopReason: "tool_use",
+    },
+    "nova",
+  );
+
+  const choice = completion.choices[0];
+  // Reasoning-only text alongside a tool call collapses to null content.
+  assert.equal(choice.message.content, null);
+  assert.equal(choice.message.tool_calls?.[0]?.function.name, "foo");
+});
+
+test("converseOutputToCompletion keeps the answer when reasoning precedes it", () => {
+  const completion = converseOutputToCompletion(
+    {
+      output: {
+        message: {
+          content: [{ text: "<thinking>reason</thinking>You have 35 members." }],
+        },
+      },
+      stopReason: "end_turn",
+    },
+    "nova",
+  );
+
+  assert.equal(completion.choices[0].message.content, "You have 35 members.");
+  assert.equal(completion.choices[0].finish_reason, "stop");
 });
 
 test("toOpenAiChunks translates converse stream events to OpenAI chunks", async () => {

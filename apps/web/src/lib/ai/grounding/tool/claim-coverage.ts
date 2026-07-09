@@ -25,8 +25,106 @@ import {
   type SuggestMentorsGroundingData,
 } from "./claim-extraction";
 
+export interface CrossToolEvidence {
+  dates: Set<string>;
+  identifiers: Set<string>;
+}
+
 export interface ListDonationsGroundingContext {
   hideDonorNames?: boolean;
+}
+
+export function buildCrossToolEvidence(
+  toolResults: Array<{ name: string; data: unknown }>
+): CrossToolEvidence {
+  const dates = new Set<string>();
+  const identifiers = new Set<string>();
+  const includeListEntryHeads = toolResults.length > 1;
+
+  const addIdentifier = (value: string) => {
+    identifiers.add(normalizeIdentifier(value));
+    if (!includeListEntryHeads) return;
+    for (const candidate of extractListEntryHeads(`- ${value}`)) {
+      identifiers.add(normalizeIdentifier(candidate));
+    }
+  };
+
+  for (const result of toolResults) {
+    const rows = Array.isArray(result.data) ? result.data : [];
+    if (result.name === "list_events") {
+      for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
+        const r = row as Record<string, unknown>;
+        if (typeof r.start_date === "string") {
+          for (const d of formatKnownEventDates(r.start_date)) {
+            dates.add(d);
+          }
+        }
+        if (typeof r.title === "string") {
+          addIdentifier(r.title);
+        }
+      }
+    } else if (result.name === "list_announcements") {
+      for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
+        const r = row as Record<string, unknown>;
+        if (typeof r.published_at === "string") {
+          for (const d of formatKnownEventDates(r.published_at)) {
+            dates.add(d);
+          }
+        }
+        if (typeof r.title === "string") {
+          addIdentifier(r.title);
+        }
+      }
+    } else if (result.name === "list_members") {
+      for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
+        const r = row as Record<string, unknown>;
+        if (typeof r.name === "string") addIdentifier(r.name);
+        if (typeof r.email === "string") addIdentifier(r.email);
+      }
+    } else if (result.name === "list_discussions") {
+      for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
+        const r = row as Record<string, unknown>;
+        if (typeof r.title === "string") addIdentifier(r.title);
+      }
+    } else if (result.name === "list_job_postings") {
+      for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
+        const r = row as Record<string, unknown>;
+        if (typeof r.title === "string") addIdentifier(r.title);
+        if (typeof r.company === "string") addIdentifier(r.company);
+      }
+    } else if (
+      result.name === "suggest_mentors" ||
+      result.name === "suggest_mentees" ||
+      result.name === "suggest_connections"
+    ) {
+      if (result.data && typeof result.data === "object") {
+        const payload = result.data as Record<string, unknown>;
+        const suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
+        for (const s of suggestions) {
+          if (!s || typeof s !== "object") continue;
+          const sRec = s as Record<string, unknown>;
+          if (typeof sRec.name === "string") addIdentifier(sRec.name);
+          const mentor = sRec.mentor;
+          if (mentor && typeof mentor === "object") {
+            const mName = (mentor as Record<string, unknown>).name;
+            if (typeof mName === "string") addIdentifier(mName);
+          }
+          const mentee = sRec.mentee;
+          if (mentee && typeof mentee === "object") {
+            const mtName = (mentee as Record<string, unknown>).name;
+            if (typeof mtName === "string") addIdentifier(mtName);
+          }
+        }
+      }
+    }
+  }
+
+  return { dates, identifiers };
 }
 
 function normalizeMemberCandidate(value: string): string {
@@ -54,16 +152,12 @@ function parseStatClaim(content: string, label: string): number | null {
       continue;
     }
 
-    const numberFirst = line.match(
-      new RegExp(`\\b(\\d+)\\b[^a-zA-Z]{0,10}\\b${escaped}\\b`, "i")
-    );
+    const numberFirst = line.match(new RegExp(`\\b(\\d+)\\b[^a-zA-Z]{0,10}\\b${escaped}\\b`, "i"));
     if (numberFirst) {
       return Number(numberFirst[1]);
     }
 
-    const labelFirst = line.match(
-      new RegExp(`\\b${escaped}\\b[^0-9]*(\\d+)`, "i")
-    );
+    const labelFirst = line.match(new RegExp(`\\b${escaped}\\b[^0-9]*(\\d+)`, "i"));
     if (labelFirst) {
       return Number(labelFirst[1]);
     }
@@ -74,7 +168,7 @@ function parseStatClaim(content: string, label: string): number | null {
 
 function collectStatRows(
   value: unknown,
-  labelField: "bucket_label" | "purpose",
+  labelField: "bucket_label" | "purpose"
 ): Map<string, StatRow> {
   const map = new Map<string, StatRow>();
   if (!Array.isArray(value)) return map;
@@ -132,9 +226,7 @@ function parseDonationStatusClaims(content: string): Map<DonationStatus, number>
 
     for (const status of ["succeeded", "pending", "failed"] as const) {
       const numberFirst = line.match(new RegExp(`\\b(\\d+)\\b\\s+${status}\\b`));
-      const labelFirst = line.match(
-        new RegExp(`\\b${status}\\b[^0-9]{0,10}\\b(\\d+)\\b`)
-      );
+      const labelFirst = line.match(new RegExp(`\\b${status}\\b[^0-9]{0,10}\\b(\\d+)\\b`));
       const match = numberFirst ?? labelFirst;
       if (match) {
         claims.set(status, Number(match[1]));
@@ -160,7 +252,7 @@ function answerStatesListIsPartial(content: string): boolean {
   return /\b(partial|showing|first|latest|recent|top)\b/i.test(content);
 }
 
-function formatKnownEventDates(startDate: string): string[] {
+export function formatKnownEventDates(startDate: string): string[] {
   const isoDate = startDate.slice(0, 10);
   const parsed = new Date(startDate);
   if (Number.isNaN(parsed.getTime())) {
@@ -169,12 +261,14 @@ function formatKnownEventDates(startDate: string): string[] {
 
   return [
     isoDate,
-    parsed.toLocaleDateString("en-US", {
-      timeZone: "UTC",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }).toLowerCase(),
+    parsed
+      .toLocaleDateString("en-US", {
+        timeZone: "UTC",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+      .toLowerCase(),
   ];
 }
 
@@ -187,10 +281,7 @@ export function verifyOrgStats(content: string, data: unknown): string[] {
   const failures: string[] = [];
 
   const claimChecks: Array<[string, number | null]> = [
-    [
-      "active members",
-      typeof stats.active_members === "number" ? stats.active_members : null,
-    ],
+    ["active members", typeof stats.active_members === "number" ? stats.active_members : null],
     ["alumni", typeof stats.alumni === "number" ? stats.alumni : null],
     ["parents", typeof stats.parents === "number" ? stats.parents : null],
   ];
@@ -221,8 +312,7 @@ export function verifyDonationAnalytics(content: string, data: unknown): string[
   }
 
   const payload = data as DonationAnalyticsVerifyPayload;
-  const totals =
-    payload.totals && typeof payload.totals === "object" ? payload.totals : null;
+  const totals = payload.totals && typeof payload.totals === "object" ? payload.totals : null;
 
   if (contentIsGroundingFallback(content)) {
     return [];
@@ -254,9 +344,7 @@ export function verifyDonationAnalytics(content: string, data: unknown): string[
       const raisedDollars = totals.successful_amount_cents / 100;
       const raisedClaim = parseCurrencyClaim(content, "raised");
       if (raisedClaim !== null && raisedClaim !== Math.round(raisedDollars)) {
-        failures.push(
-          `raised claim $${raisedClaim} did not match $${Math.round(raisedDollars)}`
-        );
+        failures.push(`raised claim $${raisedClaim} did not match $${Math.round(raisedDollars)}`);
       }
     }
 
@@ -309,7 +397,10 @@ export function verifyDonationAnalytics(content: string, data: unknown): string[
   for (const rawLine of content.split("\n")) {
     const line = rawLine.trim();
     if (!line) continue;
-    const normalizedHeader = line.replace(/[*_`~>#:]/g, "").trim().toLowerCase();
+    const normalizedHeader = line
+      .replace(/[*_`~>#:]/g, "")
+      .trim()
+      .toLowerCase();
     if (normalizedHeader === "trend") {
       inTrendSection = true;
       inPurposesSection = false;
@@ -463,7 +554,11 @@ function someRowHasKey(data: unknown[], key: string): boolean {
   return data.some((row) => row != null && typeof row === "object" && key in row);
 }
 
-export function verifyListMembers(content: string, data: unknown): string[] {
+export function verifyListMembers(
+  content: string,
+  data: unknown,
+  evidence?: CrossToolEvidence
+): string[] {
   if (!Array.isArray(data)) {
     return ["list_members returned non-array data"];
   }
@@ -503,7 +598,8 @@ export function verifyListMembers(content: string, data: unknown): string[] {
   // if the model projected it away there is nothing to verify against.
   if (hasEmail) {
     for (const email of extractEmails(content)) {
-      if (!emails.has(normalizeIdentifier(email))) {
+      const norm = normalizeIdentifier(email);
+      if (!emails.has(norm) && !evidence?.identifiers.has(norm)) {
         failures.push(`member email ${email} was not present in tool rows`);
       }
     }
@@ -520,7 +616,7 @@ export function verifyListMembers(content: string, data: unknown): string[] {
       ) {
         continue;
       }
-      if (!names.has(normalizedCandidate)) {
+      if (!names.has(normalizedCandidate) && !evidence?.identifiers.has(normalizedCandidate)) {
         failures.push(`member name ${candidate} was not present in tool rows`);
       }
     }
@@ -529,7 +625,11 @@ export function verifyListMembers(content: string, data: unknown): string[] {
   return failures;
 }
 
-export function verifyListEvents(content: string, data: unknown): string[] {
+export function verifyListEvents(
+  content: string,
+  data: unknown,
+  evidence?: CrossToolEvidence
+): string[] {
   if (!Array.isArray(data)) {
     return ["list_events returned non-array data"];
   }
@@ -548,7 +648,9 @@ export function verifyListEvents(content: string, data: unknown): string[] {
   );
   const dates = new Set(
     data.flatMap((row) =>
-      row && typeof row === "object" && typeof (row as { start_date?: unknown }).start_date === "string"
+      row &&
+      typeof row === "object" &&
+      typeof (row as { start_date?: unknown }).start_date === "string"
         ? formatKnownEventDates((row as { start_date: string }).start_date)
         : []
     )
@@ -558,7 +660,8 @@ export function verifyListEvents(content: string, data: unknown): string[] {
   // Skip title/date checks when the model projected those fields away.
   if (hasTitle) {
     for (const title of extractQuotedTitles(content)) {
-      if (!titles.has(normalizeIdentifier(title))) {
+      const norm = normalizeIdentifier(title);
+      if (!titles.has(norm) && !evidence?.identifiers.has(norm)) {
         failures.push(`event title ${title} was not present in tool rows`);
       }
     }
@@ -566,7 +669,7 @@ export function verifyListEvents(content: string, data: unknown): string[] {
 
   if (hasStartDate) {
     for (const date of extractMentionedDates(content)) {
-      if (!dates.has(date)) {
+      if (!dates.has(date) && !evidence?.dates.has(date)) {
         failures.push(`event date ${date} was not present in tool rows`);
       }
     }
@@ -575,7 +678,11 @@ export function verifyListEvents(content: string, data: unknown): string[] {
   return failures;
 }
 
-export function verifyListDiscussions(content: string, data: unknown): string[] {
+export function verifyListDiscussions(
+  content: string,
+  data: unknown,
+  evidence?: CrossToolEvidence
+): string[] {
   if (!Array.isArray(data)) {
     return ["list_discussions returned non-array data"];
   }
@@ -638,13 +745,13 @@ export function verifyListDiscussions(content: string, data: unknown): string[] 
 
   const failures: string[] = [];
   for (const title of extractQuotedTitles(content)) {
-    if (!matchKnownTitle(title)) {
+    if (!matchKnownTitle(title) && !evidence?.identifiers.has(normalizeIdentifier(title))) {
       failures.push(`discussion title ${title} was not present in tool rows`);
     }
   }
 
   for (const candidate of extractUnquotedListEntryHeads(content)) {
-    if (!matchKnownTitle(candidate)) {
+    if (!matchKnownTitle(candidate) && !evidence?.identifiers.has(normalizeIdentifier(candidate))) {
       failures.push(`discussion title ${candidate} was not present in tool rows`);
     }
   }
@@ -664,7 +771,11 @@ export function verifyListDiscussions(content: string, data: unknown): string[] 
   return failures;
 }
 
-export function verifyListJobPostings(content: string, data: unknown): string[] {
+export function verifyListJobPostings(
+  content: string,
+  data: unknown,
+  evidence?: CrossToolEvidence
+): string[] {
   if (!Array.isArray(data)) {
     return ["list_job_postings returned non-array data"];
   }
@@ -706,21 +817,34 @@ export function verifyListJobPostings(content: string, data: unknown): string[] 
   for (const quoted of extractQuotedTitles(content)) {
     const normalized = normalizeIdentifier(quoted);
     // A quoted string must appear either as a title or company
-    if (!titles.has(normalized) && !companies.has(normalized)) {
+    if (
+      !titles.has(normalized) &&
+      !companies.has(normalized) &&
+      !evidence?.identifiers.has(normalized)
+    ) {
       failures.push(`job posting title ${quoted} was not present in tool rows`);
     }
   }
 
   for (const candidate of extractListEntryHeads(content)) {
     // List entries like "Software Engineer at Acme Corp" — check each part around " at "
-    const parts = candidate.split(/\s+at\s+/i).map((p) => p.trim()).filter(Boolean);
-    const allPartsKnown = parts.every(
-      (part) => titles.has(normalizeIdentifier(part)) || companies.has(normalizeIdentifier(part))
-    );
+    const parts = candidate
+      .split(/\s+at\s+/i)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const allPartsKnown = parts.every((part) => {
+      const norm = normalizeIdentifier(part);
+      return titles.has(norm) || companies.has(norm) || evidence?.identifiers.has(norm);
+    });
     if (!allPartsKnown) {
       // Only flag the first part (the title) if it's unknown
       const titlePart = parts[0] ?? candidate;
-      if (!titles.has(normalizeIdentifier(titlePart)) && !companies.has(normalizeIdentifier(titlePart))) {
+      const titleNorm = normalizeIdentifier(titlePart);
+      if (
+        !titles.has(titleNorm) &&
+        !companies.has(titleNorm) &&
+        !evidence?.identifiers.has(titleNorm)
+      ) {
         failures.push(`job posting title ${titlePart} was not present in tool rows`);
       }
     }
@@ -729,7 +853,11 @@ export function verifyListJobPostings(content: string, data: unknown): string[] 
   return failures;
 }
 
-export function verifyListAnnouncements(content: string, data: unknown): string[] {
+export function verifyListAnnouncements(
+  content: string,
+  data: unknown,
+  evidence?: CrossToolEvidence
+): string[] {
   if (!Array.isArray(data)) {
     return ["list_announcements returned non-array data"];
   }
@@ -755,20 +883,21 @@ export function verifyListAnnouncements(content: string, data: unknown): string[
 
   const failures: string[] = [];
   for (const title of extractQuotedTitles(content)) {
-    if (!titles.has(normalizeIdentifier(title))) {
+    const norm = normalizeIdentifier(title);
+    if (!titles.has(norm) && !evidence?.identifiers.has(norm)) {
       failures.push(`announcement title ${title} was not present in tool rows`);
     }
   }
 
   for (const candidate of extractListEntryHeads(content)) {
     const normalizedCandidate = normalizeIdentifier(candidate);
-    if (!titles.has(normalizedCandidate)) {
+    if (!titles.has(normalizedCandidate) && !evidence?.identifiers.has(normalizedCandidate)) {
       failures.push(`announcement title ${candidate} was not present in tool rows`);
     }
   }
 
   for (const date of extractMentionedDates(content)) {
-    if (!dates.has(date)) {
+    if (!dates.has(date) && !evidence?.dates.has(date)) {
       failures.push(`announcement date ${date} was not present in tool rows`);
     }
   }
@@ -776,7 +905,11 @@ export function verifyListAnnouncements(content: string, data: unknown): string[
   return failures;
 }
 
-export function verifySuggestConnections(content: string, data: unknown): string[] {
+export function verifySuggestConnections(
+  content: string,
+  data: unknown,
+  evidence?: CrossToolEvidence
+): string[] {
   if (!data || typeof data !== "object") {
     return ["suggest_connections returned non-object data"];
   }
@@ -848,7 +981,7 @@ export function verifySuggestConnections(content: string, data: unknown): string
   const renderedCandidates = extractListEntryHeads(content);
   for (const candidate of renderedCandidates) {
     const normalizedCandidate = normalizeIdentifier(candidate);
-    if (!rowByName.has(normalizedCandidate)) {
+    if (!rowByName.has(normalizedCandidate) && !evidence?.identifiers.has(normalizedCandidate)) {
       failures.push(`suggested connection ${candidate} was not present in tool rows`);
     }
   }
@@ -924,7 +1057,11 @@ export function verifySuggestConnections(content: string, data: unknown): string
   return failures;
 }
 
-export function verifySuggestMentors(content: string, data: unknown): string[] {
+export function verifySuggestMentors(
+  content: string,
+  data: unknown,
+  evidence?: CrossToolEvidence
+): string[] {
   if (!data || typeof data !== "object") {
     return ["suggest_mentors returned non-object data"];
   }
@@ -933,7 +1070,12 @@ export function verifySuggestMentors(content: string, data: unknown): string[] {
   const state = typeof payload.state === "string" ? payload.state : null;
   const failures: string[] = [];
 
-  if (state === "unauthorized" || state === "not_found" || state === "ambiguous" || state === "no_suggestions") {
+  if (
+    state === "unauthorized" ||
+    state === "not_found" ||
+    state === "ambiguous" ||
+    state === "no_suggestions"
+  ) {
     return failures;
   }
 
@@ -956,10 +1098,15 @@ export function verifySuggestMentors(content: string, data: unknown): string[] {
     suggestedNames: names,
     reasonsPerSuggestion: reasonCodes,
     existing: failures,
+    evidence,
   });
 }
 
-export function verifySuggestMentees(content: string, data: unknown): string[] {
+export function verifySuggestMentees(
+  content: string,
+  data: unknown,
+  evidence?: CrossToolEvidence
+): string[] {
   if (!data || typeof data !== "object") {
     return ["suggest_mentees returned non-object data"];
   }
@@ -968,7 +1115,12 @@ export function verifySuggestMentees(content: string, data: unknown): string[] {
   const state = typeof payload.state === "string" ? payload.state : null;
   const failures: string[] = [];
 
-  if (state === "unauthorized" || state === "not_found" || state === "ambiguous" || state === "no_suggestions") {
+  if (
+    state === "unauthorized" ||
+    state === "not_found" ||
+    state === "ambiguous" ||
+    state === "no_suggestions"
+  ) {
     return failures;
   }
 
@@ -991,6 +1143,7 @@ export function verifySuggestMentees(content: string, data: unknown): string[] {
     suggestedNames: names,
     reasonsPerSuggestion: reasonCodes,
     existing: failures,
+    evidence,
   });
 }
 
@@ -1007,6 +1160,7 @@ function verifyMentorshipSuggestionContent(args: {
   suggestedNames: string[];
   reasonsPerSuggestion: Array<Array<{ code?: unknown; label?: unknown }>>;
   existing: string[];
+  evidence?: CrossToolEvidence;
 }): string[] {
   const { content, toolName, suggestedNames, reasonsPerSuggestion, existing } = args;
   const failures = existing;
@@ -1016,14 +1170,10 @@ function verifyMentorshipSuggestionContent(args: {
   // Name grounding: any rendered suggestion head must be a returned person.
   for (const candidate of extractListEntryHeads(content)) {
     const normalized = normalizeMemberCandidate(candidate);
-    if (
-      isIgnoredMemberCandidate(candidate) ||
-      normalized.includes("@") ||
-      normalized.length < 3
-    ) {
+    if (isIgnoredMemberCandidate(candidate) || normalized.includes("@") || normalized.length < 3) {
       continue;
     }
-    if (!knownNames.has(normalized)) {
+    if (!knownNames.has(normalized) && !args.evidence?.identifiers.has(normalized)) {
       failures.push(`${toolName} suggestion ${candidate} was not present in tool rows`);
     }
   }

@@ -11,6 +11,7 @@ import type { TurnRuntimeState } from "../sse-runtime";
 export type ModelStageOutcome =
   | "completed"
   | "stopped"
+  | "stopped_error"
   | "timeout"
   | "aborted";
 
@@ -21,7 +22,11 @@ export interface RunModelStageInput {
   options: Parameters<typeof composeResponse>[0];
   onEvent: (
     event: SSEEvent | ToolCallRequestedEvent,
-  ) => Promise<"continue" | "stop"> | "continue" | "stop";
+  ) =>
+    | Promise<"continue" | "stop" | "stop_error">
+    | "continue"
+    | "stop"
+    | "stop_error";
 
   composeResponseFn: typeof composeResponse;
   stageTimings: AiAuditStageTimings;
@@ -51,14 +56,17 @@ export async function runModelStage(
       const disposition = await input.onEvent(
         event as SSEEvent | ToolCallRequestedEvent,
       );
-      if (disposition === "stop") {
+      if (disposition === "stop" || disposition === "stop_error") {
+        // An error-stop must be legible as a failure in ai_audit_log — the
+        // Bedrock migration incident logged instantly-rejected pass-2 calls
+        // as "completed", which hid the outage.
         setStageStatus(
           input.stageTimings,
           input.auditStage,
-          "completed",
+          disposition === "stop_error" ? "failed" : "completed",
           Date.now() - stageStartedAt,
         );
-        return "stopped";
+        return disposition === "stop_error" ? "stopped_error" : "stopped";
       }
     }
     setStageStatus(

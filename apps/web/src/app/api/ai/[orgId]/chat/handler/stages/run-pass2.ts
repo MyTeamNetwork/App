@@ -72,7 +72,7 @@ export async function runPass2(input: RunPass2Input): Promise<ModelStageOutcome>
       }
       if (event.type === "error") {
         input.onError(event);
-        return "stop";
+        return "stop_error";
       }
       return "continue";
     },

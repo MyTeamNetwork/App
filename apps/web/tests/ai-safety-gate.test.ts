@@ -259,3 +259,61 @@ test("collectPhoneNumberFields ignores non-string phone_number values", () => {
   collectPhoneNumberFields({ phone_number: 4155550000 }, owned);
   assert.equal(owned.size, 0);
 });
+
+test("classifySafety downgrades PII-only unsafe to controversial when toolBacked", async () => {
+  const content =
+    "Here are the members of your organization: Alice Smith, Bob Jones. ".repeat(5);
+  const result = await classifySafety({
+    content,
+    toolBacked: true,
+    orgContext: { ownedEmails: ["alice@example.com"] },
+    judge: async () => ({
+      verdict: "unsafe",
+      categories: ["shares sensitive PII"],
+    }),
+  });
+  assert.equal(result.verdict, "controversial");
+  assert.ok(result.categories.includes("pii_downgraded_tool_backed"));
+  assert.equal(result.usedJudge, true);
+});
+
+test("classifySafety keeps unsafe when toolBacked is false and judge says PII unsafe", async () => {
+  const content =
+    "Here are the members of your organization: Alice Smith, Bob Jones. ".repeat(5);
+  const result = await classifySafety({
+    content,
+    toolBacked: false,
+    orgContext: { ownedEmails: ["alice@example.com"] },
+    judge: async () => ({
+      verdict: "unsafe",
+      categories: ["shares sensitive PII"],
+    }),
+  });
+  assert.equal(result.verdict, "unsafe");
+  assert.equal(result.categories.includes("pii_downgraded_tool_backed"), false);
+});
+
+test("classifySafety keeps unsafe when toolBacked but judge category is non-PII", async () => {
+  const content =
+    "Here are the members of your organization: Alice Smith, Bob Jones. ".repeat(5);
+  const result = await classifySafety({
+    content,
+    toolBacked: true,
+    orgContext: { ownedEmails: ["alice@example.com"] },
+    judge: async () => ({
+      verdict: "unsafe",
+      categories: ["harassment"],
+    }),
+  });
+  assert.equal(result.verdict, "unsafe");
+  assert.equal(result.categories.includes("pii_downgraded_tool_backed"), false);
+});
+
+test("buildSafetyJudgePrompt with toolBacked:true contains directory-data context line; without toolBacked it does not", () => {
+  assert.match(buildSafetyJudgePrompt({ toolBacked: true }), /org-internal directory/);
+  assert.doesNotMatch(buildSafetyJudgePrompt(), /org-internal directory/);
+  assert.doesNotMatch(
+    buildSafetyJudgePrompt({ toolBacked: false }),
+    /org-internal directory/
+  );
+});
