@@ -18,7 +18,7 @@ import { useOrg } from "@/contexts/OrgContext";
 import { getWebAppUrl } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 
@@ -144,7 +144,7 @@ export default function NewMemberInviteScreen() {
       borderRadius: RADIUS.md,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       backgroundColor: n.surface,
     },

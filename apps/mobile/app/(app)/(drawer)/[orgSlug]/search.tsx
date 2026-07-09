@@ -7,7 +7,6 @@ import {
   Pressable,
   TextInput,
   Keyboard,
-  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
@@ -19,7 +18,7 @@ import { SearchResultCard } from "@/components/search";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import type { SearchResult } from "@/hooks/useGlobalSearch";
 
 export default function SearchScreen() {
@@ -68,11 +67,9 @@ export default function SearchScreen() {
     },
     input: {
       flex: 1,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       paddingVertical: 0,
-      // RN sometimes adds vertical padding on iOS — pin it
-      ...(Platform.OS === "ios" ? { lineHeight: undefined } : null),
     },
     clearBtn: {
       padding: 4,

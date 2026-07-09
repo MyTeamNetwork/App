@@ -3,7 +3,7 @@ import { View, Text, Pressable } from "react-native";
 import { SmilePlus } from "lucide-react-native";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { TYPOGRAPHY } from "@/lib/typography";
-import { SPACING, RADIUS } from "@/lib/design-tokens";
+import { RADIUS } from "@/lib/design-tokens";
 import { useReactions, type ReactionTargetKind } from "@/hooks/useReactions";
 
 const QUICK_REACTIONS = ["👍", "❤️", "🎉", "🔥", "👀", "😂"] as const;
@@ -27,7 +27,7 @@ export function ReactionRow({ targetKind, targetId, currentUserId }: Props) {
       flexDirection: "row" as const,
       flexWrap: "wrap" as const,
       gap: 6,
-      paddingTop: SPACING.xs,
+      paddingTop: 2,
     },
     pill: {
       flexDirection: "row" as const,
@@ -53,12 +53,20 @@ export function ReactionRow({ targetKind, targetId, currentUserId }: Props) {
       flexDirection: "row" as const,
       alignItems: "center" as const,
       justifyContent: "center" as const,
-      width: 28,
-      height: 28,
+      width: 22,
+      height: 22,
       borderRadius: RADIUS.full,
       borderWidth: 1,
       borderColor: n.border,
       backgroundColor: n.surface,
+    },
+    compactAdd: {
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      width: 20,
+      height: 20,
+      marginTop: 2,
+      opacity: 0.55,
     },
     picker: {
       flexDirection: "row" as const,
@@ -73,6 +81,21 @@ export function ReactionRow({ targetKind, targetId, currentUserId }: Props) {
   }));
 
   if (!targetId) return null;
+
+  // Empty state: compact, low-contrast add affordance so every bubble
+  // doesn't reserve a full 28px reaction row of whitespace.
+  if (reactions.length === 0 && !pickerOpen) {
+    return (
+      <Pressable
+        style={styles.compactAdd}
+        onPress={() => setPickerOpen(true)}
+        accessibilityLabel="Add reaction"
+        hitSlop={8}
+      >
+        <SmilePlus size={12} />
+      </Pressable>
+    );
+  }
 
   return (
     <View style={styles.row}>
@@ -106,7 +129,7 @@ export function ReactionRow({ targetKind, targetId, currentUserId }: Props) {
           onPress={() => setPickerOpen(true)}
           accessibilityLabel="Add reaction"
         >
-          <SmilePlus size={14} />
+          <SmilePlus size={12} />
         </Pressable>
       )}
     </View>

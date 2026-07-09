@@ -17,7 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgTheme } from "@/hooks/useOrgTheme";
 import { SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { formatDatePickerLabel, formatTimePickerLabel } from "@/lib/date-format";
 import { captureCurrentCoords } from "@/lib/event-location";
 import type { ThemeColors } from "@/lib/theme";
@@ -659,7 +659,7 @@ const createStyles = (colors: ThemeColors, neutral: NeutralColors, semantic: Sem
       borderRadius: RADIUS.md,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm + 2,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: neutral.foreground,
     },
     textArea: {

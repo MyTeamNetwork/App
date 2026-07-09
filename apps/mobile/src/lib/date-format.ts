@@ -33,6 +33,14 @@ const weekdayShortDateFmt = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
+/** "Thu, Jan 5, 2025" — chat day separators for other years */
+const weekdayShortDateYearFmt = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
 /** "Thursday, Jan 5" */
 const weekdayLongDateFmt = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
@@ -214,6 +222,50 @@ export function formatDateFromDate(date: Date): string {
  */
 export function formatTimestamp(dateString: string): string {
   return time2DigitFmt.format(new Date(dateString));
+}
+
+/** Local calendar day key YYYY-MM-DD */
+export function getLocalDayKey(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * True when a and b fall on different local calendar days.
+ * If prev is null/undefined, returns true (first item shows separator).
+ */
+export function isDifferentLocalDay(
+  prev: Date | string | null | undefined,
+  next: Date | string
+): boolean {
+  if (prev == null) return true;
+  return getLocalDayKey(prev) !== getLocalDayKey(next);
+}
+
+/**
+ * iMessage-style day separator label for a message timestamp.
+ * - Today / Yesterday
+ * - "Fri, Jun 12" same year
+ * - "Fri, Jun 12, 2025" other year
+ */
+export function formatChatDaySeparator(
+  dateString: string,
+  now: Date = new Date()
+): string {
+  const date = new Date(dateString);
+  const dateKey = getLocalDayKey(date);
+  if (dateKey === getLocalDayKey(now)) return "Today";
+
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (dateKey === getLocalDayKey(yesterday)) return "Yesterday";
+
+  if (date.getFullYear() === now.getFullYear()) {
+    return weekdayShortDateFmt.format(date);
+  }
+  return weekdayShortDateYearFmt.format(date);
 }
 
 /**

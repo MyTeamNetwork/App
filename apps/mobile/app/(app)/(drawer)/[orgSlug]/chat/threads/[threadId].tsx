@@ -8,9 +8,10 @@ import {
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, ArrowUp, Lock } from "lucide-react-native";
@@ -22,9 +23,16 @@ import { useBlockedUsers } from "@/contexts/BlockedUsersContext";
 import { ReportBlockSheet } from "@/components/moderation/ReportBlockSheet";
 import { Avatar } from "@/components/ui/Avatar";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
+import { AVATAR_SIZES } from "@/lib/design-tokens";
 import { APP_CHROME } from "@/lib/chrome";
-import { formatTimestamp } from "@/lib/date-format";
+import {
+  formatChatDaySeparator,
+  formatTimestamp,
+  isDifferentLocalDay,
+} from "@/lib/date-format";
 import type { Tables } from "@teammeet/types";
+
+const PAGE_SIZE = 50;
 
 const CHAT_COLORS = {
   background: "#ffffff",
@@ -49,6 +57,7 @@ type ThreadWithAuthor = DiscussionThread & {
 type ReplyWithAuthor = DiscussionReply & {
   author?: { id: string; name: string | null; avatar_url: string | null } | null;
   isFirstInRun?: boolean;
+  showDaySeparator?: boolean;
 };
 
 function isKnownAuthorId(authorId: string | null): authorId is string {
@@ -68,13 +77,18 @@ export default function ThreadDetailScreen() {
   const blockedRef = useRef<Set<string>>(blockedUserIds);
   blockedRef.current = blockedUserIds;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(), []);
   const listRef = useRef<FlatList<ReplyWithAuthor>>(null);
   const isMountedRef = useRef(true);
+  const skipAutoScrollRef = useRef(false);
 
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [thread, setThread] = useState<ThreadWithAuthor | null>(null);
   const [replies, setReplies] = useState<ReplyWithAuthor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -95,40 +109,27 @@ export default function ThreadDetailScreen() {
 
     setLoading(true);
     try {
-      const [threadRes, repliesRes] = await Promise.all([
-        supabase
-          .from("discussion_threads")
-          .select("*, author:users!discussion_threads_author_id_fkey(id, name, avatar_url)")
-          .eq("id", resolvedThreadId)
-          .eq("organization_id", orgId)
-          .is("deleted_at", null)
-          .single(),
-        supabase
-          .from("discussion_replies")
-          .select("*, author:users!discussion_replies_author_id_fkey(id, name, avatar_url)")
-          .eq("thread_id", resolvedThreadId)
-          .is("deleted_at", null)
-          .order("created_at", { ascending: true }),
-      ]);
+      const { data, error: threadError } = await supabase
+        .from("discussion_threads")
+        .select("*, author:users!discussion_threads_author_id_fkey(id, name, avatar_url)")
+        .eq("id", resolvedThreadId)
+        .eq("organization_id", orgId)
+        .is("deleted_at", null)
+        .single();
 
-      if (threadRes.error) throw threadRes.error;
-      if (repliesRes.error) throw repliesRes.error;
+      if (threadError) throw threadError;
 
       if (isMountedRef.current) {
-        const threadData = threadRes.data as ThreadWithAuthor;
+        const threadData = data as ThreadWithAuthor;
         const blocked = blockedRef.current;
         if (threadData && isBlockedAuthor(threadData.author_id, blocked)) {
           setThread(null);
           setReplies([]);
+          setHasMoreOlder(false);
           setError("Thread not found.");
           return;
         }
         setThread(threadData);
-        setReplies(
-          ((repliesRes.data || []) as ReplyWithAuthor[]).filter(
-            (r) => !isBlockedAuthor(r.author_id, blocked)
-          )
-        );
         setError(null);
       }
     } catch (e) {
@@ -142,6 +143,67 @@ export default function ThreadDetailScreen() {
     }
   }, [orgId, resolvedThreadId, currentUserId]);
 
+  const loadReplies = useCallback(async () => {
+    if (!resolvedThreadId) return;
+
+    const { data, error: repliesError } = await supabase
+      .from("discussion_replies")
+      .select("*, author:users!discussion_replies_author_id_fkey(id, name, avatar_url)")
+      .eq("thread_id", resolvedThreadId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
+
+    if (repliesError) {
+      if (isMountedRef.current) setError(repliesError.message);
+      return;
+    }
+
+    if (data && isMountedRef.current) {
+      setHasMoreOlder(data.length === PAGE_SIZE);
+      const chronological = [...data].reverse() as ReplyWithAuthor[];
+      const blocked = blockedRef.current;
+      setReplies(chronological.filter((r) => !isBlockedAuthor(r.author_id, blocked)));
+      setTimeout(scrollToBottom, 100);
+    }
+  }, [resolvedThreadId, scrollToBottom]);
+
+  const loadOlderReplies = useCallback(async () => {
+    if (!hasMoreOlder || loadingOlder || replies.length === 0 || !resolvedThreadId) return;
+    const oldestReply = replies[0];
+    if (!oldestReply?.created_at) return;
+
+    setLoadingOlder(true);
+    try {
+      const { data, error: repliesError } = await supabase
+        .from("discussion_replies")
+        .select("*, author:users!discussion_replies_author_id_fkey(id, name, avatar_url)")
+        .eq("thread_id", resolvedThreadId)
+        .is("deleted_at", null)
+        .lt("created_at", oldestReply.created_at)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+
+      if (repliesError) {
+        if (isMountedRef.current) setError(repliesError.message);
+        return;
+      }
+
+      if (data && isMountedRef.current) {
+        setHasMoreOlder(data.length === PAGE_SIZE);
+        const chronological = [...data].reverse() as ReplyWithAuthor[];
+        const blocked = blockedRef.current;
+        const filtered = chronological.filter((r) => !isBlockedAuthor(r.author_id, blocked));
+        if (filtered.length > 0) {
+          skipAutoScrollRef.current = true;
+          setReplies((prev) => [...filtered, ...prev]);
+        }
+      }
+    } finally {
+      if (isMountedRef.current) setLoadingOlder(false);
+    }
+  }, [hasMoreOlder, loadingOlder, replies, resolvedThreadId]);
+
   useEffect(() => {
     isMountedRef.current = true;
     loadThreadDetails();
@@ -149,6 +211,22 @@ export default function ThreadDetailScreen() {
       isMountedRef.current = false;
     };
   }, [loadThreadDetails]);
+
+  useEffect(() => {
+    if (!thread?.id) return;
+    loadReplies();
+  }, [thread?.id, loadReplies]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Realtime subscription for thread state and new replies
   useEffect(() => {
@@ -203,46 +281,69 @@ export default function ThreadDetailScreen() {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "discussion_replies",
           filter: `thread_id=eq.${resolvedThreadId}`,
         },
         async (payload: RealtimePostgresChangesPayload<DiscussionReply>) => {
-          const newReply = payload.new as DiscussionReply;
-          if (isBlockedAuthor(newReply.author_id, blockedRef.current)) return;
-          const { data: replyWithAuthor } = await supabase
-            .from("discussion_replies")
-            .select("*, author:users!discussion_replies_author_id_fkey(id, name, avatar_url)")
-            .eq("id", newReply.id)
-            .single();
+          if (payload.eventType === "INSERT") {
+            const newReply = payload.new as DiscussionReply;
+            if (isBlockedAuthor(newReply.author_id, blockedRef.current)) return;
+            const { data: replyWithAuthor } = await supabase
+              .from("discussion_replies")
+              .select("*, author:users!discussion_replies_author_id_fkey(id, name, avatar_url)")
+              .eq("id", newReply.id)
+              .single();
 
-          if (replyWithAuthor && isMountedRef.current) {
-            setReplies((prev) => {
-              if (prev.some((reply) => reply.id === newReply.id)) {
-                return prev;
-              }
+            if (replyWithAuthor && isMountedRef.current) {
+              setReplies((prev) => {
+                if (prev.some((reply) => reply.id === newReply.id)) {
+                  return prev;
+                }
 
-              const hasTempVersion = prev.some(
-                (reply) =>
-                  reply.id.startsWith("temp-") &&
-                  reply.author_id === newReply.author_id &&
-                  reply.body === newReply.body
-              );
-
-              if (hasTempVersion) {
-                return prev.map((reply) =>
-                  reply.id.startsWith("temp-") &&
-                  reply.author_id === newReply.author_id &&
-                  reply.body === newReply.body
-                    ? (replyWithAuthor as ReplyWithAuthor)
-                    : reply
+                const hasTempVersion = prev.some(
+                  (reply) =>
+                    reply.id.startsWith("temp-") &&
+                    reply.author_id === newReply.author_id &&
+                    reply.body === newReply.body
                 );
-              }
 
-              return [...prev, replyWithAuthor as ReplyWithAuthor];
-            });
-            setTimeout(scrollToBottom, 80);
+                if (hasTempVersion) {
+                  return prev.map((reply) =>
+                    reply.id.startsWith("temp-") &&
+                    reply.author_id === newReply.author_id &&
+                    reply.body === newReply.body
+                      ? (replyWithAuthor as ReplyWithAuthor)
+                      : reply
+                  );
+                }
+
+                return [...prev, replyWithAuthor as ReplyWithAuthor];
+              });
+              setTimeout(scrollToBottom, 80);
+            }
+          } else if (payload.eventType === "UPDATE") {
+            const updated = payload.new as DiscussionReply;
+            if (!isMountedRef.current) return;
+            if (updated.deleted_at) {
+              setReplies((prev) => prev.filter((r) => r.id !== updated.id));
+              return;
+            }
+            if (isBlockedAuthor(updated.author_id, blockedRef.current)) {
+              setReplies((prev) => prev.filter((r) => r.id !== updated.id));
+              return;
+            }
+            setReplies((prev) =>
+              prev.map((r) =>
+                r.id === updated.id ? { ...r, ...updated, author: r.author } : r
+              )
+            );
+          } else if (payload.eventType === "DELETE") {
+            const deleted = payload.old as { id: string };
+            if (isMountedRef.current) {
+              setReplies((prev) => prev.filter((r) => r.id !== deleted.id));
+            }
           }
         }
       )
@@ -268,9 +369,18 @@ export default function ThreadDetailScreen() {
       return {
         ...reply,
         isFirstInRun: !sameAuthor || !within5Min,
+        showDaySeparator: isDifferentLocalDay(prev?.created_at, reply.created_at),
       };
     });
   }, [replies]);
+
+  useEffect(() => {
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
+    setTimeout(scrollToBottom, 80);
+  }, [groupedReplies.length, scrollToBottom]);
 
   const handleSendReply = useCallback(async () => {
     if (!replyBody.trim() || sending || !thread || thread.is_locked || !orgId || !currentUserId) {
@@ -312,13 +422,13 @@ export default function ThreadDetailScreen() {
     if (error) {
       setReplies((prev) => prev.filter((r) => r.id !== tempId));
       setReplyBody(body);
-      await loadThreadDetails();
+      await loadReplies();
     } else if (data) {
       setReplies((prev) => prev.map((r) => (r.id === tempId ? (data as ReplyWithAuthor) : r)));
     }
 
     setSending(false);
-  }, [replyBody, sending, thread, orgId, currentUserId, user, scrollToBottom, loadThreadDetails]);
+  }, [replyBody, sending, thread, orgId, currentUserId, user, scrollToBottom, loadReplies]);
 
   const renderReply = useCallback(
     ({ item }: { item: ReplyWithAuthor }) => {
@@ -350,55 +460,64 @@ export default function ThreadDetailScreen() {
           };
 
       return (
-        <View style={[styles.messageRow, isOwn && styles.messageRowOwn]}>
-          {!isOwn && (
-            <View style={styles.messageColumn}>
-              {isFirstInRun ? (
-                <Avatar size="xs" name={authorName} />
-              ) : (
-                <View style={styles.avatarSpacer} />
-              )}
+        <>
+          {item.showDaySeparator && (
+            <View style={styles.daySeparator}>
+              <Text style={styles.daySeparatorText}>
+                {formatChatDaySeparator(item.created_at)}
+              </Text>
             </View>
           )}
-
-          <View style={[styles.messageBody, isOwn && styles.messageBodyOwn]}>
-            {isFirstInRun && !isOwn && (
-              <View style={styles.messageMetaRow}>
-                <Text style={styles.messageAuthor} numberOfLines={1}>
-                  {authorName}
-                </Text>
-                <Text style={styles.messageTime}>{formatTimestamp(item.created_at)}</Text>
+          <View style={[styles.messageRow, isOwn && styles.messageRowOwn]}>
+            {!isOwn && (
+              <View style={styles.messageColumn}>
+                {isFirstInRun ? (
+                  <Avatar size="xs" name={authorName} />
+                ) : (
+                  <View style={styles.avatarSpacer} />
+                )}
               </View>
             )}
-            {isFirstInRun && isOwn && (
-              <Text style={styles.messageTime}>{formatTimestamp(item.created_at)}</Text>
-            )}
 
-            <Pressable
-              onLongPress={
-                canReport
-                  ? () =>
-                      setReportTarget({
-                        kind: "reply",
-                        id: item.id,
-                        authorId,
-                      })
-                  : undefined
-              }
-              delayLongPress={350}
-              style={({ pressed }) => [
-                styles.messageBubble,
-                bubbleRadius,
-                isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther,
-                pressed && !isOwn && { opacity: 0.8 },
-              ]}
-              accessibilityRole={isOwn ? undefined : "button"}
-              accessibilityHint={isOwn ? undefined : "Long-press to report or block"}
-            >
-              <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>{item.body}</Text>
-            </Pressable>
+            <View style={[styles.messageBody, isOwn && styles.messageBodyOwn]}>
+              {isFirstInRun && !isOwn && (
+                <View style={styles.messageMetaRow}>
+                  <Text style={styles.messageAuthor} numberOfLines={1}>
+                    {authorName}
+                  </Text>
+                  <Text style={styles.messageTime}>{formatTimestamp(item.created_at)}</Text>
+                </View>
+              )}
+              {isFirstInRun && isOwn && (
+                <Text style={styles.messageTime}>{formatTimestamp(item.created_at)}</Text>
+              )}
+
+              <Pressable
+                onLongPress={
+                  canReport
+                    ? () =>
+                        setReportTarget({
+                          kind: "reply",
+                          id: item.id,
+                          authorId,
+                        })
+                    : undefined
+                }
+                delayLongPress={350}
+                style={({ pressed }) => [
+                  styles.messageBubble,
+                  bubbleRadius,
+                  isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther,
+                  pressed && !isOwn && { opacity: 0.8 },
+                ]}
+                accessibilityRole={isOwn ? undefined : "button"}
+                accessibilityHint={isOwn ? undefined : "Long-press to report or block"}
+              >
+                <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>{item.body}</Text>
+              </Pressable>
+            </View>
           </View>
-        </View>
+        </>
       );
     },
     [currentUserId, styles]
@@ -440,6 +559,32 @@ export default function ThreadDetailScreen() {
       </Pressable>
     );
   }, [thread, currentUserId, styles]);
+
+  const renderListHeader = useCallback(() => {
+    return (
+      <View>
+        {renderOpCard()}
+        {hasMoreOlder && (
+          <Pressable
+            onPress={loadOlderReplies}
+            disabled={loadingOlder}
+            style={({ pressed }) => [
+              styles.loadEarlierButton,
+              pressed && { opacity: 0.7 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Load earlier replies"
+          >
+            {loadingOlder ? (
+              <ActivityIndicator size="small" color={CHAT_COLORS.accent} />
+            ) : (
+              <Text style={styles.loadEarlierText}>Load earlier replies</Text>
+            )}
+          </Pressable>
+        )}
+      </View>
+    );
+  }, [renderOpCard, hasMoreOlder, loadingOlder, loadOlderReplies, styles]);
 
   if (loading && !thread) {
     return (
@@ -495,16 +640,18 @@ export default function ThreadDetailScreen() {
 
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 96 : 0}
+        behavior="padding"
+        keyboardVerticalOffset={0}
       >
         <FlatList
           ref={listRef}
           data={groupedReplies}
           keyExtractor={(item) => item.id}
           renderItem={renderReply}
+          style={styles.list}
           contentContainerStyle={styles.listContent}
-          ListHeaderComponent={renderOpCard}
+          maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+          ListHeaderComponent={renderListHeader}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>No replies yet. Start the discussion!</Text>
@@ -517,7 +664,12 @@ export default function ThreadDetailScreen() {
         />
 
         {!thread.is_locked ? (
-          <SafeAreaView edges={["bottom"]} style={styles.composerContainer}>
+          <View
+            style={[
+              styles.composerContainer,
+              { paddingBottom: keyboardVisible ? 0 : insets.bottom },
+            ]}
+          >
             <View style={styles.composer}>
               <TextInput
                 value={replyBody}
@@ -546,7 +698,7 @@ export default function ThreadDetailScreen() {
                 />
               </Pressable>
             </View>
-          </SafeAreaView>
+          </View>
         ) : (
           <View style={styles.lockedBanner}>
             <Lock size={16} color={CHAT_COLORS.muted} />
@@ -646,9 +798,13 @@ const createStyles = () =>
       fontSize: fontSize.sm,
       fontWeight: fontWeight.semibold,
     },
+    list: {
+      flex: 1,
+    },
     listContent: {
       paddingHorizontal: spacing.md,
-      gap: spacing.sm,
+      paddingBottom: spacing.md,
+      gap: spacing.xs,
     },
     opCard: {
       backgroundColor: CHAT_COLORS.lockedBg,
@@ -687,21 +843,40 @@ const createStyles = () =>
       color: CHAT_COLORS.subtitle,
       lineHeight: 22,
     },
+    loadEarlierButton: {
+      alignSelf: "center",
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    loadEarlierText: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: CHAT_COLORS.accent,
+    },
+    daySeparator: {
+      alignItems: "center",
+      paddingVertical: spacing.sm,
+    },
+    daySeparatorText: {
+      fontSize: fontSize.xs,
+      color: CHAT_COLORS.muted,
+      fontWeight: fontWeight.medium,
+    },
     messageRow: {
       flexDirection: "row",
       alignItems: "flex-start",
-      gap: spacing.sm,
+      gap: spacing.xs,
     },
     messageRowOwn: {
       flexDirection: "row-reverse",
     },
     messageColumn: {
-      width: 32,
+      width: AVATAR_SIZES.xs,
       alignItems: "center",
     },
     avatarSpacer: {
-      width: 32,
-      height: 32,
+      width: AVATAR_SIZES.xs,
     },
     messageBody: {
       flex: 1,

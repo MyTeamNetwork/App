@@ -18,7 +18,7 @@ import { supabase } from "@/lib/supabase";
 import { useOrg } from "@/contexts/OrgContext";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import type { Announcement } from "@teammeet/types";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
@@ -137,7 +137,7 @@ export default function EditAnnouncementScreen() {
       borderRadius: RADIUS.md,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: EDIT_COLORS.primaryText,
     },
     textArea: {

@@ -20,7 +20,7 @@ import { useOrg } from "@/contexts/OrgContext";
 import type { Form, FormField, FormFieldOption, FormSubmission, Json } from "@teammeet/types";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { formatDefaultDate } from "@/lib/date-format";
@@ -172,7 +172,7 @@ export default function FormDetailScreen() {
       borderColor: n.border,
       borderRadius: RADIUS.md,
       padding: SPACING.md,
-      ...TYPOGRAPHY.bodyLarge,
+      ...textInputTypography("bodyLarge"),
       color: n.foreground,
     } as const,
     inputText: {

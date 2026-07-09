@@ -62,7 +62,7 @@ bun run android:doctor       # Verify Android SDK, Java, adb setup
 
 ### Release flow (TestFlight, no review)
 
-**Current marketing version: `1.0.1`** (set in `app.config.ts` → `version`). Build
+**Current marketing version: `1.0.2`** (set in `app.config.ts` → `version`). Build
 number auto-increments remotely via EAS (`eas.json`: `appVersionSource: remote` +
 `autoIncrement`), so do NOT hand-edit `ios.buildNumber` — only bump `version`.
 Bump this whenever the previous marketing version has an ASC-processed build (see

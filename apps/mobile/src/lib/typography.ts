@@ -162,6 +162,17 @@ export function createTextStyle(
   };
 }
 
+/**
+ * Typography for TextInput styles — omits lineHeight.
+ * iOS TextInput clips descenders (g, y, p) when lineHeight is set.
+ */
+export function textInputTypography(
+  variant: keyof typeof TYPOGRAPHY = "bodyMedium"
+): Pick<TextStyle, "fontSize" | "fontWeight" | "letterSpacing" | "fontFamily"> {
+  const { fontSize, fontWeight, letterSpacing, fontFamily } = TYPOGRAPHY[variant];
+  return { fontSize, fontWeight, letterSpacing, fontFamily };
+}
+
 // Common text style combinations
 export const TEXT_STYLES = {
   // Headers

@@ -36,7 +36,7 @@ import { formatRelativeTime } from "@/lib/date-format";
 import { getWebPath } from "@/lib/web-api";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import type { FeedComment } from "@/types/feed";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
@@ -187,7 +187,7 @@ export default function PostDetailScreen() {
     },
     composerInput: {
       flex: 1,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       maxHeight: 100,
       paddingVertical: SPACING.sm,

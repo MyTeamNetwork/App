@@ -34,6 +34,7 @@ import {
 } from "lucide-react-native";
 import { supabase, signOut } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { useNotifications } from "@/hooks/useNotifications";
 import { normalizeRole, roleFlags } from "@teammeet/core";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
@@ -65,12 +66,12 @@ export default function MenuScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
   const { permissions } = useOrgRole();
+  const { unreadCount, refetchIfStale } = useNotifications(orgId);
   const { neutral, semantic } = useAppColorScheme();
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isRefetchingRef = useRef(false);
@@ -357,8 +358,6 @@ export default function MenuScreen() {
         }
       }
 
-      // TODO: Fetch notification count when notifications are implemented
-      setNotificationCount(0);
       lastFetchTimeRef.current = Date.now();
     } catch (e) {
       setError((e as Error).message);
@@ -376,7 +375,8 @@ export default function MenuScreen() {
       if (now - lastFetchTimeRef.current > STALE_TIME_MS) {
         fetchData();
       }
-    }, [fetchData])
+      refetchIfStale();
+    }, [fetchData, refetchIfStale])
   );
 
   const handleRefresh = useCallback(async () => {
@@ -385,11 +385,12 @@ export default function MenuScreen() {
     isRefetchingRef.current = true;
     try {
       await fetchData();
+      refetchIfStale();
     } finally {
       setRefreshing(false);
       isRefetchingRef.current = false;
     }
-  }, [fetchData]);
+  }, [fetchData, refetchIfStale]);
 
   const handleSignOut = async () => {
     Alert.alert(
@@ -446,7 +447,7 @@ export default function MenuScreen() {
       icon: <Bell size={20} color={neutral.muted} />,
       label: "Notifications",
       onPress: () => router.push(`/(app)/${orgSlug}/notifications`),
-      badge: notificationCount,
+      badge: unreadCount,
     },
   ];
 

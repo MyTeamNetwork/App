@@ -26,7 +26,7 @@ import {
 import type { NotificationAudience } from "@teammeet/types";
 import type { ComposerChannel } from "@/lib/schedules/mobile-schedule-settings";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 
 const AUDIENCE_OPTIONS: Array<{ value: NotificationAudience; label: string }> = [
@@ -142,7 +142,7 @@ export default function NewNotificationScreen() {
       borderRadius: RADIUS.md,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       backgroundColor: n.surface,
     },

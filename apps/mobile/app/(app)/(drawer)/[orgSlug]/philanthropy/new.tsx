@@ -17,7 +17,7 @@ import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { supabase } from "@/lib/supabase";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { formatDatePickerLabel, formatTimePickerLabel } from "@/lib/date-format";
@@ -118,7 +118,7 @@ export default function NewPhilanthropyEventScreen() {
       borderRadius: RADIUS.md,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       backgroundColor: n.surface,
     },

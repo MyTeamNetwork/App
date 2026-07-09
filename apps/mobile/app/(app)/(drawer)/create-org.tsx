@@ -5,7 +5,7 @@ import { createOrgSchema } from "@teammeet/validation";
 import type { CreateOrgForm } from "@teammeet/validation";
 import { mapAlumniSeatsToBucket } from "@teammeet/core/pricing/per-user";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { getWebAppUrl } from "@/lib/web-api";
@@ -151,7 +151,7 @@ export default function CreateOrgScreen() {
       borderRadius: RADIUS.md,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       backgroundColor: n.surface,
     },

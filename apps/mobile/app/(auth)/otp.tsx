@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -29,7 +27,7 @@ import {
   SHADOWS,
   SPACING,
 } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 
 const GRADIENT_START = "#134e4a";
 const GRADIENT_END = "#0f172a";
@@ -228,11 +226,10 @@ export default function OtpSignInScreen() {
         </SafeAreaView>
       </LinearGradient>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.keyboardView}
-      >
-        <View style={styles.sheet}>
+      {/* Keyboard: ScrollView.automaticallyAdjustKeyboardInsets only.
+          Do not also wrap in KeyboardAvoidingView — the two stack and leave
+          a large gap above the keyboard. */}
+      <View style={[styles.keyboardView, styles.sheet]}>
           <ScrollView
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
@@ -367,8 +364,7 @@ export default function OtpSignInScreen() {
               </Link>
             </View>
           </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
+      </View>
 
       <Turnstile
         ref={turnstileRef}
@@ -498,7 +494,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    ...TYPOGRAPHY.bodyLarge,
+    ...textInputTypography("bodyLarge"),
     color: NEUTRAL.foreground,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,

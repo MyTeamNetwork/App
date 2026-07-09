@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, TextInput, Pressable, Switch } from "react-native";
 import { Plus, X } from "lucide-react-native";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 
@@ -51,7 +51,7 @@ export const PollBuilder = React.memo(function PollBuilder({
       width: 14,
     },
     optionInput: {
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       flex: 1,
       paddingVertical: SPACING.sm,

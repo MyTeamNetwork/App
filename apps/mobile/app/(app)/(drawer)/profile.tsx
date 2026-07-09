@@ -36,7 +36,7 @@ import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { LinkedInSyncCard } from "@/components/profile/LinkedInSyncCard";
 import {
   INITIAL_PROFILE_FORM_VALUES,
@@ -302,7 +302,7 @@ export default function ProfileScreen() {
       borderCurve: "continuous" as const,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       backgroundColor: n.surface,
     },

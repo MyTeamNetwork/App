@@ -43,7 +43,7 @@ import { showToast } from "@/components/ui/Toast";
 import { captureException } from "@/lib/analytics";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS, SHADOWS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { formatMonthDayYearSafe } from "@/lib/date-format";
@@ -376,7 +376,7 @@ export default function InvitesScreen() {
       borderRadius: RADIUS.md,
       paddingVertical: SPACING.sm + 2,
       paddingHorizontal: SPACING.md,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       marginBottom: SPACING.lg,
     },

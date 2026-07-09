@@ -19,7 +19,7 @@ import { JobCard } from "@/components/jobs/JobCard";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import type { LocationType, ExperienceLevel } from "@/types/jobs";
@@ -154,7 +154,7 @@ export default function JobsScreen() {
     searchInput: {
       flex: 1,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
     },
     pillSection: {

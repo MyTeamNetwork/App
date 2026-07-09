@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -43,7 +42,7 @@ import {
   SHADOWS,
   SPACING,
 } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 
 const GRADIENT_START = "#134e4a";
 const GRADIENT_END = "#0f172a";
@@ -479,11 +478,10 @@ export default function LoginScreen() {
         </SafeAreaView>
       </LinearGradient>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.keyboardView}
-      >
-        <Animated.View style={[styles.sheet, sheetStyle]}>
+      {/* Keyboard: ScrollView.automaticallyAdjustKeyboardInsets only.
+          Do not also wrap in KeyboardAvoidingView — the two stack and leave
+          a large gap above the keyboard (same class of bug as chat composer). */}
+      <Animated.View style={[styles.keyboardView, styles.sheet, sheetStyle]}>
           <ScrollView
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
@@ -707,8 +705,7 @@ export default function LoginScreen() {
               </Link>
             </View>
           </ScrollView>
-        </Animated.View>
-      </KeyboardAvoidingView>
+      </Animated.View>
 
       <Turnstile
         ref={turnstileRef}
@@ -836,7 +833,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    ...TYPOGRAPHY.bodyLarge,
+    ...textInputTypography("bodyLarge"),
     color: NEUTRAL.foreground,
     paddingVertical: SPACING.md,
     paddingRight: SPACING.md,

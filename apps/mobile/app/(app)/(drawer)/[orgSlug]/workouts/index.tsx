@@ -30,7 +30,7 @@ import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS, SEMANTIC } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { formatLocalDateString } from "@/lib/date-format";
 import { openHttpsUrl } from "@/lib/url-safety";
 import type { Workout, WorkoutLog, WorkoutStatus } from "@teammeet/types";
@@ -590,7 +590,7 @@ export default function WorkoutsScreen() {
       borderRadius: RADIUS.md,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       backgroundColor: n.background,
     },

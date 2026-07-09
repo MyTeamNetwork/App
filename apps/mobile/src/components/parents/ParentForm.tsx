@@ -16,7 +16,7 @@ import { ArrowLeft } from "lucide-react-native";
 import { SelectField, SelectModal } from "@/components/ui";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import {
   PARENT_RELATIONSHIPS,
   type ParentFormValues,
@@ -107,7 +107,7 @@ export function ParentForm({
       backgroundColor: n.background,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
     },
     notesInput: {

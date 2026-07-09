@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Flag, ShieldOff } from "lucide-react-native";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { showToast } from "@/components/ui/Toast";
@@ -171,7 +171,7 @@ export function ReportBlockSheet({
       borderColor: n.border,
       borderRadius: RADIUS.md,
       padding: SPACING.md,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       minHeight: 80,
       textAlignVertical: "top" as const,

@@ -8,9 +8,10 @@ import {
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, ArrowUp, X, Plus, ChevronLeft, Users } from "lucide-react-native";
@@ -29,8 +30,13 @@ import {
 } from "@/components/mentions/MentionAutocomplete";
 import { showToast } from "@/components/ui/Toast";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
+import { AVATAR_SIZES } from "@/lib/design-tokens";
 import { APP_CHROME } from "@/lib/chrome";
-import { formatTimestamp } from "@/lib/date-format";
+import {
+  formatChatDaySeparator,
+  formatTimestamp,
+  isDifferentLocalDay,
+} from "@/lib/date-format";
 import {
   buildChatGroupMemberInsertPayload,
   buildChatGroupMemberReactivationPayload,
@@ -58,6 +64,8 @@ try {
   BottomSheetBackdrop = bs.BottomSheetBackdrop;
 } catch {}
 
+const PAGE_SIZE = 50;
+
 const CHAT_COLORS = {
   background: "#ffffff",
   card: "#ffffff",
@@ -75,6 +83,7 @@ type ChatMemberWithUser = ChatGroupMember & { users: User };
 type MessageWithAuthor = ChatMessage & {
   author?: User;
   isFirstInRun?: boolean;
+  showDaySeparator?: boolean;
 };
 type OrgMemberRow = {
   user_id: string;
@@ -92,11 +101,14 @@ export default function ChatRoomScreen() {
   const blockedRef = useRef<Set<string>>(blockedUserIds);
   blockedRef.current = blockedUserIds;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(), []);
   const listRef = useRef<FlatList<MessageWithAuthor>>(null);
   const isMountedRef = useRef(true);
+  const skipAutoScrollRef = useRef(false);
   const membersSheetRef = useRef<any>(null);
 
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [group, setGroup] = useState<ChatGroup | null>(null);
   const [members, setMembers] = useState<ChatMemberWithUser[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -111,6 +123,8 @@ export default function ChatRoomScreen() {
   >([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPendingQueue, setShowPendingQueue] = useState(false);
@@ -256,14 +270,16 @@ export default function ChatRoomScreen() {
       .select("*")
       .eq("chat_group_id", resolvedGroupId)
       .is("deleted_at", null)
-      .order("created_at", { ascending: true })
-      .limit(100);
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
 
     if (error) { setError(error.message); return; }
 
     if (data) {
+      setHasMoreOlder(data.length === PAGE_SIZE);
+      const chronological = [...data].reverse();
       const blocked = blockedRef.current;
-      const filtered = data.filter((msg) => !blocked.has(msg.author_id));
+      const filtered = chronological.filter((msg) => !blocked.has(msg.author_id));
       const authorIds = [...new Set(filtered.map((msg) => msg.author_id))];
       await fetchUnknownUsers(authorIds);
       setMessages(filtered.map((msg) => ({ ...msg, author: userMap.get(msg.author_id) })));
@@ -271,11 +287,70 @@ export default function ChatRoomScreen() {
     }
   }, [resolvedGroupId, fetchUnknownUsers, scrollToBottom, userMap]);
 
+  const loadOlderMessages = useCallback(async () => {
+    if (!hasMoreOlder || loadingOlder || messages.length === 0 || !resolvedGroupId) return;
+    const oldestMessage = messages[0];
+    if (!oldestMessage?.created_at) return;
+
+    setLoadingOlder(true);
+    try {
+      const { data, error } = await supabase
+        .from("chat_messages")
+        .select("*")
+        .eq("chat_group_id", resolvedGroupId)
+        .is("deleted_at", null)
+        .lt("created_at", oldestMessage.created_at)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      if (data) {
+        setHasMoreOlder(data.length === PAGE_SIZE);
+        const chronological = [...data].reverse();
+        const blocked = blockedRef.current;
+        const filtered = chronological.filter((msg) => !blocked.has(msg.author_id));
+        const authorIds = [...new Set(filtered.map((msg) => msg.author_id))];
+        await fetchUnknownUsers(authorIds);
+        if (filtered.length > 0) {
+          skipAutoScrollRef.current = true;
+          setMessages((prev) => [
+            ...filtered.map((msg) => ({ ...msg, author: userMap.get(msg.author_id) })),
+            ...prev,
+          ]);
+        }
+      }
+    } finally {
+      if (isMountedRef.current) setLoadingOlder(false);
+    }
+  }, [
+    hasMoreOlder,
+    loadingOlder,
+    messages,
+    resolvedGroupId,
+    fetchUnknownUsers,
+    userMap,
+  ]);
+
   useEffect(() => {
     isMountedRef.current = true;
     loadGroupDetails();
     return () => { isMountedRef.current = false; };
   }, [loadGroupDetails]);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!group) return;
@@ -349,11 +424,19 @@ export default function ChatRoomScreen() {
       const within5Min = prev
         ? new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() < 5 * 60 * 1000
         : false;
-      return { ...msg, isFirstInRun: !sameAuthor || !within5Min };
+      return {
+        ...msg,
+        isFirstInRun: !sameAuthor || !within5Min,
+        showDaySeparator: isDifferentLocalDay(prev?.created_at, msg.created_at),
+      };
     });
   }, [visibleMessages]);
 
   useEffect(() => {
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
     if (!showPendingQueue) setTimeout(scrollToBottom, 80);
   }, [groupedMessages.length, showPendingQueue, scrollToBottom]);
 
@@ -625,7 +708,7 @@ export default function ChatRoomScreen() {
   // ─── Render helpers ───────────────────────────────────────────────────────
 
   const listContentStyle = useMemo(
-    () => [styles.listContent, { paddingBottom: showPendingQueue ? spacing.lg : 88 }],
+    () => [styles.listContent, { paddingBottom: showPendingQueue ? spacing.lg : spacing.md }],
     [styles.listContent, showPendingQueue]
   );
 
@@ -644,70 +727,79 @@ export default function ChatRoomScreen() {
         : { borderTopLeftRadius: 14, borderTopRightRadius: 14, borderBottomLeftRadius: 14, borderBottomRightRadius: 14 };
 
       return (
-        <View style={[styles.messageRow, isOwn && styles.messageRowOwn]}>
-          {!isOwn && (
-            <View style={styles.messageColumn}>
-              {isFirstInRun ? (
-                <Avatar size="xs" name={authorName} />
-              ) : (
-                <View style={styles.avatarSpacer} />
-              )}
+        <>
+          {item.showDaySeparator && (
+            <View style={styles.daySeparator}>
+              <Text style={styles.daySeparatorText}>
+                {formatChatDaySeparator(item.created_at)}
+              </Text>
             </View>
           )}
-          <View style={[styles.messageBody, isOwn && styles.messageBodyOwn]}>
-            {isFirstInRun && !isOwn && (
-              <View style={styles.messageMetaRow}>
-                <Text style={styles.messageAuthor} numberOfLines={1}>{authorName}</Text>
+          <View style={[styles.messageRow, isOwn && styles.messageRowOwn]}>
+            {!isOwn && (
+              <View style={styles.messageColumn}>
+                {isFirstInRun ? (
+                  <Avatar size="xs" name={authorName} />
+                ) : (
+                  <View style={styles.avatarSpacer} />
+                )}
+              </View>
+            )}
+            <View style={[styles.messageBody, isOwn && styles.messageBodyOwn]}>
+              {isFirstInRun && !isOwn && (
+                <View style={styles.messageMetaRow}>
+                  <Text style={styles.messageAuthor} numberOfLines={1}>{authorName}</Text>
+                  <Text style={styles.messageTime}>{formatTimestamp(item.created_at)}</Text>
+                </View>
+              )}
+              {isFirstInRun && isOwn && (
                 <Text style={styles.messageTime}>{formatTimestamp(item.created_at)}</Text>
-              </View>
-            )}
-            {isFirstInRun && isOwn && (
-              <Text style={styles.messageTime}>{formatTimestamp(item.created_at)}</Text>
-            )}
-            <Pressable
-              onLongPress={
-                isOwn
-                  ? undefined
-                  : () =>
-                      setReportTarget({
-                        messageId: item.id,
-                        authorId: item.author_id,
-                      })
-              }
-              delayLongPress={350}
-              style={({ pressed }) => [
-                styles.messageBubble,
-                bubbleRadius,
-                isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther,
-                isPending && styles.messageBubblePending,
-                pressed && !isOwn && { opacity: 0.8 },
-              ]}
-              accessibilityRole={isOwn ? undefined : "button"}
-              accessibilityHint={isOwn ? undefined : "Long-press to report or block"}
-            >
-              <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>{item.body}</Text>
-            </Pressable>
-            {!isPending && !isRejected && (
-              <ReactionRow
-                targetKind="chat_message"
-                targetId={item.id}
-                currentUserId={currentUserId}
-              />
-            )}
-            {isPending && <Text style={styles.pendingLabel}>Pending</Text>}
-            {isRejected && <Text style={styles.rejectedLabel}>Rejected</Text>}
-            {canModerate && isPending && !isOwn && (
-              <View style={styles.moderationRow}>
-                <Pressable onPress={() => handleModeration(item.id, "approved")} style={({ pressed }) => [styles.moderationButton, styles.moderationApprove, pressed && styles.moderationPressed]}>
-                  <Text style={styles.moderationApproveText}>Approve</Text>
-                </Pressable>
-                <Pressable onPress={() => handleModeration(item.id, "rejected")} style={({ pressed }) => [styles.moderationButton, styles.moderationReject, pressed && styles.moderationPressed]}>
-                  <Text style={styles.moderationRejectText}>Reject</Text>
-                </Pressable>
-              </View>
-            )}
+              )}
+              <Pressable
+                onLongPress={
+                  isOwn
+                    ? undefined
+                    : () =>
+                        setReportTarget({
+                          messageId: item.id,
+                          authorId: item.author_id,
+                        })
+                }
+                delayLongPress={350}
+                style={({ pressed }) => [
+                  styles.messageBubble,
+                  bubbleRadius,
+                  isOwn ? styles.messageBubbleOwn : styles.messageBubbleOther,
+                  isPending && styles.messageBubblePending,
+                  pressed && !isOwn && { opacity: 0.8 },
+                ]}
+                accessibilityRole={isOwn ? undefined : "button"}
+                accessibilityHint={isOwn ? undefined : "Long-press to report or block"}
+              >
+                <Text style={[styles.messageText, isOwn && styles.messageTextOwn]}>{item.body}</Text>
+              </Pressable>
+              {!isPending && !isRejected && (
+                <ReactionRow
+                  targetKind="chat_message"
+                  targetId={item.id}
+                  currentUserId={currentUserId}
+                />
+              )}
+              {isPending && <Text style={styles.pendingLabel}>Pending</Text>}
+              {isRejected && <Text style={styles.rejectedLabel}>Rejected</Text>}
+              {canModerate && isPending && !isOwn && (
+                <View style={styles.moderationRow}>
+                  <Pressable onPress={() => handleModeration(item.id, "approved")} style={({ pressed }) => [styles.moderationButton, styles.moderationApprove, pressed && styles.moderationPressed]}>
+                    <Text style={styles.moderationApproveText}>Approve</Text>
+                  </Pressable>
+                  <Pressable onPress={() => handleModeration(item.id, "rejected")} style={({ pressed }) => [styles.moderationButton, styles.moderationReject, pressed && styles.moderationPressed]}>
+                    <Text style={styles.moderationRejectText}>Reject</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
+        </>
       );
     },
     [currentUserId, canModerate, handleModeration, styles]
@@ -851,17 +943,37 @@ export default function ChatRoomScreen() {
       {/* Chat body */}
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 96 : 0}
+        behavior="padding"
+        keyboardVerticalOffset={0}
       >
         <FlatList
           ref={listRef}
           data={groupedMessages}
           keyExtractor={(item) => item.id}
           renderItem={renderMessage}
+          style={styles.list}
           contentContainerStyle={listContentStyle}
+          maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
           ListHeaderComponent={
             <View style={styles.groupMeta}>
+              {hasMoreOlder && (
+                <Pressable
+                  onPress={loadOlderMessages}
+                  disabled={loadingOlder}
+                  style={({ pressed }) => [
+                    styles.loadEarlierButton,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Load earlier messages"
+                >
+                  {loadingOlder ? (
+                    <ActivityIndicator size="small" color={CHAT_COLORS.accent} />
+                  ) : (
+                    <Text style={styles.loadEarlierText}>Load earlier messages</Text>
+                  )}
+                </Pressable>
+              )}
               <Text style={styles.groupDescription}>
                 {group.description || `${members.length} member${members.length !== 1 ? "s" : ""}`}
               </Text>
@@ -881,7 +993,12 @@ export default function ChatRoomScreen() {
         />
 
         {!showPendingQueue && (
-          <SafeAreaView edges={["bottom"]} style={styles.composerContainer}>
+          <View
+            style={[
+              styles.composerContainer,
+              { paddingBottom: keyboardVisible ? 0 : insets.bottom },
+            ]}
+          >
             <MentionAutocomplete
               query={mentionQuery}
               candidates={mentionCandidates}
@@ -909,7 +1026,7 @@ export default function ChatRoomScreen() {
                 <ArrowUp size={20} color={!newMessage.trim() || sending ? CHAT_COLORS.muted : "#ffffff"} />
               </Pressable>
             </View>
-          </SafeAreaView>
+          </View>
         )}
 
         {requiresApproval && !canModerate && !showPendingQueue && (
@@ -1083,11 +1200,32 @@ const createStyles = () =>
     backButtonText: { color: "#ffffff", fontSize: fontSize.sm, fontWeight: fontWeight.semibold },
     groupMeta: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm },
     groupDescription: { fontSize: fontSize.sm, color: CHAT_COLORS.subtitle },
-    listContent: { paddingHorizontal: spacing.md, gap: spacing.sm },
-    messageRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+    loadEarlierButton: {
+      alignSelf: "center",
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      marginBottom: spacing.xs,
+    },
+    loadEarlierText: {
+      fontSize: fontSize.xs,
+      fontWeight: fontWeight.medium,
+      color: CHAT_COLORS.accent,
+    },
+    list: { flex: 1 },
+    listContent: { paddingHorizontal: spacing.md, gap: spacing.xs },
+    daySeparator: {
+      alignItems: "center",
+      paddingVertical: spacing.sm,
+    },
+    daySeparatorText: {
+      fontSize: fontSize.xs,
+      color: CHAT_COLORS.muted,
+      fontWeight: fontWeight.medium,
+    },
+    messageRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xs },
     messageRowOwn: { flexDirection: "row-reverse" },
-    messageColumn: { width: 32, alignItems: "center" },
-    avatarSpacer: { width: 32, height: 32 },
+    messageColumn: { width: AVATAR_SIZES.xs, alignItems: "center" },
+    avatarSpacer: { width: AVATAR_SIZES.xs },
     messageBody: { flex: 1, gap: 4 },
     messageBodyOwn: { alignItems: "flex-end" },
     messageMetaRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.xs },

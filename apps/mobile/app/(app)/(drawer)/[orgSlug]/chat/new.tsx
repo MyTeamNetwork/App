@@ -22,7 +22,7 @@ import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { Avatar } from "@/components/ui/Avatar";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { MOBILE_CHAT_MEMBER_DIRECTORY_ROLES } from "@/lib/chat-helpers";
 
 type OrgMember = {
@@ -102,7 +102,7 @@ export default function NewChatScreen() {
       borderColor: n.border,
       paddingHorizontal: SPACING.md,
       paddingVertical: SPACING.sm,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       minHeight: 44,
     },

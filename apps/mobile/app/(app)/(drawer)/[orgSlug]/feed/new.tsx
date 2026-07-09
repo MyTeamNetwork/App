@@ -24,7 +24,7 @@ import { showToast } from "@/components/ui/Toast";
 import * as sentry from "@/lib/analytics/sentry";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 
@@ -106,10 +106,9 @@ export default function NewPostScreen() {
       flexGrow: 1,
     },
     bodyInput: {
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       minHeight: 140,
-      lineHeight: 22,
     },
     charCounter: {
       paddingHorizontal: SPACING.md,

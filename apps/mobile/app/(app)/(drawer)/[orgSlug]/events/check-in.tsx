@@ -33,7 +33,7 @@ import { useEventRSVPs, type EventRSVP } from "@/hooks/useEventRSVPs";
 import type { Event } from "@/hooks/useEvents";
 import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS, SHADOWS, AVATAR_SIZES } from "@/lib/design-tokens";
-import { TYPOGRAPHY } from "@/lib/typography";
+import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { formatShortWeekdayDate, formatTime } from "@/lib/date-format";
@@ -178,7 +178,7 @@ export default function CheckInScreen() {
     },
     searchInput: {
       flex: 1,
-      ...TYPOGRAPHY.bodyMedium,
+      ...textInputTypography("bodyMedium"),
       color: n.foreground,
       paddingVertical: 0,
     },
