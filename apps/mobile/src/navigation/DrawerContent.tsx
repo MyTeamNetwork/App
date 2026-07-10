@@ -33,7 +33,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOrg } from "@/contexts/OrgContext";
 import { useOrgRole } from "@/hooks/useOrgRole";
 import { useNavConfig } from "@/hooks/useNavConfig";
-import { signOut } from "@/lib/supabase";
+import { signOut } from "@/lib/sign-out";
 import { getWebAppUrl } from "@/lib/web-api";
 import { spacing, fontSize, fontWeight } from "@/lib/theme";
 import { NEUTRAL, SEMANTIC, RADIUS } from "@/lib/design-tokens";

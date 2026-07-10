@@ -13,7 +13,7 @@ const drawerContentSource = fs.readFileSync(
 
 describe("delete-account regressions", () => {
   it("uses the shared Supabase sign-out flow instead of the auth-context wrapper", () => {
-    expect(deleteAccountScreenSource).toContain('import { signOut } from "@/lib/supabase";');
+    expect(deleteAccountScreenSource).toContain('import { signOut } from "@/lib/sign-out";');
     expect(deleteAccountScreenSource).not.toContain('const { signOut } = useAuth();');
   });
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { Lock, Fingerprint } from "lucide-react-native";
-import { supabase } from "@/lib/supabase";
+import { signOut } from "@/lib/sign-out";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 
@@ -12,6 +12,7 @@ interface LockScreenProps {
 export function LockScreen({ onUnlock }: LockScreenProps) {
   const [busy, setBusy] = useState(false);
   const [failures, setFailures] = useState(0);
+  const [signOutFailed, setSignOutFailed] = useState(false);
 
   const tryUnlock = useCallback(async () => {
     if (busy) return;
@@ -29,10 +30,13 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
   }, []);
 
   const handleSignOut = useCallback(async () => {
+    setBusy(true);
+    setSignOutFailed(false);
     try {
-      await supabase.auth.signOut();
+      await signOut();
     } catch {
-      // AuthContext will redirect on session change either way.
+      setSignOutFailed(true);
+      setBusy(false);
     }
   }, []);
 
@@ -68,9 +72,19 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
         </Pressable>
 
         {failures >= 2 && (
-          <Pressable onPress={handleSignOut} style={styles.signOutLink} hitSlop={12}>
-            <Text style={styles.signOutText}>Sign out instead</Text>
-          </Pressable>
+          <>
+            <Pressable
+              onPress={handleSignOut}
+              disabled={busy}
+              style={styles.signOutLink}
+              hitSlop={12}
+            >
+              <Text style={styles.signOutText}>Sign out instead</Text>
+            </Pressable>
+            {signOutFailed && (
+              <Text style={styles.signOutError}>Couldn&apos;t securely sign out. Please try again.</Text>
+            )}
+          </>
         )}
       </View>
     </View>
@@ -129,5 +143,11 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.labelMedium,
     color: "rgba(255,255,255,0.65)",
     textDecorationLine: "underline",
+  },
+  signOutError: {
+    ...TYPOGRAPHY.bodySmall,
+    color: "#fca5a5",
+    marginTop: SPACING.sm,
+    textAlign: "center",
   },
 });

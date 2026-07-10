@@ -32,7 +32,8 @@ import {
   ChevronRight,
   Building2,
 } from "lucide-react-native";
-import { supabase, signOut } from "@/lib/supabase";
+import { signOut } from "@/lib/sign-out";
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/hooks/useNotifications";
 import { normalizeRole, roleFlags } from "@teammeet/core";

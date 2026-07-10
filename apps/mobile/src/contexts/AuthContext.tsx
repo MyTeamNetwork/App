@@ -5,9 +5,9 @@
  */
 
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef, ReactNode } from "react";
+import { signOut as signOutSession } from "@/lib/sign-out";
 import { supabase } from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
-import { signOutCleanup } from "@/lib/lifecycle";
 import { listSyncedOrgIds, removeAllOrgCalendars } from "@/lib/native-calendar";
 import { setOrgCalendarSyncEnabled } from "@/lib/native-calendar-prefs";
 import { Alert } from "react-native";
@@ -30,8 +30,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const isMountedRef = useRef(true);
-  const sessionRef = useRef<Session | null>(null);
-  sessionRef.current = session;
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -139,12 +137,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     }
 
-    // Run cleanup BEFORE signOut so RLS-gated deletes (push tokens) succeed.
-    const userId = sessionRef.current?.user?.id;
-    if (userId) {
-      await signOutCleanup({ userId });
-    }
-    await supabase.auth.signOut();
+    await signOutSession();
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({

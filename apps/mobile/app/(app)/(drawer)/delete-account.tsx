@@ -20,7 +20,7 @@ import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { useThemedStyles } from "@/hooks/useThemedStyles";
 import { TYPOGRAPHY, textInputTypography } from "@/lib/typography";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
-import { signOut } from "@/lib/supabase";
+import { signOut } from "@/lib/sign-out";
 
 const CONFIRMATION_TEXT = "DELETE MY ACCOUNT";
 const API_PATH = "/api/user/delete-account";

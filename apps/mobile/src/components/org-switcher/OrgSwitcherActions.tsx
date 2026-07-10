@@ -1,7 +1,7 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { LogOut } from "lucide-react-native";
 import { useRouter } from "expo-router";
-import { signOut } from "@/lib/supabase";
+import { signOut } from "@/lib/sign-out";
 import { NEUTRAL, SEMANTIC, SHADOWS, RADIUS, SPACING } from "@/lib/design-tokens";
 
 export function OrgSwitcherActions() {

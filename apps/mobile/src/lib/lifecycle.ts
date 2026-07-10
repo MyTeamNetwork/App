@@ -27,7 +27,7 @@ import * as sentry from "@/lib/analytics/sentry";
 import { LiveActivityNative } from "../../modules/live-activity/src";
 
 export interface SignOutCleanupOptions {
-  userId: string;
+  userId: string | null;
 }
 
 export async function signOutCleanup({ userId }: SignOutCleanupOptions): Promise<void> {
@@ -45,7 +45,7 @@ export async function signOutCleanup({ userId }: SignOutCleanupOptions): Promise
   // mark the corresponding `live_activity_tokens` rows as `ended_at = now()`
   // so the dispatcher stops fanning out to a logged-out token. The server
   // call has to happen BEFORE supabase.auth.signOut() so the session is still
-  // valid; signOutCleanup is invoked from AuthContext exactly there.
+  // valid; the shared sign-out helper invokes signOutCleanup exactly there.
   if (Platform.OS === "ios") {
     try {
       await LiveActivityNative.endAll("immediate");
