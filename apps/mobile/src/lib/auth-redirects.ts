@@ -12,7 +12,7 @@ export function buildMobileRecoveryRedirectTo(
 ): string {
   const base = normalizeOrigin(siteUrl);
   const resetPage = `/auth/reset-password?redirect=${encodeURIComponent(innerRedirect)}`;
-  return `${base}/auth/callback?redirect=${encodeURIComponent(resetPage)}`;
+  return `${base}/auth/confirm?next=${encodeURIComponent(resetPage)}`;
 }
 
 export function buildMobileEmailSignupCallbackUrl(siteUrl: string): string {

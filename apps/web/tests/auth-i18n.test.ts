@@ -61,3 +61,17 @@ test("auth locale files contain every translation key used by the auth clients",
     }
   }
 });
+
+test("claim-account copy consistently describes the configured 8-digit email code", () => {
+  const codeCopyKeys = ["claimSubtitle", "claimCodeSent", "claimCodeLabel"];
+
+  for (const locale of SUPPORTED_LOCALES) {
+    const messages = readJson(`messages/${locale}.json`);
+
+    for (const key of codeCopyKeys) {
+      const copy = getNestedValue(messages, `auth.${key}`);
+      assert.equal(typeof copy, "string", `${locale} is missing auth.${key}`);
+      assert.match(copy as string, /8/, `${locale} auth.${key} must describe an 8-digit code`);
+    }
+  }
+});
