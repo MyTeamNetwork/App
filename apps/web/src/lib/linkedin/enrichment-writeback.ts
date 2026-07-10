@@ -6,6 +6,7 @@
 // normalized LinkedIn URL, then write via the appropriate RPC.
 // ---------------------------------------------------------------------------
 
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import {
@@ -67,15 +68,29 @@ async function storeProfilePhoto(
   kind: "alumni" | "user",
   id: string,
 ): Promise<string | null> {
+  return storeRemoteImage(supabase, sourceUrl, (contentType) => `${kind}/${id}.${photoExtFromContentType(contentType)}`);
+}
+
+/**
+ * Shared download/validate/upload core for expiring LinkedIn image URLs.
+ * `pathFor` receives the response content-type — profile photos derive their
+ * file extension from it, logos use a fixed content-hash path.
+ */
+async function storeRemoteImage(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  sourceUrl: string,
+  pathFor: (contentType: string) => string,
+  fetchFn: typeof fetch = fetch,
+): Promise<string | null> {
   try {
-    const res = await fetch(sourceUrl);
+    const res = await fetchFn(sourceUrl);
     if (!res.ok) return null;
     const contentType = (res.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim();
     if (!contentType.startsWith("image/")) return null;
     const buffer = Buffer.from(await res.arrayBuffer());
     if (buffer.byteLength === 0 || buffer.byteLength > MAX_PHOTO_BYTES) return null;
-
-    const path = `${kind}/${id}.${photoExtFromContentType(contentType)}`;
+    const path = pathFor(contentType);
     const { error } = await supabase.storage
       .from(PHOTO_BUCKET)
       .upload(path, buffer, { contentType, upsert: true });
@@ -88,6 +103,84 @@ async function storeProfilePhoto(
   } catch (err) {
     console.error("[enrichment-writeback] photo download/store failed:", err);
     return null;
+  }
+}
+
+export function isDurableImageUrl(url: string): boolean {
+  return url.includes("/storage/v1/object/public/");
+}
+
+export function logoStoragePath(url: string): string | null {
+  if (!url.startsWith("http://") && !url.startsWith("https://")) return null;
+  try {
+    const parsed = new URL(url);
+    const key = parsed.origin + parsed.pathname;
+    return "logos/" + createHash("sha256").update(key).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+const LOGO_CONCURRENCY = 4;
+
+export async function rehostProfileLogos(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  profile: ApifyProfileResult,
+  cache: Map<string, Promise<string | null>>,
+  fetchFn: typeof fetch = fetch,
+): Promise<void> {
+  type LogoSlot = { obj: Record<string, string | null>; field: string };
+  const slots: LogoSlot[] = [];
+
+  for (const exp of profile.experience ?? []) {
+    slots.push({ obj: exp as unknown as Record<string, string | null>, field: "company_logo_url" });
+  }
+  for (const edu of profile.education ?? []) {
+    slots.push({ obj: edu as unknown as Record<string, string | null>, field: "institute_logo_url" });
+  }
+  for (const cert of profile.certifications ?? []) {
+    slots.push({ obj: cert as unknown as Record<string, string | null>, field: "logo_url" });
+  }
+
+  const toProcess = slots.filter(({ obj, field }) => {
+    const url = obj[field];
+    if (!url) return false;
+    if (isDurableImageUrl(url)) return false;
+    if (!logoStoragePath(url)) return false;
+    return true;
+  });
+
+  for (let i = 0; i < toProcess.length; i += LOGO_CONCURRENCY) {
+    const batch = toProcess.slice(i, i + LOGO_CONCURRENCY);
+    await Promise.all(
+      batch.map(async ({ obj, field }) => {
+        const url = obj[field]!;
+        const path = logoStoragePath(url)!;
+
+        if (!cache.has(path)) {
+          const promise = (async (): Promise<string | null> => {
+            const { data: publicUrlData } = supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path);
+            const publicUrl: string | null = publicUrlData?.publicUrl ?? null;
+            if (publicUrl) {
+              try {
+                const headRes = await fetchFn(publicUrl, { method: "HEAD" });
+                if (headRes.ok) return publicUrl;
+              } catch {
+                // Fall through to download.
+              }
+            }
+            return storeRemoteImage(supabase, url, () => path, fetchFn);
+          })();
+          cache.set(path, promise);
+        }
+
+        const durableUrl = await cache.get(path)!;
+        if (durableUrl) {
+          obj[field] = durableUrl;
+        }
+      }),
+    );
   }
 }
 
@@ -130,6 +223,7 @@ export async function processFinishedApifyRun(
 
   const profiles = dataset.profiles;
   const byUrl = new Map<string, ApifyProfileResult>();
+  const logoCache = new Map<string, Promise<string | null>>();
   for (const profile of profiles) {
     for (const key of getApifyProfileUrlKeys(profile)) {
       byUrl.set(key, profile);
@@ -179,7 +273,7 @@ export async function processFinishedApifyRun(
       continue;
     }
 
-    const ok = await writeTarget(supabase, target, profile);
+    const ok = await writeTarget(supabase, target, profile, logoCache);
     if (ok) {
       await supabase
         .from("linkedin_enrichment_runs")
@@ -200,7 +294,9 @@ async function writeTarget(
   supabase: any,
   target: RunTargetRow,
   profile: ApifyProfileResult,
+  logoCache: Map<string, Promise<string | null>>,
 ): Promise<boolean> {
+  await rehostProfileLogos(supabase, profile, logoCache);
   const fields = mapApifyToFields(profile);
 
   if (target.target_kind === "alumni") {

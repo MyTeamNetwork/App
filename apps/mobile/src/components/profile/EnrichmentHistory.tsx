@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Image } from "expo-image";
 import { Briefcase, GraduationCap } from "lucide-react-native";
@@ -13,88 +14,6 @@ const COLORS = {
   card: "#f8fafc",
   mutedSurface: "#f1f5f9",
 };
-
-/**
- * Renders Experience + Education from the Apify-normalized `work_history` /
- * `education_history` arrays, including per-entry company/school logos. Returns
- * null when both are empty. Shared by the mobile alumni + member detail screens.
- */
-export function EnrichmentHistory({
-  workHistory,
-  educationHistory,
-}: {
-  workHistory?: WorkHistoryEntry[] | null;
-  educationHistory?: EducationEntry[] | null;
-}) {
-  const work = (workHistory ?? []).filter(Boolean);
-  const education = (educationHistory ?? []).filter(Boolean);
-
-  if (work.length === 0 && education.length === 0) return null;
-
-  return (
-    <>
-      {work.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Experience</Text>
-          {work.map((job, i) => (
-            <View key={i} style={[styles.row, i > 0 && styles.rowBorder]}>
-              {job.company_logo_url ? (
-                <Image source={job.company_logo_url} style={styles.logo} contentFit="cover" transition={200} />
-              ) : (
-                <View style={styles.logoPlaceholder}>
-                  <Briefcase size={18} color={COLORS.mutedText} />
-                </View>
-              )}
-              <View style={styles.rowContent}>
-                <Text style={styles.rowTitle}>{job.title || "Position"}</Text>
-                {(job.company || job.location) && (
-                  <Text style={styles.rowSubtitle}>
-                    {[job.company, job.location].filter(Boolean).join(" · ")}
-                  </Text>
-                )}
-                {(job.start_date || job.end_date) && (
-                  <Text style={styles.rowMeta}>
-                    {job.start_date || "?"} – {job.end_date || "Present"}
-                  </Text>
-                )}
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {education.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Education</Text>
-          {education.map((edu, i) => (
-            <View key={i} style={[styles.row, i > 0 && styles.rowBorder]}>
-              {edu.institute_logo_url ? (
-                <Image source={edu.institute_logo_url} style={styles.logo} contentFit="cover" transition={200} />
-              ) : (
-                <View style={styles.logoPlaceholder}>
-                  <GraduationCap size={18} color={COLORS.mutedText} />
-                </View>
-              )}
-              <View style={styles.rowContent}>
-                <Text style={styles.rowTitle}>{edu.title || "School"}</Text>
-                {(edu.degree || edu.field_of_study) && (
-                  <Text style={styles.rowSubtitle}>
-                    {[edu.degree, edu.field_of_study].filter(Boolean).join(", ")}
-                  </Text>
-                )}
-                {(edu.start_year || edu.end_year) && (
-                  <Text style={styles.rowMeta}>
-                    {edu.start_year || "?"} – {edu.end_year || "Present"}
-                  </Text>
-                )}
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-    </>
-  );
-}
 
 const styles = StyleSheet.create({
   section: {
@@ -152,3 +71,101 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 });
+
+function LogoImage({ uri, fallback }: { uri: string; fallback: React.ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <View style={styles.logoPlaceholder}>{fallback}</View>;
+  }
+  return (
+    <Image
+      source={uri}
+      style={styles.logo}
+      contentFit="cover"
+      transition={200}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+/**
+ * Renders Experience + Education from the Apify-normalized `work_history` /
+ * `education_history` arrays, including per-entry company/school logos. Returns
+ * null when both are empty. Shared by the mobile alumni + member detail screens.
+ */
+export function EnrichmentHistory({
+  workHistory,
+  educationHistory,
+}: {
+  workHistory?: WorkHistoryEntry[] | null;
+  educationHistory?: EducationEntry[] | null;
+}) {
+  const work = (workHistory ?? []).filter(Boolean);
+  const education = (educationHistory ?? []).filter(Boolean);
+
+  if (work.length === 0 && education.length === 0) return null;
+
+  return (
+    <>
+      {work.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Experience</Text>
+          {work.map((job, i) => (
+            <View key={i} style={[styles.row, i > 0 && styles.rowBorder]}>
+              {job.company_logo_url ? (
+                <LogoImage uri={job.company_logo_url} fallback={<Briefcase size={18} color={COLORS.mutedText} />} />
+              ) : (
+                <View style={styles.logoPlaceholder}>
+                  <Briefcase size={18} color={COLORS.mutedText} />
+                </View>
+              )}
+              <View style={styles.rowContent}>
+                <Text style={styles.rowTitle}>{job.title || "Position"}</Text>
+                {(job.company || job.location) && (
+                  <Text style={styles.rowSubtitle}>
+                    {[job.company, job.location].filter(Boolean).join(" · ")}
+                  </Text>
+                )}
+                {(job.start_date || job.end_date) && (
+                  <Text style={styles.rowMeta}>
+                    {job.start_date || "?"} – {job.end_date || "Present"}
+                  </Text>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {education.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Education</Text>
+          {education.map((edu, i) => (
+            <View key={i} style={[styles.row, i > 0 && styles.rowBorder]}>
+              {edu.institute_logo_url ? (
+                <LogoImage uri={edu.institute_logo_url} fallback={<GraduationCap size={18} color={COLORS.mutedText} />} />
+              ) : (
+                <View style={styles.logoPlaceholder}>
+                  <GraduationCap size={18} color={COLORS.mutedText} />
+                </View>
+              )}
+              <View style={styles.rowContent}>
+                <Text style={styles.rowTitle}>{edu.title || "School"}</Text>
+                {(edu.degree || edu.field_of_study) && (
+                  <Text style={styles.rowSubtitle}>
+                    {[edu.degree, edu.field_of_study].filter(Boolean).join(", ")}
+                  </Text>
+                )}
+                {(edu.start_year || edu.end_year) && (
+                  <Text style={styles.rowMeta}>
+                    {edu.start_year || "?"} – {edu.end_year || "Present"}
+                  </Text>
+                )}
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </>
+  );
+}
