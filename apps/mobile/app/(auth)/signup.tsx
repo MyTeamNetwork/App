@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, Redirect, useRouter, useNavigation } from "expo-router";
 import { ChevronLeft, Eye, EyeOff } from "lucide-react-native";
+import { isExistingAccountSignup } from "@teammeet/core";
 import { supabase } from "@/lib/supabase";
 import { isAppleAuthCanceled, signUpWithApple } from "@/lib/apple-auth";
 import { captureException, track } from "@/lib/analytics";
@@ -236,7 +237,7 @@ export default function SignupScreen() {
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: creds.email,
         password: creds.password,
         options: {
@@ -257,6 +258,13 @@ export default function SignupScreen() {
           helpfulMessage = "This email is already registered. Try signing in instead.";
         }
         setApiError(helpfulMessage);
+      } else if (isExistingAccountSignup(data?.user)) {
+        // Supabase returns "success" with an identity-less user when the email
+        // is already registered — no confirmation email is sent for an
+        // already-confirmed account, so don't promise one.
+        setApiError(
+          "This email is already registered. Try signing in instead, or reset your password if you've forgotten it.",
+        );
       } else {
         track("user_signed_up", { method: "email" });
         // Show success and navigate to login

@@ -149,6 +149,7 @@
     "haveAccount": "已有账户？",
     "checkEmail": "请查看邮箱获取魔法链接！",
     "checkEmailConfirm": "请查看邮箱确认您的账户！",
+    "emailAlreadyRegistered": "该邮箱已注册账户。请直接登录，如忘记密码可重置密码。",
     "checkEmailReset": "请查看邮箱获取密码重置链接！",
     "completeCaptcha": "请完成验证码验证",
     "completeDobFirst": "请先完成出生日期步骤",

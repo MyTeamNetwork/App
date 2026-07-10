@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { ChevronLeft, CheckCircle } from "lucide-react-native";
 import { supabase } from "@/lib/supabase";
 import { captureException } from "@/lib/analytics";
 import { borderRadius, spacing, fontSize } from "@/lib/theme";
+import Turnstile, { type TurnstileRef } from "@/components/Turnstile";
 import { getWebAppUrl } from "@/lib/web-api";
 import { buildMobileRecoveryRedirectTo } from "@/lib/auth-redirects";
 
@@ -29,7 +30,6 @@ const colors = {
   // Backgrounds
   background: "#ffffff",
   inputBackground: "#f8fafc",
-  successBackground: "#f0fdf4",
 
   // Text
   title: "#0f172a",
@@ -84,13 +84,18 @@ export default function ForgotPasswordScreen() {
   const isFormValid = isEmailValid(email);
   const recoveryRedirectTo = buildMobileRecoveryRedirectTo(getWebAppUrl());
 
+  // Captcha — the project enforces captcha protection on /recover, so the
+  // reset request is only sent after Turnstile verifies.
+  const turnstileRef = useRef<TurnstileRef>(null);
+  const pendingEmailRef = useRef<string | null>(null);
+
   const handleEmailChange = (text: string) => {
     setEmail(text);
     setEmailError("");
     setApiError("");
   };
 
-  const handleResetPassword = async () => {
+  const handleResetPassword = () => {
     setEmailError("");
     setApiError("");
 
@@ -104,14 +109,24 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
+    pendingEmailRef.current = trimmedEmail.toLowerCase();
     setLoading(true);
+    turnstileRef.current?.show();
+  };
+
+  const handleCaptchaVerify = async (captchaToken: string) => {
+    const pendingEmail = pendingEmailRef.current;
+    pendingEmailRef.current = null;
+    if (!pendingEmail) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        trimmedEmail.toLowerCase(),
-        {
-          redirectTo: recoveryRedirectTo,
-        }
-      );
+      const { error } = await supabase.auth.resetPasswordForEmail(pendingEmail, {
+        redirectTo: recoveryRedirectTo,
+        captchaToken,
+      });
 
       if (error) {
         captureException(new Error(error.message), {
@@ -138,6 +153,20 @@ export default function ForgotPasswordScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCaptchaCancel = () => {
+    pendingEmailRef.current = null;
+    setLoading(false);
+  };
+
+  const handleCaptchaError = (message: string) => {
+    pendingEmailRef.current = null;
+    setLoading(false);
+    setApiError("Verification failed. Please try again.");
+    captureException(new Error(`Turnstile: ${message}`), {
+      screen: "ForgotPassword",
+    });
   };
 
   const getInputStyle = (focused: boolean, hasError: boolean) => {
@@ -272,6 +301,13 @@ export default function ForgotPasswordScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Turnstile
+        ref={turnstileRef}
+        onVerify={handleCaptchaVerify}
+        onError={handleCaptchaError}
+        onCancel={handleCaptchaCancel}
+      />
     </View>
   );
 }

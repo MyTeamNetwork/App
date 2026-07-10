@@ -143,6 +143,7 @@
     "haveAccount": "Ya tienes una cuenta?",
     "checkEmail": "Revisa tu correo para el enlace magico!",
     "checkEmailConfirm": "Revisa tu correo para confirmar tu cuenta!",
+    "emailAlreadyRegistered": "Ya existe una cuenta con este correo electrónico. Inicia sesión o restablece tu contraseña si la olvidaste.",
     "checkEmailReset": "Revisa tu correo para el enlace de restablecimiento!",
     "didntReceiveEmail": "No recibiste el correo?",
     "resendConfirmation": "Reenviar correo de confirmacion",

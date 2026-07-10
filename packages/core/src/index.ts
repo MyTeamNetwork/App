@@ -1,5 +1,6 @@
-// Auth - Role utilities and permissions
+// Auth - Role utilities, permissions, and signup result interpretation
 export { normalizeRole, roleFlags, type OrgRole } from "./auth/index";
+export { isExistingAccountSignup } from "./auth/index";
 export {
   canViewAlumni,
   canUseAdminActions,

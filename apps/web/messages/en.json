@@ -144,6 +144,7 @@
     "haveAccount": "Already have an account?",
     "checkEmail": "Check your email for the magic link!",
     "checkEmailConfirm": "Check your email to confirm your account!",
+    "emailAlreadyRegistered": "An account with this email already exists. Sign in instead, or reset your password if you've forgotten it.",
     "checkEmailReset": "Check your email for a password reset link!",
     "didntReceiveEmail": "Didn't receive the email?",
     "resendConfirmation": "Resend confirmation email",

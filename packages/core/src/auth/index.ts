@@ -1,4 +1,5 @@
 export { normalizeRole, roleFlags, type OrgRole } from "./role-utils";
+export { isExistingAccountSignup } from "./signup";
 export {
   canViewAlumni,
   canUseAdminActions,

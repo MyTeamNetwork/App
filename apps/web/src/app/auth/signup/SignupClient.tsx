@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Card, Captcha, CaptchaRef, InlineBanner } from "@/components/ui";
 import { useCaptcha } from "@/hooks/useCaptcha";
+import { isExistingAccountSignup } from "@teammeet/core";
 import { signupSchema, type SignupForm, type AgeBracket } from "@/lib/schemas/auth";
 import { PASSWORD_REQUIREMENTS } from "@/lib/auth/password";
 import { buildOAuthSignupCallbackUrl, buildEmailSignupCallbackUrl, buildAuthLink } from "@/lib/auth/redirect";
@@ -67,6 +68,7 @@ export function SignupClient({
   const [error, setError] = useState<string | null>(initialError);
   const [message, setMessage] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+  const [emailAlreadyRegistered, setEmailAlreadyRegistered] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [resendMessage, setResendMessage] = useState<string | null>(null);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "");
@@ -218,9 +220,10 @@ export function SignupClient({
 
     setIsLoading(true);
     setError(null);
+    setEmailAlreadyRegistered(false);
 
     const supabase = createClient()!;
-    const { error } = await supabase.auth.signUp({
+    const { data: signUpData, error } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
       options: {
@@ -237,6 +240,19 @@ export function SignupClient({
 
     if (error) {
       setError(error.message);
+      setIsLoading(false);
+      captchaRef.current?.reset();
+      return;
+    }
+
+    // Supabase returns "success" with an obfuscated identity-less user when
+    // the email is already registered — and sends no confirmation email if
+    // the account is already confirmed. Point the person at sign-in instead
+    // of promising an email that will never arrive.
+    if (isExistingAccountSignup(signUpData?.user)) {
+      setEmailAlreadyRegistered(true);
+      setMessage(null);
+      setSubmittedEmail(null);
       setIsLoading(false);
       captchaRef.current?.reset();
       return;
@@ -378,6 +394,26 @@ export function SignupClient({
       {message && (
         <InlineBanner variant="success" data-testid="signup-success" className="mb-4">
           {message}
+        </InlineBanner>
+      )}
+
+      {emailAlreadyRegistered && (
+        <InlineBanner variant="info" data-testid="signup-existing-account" className="mb-4">
+          {t("emailAlreadyRegistered")}
+          <div className="mt-2 flex items-center justify-end gap-4">
+            <Link
+              href={`/auth/forgot-password?redirect=${encodeURIComponent(redirectTo)}`}
+              className="font-medium underline hover:opacity-80"
+            >
+              {t("forgotPassword")}
+            </Link>
+            <Link
+              href={buildAuthLink("/auth/login", redirectTo)}
+              className="font-medium underline hover:opacity-80"
+            >
+              {t("signIn")}
+            </Link>
+          </div>
         </InlineBanner>
       )}
 

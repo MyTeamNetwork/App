@@ -149,6 +149,7 @@
     "haveAccount": "Hai già un account?",
     "checkEmail": "Controlla la tua e-mail per il link magico!",
     "checkEmailConfirm": "Controlla la tua e-mail per confermare il tuo account!",
+    "emailAlreadyRegistered": "Esiste già un account con questa e-mail. Accedi oppure reimposta la password se l'hai dimenticata.",
     "checkEmailReset": "Controlla la tua e-mail per il link di reimpostazione!",
     "completeCaptcha": "Completa la verifica captcha",
     "completeDobFirst": "Completa prima il passaggio della data di nascita",
