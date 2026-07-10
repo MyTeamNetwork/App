@@ -49,6 +49,7 @@ import {
   pass1RequiresToolBackedAnswer,
   isToolFirstEligible,
   deriveOrgStatsScope,
+  deriveEngagementWindowDays,
   deriveDonationAnalyticsDimension,
   deriveSearchOrgContentQuery,
   deriveNavigationQuery,
@@ -286,6 +287,7 @@ describe("getPass1Tools — single-tool cascade priorities", () => {
         "list_philanthropy_events",
         "list_donations",
         "get_org_stats",
+        "get_engagement_metrics",
         "suggest_connections",
         "list_available_mentors",
         "suggest_mentors",
@@ -380,6 +382,15 @@ describe("getPass1Tools — single-tool cascade priorities", () => {
       intentType: "knowledge_query",
       expectedToolNames: ["list_philanthropy_events"],
       expectedForcedTool: "list_philanthropy_events",
+    },
+    {
+      name: "ENGAGEMENT metrics → get_engagement_metrics",
+      message: "Analyze this organization's engagement over the past month",
+      surface: "general",
+      toolPolicy: "surface_read_tools",
+      intentType: "knowledge_query",
+      expectedToolNames: ["get_engagement_metrics"],
+      expectedForcedTool: "get_engagement_metrics",
     },
     {
       name: "DONATION analytics → get_donation_analytics",
@@ -726,6 +737,7 @@ describe("getPass1Tools — surface defaults", () => {
       "list_philanthropy_events",
       "list_donations",
       "get_org_stats",
+      "get_engagement_metrics",
       "suggest_connections",
       "list_available_mentors",
       "suggest_mentors",
@@ -767,6 +779,7 @@ describe("getPass1Tools — surface defaults", () => {
     );
     assert.deepEqual(namesOf(tools), [
       "get_org_stats",
+      "get_engagement_metrics",
       "search_org_content",
       "find_navigation_targets",
       "list_members",
@@ -1318,6 +1331,20 @@ describe("deriveDonationAnalyticsDimension", () => {
   }
 });
 
+describe("deriveEngagementWindowDays", () => {
+  const cases: Array<[string, number | null]> = [
+    ["engagement over the past 14 days", 14],
+    ["activity last week", 7],
+    ["participation this month", 30],
+    ["how active was the org", null],
+  ];
+  for (const [message, expected] of cases) {
+    it(`maps "${message}" → ${expected}`, () => {
+      assert.equal(deriveEngagementWindowDays(message), expected);
+    });
+  }
+});
+
 describe("deriveForcedPass1ToolArgs", () => {
   it("returns scope for get_org_stats when sub-pattern matches", () => {
     assert.deepEqual(
@@ -1329,6 +1356,20 @@ describe("deriveForcedPass1ToolArgs", () => {
   it("returns undefined for get_org_stats when scope is generic", () => {
     assert.equal(
       deriveForcedPass1ToolArgs("get_org_stats", "give me the snapshot"),
+      undefined,
+    );
+  });
+
+  it("returns window_days for get_engagement_metrics when a window matches", () => {
+    assert.deepEqual(
+      deriveForcedPass1ToolArgs("get_engagement_metrics", "engagement over the past 14 days"),
+      { window_days: 14 },
+    );
+  });
+
+  it("returns undefined for get_engagement_metrics when no window matches", () => {
+    assert.equal(
+      deriveForcedPass1ToolArgs("get_engagement_metrics", "how active is the org"),
       undefined,
     );
   });
@@ -1390,5 +1431,93 @@ describe("search and navigation derivation helpers", () => {
       deriveNavigationQuery("where is navigation settings?"),
       "navigation settings",
     );
+  });
+});
+
+describe("engagement deterministic routing regression", () => {
+  it("forces get_engagement_metrics for the dashboard engagement shortcut", async () => {
+    const message = "Analyze this organization's engagement over the past month.";
+    const tools = getPass1Tools(
+      message,
+      "general",
+      "surface_read_tools",
+      "knowledge_query",
+    );
+
+    assert.deepEqual(namesOf(tools), ["get_engagement_metrics"]);
+    assert.deepEqual(getForcedPass1ToolChoice(tools), {
+      type: "function",
+      function: { name: "get_engagement_metrics" },
+    });
+    assert.deepEqual(
+      deriveForcedPass1ToolArgs("get_engagement_metrics", message),
+      { window_days: 30 },
+    );
+
+    const [{ resolveSurfaceRouting }, { checkCacheEligibility }, { buildTurnExecutionPolicy }] =
+      await Promise.all([
+        import("../src/lib/ai/intent-router.ts"),
+        import("../src/lib/ai/semantic-cache-utils.ts"),
+        import("../src/lib/ai/turn-execution-policy.ts"),
+      ]);
+    const routing = resolveSurfaceRouting(message, "general");
+    const cacheEligibility = checkCacheEligibility({
+      message,
+      surface: routing.effectiveSurface,
+    });
+    const executionPolicy = buildTurnExecutionPolicy({
+      message,
+      requestedSurface: "general",
+      routing,
+      cacheEligibility,
+    });
+    const policyTools = getPass1Tools(
+      message,
+      routing.effectiveSurface,
+      executionPolicy.toolPolicy,
+      executionPolicy.intentType,
+    );
+
+    assert.equal(routing.intent, "general_query");
+    assert.equal(routing.intentType, "knowledge_query");
+    assert.equal(routing.effectiveSurface, "general");
+    assert.equal(cacheEligibility.eligible, false);
+    assert.equal(cacheEligibility.reason, "requires_live_org_context");
+    assert.equal(executionPolicy.toolPolicy, "surface_read_tools");
+    assert.deepEqual(namesOf(policyTools), ["get_engagement_metrics"]);
+    assert.deepEqual(getForcedPass1ToolChoice(policyTools), {
+      type: "function",
+      function: { name: "get_engagement_metrics" },
+    });
+  });
+
+  it("does not select get_engagement_metrics for weather", async () => {
+    const message = "What's the weather like?";
+    const [{ resolveSurfaceRouting }, { checkCacheEligibility }, { buildTurnExecutionPolicy }] =
+      await Promise.all([
+        import("../src/lib/ai/intent-router.ts"),
+        import("../src/lib/ai/semantic-cache-utils.ts"),
+        import("../src/lib/ai/turn-execution-policy.ts"),
+      ]);
+    const routing = resolveSurfaceRouting(message, "general");
+    const cacheEligibility = checkCacheEligibility({
+      message,
+      surface: routing.effectiveSurface,
+    });
+    const executionPolicy = buildTurnExecutionPolicy({
+      message,
+      requestedSurface: "general",
+      routing,
+      cacheEligibility,
+    });
+    const tools = getPass1Tools(
+      message,
+      routing.effectiveSurface,
+      executionPolicy.toolPolicy,
+      executionPolicy.intentType,
+    );
+
+    assert.equal(executionPolicy.toolPolicy, "none");
+    assert.equal(tools, undefined);
   });
 });

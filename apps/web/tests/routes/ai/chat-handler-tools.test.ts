@@ -941,6 +941,7 @@ test("ambiguous queries keep fallback surface tool set", async () => {
     "list_philanthropy_events",
     "list_donations",
     "get_org_stats",
+    "get_engagement_metrics",
     "suggest_connections",
     "list_available_mentors",
     "suggest_mentors",
@@ -995,6 +996,7 @@ test("analytics overview prompts still attach get_org_stats", async () => {
 
   assert.deepEqual(toolNamesForCall(0), [
     "get_org_stats",
+    "get_engagement_metrics",
     "search_org_content",
     "find_navigation_targets",
     "list_members",

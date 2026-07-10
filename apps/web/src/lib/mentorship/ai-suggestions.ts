@@ -361,7 +361,9 @@ export async function suggestMentors(
   }
 
   // Spread recommendations so the same top mentor isn't returned to everyone.
-  const matches = loadBalanceMatches(scored, mentorInputs);
+  const matches = loadBalanceMatches(scored, mentorInputs, {
+    menteeUserId: menteeUserId ?? undefined,
+  });
 
   // 6. Build display-ready suggestions
   // Load names for matched mentors
@@ -520,7 +522,7 @@ export async function suggestMentorsForPairing(
 
   // Spread recommendations across mentors so a single high-scoring mentor
   // isn't surfaced #1 for every student.
-  const top = loadBalanceMatches(matches, mentorInputs).slice(0, limit);
+  const top = loadBalanceMatches(matches, mentorInputs, { menteeUserId }).slice(0, limit);
   const matchedIds = top.map((m) => m.mentorUserId);
   const { data: mentorUsers } = await supabase
     .from("user_organization_roles")

@@ -338,9 +338,9 @@ export function formatPrepareChatMessageResponse(data: unknown): string | null {
 
     if (clarificationKind === "recipient_unavailable") {
       if (requestedRecipient) {
-        return `I can't send an in-app chat message to "${requestedRecipient}" right now. Pick a different member or choose someone with an active linked account.`;
+        return `I couldn't find "${requestedRecipient}" among members who can receive chat messages. Double-check the name on the Members page, or give me their full name and I'll try again.`;
       }
-      return "I can't send an in-app chat message to that person right now. Pick a different member or choose someone with an active linked account.";
+      return "I couldn't find that person among members who can receive chat messages. Double-check the name on the Members page, or give me their full name and I'll try again.";
     }
 
     if (missingFields.length === 0) {

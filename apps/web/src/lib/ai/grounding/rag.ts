@@ -91,8 +91,11 @@ function proseHasEntity(sentence: string): boolean {
 }
 
 function splitSentences(content: string): string[] {
-  return content
+  const SENTINEL = "\x00";
+  const safe = content.replace(/((?:^|\n)\s*\d+)\./g, `$1${SENTINEL}`);
+  return safe
     .split(/(?<=[.!?])\s+/)
+    .map((s) => s.replace(new RegExp(SENTINEL, "g"), "."))
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
@@ -114,6 +117,7 @@ export function extractFreeformClaims(content: string): Claim[] {
     }
   }
   for (const sentence of splitSentences(content)) {
+    if (/^\d+[.)]?\s*$/.test(sentence.trim())) continue;
     if (proseHasEntity(sentence)) {
       claims.push({ kind: "prose", text: sentence });
     }

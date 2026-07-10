@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert";
 
 import {
+  loadBalanceMatches,
   rankMentorsForMentee,
   type MenteeInput,
   type MentorInput,
@@ -255,8 +256,7 @@ describe("rankMentorsForMentee", () => {
     const r1 = rankMentorsForMentee(menteeBase, mentors).map((r) => r.mentorUserId);
     const r2 = rankMentorsForMentee(menteeBase, mentors).map((r) => r.mentorUserId);
     assert.deepStrictEqual(r1, r2);
-    // With identical score, mentorUserId asc
-    assert.deepStrictEqual(r1, ["aaa", "bbb", "ccc"]);
+    assert.deepStrictEqual([...r1].sort(), ["aaa", "bbb", "ccc"]);
   });
 
   it("excludes mentors in excludeMentorUserIds option", () => {
@@ -1006,5 +1006,128 @@ describe("loadBalanceMatches", () => {
     const inRoundAssigned = new Map([["a", 2]]);
     const ordered = loadBalanceMatches(matches, mentorInputs, { inRoundAssigned });
     assert.strictEqual(ordered[0].mentorUserId, "b");
+  });
+});
+
+describe("tie-break diversity (repro)", () => {
+  // Engineers 5 mentors that all score identically for any mentee
+  // by giving them IDENTICAL topic+signal profiles.
+  // Uses fixed UUIDs chosen to produce differing hash orders across mentees.
+  // Run BEFORE fix: all three mentees have same top-1 (localeCompare winner)
+  // Run AFTER fix: at least 2 of 3 mentees have different top-1 mentors.
+
+  const TOPICS = ["finance", "recruiting"];
+  const INDUSTRY = "Finance";
+  const JOB_TITLE = "Analyst";
+
+  // These mentor IDs are chosen so their djb2 hashes produce DIFFERENT orderings
+  // under each of the three mentee seeds below.
+  const mentorIds = [
+    "0dd0e830-acc0-3e00-9600-0000ae2b0e00",
+    "1a992600-5e40-d100-2c00-00009189ec00",
+    "85a1ac00-6c00-2c00-ec40-0000ccae4800",
+    "f024d800-2800-3800-0800-000088a49800",
+    "e464e800-f800-c800-5800-0000e8d5a800",
+  ];
+
+  const menteeIds = [
+    "bbbbbbbb-0000-0000-0000-000000000001",
+    "bbbbbbbb-0000-0000-0000-000000000002",
+    "bbbbbbbb-0000-0000-0000-000000000003",
+  ];
+
+  const tiedMentors: MentorInput[] = mentorIds.map((id) =>
+    mentor({
+      userId: id,
+      topics: TOPICS,
+      industry: INDUSTRY,
+      jobTitle: JOB_TITLE,
+      graduationYear: 2018,
+      currentCity: "New York",
+    })
+  );
+
+  function makeMentee(userId: string): MenteeInput {
+    return {
+      userId,
+      orgId: "org-1",
+      focusAreas: TOPICS,
+      preferredIndustries: [INDUSTRY],
+      preferredRoleFamilies: ["Finance"],
+      currentCity: "New York",
+      graduationYear: 2025,
+      currentCompany: null,
+    };
+  }
+
+  it("repro: at least 2 of 3 mentees with identical profiles get different top-1 mentors after fix", () => {
+    const top1s = menteeIds.map((id) => {
+      const ranked = rankMentorsForMentee(makeMentee(id), tiedMentors);
+      return ranked[0]?.mentorUserId;
+    });
+    // After fix: mentee-seeded hashes produce different orderings
+    const uniqueTop1s = new Set(top1s);
+    assert.ok(
+      uniqueTop1s.size >= 2,
+      `Expected at least 2 different top-1 mentors across 3 mentees, got: ${JSON.stringify(top1s)}`
+    );
+  });
+
+  it("stability: calling rankMentorsForMentee twice for same mentee returns identical ordered list", () => {
+    const mentee = makeMentee(menteeIds[0]);
+    const first = rankMentorsForMentee(mentee, tiedMentors).map((m) => m.mentorUserId);
+    const second = rankMentorsForMentee(mentee, tiedMentors).map((m) => m.mentorUserId);
+    assert.deepStrictEqual(first, second, "Order should be stable across repeated calls");
+  });
+
+  it("semantics: distinct scores produce score-descending order regardless of mentee id", () => {
+    // Give each mentor a clearly different score by varying topic overlap
+    const distinctMentors: MentorInput[] = [
+      mentor({
+        userId: mentorIds[0],
+        topics: ["finance", "recruiting"],
+        industry: "Finance",
+        jobTitle: "Analyst",
+        graduationYear: 2018,
+        currentCity: "New York",
+      }),
+      mentor({
+        userId: mentorIds[1],
+        topics: ["finance"],
+        industry: "Finance",
+        graduationYear: 2018,
+      }),
+      mentor({ userId: mentorIds[2], topics: [], graduationYear: 2020 }),
+    ];
+    const mentee = makeMentee(menteeIds[1]);
+    const ranked = rankMentorsForMentee(mentee, distinctMentors);
+    // scores should be strictly descending
+    for (let i = 1; i < ranked.length; i++) {
+      assert.ok(
+        ranked[i - 1].score >= ranked[i].score,
+        `Score not descending at index ${i}: ${ranked[i - 1].score} < ${ranked[i].score}`
+      );
+    }
+    // top mentor should always be the one with most topic overlap
+    assert.strictEqual(ranked[0].mentorUserId, mentorIds[0]);
+  });
+});
+
+describe("loadBalanceMatches tie-break backward compat", () => {
+  it("without menteeUserId, falls back to localeCompare for tied adjusted scores", () => {
+    // Two mentors with identical scores and utilization -> localeCompare should win
+    const m1: MentorInput = mentor({ userId: "zzz-mentor" });
+    const m2: MentorInput = mentor({ userId: "aaa-mentor" });
+
+    // Build fake MentorMatch objects with identical scores
+    const matches = [
+      { mentorUserId: "zzz-mentor", score: 100, signals: [], whyText: "" },
+      { mentorUserId: "aaa-mentor", score: 100, signals: [], whyText: "" },
+    ] as import("@/lib/mentorship/matching").MentorMatch[];
+
+    const result = loadBalanceMatches(matches, [m1, m2]);
+    // Without menteeUserId: localeCompare -> "aaa-mentor" < "zzz-mentor"
+    assert.strictEqual(result[0].mentorUserId, "aaa-mentor");
+    assert.strictEqual(result[1].mentorUserId, "zzz-mentor");
   });
 });

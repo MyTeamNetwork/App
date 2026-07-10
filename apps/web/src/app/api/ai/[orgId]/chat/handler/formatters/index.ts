@@ -9,6 +9,7 @@ import {
   formatDiscussionsResponse,
   formatJobPostingsResponse,
   formatOrgStatsResponse,
+  formatEngagementMetricsResponse,
   formatMembersResponse,
   formatAlumniResponse,
   formatEnterpriseAlumniResponse,
@@ -398,6 +399,8 @@ export function formatDeterministicToolResponse(
       return formatExtractScheduleFileResponse(data);
     case "get_org_stats":
       return formatOrgStatsResponse(data);
+    case "get_engagement_metrics":
+      return formatEngagementMetricsResponse(data);
     case "get_donation_analytics":
       return formatDonationAnalyticsResponse(data);
     case "get_enterprise_stats":

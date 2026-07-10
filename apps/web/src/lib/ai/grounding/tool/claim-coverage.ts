@@ -152,9 +152,16 @@ function parseStatClaim(content: string, label: string): number | null {
       continue;
     }
 
-    const numberFirst = line.match(new RegExp(`\\b(\\d+)\\b[^a-zA-Z]{0,10}\\b${escaped}\\b`, "i"));
+    const numberFirst = line.match(
+      new RegExp(`(?<![\\d-])\\b(\\d+)\\b[^a-zA-Z0-9]{0,10}\\b${escaped}\\b`, "i")
+    );
     if (numberFirst) {
-      return Number(numberFirst[1]);
+      const candidateNum = Number(numberFirst[1]);
+      if (/^(?:19|20)\d{2}$/.test(numberFirst[1])) {
+        const labelFirst = line.match(new RegExp(`\\b${escaped}\\b[^0-9]*(\\d+)`, "i"));
+        if (labelFirst) return Number(labelFirst[1]);
+      }
+      return candidateNum;
     }
 
     const labelFirst = line.match(new RegExp(`\\b${escaped}\\b[^0-9]*(\\d+)`, "i"));
@@ -259,17 +266,39 @@ export function formatKnownEventDates(startDate: string): string[] {
     return [isoDate];
   }
 
-  return [
-    isoDate,
-    parsed
+  const known = new Set<string>([isoDate]);
+  const addLongDate = (date: Date) => {
+    if (Number.isNaN(date.getTime())) return;
+    const formatted = date
       .toLocaleDateString("en-US", {
         timeZone: "UTC",
         year: "numeric",
         month: "long",
         day: "numeric",
       })
-      .toLowerCase(),
-  ];
+      .toLowerCase();
+    known.add(formatted);
+
+    const monthDay = formatted.match(
+      /^(january|february|march|april|may|june|july|august|september|october|november|december) (\d+),(.*)$/i
+    );
+    if (!monthDay) return;
+
+    const [, month, day, rest] = monthDay;
+    const paddedDay = day.padStart(2, "0");
+    const monthShort = month.slice(0, 3);
+    for (const dayVariant of new Set([day, paddedDay])) {
+      known.add(`${month} ${dayVariant},${rest}`);
+      known.add(`${monthShort} ${dayVariant},${rest}`);
+      known.add(`${month} ${dayVariant}`);
+      known.add(`${monthShort} ${dayVariant}`);
+    }
+  };
+
+  addLongDate(parsed);
+  addLongDate(new Date(`${isoDate}T00:00:00Z`));
+
+  return Array.from(known);
 }
 
 export function verifyOrgStats(content: string, data: unknown): string[] {
@@ -294,6 +323,37 @@ export function verifyOrgStats(content: string, data: unknown): string[] {
   ) {
     claimChecks.push(["total", stats.active_members + stats.alumni + stats.parents]);
   }
+
+  for (const [label, expected] of claimChecks) {
+    if (expected === null) continue;
+    const claimed = parseStatClaim(content, label);
+    if (claimed !== null && claimed !== expected) {
+      failures.push(`${label} claim ${claimed} did not match ${expected}`);
+    }
+  }
+
+  return failures;
+}
+
+export function verifyEngagementMetrics(content: string, data: unknown): string[] {
+  if (!data || typeof data !== "object") {
+    return ["get_engagement_metrics returned non-object data"];
+  }
+
+  const metrics = data as Partial<Record<string, unknown>>;
+  const failures: string[] = [];
+
+  const claimChecks: Array<[string, number | null]> = [
+    ["events", typeof metrics.events_held === "number" ? metrics.events_held : null],
+    ["rsvps", typeof metrics.event_rsvps === "number" ? metrics.event_rsvps : null],
+    ["announcements", typeof metrics.announcements_published === "number" ? metrics.announcements_published : null],
+    ["discussion", typeof metrics.discussion_threads_created === "number" ? metrics.discussion_threads_created : null],
+    ["replies", typeof metrics.discussion_replies === "number" ? metrics.discussion_replies : null],
+    ["posts", typeof metrics.feed_posts === "number" ? metrics.feed_posts : null],
+    ["comments", typeof metrics.feed_comments === "number" ? metrics.feed_comments : null],
+    ["messages", typeof metrics.chat_messages === "number" ? metrics.chat_messages : null],
+    ["contributors", typeof metrics.active_contributors === "number" ? metrics.active_contributors : null],
+  ];
 
   for (const [label, expected] of claimChecks) {
     if (expected === null) continue;
@@ -616,7 +676,31 @@ export function verifyListMembers(
       ) {
         continue;
       }
-      if (!names.has(normalizedCandidate) && !evidence?.identifiers.has(normalizedCandidate)) {
+      if (names.has(normalizedCandidate) || evidence?.identifiers.has(normalizedCandidate)) {
+        continue;
+      }
+
+      const paddedCandidate = ` ${normalizedCandidate} `;
+      const PROSE_CONNECTORS = new Set(["from", "of", "in", "at", "on", "the", "and", "who", "with"]);
+      const matchedByContainment =
+        normalizedCandidate.length >= 3 &&
+        [...names].some((known) => {
+          if (known.length < 3) return false;
+          const paddedKnown = ` ${known} `;
+          // candidate-contains-known: only if (a) known is multi-word, OR
+          // (b) known is single-word AND the candidate starts with that word
+          //     AND the very next token is a lowercase connector (prose continuation,
+          //     not a fabricated surname)
+          const candidateContainsKnown = known.includes(" ")
+            ? paddedCandidate.includes(paddedKnown)
+            : (() => {
+                const words = normalizedCandidate.split(/\s+/);
+                return words[0] === known && words.length > 1 && PROSE_CONNECTORS.has(words[1]);
+              })();
+          return candidateContainsKnown || paddedKnown.includes(paddedCandidate);
+        });
+
+      if (!matchedByContainment) {
         failures.push(`member name ${candidate} was not present in tool rows`);
       }
     }
@@ -751,7 +835,12 @@ export function verifyListDiscussions(
   }
 
   for (const candidate of extractUnquotedListEntryHeads(content)) {
-    if (!matchKnownTitle(candidate) && !evidence?.identifiers.has(normalizeIdentifier(candidate))) {
+    const normalized = normalizeIdentifier(candidate);
+    if (
+      !titles.has(normalized) &&
+      !titleHeadToFullTitle.has(normalized) &&
+      !evidence?.identifiers.has(normalized)
+    ) {
       failures.push(`discussion title ${candidate} was not present in tool rows`);
     }
   }

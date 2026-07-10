@@ -1337,3 +1337,295 @@ test("verifyToolBackedResponse: single-tool list_announcements with foreign date
     result.failures.join("; ")
   );
 });
+
+test("parseStatClaim: year-prefixed context line 'In 2026, active members: 50' is grounded", () => {
+  // Tests that a year at line start does not shadow the real stat that follows.
+  const result = verifyToolBackedResponse({
+    content: "In 2026, active members: 50",
+    toolResults: [
+      {
+        name: "get_org_stats",
+        data: { active_members: 50, alumni: 5, parents: 2, upcoming_events: 1, donations: null },
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});
+
+test("parseStatClaim: ISO-date-prefixed context 'As of 2026-07-09, active members: 50' is grounded", () => {
+  // Tests that ISO date fragments (07, 09) inside 2026-07-09 cannot be captured
+  // as the stat value instead of the real 50.
+  const result = verifyToolBackedResponse({
+    content: "As of 2026-07-09, active members: 50",
+    toolResults: [
+      {
+        name: "get_org_stats",
+        data: { active_members: 50, alumni: 5, parents: 2, upcoming_events: 1, donations: null },
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});
+
+test("parseStatClaim guard: wrong value after year prefix still fails", () => {
+  const result = verifyToolBackedResponse({
+    content: "In 2026, active members: 99",
+    toolResults: [
+      {
+        name: "get_org_stats",
+        data: { active_members: 50, alumni: 5, parents: 2, upcoming_events: 1, donations: null },
+      },
+    ],
+  });
+  assert.equal(result.grounded, false);
+  assert.ok(result.failures.some((f) => /active members claim 99 did not match 50/i.test(f)));
+});
+
+test("parseStatClaim guard: plain wrong value still fails", () => {
+  const result = verifyToolBackedResponse({
+    content: "99 active members",
+    toolResults: [
+      {
+        name: "get_org_stats",
+        data: { active_members: 23, alumni: 5, parents: 2, upcoming_events: 1, donations: null },
+      },
+    ],
+  });
+  assert.equal(result.grounded, false);
+  assert.ok(result.failures.some((f) => /active members claim 99 did not match 23/i.test(f)));
+});
+
+test("formatKnownEventDates fix C: offset-shifted event 'July 10, 2026' is grounded against '2026-07-10T19:00:00-05:00'", () => {
+  // The event start_date is July 10 in local time (UTC-5) but July 11 UTC.
+  // The model correctly writes "July 10, 2026" — this must not be rejected.
+  const result = verifyToolBackedResponse({
+    content: 'Upcoming event: "Team Meeting" on July 10, 2026.',
+    toolResults: [
+      {
+        name: "list_events",
+        data: [{ title: "Team Meeting", start_date: "2026-07-10T19:00:00-05:00" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});
+
+test("formatKnownEventDates fix C: zero-padded day 'July 09, 2026' is grounded against '2026-07-09T12:00:00Z'", () => {
+  const result = verifyToolBackedResponse({
+    content: 'Upcoming event: "Board Meeting" on July 09, 2026.',
+    toolResults: [
+      {
+        name: "list_events",
+        data: [{ title: "Board Meeting", start_date: "2026-07-09T12:00:00Z" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});
+
+test("formatKnownEventDates fix C guard: wrong month still fails", () => {
+  const result = verifyToolBackedResponse({
+    content: 'Upcoming event: "Team Meeting" on July 12, 2026.',
+    toolResults: [
+      {
+        name: "list_events",
+        data: [{ title: "Team Meeting", start_date: "2026-07-10T19:00:00-05:00" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, false);
+  assert.ok(result.failures.some((f) => /july 12, 2026/i.test(f)));
+});
+
+test("verifyListMembers fix A: 'John from Finance' matches known name 'John'", () => {
+  const result = verifyToolBackedResponse({
+    content: "- John from Finance",
+    toolResults: [
+      {
+        name: "list_members",
+        data: [{ name: "John" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});
+
+test("verifyListMembers fix A: 'Jane' matches known name 'Jane Smith'", () => {
+  const result = verifyToolBackedResponse({
+    content: "- Jane",
+    toolResults: [
+      {
+        name: "list_members",
+        data: [{ name: "Jane Smith" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});
+
+test("verifyListMembers fix A guard: 'Jane Doe' does not match 'Jane Smith'", () => {
+  const result = verifyToolBackedResponse({
+    content: "- Jane Doe",
+    toolResults: [
+      {
+        name: "list_members",
+        data: [{ name: "Jane Smith" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, false);
+  assert.ok(result.failures.some((f) => /jane doe/i.test(f)));
+});
+
+test("verifyListMembers fix A guard: 'Totally Unknown Person' still fails", () => {
+  const result = verifyToolBackedResponse({
+    content: "- Totally Unknown Person",
+    toolResults: [
+      {
+        name: "list_members",
+        data: [{ name: "Jane Smith" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, false);
+  assert.ok(result.failures.some((f) => /totally unknown person/i.test(f)));
+});
+
+test("verifyListDiscussions fix B: unquoted ambiguous head 'Sprint 3 - planning notes' is grounded", () => {
+  // Unquoted list entry whose head "Sprint 3" prefixes multiple real titles.
+  // This is not fabrication — matching multiple real titles should be accepted.
+  const result = verifyToolBackedResponse({
+    content: "- Sprint 3 - planning notes",
+    toolResults: [
+      {
+        name: "list_discussions",
+        data: [
+          {
+            title: "Sprint 3 - Backend",
+            body: "...",
+            reply_count: 3,
+            is_pinned: false,
+            is_locked: false,
+          },
+          {
+            title: "Sprint 3 - Frontend",
+            body: "...",
+            reply_count: 2,
+            is_pinned: false,
+            is_locked: false,
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});
+
+test("verifyListDiscussions fix B guard: unquoted fabricated discussion title still fails", () => {
+  const result = verifyToolBackedResponse({
+    content: "- Ghost Thread",
+    toolResults: [
+      {
+        name: "list_discussions",
+        data: [
+          {
+            title: "Sprint 3 - Backend",
+            body: "...",
+            reply_count: 3,
+            is_pinned: false,
+            is_locked: false,
+          },
+          {
+            title: "Sprint 3 - Frontend",
+            body: "...",
+            reply_count: 2,
+            is_pinned: false,
+            is_locked: false,
+          },
+        ],
+      },
+    ],
+  });
+  assert.equal(result.grounded, false);
+  assert.ok(result.failures.some((f) => /ghost thread/i.test(f)));
+});
+
+/* ── U8: single-word known-name containment guard (hallucination hole fix) ─── */
+
+test("verifyListMembers guard: 'Sam Carter' is NOT grounded by single-word known name 'Sam'", () => {
+  // This was the hallucination hole: " sam " is contained in " sam carter "
+  // so the old predicate wrongly accepted it. After the fix, single-word known
+  // names only ground a candidate when the next word is a prose connector.
+  const result = verifyToolBackedResponse({
+    content: "- Sam Carter",
+    toolResults: [
+      {
+        name: "list_members",
+        data: [{ name: "Sam" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, false);
+  assert.ok(
+    result.failures.some((f) => /sam carter.*not present/i.test(f)),
+    `expected failure about "sam carter", got: ${result.failures.join("; ")}`
+  );
+});
+
+test("verifyListMembers guard: 'John from Finance' still grounded by single-word known name 'John' (regression)", () => {
+  // Prose-continuation case must remain green: "from" is in the connector allowlist.
+  const result = verifyToolBackedResponse({
+    content: "- John from Finance",
+    toolResults: [
+      {
+        name: "list_members",
+        data: [{ name: "John" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});
+
+test("verifyListMembers guard: 'Alice in Wonderland' grounded by single-word known name 'Alice' (connector: in)", () => {
+  // "in" is in the connector allowlist.
+  const result = verifyToolBackedResponse({
+    content: "- Alice in Wonderland",
+    toolResults: [
+      {
+        name: "list_members",
+        data: [{ name: "Alice" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});
+
+test("verifyListMembers guard: 'John Carter' NOT grounded by single-word known name 'John'", () => {
+  // "carter" is not a connector -- this is a fabricated last name.
+  const result = verifyToolBackedResponse({
+    content: "- John Carter",
+    toolResults: [
+      {
+        name: "list_members",
+        data: [{ name: "John" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, false);
+  assert.ok(result.failures.some((f) => /john carter/i.test(f)));
+});
+
+test("verifyListMembers guard: 'John Smith Jr' grounded by multi-word known name 'John Smith'", () => {
+  // Multi-word known name CAN ground a longer candidate -- the original
+  // legitimate case. " john smith " is contained in " john smith jr ".
+  const result = verifyToolBackedResponse({
+    content: "- John Smith Jr",
+    toolResults: [
+      {
+        name: "list_members",
+        data: [{ name: "John Smith" }],
+      },
+    ],
+  });
+  assert.equal(result.grounded, true, result.failures.join("; "));
+});

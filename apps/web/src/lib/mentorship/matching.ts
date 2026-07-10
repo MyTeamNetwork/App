@@ -52,6 +52,29 @@ export interface ScoreOptions {
   excludeMentorUserIds?: Iterable<string>;
 }
 
+/**
+ * djb2 hash of a string, returned as a signed 32-bit integer.
+ * Deterministic: same input always gives the same output. No randomness, no Date.
+ */
+export function djb2Hash(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
+/**
+ * Deterministic tie-break seeded by one fixed user ID and two candidate IDs.
+ * Returns negative, zero, or positive with the same semantics as a comparator.
+ */
+export function stableTieBreak(fixedSeed: string, idA: string, idB: string): number {
+  const ha = djb2Hash(`${fixedSeed}:${idA}`);
+  const hb = djb2Hash(`${fixedSeed}:${idB}`);
+  if (ha !== hb) return ha - hb;
+  return idA.localeCompare(idB);
+}
+
 export function buildRarityStats(mentors: readonly MentorSignals[]): RarityStats {
   const industry = new Map<string, number>();
   const roleFamily = new Map<string, number>();
@@ -464,7 +487,7 @@ export function scoreMentorForMentee(
 }
 
 /**
- * Rank mentors for a mentee. Deterministic: score desc, then mentorUserId asc.
+ * Rank mentors for a mentee. Deterministic: score desc, then mentee-seeded tie-break.
  * Hard filters applied before scoring. Candidates with zero qualifying signals dropped.
  */
 export function rankMentorsForMentee(
@@ -492,10 +515,10 @@ export function rankMentorsForMentee(
     if (match) matches.push(match);
   }
 
-  // Stable deterministic sort: score desc, then mentorUserId asc
+  // Stable deterministic sort: score desc, then per-mentee tie-break.
   matches.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return a.mentorUserId.localeCompare(b.mentorUserId);
+    return stableTieBreak(mentee.userId, a.mentorUserId, b.mentorUserId);
   });
 
   return matches;
@@ -515,7 +538,11 @@ export function rankMentorsForMentee(
 export function loadBalanceMatches(
   matches: readonly MentorMatch[],
   mentorInputs: readonly MentorInput[],
-  options: { penaltyStrength?: number; inRoundAssigned?: ReadonlyMap<string, number> } = {}
+  options: {
+    penaltyStrength?: number;
+    inRoundAssigned?: ReadonlyMap<string, number>;
+    menteeUserId?: string;
+  } = {}
 ): MentorMatch[] {
   const penaltyStrength = options.penaltyStrength ?? 0.4;
   const capacity = new Map<string, { current: number; max: number }>();
@@ -547,6 +574,13 @@ export function loadBalanceMatches(
       if (b.adjusted !== a.adjusted) return b.adjusted - a.adjusted;
       // Prefer the less-loaded mentor when adjusted scores tie.
       if (a.utilization !== b.utilization) return a.utilization - b.utilization;
+      if (options.menteeUserId) {
+        return stableTieBreak(
+          options.menteeUserId,
+          a.match.mentorUserId,
+          b.match.mentorUserId
+        );
+      }
       return a.match.mentorUserId.localeCompare(b.match.mentorUserId);
     })
     .map((entry) => entry.match);
@@ -688,7 +722,7 @@ export function rankMenteesForMentor(
 
   matches.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return a.menteeUserId.localeCompare(b.menteeUserId);
+    return stableTieBreak(mentorInput.userId, a.menteeUserId, b.menteeUserId);
   });
 
   return matches;

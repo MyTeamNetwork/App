@@ -295,3 +295,81 @@ for (const msg of ON_TOPIC_ALLOWED) {
     );
   });
 }
+
+test("Tier 2 allowlist: engagement trend analysis is allowed", () => {
+  assert.equal(
+    classifyUnrelatedRequest(
+      "Analyze engagement trends",
+      "general",
+      "general_query",
+      "knowledge_query",
+      false
+    ),
+    null
+  );
+});
+
+test("Tier 2 allowlist: participation this month is allowed", () => {
+  assert.equal(
+    classifyUnrelatedRequest(
+      "Show me participation this month",
+      "general",
+      "general_query",
+      "knowledge_query",
+      false
+    ),
+    null
+  );
+});
+
+test("Tier 2 allowlist: active people question is allowed", () => {
+  assert.equal(
+    classifyUnrelatedRequest(
+      "Who are our most active people?",
+      "general",
+      "general_query",
+      "knowledge_query",
+      false
+    ),
+    null
+  );
+});
+
+test("Tier 2 allowlist: activity trending question is allowed", () => {
+  assert.equal(
+    classifyUnrelatedRequest(
+      "How is our activity trending?",
+      "general",
+      "general_query",
+      "knowledge_query",
+      false
+    ),
+    null
+  );
+});
+
+test("Tier 2 allowlist: president trivia remains refused", () => {
+  assert.equal(
+    classifyUnrelatedRequest(
+      "Who is the president of Argentina?",
+      "general",
+      "general_query",
+      "knowledge_query",
+      false
+    ),
+    "no_org_keyword_present"
+  );
+});
+
+test("Tier 1 blocklist: coding request remains unrelated", () => {
+  assert.equal(
+    classifyUnrelatedRequest(
+      "Write me a Python function to sort a list",
+      "general",
+      "general_query",
+      "knowledge_query",
+      false
+    ),
+    "unrelated_pattern"
+  );
+});

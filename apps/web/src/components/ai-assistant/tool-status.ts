@@ -42,6 +42,8 @@ export function formatToolStatusLabel(toolName: string): string {
       return "Preparing discussion thread...";
     case "get_org_stats":
       return "Checking organization stats...";
+    case "get_engagement_metrics":
+      return "Analyzing engagement metrics...";
     case "get_donation_analytics":
       return "Summarizing contribution analytics...";
     case "suggest_connections":

@@ -108,6 +108,8 @@ const ORG_SCOPE_KEYWORDS = [
   "enterprise", "managed org", "quota", "billing",
   "roster", "attendance", "rsvp",
   "stat", "stats", "analytic", "analytics", "metric", "metrics", "count", "counts", "total", "totals",
+  // Engagement/activity analysis
+  "engagement", "engaged", "participation", "involvement", "contribution", "contributions", "trend", "trends", "activity", "active", "analysis", "analyze",
   "coach", "coaches", "captain", "captains", "player", "players", "staff", "volunteer", "volunteers",
   "schedule", "season", "tournament", "league", "ics",
   "invite", "invites", "invitation", "onboarding", "signup", "sign up",

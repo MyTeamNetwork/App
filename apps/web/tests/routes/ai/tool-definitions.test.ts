@@ -6,8 +6,8 @@ import type { ToolName } from "../../../src/lib/ai/tools/definitions.ts";
 type ToolProperties = Record<string, { type?: string; maximum?: number }>;
 type ToolParameters = { properties?: ToolProperties; additionalProperties?: boolean; required?: string[] };
 
-test("AI_TOOLS exports 46 tool definitions", () => {
-  assert.equal(AI_TOOLS.length, 46);
+test("AI_TOOLS exports 47 tool definitions", () => {
+  assert.equal(AI_TOOLS.length, 47);
 });
 
 test("every tool has type function and additionalProperties false", () => {
@@ -44,6 +44,7 @@ test("TOOL_NAMES contains all tool names", () => {
     "scrape_schedule_website",
     "extract_schedule_pdf",
     "get_org_stats",
+    "get_engagement_metrics",
     "get_donation_analytics",
     "get_enterprise_stats",
     "get_enterprise_quota",
@@ -191,6 +192,17 @@ test("prepare_member_role_change supports target, role, status, and reason field
 test("get_org_stats has no required parameters", () => {
   const tool = AI_TOOLS.find((t) => t.function.name === "get_org_stats")!;
   const params = tool.function.parameters as ToolParameters;
+  assert.equal(params.required, undefined);
+});
+
+test("get_engagement_metrics supports a bounded reporting window", () => {
+  const tool = AI_TOOLS.find((t) => t.function.name === "get_engagement_metrics")!;
+  const params = tool.function.parameters as ToolParameters;
+  const props = params.properties as ToolProperties;
+
+  assert.ok(props.window_days);
+  assert.equal(props.window_days.type, "integer");
+  assert.equal(props.window_days.maximum, 365);
   assert.equal(params.required, undefined);
 });
 

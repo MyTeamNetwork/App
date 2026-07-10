@@ -3,7 +3,7 @@ type: index
 title: TeamNetwork AI Agent Knowledge Bundle
 description: Open Knowledge Format index for the TeamNetwork AI assistant codemaps, architecture, and taxonomies.
 tags: [ai, index, okf]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-10T00:00:00Z
 ---
 
 # TeamNetwork AI Agent Knowledge Bundle

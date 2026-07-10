@@ -174,3 +174,40 @@ test("buildRagGroundingFallback handles missing chunk gracefully", () => {
   const text = buildRagGroundingFallback(["foo"], null);
   assert.match(text, /couldn't verify/i);
 });
+
+test("extractFreeformClaims does not create bare-number claims from numbered lists", () => {
+  const content =
+    "Here are your upcoming events:\n1. Check in with Mentees - Jul 10, 2026\n2. Villa Roma Meeting - Jul 15, 2026\n3. Team standup - Jul 18, 2026";
+  const claims = extractFreeformClaims(content);
+
+  assert.equal(claims.some((claim) => /^\d+\.?$/.test(claim.text)), false);
+});
+
+test("extractFreeformClaims still splits ordinary prose sentences", () => {
+  const content =
+    "The Spring Gala is on May 15. Tickets cost $50. Contact alice@example.com for info.";
+  const claims = extractFreeformClaims(content);
+
+  assert.ok(
+    claims.some((claim) => claim.kind === "prose" && claim.text.includes("Spring Gala"))
+  );
+});
+
+test("numbered-list content against matching chunks has no uncovered bare-number claims", () => {
+  const chunks = [
+    {
+      contentText:
+        "Upcoming events:\n1. Check in with Mentees - Jul 10, 2026\n2. Villa Roma Meeting - Jul 15, 2026\n3. Team standup - Jul 18, 2026",
+    },
+  ];
+  const content =
+    "Upcoming events:\n1. Check in with Mentees - Jul 10, 2026\n2. Villa Roma Meeting - Jul 15, 2026\n3. Team standup - Jul 18, 2026";
+  const claims = extractFreeformClaims(content);
+  const uncoveredBareNumberClaims = claims.filter(
+    (claim) =>
+      /^\d+\.?\s*$/.test(claim.text) &&
+      claimCoveredByChunks(claim, chunks, 0.35) === "uncovered"
+  );
+
+  assert.deepEqual(uncoveredBareNumberClaims, []);
+});

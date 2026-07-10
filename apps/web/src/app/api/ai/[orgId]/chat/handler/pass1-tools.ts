@@ -43,6 +43,7 @@ const RAW_PASS1_TOOL_NAMES: Record<CacheSurface, ToolName[]> = {
     "list_philanthropy_events",
     "list_donations",
     "get_org_stats",
+    "get_engagement_metrics",
     "suggest_connections",
     "list_available_mentors",
     "suggest_mentors",
@@ -60,7 +61,7 @@ const RAW_PASS1_TOOL_NAMES: Record<CacheSurface, ToolName[]> = {
     "suggest_mentors",
     "suggest_mentees",
   ],
-  analytics: ["get_org_stats"],
+  analytics: ["get_org_stats", "get_engagement_metrics"],
   events: ["list_events", "find_free_members"],
 };
 
@@ -155,6 +156,8 @@ export const DONATION_STATS_PROMPT_PATTERN =
   /(?<!\w)(?:donation|donations|fundraising)\s+(?:metric|metrics|stats|statistics|total|totals|summary|overview|revenue|amount)(?!\w)/i;
 export const DONATION_ANALYTICS_PROMPT_PATTERN =
   /(?:(?<!\w)(?:donation|donations|fundraising|revenue|donor|donors)(?!\w)[\s\S]{0,120}\b(?:trend|trends|breakdown|performance|average|largest|monthly|weekly|daily|by month|by week|by day|last\s+\d+\s+days?|recent)\b|(?<!\w)(?:trend|trends|breakdown|performance|average|largest|monthly|weekly|daily|by month|by week|by day|last\s+\d+\s+days?|recent)(?!\w)[\s\S]{0,120}\b(?:donation|donations|fundraising|revenue|donor|donors)\b|(?<!\w)(?:donation|donations|fundraising)(?!\w)[\s\S]{0,40}\b(?:metric|metrics|statistics)\b)/i;
+const ENGAGEMENT_METRICS_PROMPT_PATTERN =
+  /\b(?:engagement|active|activity|participation|how\s+active|active\s+members?\s+were|how\s+many\s+(?:events|rsvps?|announcements|discussions?|posts?|messages?|replies|comments?))\b[\s\S]{0,80}\b(?:past|last|over|recent|this)\b|\b(?:over\s+the\s+past|in\s+the\s+last|this\s+month|last\s+month|last\s+week|this\s+week|past\s+(?:\d+\s+)?(?:days?|weeks?|months?))\b[\s\S]{0,80}\b(?:engagement|active|activity|participation|events?|rsvps?|announcements?|discussions?|posts?|messages?|chat|forum|replies|comments?)\b/i;
 export const DONATION_LIST_PROMPT_PATTERN =
   /(?<!\w)(?:donations?|fundraising\s+details|donation\s+history|who\s+donated|list\s+(?:the\s+)?donors?)(?!\w)/i;
 export const PARENT_LIST_PROMPT_PATTERN =
@@ -213,6 +216,20 @@ export function deriveOrgStatsScope(message: string): OrgStatsScope {
   if (ORG_STATS_EVENTS_PATTERN.test(message)) return "events";
   if (ORG_STATS_MEMBERS_PATTERN.test(message)) return "members";
   return "all";
+}
+
+/**
+ * Derive a window_days hint for `get_engagement_metrics` from the user's message.
+ * Returns null when no time window keyword is found (tool uses its default of 30).
+ */
+export function deriveEngagementWindowDays(message: string): number | null {
+  const match = message.match(/\b(?:past|last)\s+(\d+)\s+days?\b/i);
+  if (match?.[1]) return Math.min(365, Math.max(1, Number(match[1])));
+  if (/\b(?:past|last|this)\s+week\b/i.test(message)) return 7;
+  if (/\b(?:past|last|this)\s+month\b/i.test(message)) return 30;
+  if (/\b(?:past|last|this)\s+(?:quarter|3\s+months?)\b/i.test(message)) return 90;
+  if (/\b(?:past|last|this)\s+year\b/i.test(message)) return 365;
+  return null;
 }
 
 export type DonationAnalyticsDimension =
@@ -275,6 +292,11 @@ export function deriveForcedPass1ToolArgs(
     const scope = deriveOrgStatsScope(message);
     if (scope === "all") return undefined;
     return { scope };
+  }
+  if (toolName === "get_engagement_metrics") {
+    const windowDays = deriveEngagementWindowDays(message);
+    if (windowDays !== null) return { window_days: windowDays };
+    return undefined;
   }
   if (toolName === "get_donation_analytics") {
     const dimension = deriveDonationAnalyticsDimension(message);
@@ -600,6 +622,11 @@ const PASS1_ROUTING_RULES: ReadonlyArray<RoutingRule> = [
     tools: () => ["list_philanthropy_events"],
   },
   {
+    id: "engagement_metrics",
+    when: (ctx) => ENGAGEMENT_METRICS_PROMPT_PATTERN.test(ctx.message),
+    tools: () => ["get_engagement_metrics"],
+  },
+  {
     id: "donation_analytics",
     when: (ctx) => DONATION_ANALYTICS_PROMPT_PATTERN.test(ctx.message),
     tools: () => ["get_donation_analytics"],
@@ -756,6 +783,7 @@ export const FORCED_PASS1_TOOL_CHOICE_ELIGIBLE: ReadonlySet<ToolName> = new Set<
   "list_member_preferences",
   "find_free_members",
   "get_org_stats",
+  "get_engagement_metrics",
   "get_donation_analytics",
   "get_enterprise_stats",
   "get_enterprise_quota",
@@ -854,6 +882,7 @@ export function getForcedPass1ToolChoice(
  */
 export const BYPASS_ELIGIBLE_TOOLS: ReadonlyArray<ToolName> = [
   "get_org_stats",
+  "get_engagement_metrics",
   "get_donation_analytics",
   "list_members",
   "list_events",
@@ -908,6 +937,7 @@ export const TOOL_FIRST_ELIGIBLE: ReadonlySet<ToolName> = new Set<ToolName>([
   "list_member_preferences",
   "find_free_members",
   "get_org_stats",
+  "get_engagement_metrics",
   "get_donation_analytics",
   "find_navigation_targets",
   "search_org_content",

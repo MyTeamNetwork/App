@@ -4,7 +4,7 @@ title: Chat Pipeline
 description: Full chat request lifecycle — auth, policy, RAG, tool execution, SSE streaming, persistence, grounding.
 resource: apps/web/src/app/api/ai/[orgId]/chat/handler.ts
 tags: [ai, chat-pipeline, sse, tools]
-timestamp: 2026-07-08T00:00:00Z
+timestamp: 2026-07-09T00:00:00Z
 ---
 
 # Chat Pipeline — Code Map
@@ -40,7 +40,7 @@ For the connection-suggestions engine, see `docs/agent/people-graph-suggestions.
 | `src/lib/ai/message-safety.ts` | Transport-noise cleanup, prompt-injection assessment, history sanitization | `assessAiMessageSafety`, `sanitizeHistoryMessageForPrompt` |
 | `src/lib/ai/turn-execution-policy.ts` | Internal execution-policy builder | `buildTurnExecutionPolicy` |
 | `src/lib/ai/grounding/tool/verifier.ts` | Deterministic verifier for current read-tool summaries, including connection-template validation against `suggest_connections` payload states, names, order, and reasons | `verifyToolBackedResponse` |
-| `src/lib/ai/grounding/rag.ts` | Freeform response grounding against retrieved RAG chunks, with deterministic claim coverage plus optional prose judge (judge `no` and `partial` verdicts both count as uncovered) | `verifyRagGrounding` |
+| `src/lib/ai/grounding/rag.ts` | Freeform response grounding against retrieved RAG chunks, with deterministic claim coverage plus optional prose judge (judge `no` and `partial` verdicts both count as uncovered). Claim splitting is numbered-list-safe: list markers `N.` at line-start are not treated as sentence boundaries. | `verifyRagGrounding` |
 | `src/lib/ai/grounding/primitives.ts` | Shared claim-parsing primitives used by tool and RAG grounding validators | `extractQuotedTitles`, `parseCurrencyClaim` |
 | `src/lib/ai/tools/executor.ts` | Thin tool runner: access policy, org/enterprise gates, argument validation via `getToolModule`, and `dispatchToolModule` into the registry (per-tool timeouts and `extract_schedule_pdf` image/PDF timeout mapping) | `executeToolCall`, `ToolExecutionResult`, `ToolExecutionContext` |
 | `src/lib/ai/tools/registry/` | **All** AI tool implementations: each `ToolModule` owns its Zod `argsSchema` and `execute` (including schedule import, reads, and prepare-* tools) | `dispatchToolModule`, `getToolModule`, `isRegisteredTool` |

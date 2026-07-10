@@ -154,6 +154,9 @@ export type ExtractSchedulePdfArgs = Record<string, never>;
 export interface GetOrgStatsArgs {
   scope?: "members" | "alumni" | "parents" | "events" | "donations" | "all";
 }
+export interface GetEngagementMetricsArgs {
+  window_days?: number;
+}
 export interface GetDonationAnalyticsArgs {
   window_days?: number;
   bucket?: "day" | "week" | "month";
@@ -811,7 +814,7 @@ const TOOL_BY_NAME = {
     function: {
       name: "get_org_stats" as const,
       description:
-        "Get organization statistics: active member count, alumni count, parent count, upcoming event count, and donation totals. Use for overview or dashboard style questions. Pass an optional scope (\"members\", \"alumni\", \"parents\", \"events\", \"donations\") to return only that slice when the user asked about one dimension; omit or pass \"all\" for the full snapshot.",
+        "Get organization statistics: active member count, alumni count, parent count, upcoming event count, and donation totals. This is a CURRENT snapshot — it has no time window. Use for overview or dashboard-style questions. Pass an optional scope (\"members\", \"alumni\", \"parents\", \"events\", \"donations\") to return only that slice when the user asked about one dimension; omit or pass \"all\" for the full snapshot. For engagement, activity, or participation questions over a time period (e.g. \"how active over the past month\"), use get_engagement_metrics instead.",
       parameters: {
         type: "object" as const,
         properties: {
@@ -820,6 +823,26 @@ const TOOL_BY_NAME = {
             enum: ["members", "alumni", "parents", "events", "donations", "all"] as const,
             description:
               "Restrict the response to a single dimension. Use when the user asked only one thing (e.g. \"how many active members\" → \"members\"). Omit or pass \"all\" for the full snapshot.",
+          },
+        },
+        additionalProperties: false as const,
+      },
+    },
+  },
+  get_engagement_metrics: {
+    type: "function" as const,
+    function: {
+      name: "get_engagement_metrics" as const,
+      description:
+        "Engagement and activity analytics over a trailing time window. Use for questions like \"engagement over the past month\", \"how active is the org\", \"participation trends\", \"how many events did we hold\", \"how many RSVPs\", \"how active have members been\". Do NOT use get_org_stats for engagement/activity/participation questions — it is a current snapshot with no time window.",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          window_days: {
+            type: "integer" as const,
+            minimum: 1,
+            maximum: 365,
+            description: "Trailing window in days to analyze (default 30).",
           },
         },
         additionalProperties: false as const,
@@ -1659,6 +1682,7 @@ export const AI_TOOLS = [
   TOOL_BY_NAME.scrape_schedule_website,
   TOOL_BY_NAME.extract_schedule_pdf,
   TOOL_BY_NAME.get_org_stats,
+  TOOL_BY_NAME.get_engagement_metrics,
   TOOL_BY_NAME.get_donation_analytics,
   TOOL_BY_NAME.get_enterprise_stats,
   TOOL_BY_NAME.get_enterprise_quota,

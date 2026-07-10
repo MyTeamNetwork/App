@@ -13,6 +13,7 @@ import { listParentsModule } from "./list-parents";
 import { listPhilanthropyEventsModule } from "./list-philanthropy-events";
 import { listDonationsModule } from "./list-donations";
 import { getOrgStatsModule } from "./get-org-stats";
+import { getEngagementMetricsModule } from "./get-engagement-metrics";
 import { getDonationAnalyticsModule } from "./get-donation-analytics";
 import { listManagedOrgsModule } from "./list-managed-orgs";
 import { listEnterpriseAuditEventsModule } from "./list-enterprise-audit-events";
@@ -62,6 +63,7 @@ const MODULES: ReadonlyArray<ToolModule<any>> = [
   listPhilanthropyEventsModule,
   listDonationsModule,
   getOrgStatsModule,
+  getEngagementMetricsModule,
   getDonationAnalyticsModule,
   listManagedOrgsModule,
   listEnterpriseAuditEventsModule,

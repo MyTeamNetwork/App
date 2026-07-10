@@ -140,6 +140,7 @@ export function getAssistantCapabilitySnapshot(
       return capabilitySnapshotForToolNames(
         [
           "get_org_stats",
+          "get_engagement_metrics",
           "get_donation_analytics",
           "list_donations",
           "list_philanthropy_events",
@@ -188,7 +189,13 @@ export function getAssistantCapabilitySnapshot(
       );
     case "analytics":
       return capabilitySnapshotForToolNames(
-        ["get_org_stats", "get_donation_analytics", "list_donations", "list_philanthropy_events"],
+        [
+          "get_org_stats",
+          "get_engagement_metrics",
+          "get_donation_analytics",
+          "list_donations",
+          "list_philanthropy_events",
+        ],
         ["Export analytics or change financial settings"],
       );
     default:

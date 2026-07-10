@@ -96,6 +96,19 @@ interface DonationAnalyticsDisplayPayload {
   top_purposes?: unknown;
 }
 
+interface EngagementMetricsDisplayPayload {
+  window_days?: unknown;
+  events_held?: unknown;
+  event_rsvps?: unknown;
+  announcements_published?: unknown;
+  discussion_threads_created?: unknown;
+  discussion_replies?: unknown;
+  feed_posts?: unknown;
+  feed_comments?: unknown;
+  chat_messages?: unknown;
+  active_contributors?: unknown;
+}
+
 interface ListAvailableMentorsDisplayPayload {
   state?: unknown;
   total_available?: unknown;
@@ -817,6 +830,33 @@ export function formatOrgStatsResponse(data: unknown): string | null {
   }
 
   return lines.length > 1 ? lines.join("\n") : null;
+}
+
+function formatMetricValue(value: unknown): number | "unavailable" {
+  return typeof value === "number" ? value : "unavailable";
+}
+
+export function formatEngagementMetricsResponse(data: unknown): string | null {
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  const payload = data as EngagementMetricsDisplayPayload;
+  const windowDays =
+    typeof payload.window_days === "number" ? payload.window_days : "unavailable";
+
+  return [
+    `Engagement metrics (past ${windowDays} days):`,
+    `- Events held: ${formatMetricValue(payload.events_held)}`,
+    `- Event RSVPs: ${formatMetricValue(payload.event_rsvps)}`,
+    `- Announcements published: ${formatMetricValue(payload.announcements_published)}`,
+    `- Discussion threads: ${formatMetricValue(payload.discussion_threads_created)}`,
+    `- Discussion replies: ${formatMetricValue(payload.discussion_replies)}`,
+    `- Feed posts: ${formatMetricValue(payload.feed_posts)}`,
+    `- Feed comments: ${formatMetricValue(payload.feed_comments)}`,
+    `- Chat messages: ${formatMetricValue(payload.chat_messages)}`,
+    `- Active contributors: ${formatMetricValue(payload.active_contributors)}`,
+  ].join("\n");
 }
 
 function formatMemberRole(value: unknown): string | null {

@@ -325,3 +325,185 @@ test("ensureDirectChatForUser creates a 1:1 chat for active org users", async ()
   assert.equal(supabase.getRows("chat_groups").length, 1);
   assert.equal(supabase.getRows("chat_group_members").length, 2);
 });
+
+test("extractPersonNameTokens handles invented ids, emails, and empty tokens", async () => {
+  const { extractPersonNameTokens } = await import("../src/lib/chat/direct-chat.ts");
+
+  assert.deepEqual(extractPersonNameTokens("matthew-mckillop-id"), ["matthew", "mckillop"]);
+  assert.deepEqual(extractPersonNameTokens("matthew.mckillop@example.com"), [
+    "matthew",
+    "mckillop",
+  ]);
+  assert.deepEqual(extractPersonNameTokens("matthew_mckillop_id"), ["matthew", "mckillop"]);
+  assert.deepEqual(extractPersonNameTokens(""), []);
+  assert.deepEqual(extractPersonNameTokens("id"), []);
+  assert.deepEqual(extractPersonNameTokens("123"), []);
+  assert.deepEqual(extractPersonNameTokens("Matthew McKillop"), ["matthew", "mckillop"]);
+});
+
+function seedChatRecipientMember(
+  supabase: ReturnType<typeof createSupabaseStub>,
+  input: {
+    memberId: string;
+    userId: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  },
+) {
+  supabase.seed("user_organization_roles", [
+    {
+      organization_id: ORG_ID,
+      user_id: input.userId,
+      role: "active_member",
+      status: "active",
+    },
+  ]);
+  supabase.seed("members", [
+    {
+      id: input.memberId,
+      organization_id: ORG_ID,
+      user_id: input.userId,
+      status: "active",
+      deleted_at: null,
+      first_name: input.firstName,
+      last_name: input.lastName,
+      email: input.email,
+    },
+  ]);
+}
+
+async function resolveChatRecipientPersonQuery(personQuery: string) {
+  const supabase = createSupabaseStub();
+  seedChatRecipientMember(supabase, {
+    memberId: "00000000-0000-4000-8000-000000000040",
+    userId: "00000000-0000-4000-8000-000000000041",
+    firstName: "Matthew",
+    lastName: "McKillop",
+    email: "mmckillop@org.com",
+  });
+
+  return resolveChatMessageRecipient(supabase as DirectChatSupabase, {
+    organizationId: ORG_ID,
+    senderUserId: SENDER_USER_ID,
+    personQuery,
+  });
+}
+
+test("resolveChatMessageRecipient token fallback resolves invented dash id", async () => {
+  const result = await resolveChatRecipientPersonQuery("matthew-mckillop-id");
+
+  assert.deepEqual(result, {
+    kind: "resolved",
+    memberId: "00000000-0000-4000-8000-000000000040",
+    userId: "00000000-0000-4000-8000-000000000041",
+    displayName: "Matthew McKillop",
+    existingChatGroupId: null,
+  });
+});
+
+test("resolveChatMessageRecipient token fallback resolves invented email", async () => {
+  const result = await resolveChatRecipientPersonQuery("matthew.mckillop@example.com");
+
+  assert.deepEqual(result, {
+    kind: "resolved",
+    memberId: "00000000-0000-4000-8000-000000000040",
+    userId: "00000000-0000-4000-8000-000000000041",
+    displayName: "Matthew McKillop",
+    existingChatGroupId: null,
+  });
+});
+
+test("resolveChatMessageRecipient token fallback resolves invented underscore id", async () => {
+  const result = await resolveChatRecipientPersonQuery("matthew_mckillop_id");
+
+  assert.deepEqual(result, {
+    kind: "resolved",
+    memberId: "00000000-0000-4000-8000-000000000040",
+    userId: "00000000-0000-4000-8000-000000000041",
+    displayName: "Matthew McKillop",
+    existingChatGroupId: null,
+  });
+});
+
+test("resolveChatMessageRecipient keeps exact email match ahead of token fallback", async () => {
+  const supabase = createSupabaseStub();
+  seedChatRecipientMember(supabase, {
+    memberId: "00000000-0000-4000-8000-000000000050",
+    userId: "00000000-0000-4000-8000-000000000051",
+    firstName: "Matthew",
+    lastName: "McKillop",
+    email: "mmckillop@org.com",
+  });
+  seedChatRecipientMember(supabase, {
+    memberId: "00000000-0000-4000-8000-000000000052",
+    userId: "00000000-0000-4000-8000-000000000053",
+    firstName: "Maddie",
+    lastName: "Kane",
+    email: "matthew.mckillop@example.com",
+  });
+
+  const result = await resolveChatMessageRecipient(supabase as DirectChatSupabase, {
+    organizationId: ORG_ID,
+    senderUserId: SENDER_USER_ID,
+    personQuery: "matthew.mckillop@example.com",
+  });
+
+  assert.deepEqual(result, {
+    kind: "resolved",
+    memberId: "00000000-0000-4000-8000-000000000052",
+    userId: "00000000-0000-4000-8000-000000000053",
+    displayName: "Maddie Kane",
+    existingChatGroupId: null,
+  });
+});
+
+test("resolveChatMessageRecipient token fallback returns not_found for unmatched tokens", async () => {
+  const result = await resolveChatRecipientPersonQuery("ghost-person-id");
+
+  assert.deepEqual(result, {
+    kind: "unavailable",
+    requestedRecipient: "ghost-person-id",
+    reason: "recipient_not_found",
+  });
+});
+
+test("resolveChatMessageRecipient token fallback returns ambiguous for multiple prefix matches", async () => {
+  const supabase = createSupabaseStub();
+  seedChatRecipientMember(supabase, {
+    memberId: "00000000-0000-4000-8000-000000000060",
+    userId: "00000000-0000-4000-8000-000000000061",
+    firstName: "Matthew",
+    lastName: "A",
+    email: "ma@org.com",
+  });
+  seedChatRecipientMember(supabase, {
+    memberId: "00000000-0000-4000-8000-000000000062",
+    userId: "00000000-0000-4000-8000-000000000063",
+    firstName: "Matthew",
+    lastName: "B",
+    email: "mb@org.com",
+  });
+
+  const result = await resolveChatMessageRecipient(supabase as DirectChatSupabase, {
+    organizationId: ORG_ID,
+    senderUserId: SENDER_USER_ID,
+    personQuery: "matthew-id",
+  });
+
+  assert.deepEqual(result, {
+    kind: "ambiguous",
+    requestedRecipient: "matthew-id",
+    candidateRecipients: ["Matthew A <ma@org.com>", "Matthew B <mb@org.com>"],
+  });
+});
+
+test("resolveChatMessageRecipient numeric-only query does not vacuously match any member", async () => {
+  const result = await resolveChatRecipientPersonQuery("123");
+
+  assert.deepEqual(result, {
+    kind: "unavailable",
+    requestedRecipient: "123",
+    reason: "recipient_not_found",
+  });
+});

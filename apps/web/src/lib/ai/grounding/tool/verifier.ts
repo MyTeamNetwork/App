@@ -7,6 +7,7 @@ import type { CrossToolEvidence } from "./claim-coverage";
 import {
   buildCrossToolEvidence,
   verifyDonationAnalytics,
+  verifyEngagementMetrics,
   verifyListAnnouncements,
   verifyListDiscussions,
   verifyListDonations,
@@ -50,6 +51,9 @@ export function verifyToolBackedResponse(
     switch (result.name) {
       case "get_org_stats":
         failures.push(...verifyOrgStats(input.content, result.data));
+        break;
+      case "get_engagement_metrics":
+        failures.push(...verifyEngagementMetrics(input.content, result.data));
         break;
       case "get_donation_analytics":
         failures.push(...verifyDonationAnalytics(input.content, result.data));

@@ -104,6 +104,37 @@ function normalizeMatchValue(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+export function extractPersonNameTokens(raw: string): string[] {
+  const localValue = raw.trim().toLowerCase().split("@", 1)[0] ?? "";
+  const withoutSuffix = localValue.replace(/[-_.](id|uuid)$/, "");
+
+  return withoutSuffix
+    .split(/[-_.\s]+/)
+    .filter(
+      (token) =>
+        token.length >= 2 && token !== "id" && token !== "uuid" && !/^\d+$/.test(token),
+    );
+}
+
+function extractPersonMatchWords(member: Pick<MemberRow, "first_name" | "last_name" | "email">) {
+  const displayNameWords = formatMemberDisplayName(member).toLowerCase().split(/[-_.\s]+/);
+  const emailLocalWords = (member.email ?? "")
+    .trim()
+    .toLowerCase()
+    .split("@", 1)[0]
+    .split(/[-_.\s]+/);
+
+  return [...displayNameWords, ...emailLocalWords].filter((word) => word.length > 0);
+}
+
+function memberMatchesPersonTokens(
+  member: Pick<MemberRow, "first_name" | "last_name" | "email">,
+  queryTokens: string[],
+) {
+  const memberWords = extractPersonMatchWords(member);
+  return queryTokens.every((token) => memberWords.some((word) => word.startsWith(token)));
+}
+
 function formatMemberDisplayName(
   member: Pick<MemberRow, "first_name" | "last_name" | "email">,
 ): string {
@@ -580,7 +611,18 @@ export async function resolveChatMessageRecipient(
     const email = normalizeMatchValue(member.email);
     return displayName.includes(query) || email.includes(query);
   });
-  const rankedMatches = exactMatches.length > 0 ? exactMatches : partialMatches;
+  const queryTokens = extractPersonNameTokens(requestedRecipient ?? "");
+  const tokenizedQuery = queryTokens.join(" ");
+  const tokenMatches =
+    queryTokens.length > 0 && exactMatches.length === 0 && partialMatches.length === 0 && tokenizedQuery !== query
+      ? eligibleRows.filter((member) => memberMatchesPersonTokens(member, queryTokens))
+      : [];
+  const rankedMatches =
+    exactMatches.length > 0
+      ? exactMatches
+      : partialMatches.length > 0
+        ? partialMatches
+        : tokenMatches;
 
   if (rankedMatches.length === 0) {
     const unavailableMatches = rows.filter((member) => {
