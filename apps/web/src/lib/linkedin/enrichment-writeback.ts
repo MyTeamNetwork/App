@@ -19,7 +19,7 @@ import {
 } from "@/lib/linkedin/apify";
 import { normalizeLinkedInProfileUrl } from "@/lib/alumni/linkedin-url";
 
-interface RunTargetRow {
+export interface RunTargetRow {
   id: string;
   run_id: string;
   target_kind: "user" | "alumni";
@@ -289,7 +289,7 @@ export async function processFinishedApifyRun(
   return result;
 }
 
-async function writeTarget(
+export async function writeTarget(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   target: RunTargetRow,
