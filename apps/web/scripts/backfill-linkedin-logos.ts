@@ -14,6 +14,10 @@
 //   bun --env-file=../../.env.local run scripts/backfill-linkedin-logos.ts
 //   bun --env-file=../../.env.local run scripts/backfill-linkedin-logos.ts --dry-run
 //   bun --env-file=../../.env.local run scripts/backfill-linkedin-logos.ts --limit 10
+//   bun --env-file=../../.env.local run scripts/backfill-linkedin-logos.ts --rewrite-stale
+//   bun --env-file=../../.env.local run scripts/backfill-linkedin-logos.ts --rewrite-stale --dry-run
+//   bun --env-file=../../.env.local run scripts/backfill-linkedin-logos.ts --run-ids <id1,id2>
+//   bun --env-file=../../.env.local run scripts/backfill-linkedin-logos.ts --rewrite-stale --run-ids <id1,id2>
 
 delete process.env.APIFY_WEBHOOK_SECRET;
 
@@ -25,11 +29,12 @@ import {
   getApifyProfileUrlKeys,
   getApifyRunStatus,
   isTerminalApifyRunStatus,
+  mapApifyToFields,
   mergeEducationYears,
   startApifyProfileRun,
   type ApifyProfileResult,
 } from "@/lib/linkedin/apify";
-import { writeTarget, type RunTargetRow } from "@/lib/linkedin/enrichment-writeback";
+import { rehostProfileLogos, writeTarget, type RunTargetRow } from "@/lib/linkedin/enrichment-writeback";
 
 const PREFIX = "[backfill-linkedin-logos]";
 const LICDN_MARKER = "media.licdn.com";
@@ -62,6 +67,7 @@ type AlumniRow = {
   work_history: unknown;
   education_history: unknown;
   certifications: unknown;
+  deleted_at: string | null;
 };
 
 type MemberRow = {
@@ -71,6 +77,7 @@ type MemberRow = {
   work_history: unknown;
   education_history: unknown;
   certifications: unknown;
+  deleted_at: string | null;
 };
 
 type ConnectionRow = {
@@ -82,6 +89,8 @@ type ConnectionRow = {
 type CliOptions = {
   dryRun: boolean;
   limit: number | null;
+  runIds: string[] | null;
+  rewriteStale: boolean;
 };
 
 function log(message: string, extra?: unknown): void {
@@ -101,12 +110,16 @@ function error(message: string, extra?: unknown): void {
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const options: CliOptions = { dryRun: false, limit: null };
+  const options: CliOptions = { dryRun: false, limit: null, runIds: null, rewriteStale: false };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--dry-run") {
       options.dryRun = true;
+      continue;
+    }
+    if (arg === "--rewrite-stale") {
+      options.rewriteStale = true;
       continue;
     }
     if (arg === "--limit") {
@@ -116,6 +129,22 @@ function parseArgs(argv: string[]): CliOptions {
         throw new Error("--limit requires a non-negative integer.");
       }
       options.limit = parsed;
+      i += 1;
+      continue;
+    }
+    if (arg === "--run-ids") {
+      const raw = argv[i + 1];
+      if (!raw || raw.startsWith("--")) {
+        throw new Error("--run-ids requires a comma-separated list of Apify run IDs.");
+      }
+      const runIds = raw
+        ?.split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+      if (!runIds || runIds.length === 0) {
+        throw new Error("--run-ids requires a comma-separated list of Apify run IDs.");
+      }
+      options.runIds = runIds;
       i += 1;
       continue;
     }
@@ -135,6 +164,12 @@ function safeNorm(url: string): string {
 
 function containsLicdnMarker(value: unknown): boolean {
   return (JSON.stringify(value) ?? "").includes(LICDN_MARKER);
+}
+
+function isNonEmpty(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
 }
 
 async function fetchAllRows<T>(
@@ -204,6 +239,44 @@ function applyUrlLimit<T extends BackfillTarget>(targets: T[], limit: number | n
   return limited;
 }
 
+function rowHasStaleLogos(row: AlumniRow | MemberRow): boolean {
+  return containsLicdnMarker({
+    work_history: row.work_history,
+    education_history: row.education_history,
+    certifications: row.certifications,
+  });
+}
+
+function buildDistinctRowUrls(rows: Array<AlumniRow | MemberRow>): string[] {
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  for (const row of rows) {
+    if (!row.linkedin_url) continue;
+    const key = safeNorm(row.linkedin_url) || row.linkedin_url;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(key);
+  }
+  return urls;
+}
+
+function applyRowUrlLimit<T extends AlumniRow | MemberRow>(rows: T[], limit: number | null): T[] {
+  if (limit === null) return rows;
+
+  const keptUrls = new Set<string>();
+  const limited: T[] = [];
+  for (const row of rows) {
+    if (!row.linkedin_url) continue;
+    const key = safeNorm(row.linkedin_url) || row.linkedin_url;
+    if (!keptUrls.has(key)) {
+      if (keptUrls.size >= limit) continue;
+      keptUrls.add(key);
+    }
+    limited.push(row);
+  }
+  return limited;
+}
+
 async function mapWithConcurrency<T>(
   items: T[],
   concurrency: number,
@@ -223,6 +296,51 @@ async function mapWithConcurrency<T>(
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getSucceededRunIds(distinctUrls: string[], providedRunIds: string[] | null): Promise<string[]> {
+  if (providedRunIds) {
+    log(`using provided Apify run IDs: ${providedRunIds.join(", ")}`);
+    return providedRunIds;
+  }
+
+  const runIds: string[] = [];
+  for (let i = 0; i < distinctUrls.length; i += APIFY_CHUNK_SIZE) {
+    const chunk = distinctUrls.slice(i, i + APIFY_CHUNK_SIZE);
+    const start = await startApifyProfileRun(chunk);
+    if (!start.ok) {
+      error(`failed to start Apify run: ${start.error}`);
+      process.exit(1);
+    }
+    runIds.push(start.runId);
+    log(`started Apify run ${start.runId}`);
+  }
+
+  const pending = new Set(runIds);
+  const succeededRunIds: string[] = [];
+  const startedAt = Date.now();
+
+  while (pending.size > 0) {
+    if (Date.now() - startedAt > OVERALL_TIMEOUT_MS) {
+      error(`timeout waiting for runs: ${Array.from(pending).join(", ")}`);
+      process.exit(1);
+    }
+
+    log(`polling: ${pending.size} runs pending`);
+    await sleep(POLL_INTERVAL_MS);
+
+    for (const runId of Array.from(pending)) {
+      const status = await getApifyRunStatus(runId);
+      if (!isTerminalApifyRunStatus(status)) continue;
+      pending.delete(runId);
+      log(`run ${runId} terminal status: ${status}`);
+      if (status === "SUCCEEDED") {
+        succeededRunIds.push(runId);
+      }
+    }
+  }
+
+  return succeededRunIds;
 }
 
 async function main(): Promise<void> {
@@ -252,13 +370,13 @@ async function main(): Promise<void> {
     fetchAllRows<AlumniRow>(
       supabase,
       "alumni",
-      "id, organization_id, linkedin_url, work_history, education_history, certifications",
+      "id, organization_id, linkedin_url, work_history, education_history, certifications, deleted_at",
       (query) => query.not("linkedin_url", "is", null),
     ),
     fetchAllRows<MemberRow>(
       supabase,
       "members",
-      "id, user_id, linkedin_url, work_history, education_history, certifications",
+      "id, user_id, linkedin_url, work_history, education_history, certifications, deleted_at",
       (query) => query.not("linkedin_url", "is", null),
     ),
     fetchAllRows<ConnectionRow>(supabase, "user_linkedin_connections", "user_id, linkedin_profile_url, linkedin_data"),
@@ -283,6 +401,16 @@ async function main(): Promise<void> {
     ),
     connections: countRowsWithMarker(connectionRows, (row) => (row as ConnectionRow).linkedin_data),
   };
+
+  const staleAlumniRows = alumniRows.filter((row) => !row.deleted_at && row.linkedin_url && rowHasStaleLogos(row));
+  const staleMemberRows = memberRows.filter((row) => !row.deleted_at && row.linkedin_url && rowHasStaleLogos(row));
+
+  if (options.rewriteStale && options.dryRun) {
+    log("dry-run summary");
+    log(`Stale alumni rows count: ${staleAlumniRows.length}`);
+    log(`Stale member rows count: ${staleMemberRows.length}`);
+    process.exit(0);
+  }
 
   const alumniTargets: AlumniTarget[] = [];
   for (const row of alumniRows) {
@@ -354,12 +482,21 @@ async function main(): Promise<void> {
   const distinctUrls = buildDistinctUrls(limitedTargets);
   const limitedAlumniTargets = limitedTargets.filter((target): target is AlumniTarget => target.kind === "alumni");
   const limitedUserTargets = limitedTargets.filter((target): target is UserTarget => target.kind === "user");
+  const allStaleRowsBeforeLimit = [...staleAlumniRows, ...staleMemberRows];
+  const distinctStaleUrlsBeforeLimit = buildDistinctRowUrls(allStaleRowsBeforeLimit);
+  const limitedStaleRows = applyRowUrlLimit(allStaleRowsBeforeLimit, options.limit);
+  const limitedStaleAlumniRows = limitedStaleRows.filter((row): row is AlumniRow => "organization_id" in row);
+  const limitedStaleMemberRows = limitedStaleRows.filter((row): row is MemberRow => "user_id" in row);
+  const distinctStaleUrls = buildDistinctRowUrls(limitedStaleRows);
+  const apifyUrls = options.rewriteStale ? distinctStaleUrls : distinctUrls;
 
   if (options.limit !== null) {
+    const keptCount = options.rewriteStale ? distinctStaleUrls.length : distinctUrls.length;
+    const truncatedCount = options.rewriteStale
+      ? distinctStaleUrlsBeforeLimit.length - distinctStaleUrls.length
+      : distinctUrlsBeforeLimit.length - distinctUrls.length;
     log(
-      `--limit ${options.limit}: kept ${distinctUrls.length} distinct URLs, truncated ${
-        distinctUrlsBeforeLimit.length - distinctUrls.length
-      }`,
+      `--limit ${options.limit}: kept ${keptCount} distinct URLs, truncated ${truncatedCount}`,
     );
   }
 
@@ -374,41 +511,7 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const runIds: string[] = [];
-  for (let i = 0; i < distinctUrls.length; i += APIFY_CHUNK_SIZE) {
-    const chunk = distinctUrls.slice(i, i + APIFY_CHUNK_SIZE);
-    const start = await startApifyProfileRun(chunk);
-    if (!start.ok) {
-      error(`failed to start Apify run: ${start.error}`);
-      process.exit(1);
-    }
-    runIds.push(start.runId);
-    log(`started Apify run ${start.runId}`);
-  }
-
-  const pending = new Set(runIds);
-  const succeededRunIds: string[] = [];
-  const startedAt = Date.now();
-
-  while (pending.size > 0) {
-    if (Date.now() - startedAt > OVERALL_TIMEOUT_MS) {
-      error(`timeout waiting for runs: ${Array.from(pending).join(", ")}`);
-      process.exit(1);
-    }
-
-    log(`polling: ${pending.size} runs pending`);
-    await sleep(POLL_INTERVAL_MS);
-
-    for (const runId of Array.from(pending)) {
-      const status = await getApifyRunStatus(runId);
-      if (!isTerminalApifyRunStatus(status)) continue;
-      pending.delete(runId);
-      log(`run ${runId} terminal status: ${status}`);
-      if (status === "SUCCEEDED") {
-        succeededRunIds.push(runId);
-      }
-    }
-  }
+  const succeededRunIds = await getSucceededRunIds(apifyUrls, options.runIds);
 
   const profiles: ApifyProfileResult[] = [];
   for (const runId of succeededRunIds) {
@@ -439,57 +542,96 @@ async function main(): Promise<void> {
   let writtenOk = 0;
   let writeFailed = 0;
   let unmatched = 0;
+  let skippedNoFreshData = 0;
   const orderedTargets: BackfillTarget[] = [...limitedAlumniTargets, ...limitedUserTargets];
 
-  await mapWithConcurrency(orderedTargets, WRITE_CONCURRENCY, async (target) => {
-    const profile = byUrl.get(safeNorm(target.linkedinUrl)) ?? byUrl.get(target.linkedinUrl);
-    if (!profile) {
-      unmatched += 1;
-      return;
-    }
+  if (options.rewriteStale) {
+    const staleRowsToWrite = [...limitedStaleAlumniRows, ...limitedStaleMemberRows];
+    log(
+      `rewrite-stale: ${limitedStaleAlumniRows.length} alumni rows + ${limitedStaleMemberRows.length} member rows targeted`,
+    );
 
-    const row: RunTargetRow =
-      target.kind === "alumni"
-        ? {
-            id: "backfill",
-            run_id: "backfill",
-            target_kind: "alumni",
-            user_id: null,
-            alumni_id: target.alumniId,
-            organization_id: target.organizationId,
-            linkedin_url: target.linkedinUrl,
-            status: "syncing",
-          }
-        : {
-            id: "backfill",
-            run_id: "backfill",
-            target_kind: "user",
-            user_id: target.userId,
-            alumni_id: null,
-            organization_id: null,
-            linkedin_url: target.linkedinUrl,
-            status: "syncing",
-          };
+    await mapWithConcurrency(staleRowsToWrite, WRITE_CONCURRENCY, async (row) => {
+      const profile = byUrl.get(safeNorm(row.linkedin_url!)) ?? byUrl.get(row.linkedin_url!);
+      if (!profile) {
+        unmatched += 1;
+        return;
+      }
 
-    const ok = await writeTarget(supabase, row, profile, logoCache);
-    if (ok) {
-      writtenOk += 1;
-    } else {
-      writeFailed += 1;
-    }
-  });
+      await rehostProfileLogos(supabase, profile, logoCache);
+      const fields = mapApifyToFields(profile);
+      if (!isNonEmpty(fields.work_history) && isNonEmpty(row.work_history)) {
+        skippedNoFreshData += 1;
+        return;
+      }
+
+      const table = "organization_id" in row ? "alumni" : "members";
+      const { error: updateError } = await supabase
+        .from(table)
+        .update({
+          work_history: fields.work_history,
+          education_history: fields.education_history,
+          certifications: fields.certifications,
+        })
+        .eq("id", row.id);
+
+      if (updateError) {
+        writeFailed += 1;
+      } else {
+        writtenOk += 1;
+      }
+    });
+  } else {
+    await mapWithConcurrency(orderedTargets, WRITE_CONCURRENCY, async (target) => {
+      const profile = byUrl.get(safeNorm(target.linkedinUrl)) ?? byUrl.get(target.linkedinUrl);
+      if (!profile) {
+        unmatched += 1;
+        return;
+      }
+
+      const row: RunTargetRow =
+        target.kind === "alumni"
+          ? {
+              id: "backfill",
+              run_id: "backfill",
+              target_kind: "alumni",
+              user_id: null,
+              alumni_id: target.alumniId,
+              organization_id: target.organizationId,
+              linkedin_url: target.linkedinUrl,
+              status: "syncing",
+            }
+          : {
+              id: "backfill",
+              run_id: "backfill",
+              target_kind: "user",
+              user_id: target.userId,
+              alumni_id: null,
+              organization_id: null,
+              linkedin_url: target.linkedinUrl,
+              status: "syncing",
+            };
+
+      const ok = await writeTarget(supabase, row, profile, logoCache);
+      if (ok) {
+        writtenOk += 1;
+      } else {
+        writeFailed += 1;
+      }
+    });
+  }
 
   const [afterAlumniRows, afterMemberRows, afterConnectionRows] = await Promise.all([
     fetchAllRows<AlumniRow>(
       supabase,
       "alumni",
-      "id, organization_id, linkedin_url, work_history, education_history, certifications",
+      "id, organization_id, linkedin_url, work_history, education_history, certifications, deleted_at",
       (query) => query.not("linkedin_url", "is", null),
     ),
     fetchAllRows<MemberRow>(
       supabase,
       "members",
-      "id, user_id, linkedin_url, work_history, education_history, certifications",
+      "id, user_id, linkedin_url, work_history, education_history, certifications, deleted_at",
       (query) => query.not("linkedin_url", "is", null),
     ),
     fetchAllRows<ConnectionRow>(supabase, "user_linkedin_connections", "user_id, linkedin_profile_url, linkedin_data"),
@@ -516,10 +658,17 @@ async function main(): Promise<void> {
   };
 
   log("=== BACKFILL COMPLETE ===");
-  log(`targets processed: ${orderedTargets.length}`);
+  log(
+    `targets processed: ${
+      options.rewriteStale ? limitedStaleAlumniRows.length + limitedStaleMemberRows.length : orderedTargets.length
+    }`,
+  );
   log(`written OK: ${writtenOk}`);
   log(`write-failed: ${writeFailed}`);
   log(`unmatched: ${unmatched}`);
+  if (options.rewriteStale) {
+    log(`skipped (no fresh data): ${skippedNoFreshData}`);
+  }
   log(`skipped (no user_id): ${skippedNoUserId}`);
   log(`skipped (no url): ${skippedNoUrl}`);
   log(`Before: alumni=${before.alumni} members=${before.members} connections=${before.connections} rows with ${LICDN_MARKER}`);
