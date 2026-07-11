@@ -1,13 +1,11 @@
 import {
   APPLE_AUTH_CANCELED_CODE,
-  isAppleAuthAvailable,
   isAppleAuthCanceled,
   signInWithApple,
   signUpWithApple,
 } from "@/lib/apple-auth";
 import { captureException } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase";
-import { Platform } from "react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Crypto from "expo-crypto";
 
@@ -16,7 +14,6 @@ jest.mock("expo-apple-authentication", () => ({
     FULL_NAME: 0,
     EMAIL: 1,
   },
-  isAvailableAsync: jest.fn(),
   signInAsync: jest.fn(),
   formatFullName: jest.fn((fullName) =>
     [fullName.givenName, fullName.middleName, fullName.familyName].filter(Boolean).join(" ")
@@ -43,39 +40,21 @@ const auth = supabase.auth as jest.Mocked<typeof supabase.auth> & {
 describe("apple-auth", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    Platform.OS = "ios";
     jest.mocked(Crypto.randomUUID).mockReturnValue("raw-nonce");
     jest.mocked(Crypto.digestStringAsync).mockResolvedValue("hashed-nonce");
-    jest.mocked(AppleAuthentication.formatFullName).mockImplementation((fullName) =>
-      [fullName.givenName, fullName.middleName, fullName.familyName].filter(Boolean).join(" ")
-    );
+    jest
+      .mocked(AppleAuthentication.formatFullName)
+      .mockImplementation((fullName) =>
+        [fullName.givenName, fullName.middleName, fullName.familyName].filter(Boolean).join(" ")
+      );
     auth.signInWithIdToken = jest.fn().mockResolvedValue({
       data: { session: { access_token: "access-token" }, user: { id: "user-1" } },
       error: null,
     });
-    auth.updateUser = jest.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
+    auth.updateUser = jest
+      .fn()
+      .mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
     auth.signOut = jest.fn().mockResolvedValue({ error: null });
-  });
-
-  it("reports unavailable outside iOS", async () => {
-    Platform.OS = "android";
-
-    await expect(isAppleAuthAvailable()).resolves.toBe(false);
-    expect(AppleAuthentication.isAvailableAsync).not.toHaveBeenCalled();
-  });
-
-  it("reports native availability on iOS", async () => {
-    jest.mocked(AppleAuthentication.isAvailableAsync).mockResolvedValue(true);
-
-    await expect(isAppleAuthAvailable()).resolves.toBe(true);
-  });
-
-  it("captures availability errors and fails closed", async () => {
-    const error = new Error("native unavailable");
-    jest.mocked(AppleAuthentication.isAvailableAsync).mockRejectedValue(error);
-
-    await expect(isAppleAuthAvailable()).resolves.toBe(false);
-    expect(captureException).toHaveBeenCalledWith(error, { context: "isAppleAuthAvailable" });
   });
 
   it("identifies user-canceled Apple auth errors", () => {

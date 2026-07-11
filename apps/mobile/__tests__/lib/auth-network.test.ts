@@ -1,33 +1,4 @@
-import { friendlyAuthError, pingAuthSurfaces } from "@/lib/auth-network";
-import { NetworkUnreachableError } from "@/lib/web-api";
-
-describe("friendlyAuthError", () => {
-  it("maps NetworkUnreachableError to friendly text", () => {
-    expect(friendlyAuthError(new NetworkUnreachableError())).toBe(
-      "Couldn't reach the server. Check your connection and try again.",
-    );
-  });
-
-  it("maps any error containing 'Network request failed' to friendly text", () => {
-    expect(friendlyAuthError(new Error("Network request failed"))).toBe(
-      "Couldn't reach the server. Check your connection and try again.",
-    );
-    expect(friendlyAuthError(new Error("TypeError: Network request failed"))).toBe(
-      "Couldn't reach the server. Check your connection and try again.",
-    );
-  });
-
-  it("returns original message for other errors", () => {
-    expect(friendlyAuthError(new Error("Invalid login credentials"))).toBe(
-      "Invalid login credentials",
-    );
-  });
-
-  it("returns fallback for non-Error values", () => {
-    expect(friendlyAuthError(undefined)).toBe("Something went wrong. Please try again.");
-    expect(friendlyAuthError(null)).toBe("Something went wrong. Please try again.");
-  });
-});
+import { pingAuthSurfaces } from "@/lib/auth-network";
 
 describe("pingAuthSurfaces", () => {
   const originalFetch = global.fetch;
@@ -61,7 +32,9 @@ describe("pingAuthSurfaces", () => {
   });
 
   it("returns supabase: false when fetch throws TypeError", async () => {
-    global.fetch = jest.fn().mockRejectedValue(new TypeError("Network request failed")) as jest.Mock;
+    global.fetch = jest
+      .fn()
+      .mockRejectedValue(new TypeError("Network request failed")) as jest.Mock;
 
     const result = await pingAuthSurfaces("https://invalid.example.invalid");
 

@@ -1,6 +1,5 @@
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Crypto from "expo-crypto";
-import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase";
 import { captureException } from "@/lib/analytics";
 
@@ -19,19 +18,6 @@ export function isAppleAuthCanceled(error: unknown): boolean {
     "code" in error &&
     error.code === APPLE_AUTH_CANCELED_CODE
   );
-}
-
-export async function isAppleAuthAvailable(): Promise<boolean> {
-  if (Platform.OS !== "ios") {
-    return false;
-  }
-
-  try {
-    return await AppleAuthentication.isAvailableAsync();
-  } catch (error) {
-    captureException(error as Error, { context: "isAppleAuthAvailable" });
-    return false;
-  }
 }
 
 export async function signInWithApple() {
@@ -59,10 +45,7 @@ async function authenticateWithApple({
   metadataRequired: boolean;
 }) {
   const rawNonce = Crypto.randomUUID();
-  const hashedNonce = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    rawNonce
-  );
+  const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
 
   const credential = await AppleAuthentication.signInAsync({
     requestedScopes: [
