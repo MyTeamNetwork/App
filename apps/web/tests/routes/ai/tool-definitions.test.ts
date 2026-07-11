@@ -4,10 +4,14 @@ import { AI_TOOLS, TOOL_NAMES } from "../../../src/lib/ai/tools/definitions.ts";
 import type { ToolName } from "../../../src/lib/ai/tools/definitions.ts";
 
 type ToolProperties = Record<string, { type?: string; maximum?: number }>;
-type ToolParameters = { properties?: ToolProperties; additionalProperties?: boolean; required?: string[] };
+type ToolParameters = {
+  properties?: ToolProperties;
+  additionalProperties?: boolean;
+  required?: string[];
+};
 
-test("AI_TOOLS exports 47 tool definitions", () => {
-  assert.equal(AI_TOOLS.length, 47);
+test("AI_TOOLS exports 48 tool definitions", () => {
+  assert.equal(AI_TOOLS.length, 48);
 });
 
 test("every tool has type function and additionalProperties false", () => {
@@ -41,6 +45,7 @@ test("TOOL_NAMES contains all tool names", () => {
     "prepare_discussion_thread",
     "prepare_event",
     "prepare_events_batch",
+    "import_events_csv",
     "scrape_schedule_website",
     "extract_schedule_pdf",
     "get_org_stats",
@@ -91,7 +96,7 @@ test("prepare_mentorship_pairing accepts mentee and mentor id/query params", () 
 test("ToolName type is derived from AI_TOOLS", () => {
   // If ToolName is properly derived, this assignment should work at compile time.
   // At runtime, verify the set matches the tools array.
-  const namesFromArray = AI_TOOLS.map(t => t.function.name);
+  const namesFromArray = AI_TOOLS.map((t) => t.function.name);
   assert.deepEqual([...TOOL_NAMES].sort(), [...namesFromArray].sort());
 });
 

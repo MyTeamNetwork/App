@@ -4,10 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import {
-  consumeSSEStream,
-  isSafeAssistantNavigationHref,
-} from "../src/hooks/useAIStream.ts";
+import { consumeSSEStream, isSafeAssistantNavigationHref } from "../src/hooks/useAIStream.ts";
 import {
   deriveToolStatusLabel,
   formatToolStatusLabel,
@@ -51,9 +48,15 @@ test("formatToolStatusLabel maps known tools and falls back safely", () => {
   assert.equal(formatToolStatusLabel("prepare_chat_message"), "Preparing chat message...");
   assert.equal(formatToolStatusLabel("prepare_member_role_change"), "Preparing member change...");
   assert.equal(formatToolStatusLabel("prepare_discussion_reply"), "Preparing discussion reply...");
-  assert.equal(formatToolStatusLabel("prepare_discussion_thread"), "Preparing discussion thread...");
+  assert.equal(
+    formatToolStatusLabel("prepare_discussion_thread"),
+    "Preparing discussion thread..."
+  );
   assert.equal(formatToolStatusLabel("get_org_stats"), "Checking organization stats...");
-  assert.equal(formatToolStatusLabel("get_donation_analytics"), "Summarizing contribution analytics...");
+  assert.equal(
+    formatToolStatusLabel("get_donation_analytics"),
+    "Summarizing contribution analytics..."
+  );
   assert.equal(formatToolStatusLabel("suggest_connections"), "Finding connections...");
   assert.equal(formatToolStatusLabel("find_navigation_targets"), "Finding the right page...");
   assert.equal(formatToolStatusLabel("future_tool"), "Working...");
@@ -145,9 +148,7 @@ test("consumeSSEStream forwards pending_action events before completion", async 
     }
   );
 
-  assert.deepEqual(pendingActions, [
-    { actionId: "action-123", actionType: "create_job_posting" },
-  ]);
+  assert.deepEqual(pendingActions, [{ actionId: "action-123", actionType: "create_job_posting" }]);
 });
 
 test("consumeSSEStream forwards navigation events without changing content", async () => {
@@ -166,9 +167,7 @@ test("consumeSSEStream forwards navigation events without changing content", asy
     }
   );
 
-  assert.deepEqual(navigationEvents, [
-    { href: "/acme/announcements", label: "Announcements" },
-  ]);
+  assert.deepEqual(navigationEvents, [{ href: "/acme/announcements", label: "Announcements" }]);
   assert.equal(result?.content, "[Announcements](/acme/announcements)");
 });
 
@@ -236,14 +235,14 @@ test("MessageInput renders tool status label when provided", () => {
   assert.doesNotMatch(html, />Thinking\.\.\.</);
 });
 
-test("MessageInput renders attached schedule image state, generic labels, and upload errors", () => {
+test("MessageInput renders attached schedule file state, generic labels, and upload errors", () => {
   const html = renderToStaticMarkup(
     React.createElement(MessageInput, {
       input: "Please extract this schedule file and prepare events for confirmation.",
       isStreaming: false,
       isUploadingAttachment: false,
       error: null,
-      attachmentError: "File must be a PDF or image",
+      attachmentError: "File must be a supported schedule file",
       attachment: {
         storagePath: "org-1/user-1/schedule.png",
         fileName: "varsity-schedule.png",
@@ -261,8 +260,8 @@ test("MessageInput renders attached schedule image state, generic labels, and up
   assert.match(html, /varsity-schedule\.png/);
   assert.match(html, /Remove attached schedule file/);
   assert.match(html, /Replace attached schedule file/);
-  assert.match(html, /accept="\.pdf,\.png,\.jpg,\.jpeg,application\/pdf,image\/png,image\/jpeg,image\/jpg"/);
-  assert.match(html, /File must be a PDF or image/);
+  assert.match(html, /accept="\.pdf,\.png,\.jpg,\.jpeg,\.csv,image\/\*,application\/pdf"/);
+  assert.match(html, /File must be a supported schedule file/);
 });
 
 test("MessageInput renders generic uploading copy for schedule files", () => {

@@ -6,12 +6,8 @@ import { resetRateLimitStore } from "../../../src/lib/security/rate-limit.ts";
 const ORG_ID = "00000000-0000-4000-a000-000000000001";
 const ADMIN_USER = { id: "00000000-0000-4000-a000-000000000099", email: "admin@example.com" };
 
-const {
-  createAiScheduleUploadDeleteHandler,
-  createAiScheduleUploadHandler,
-} = await import(
-  "../../../src/app/api/ai/[orgId]/upload-schedule/handler.ts"
-);
+const { createAiScheduleUploadDeleteHandler, createAiScheduleUploadHandler } =
+  await import("../../../src/app/api/ai/[orgId]/upload-schedule/handler.ts");
 
 function buildRequest(file: File) {
   const formData = new FormData();
@@ -95,7 +91,9 @@ test("upload-schedule accepts a valid PDF attachment", async () => {
   });
 
   const response = await handler(
-    buildRequest(new File([Buffer.from("%PDF-1.7\n")], "schedule.pdf", { type: "application/pdf" })) as any,
+    buildRequest(
+      new File([Buffer.from("%PDF-1.7\n")], "schedule.pdf", { type: "application/pdf" })
+    ) as any,
     { params: Promise.resolve({ orgId: ORG_ID }) }
   );
   const body = await response.json();
@@ -224,6 +222,8 @@ test("upload-schedule creates the bucket when it is missing before upload", asyn
           "image/png",
           "image/jpeg",
           "image/jpg",
+          "text/csv",
+          "application/vnd.ms-excel",
         ],
       },
     },
@@ -275,6 +275,8 @@ test("upload-schedule reconciles a stale bucket allowlist before upload", async 
           "image/png",
           "image/jpeg",
           "image/jpg",
+          "text/csv",
+          "application/vnd.ms-excel",
         ],
       },
     },
@@ -307,7 +309,9 @@ test("upload-schedule rejects mismatched image content", async () => {
   });
 
   const response = await handler(
-    buildRequest(new File([Buffer.from("%PDF-1.7\n")], "schedule.png", { type: "image/png" })) as any,
+    buildRequest(
+      new File([Buffer.from("%PDF-1.7\n")], "schedule.png", { type: "image/png" })
+    ) as any,
     { params: Promise.resolve({ orgId: ORG_ID }) }
   );
   const body = await response.json();
@@ -584,17 +588,19 @@ test("upload-schedule falls back to the generic upload error for opaque failures
 
 test("upload-schedule delete removes an owned pending upload", async () => {
   const removedPaths: string[][] = [];
-  const handler = createAiScheduleUploadDeleteHandler(buildHandlerDeps({
-    from() {
-      return {
-        upload: async () => ({ error: null }),
-        remove: async (paths: string[]) => {
-          removedPaths.push(paths);
-          return { error: null };
-        },
-      };
-    },
-  }));
+  const handler = createAiScheduleUploadDeleteHandler(
+    buildHandlerDeps({
+      from() {
+        return {
+          upload: async () => ({ error: null }),
+          remove: async (paths: string[]) => {
+            removedPaths.push(paths);
+            return { error: null };
+          },
+        };
+      },
+    })
+  );
 
   const response = await handler(
     buildDeleteRequest(`${ORG_ID}/${ADMIN_USER.id}/1712000000000_schedule.png`) as any,
@@ -606,14 +612,16 @@ test("upload-schedule delete removes an owned pending upload", async () => {
 });
 
 test("upload-schedule delete rejects paths outside the caller prefix", async () => {
-  const handler = createAiScheduleUploadDeleteHandler(buildHandlerDeps({
-    from() {
-      return {
-        upload: async () => ({ error: null }),
-        remove: async () => ({ error: null }),
-      };
-    },
-  }));
+  const handler = createAiScheduleUploadDeleteHandler(
+    buildHandlerDeps({
+      from() {
+        return {
+          upload: async () => ({ error: null }),
+          remove: async () => ({ error: null }),
+        };
+      },
+    })
+  );
 
   const response = await handler(
     buildDeleteRequest(`${ORG_ID}/someone-else/1712000000000_schedule.png`) as any,
@@ -628,21 +636,23 @@ test("upload-schedule delete rejects paths outside the caller prefix", async () 
 });
 
 test("upload-schedule delete is idempotent when the object is already gone", async () => {
-  const handler = createAiScheduleUploadDeleteHandler(buildHandlerDeps({
-    from() {
-      return {
-        upload: async () => ({ error: null }),
-        remove: async () => ({
-          error: {
-            message: "Object not found",
-            name: "StorageApiError",
-            status: 404,
-            statusCode: "404",
-          },
-        }),
-      };
-    },
-  }));
+  const handler = createAiScheduleUploadDeleteHandler(
+    buildHandlerDeps({
+      from() {
+        return {
+          upload: async () => ({ error: null }),
+          remove: async () => ({
+            error: {
+              message: "Object not found",
+              name: "StorageApiError",
+              status: 404,
+              statusCode: "404",
+            },
+          }),
+        };
+      },
+    })
+  );
 
   const response = await handler(
     buildDeleteRequest(`${ORG_ID}/${ADMIN_USER.id}/1712000000000_schedule.png`) as any,
