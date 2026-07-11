@@ -1,46 +1,19 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { MembershipStatus, Organization, UserRole } from "@/types/database";
+import type { MembershipStatus } from "@/types/database";
 import { normalizeRole, roleFlags, type OrgRole } from "@teammeet/core";
-import {
-  getGracePeriodInfo,
-  type GracePeriodInfo,
-  type SubscriptionStatus,
-} from "@/lib/subscription/grace-period";
 import { resolveCheck } from "@/lib/supabase/resolve-check";
+import { loadOrgContextFromRpc, normalizeMembershipRow } from "@/lib/auth/org-context-rpc";
+import type { OrgContextResult } from "@/lib/auth/org-context-rpc";
+
+export type { OrgContextResult } from "@/lib/auth/org-context-rpc";
 
 type OrgRoleResult = {
   role: OrgRole | null;
   status: MembershipStatus | null;
   userId: string | null;
 };
-
-export type OrgContextResult = {
-  organization: Organization | null;
-  status: MembershipStatus | null;
-  userId: string | null;
-  role: OrgRole | null;
-  isAdmin: boolean;
-  isActiveMember: boolean;
-  isAlumni: boolean;
-  isParent: boolean;
-  subscription: SubscriptionStatus | null;
-  gracePeriod: GracePeriodInfo;
-  hasAlumniAccess: boolean;
-  hasParentsAccess: boolean;
-};
-
-/** Normalize a raw membership row into role + status. Shared by getOrgRole and getOrgContext. */
-function normalizeMembershipRow(data: { role?: unknown; status?: unknown } | null): {
-  role: OrgRole | null;
-  status: MembershipStatus | null;
-} {
-  return {
-    role: normalizeRole((data?.role as UserRole | null) ?? null),
-    status: (data?.status as MembershipStatus | null) ?? null,
-  };
-}
 
 /**
  * Cached wrapper for auth.getUser(). React.cache() deduplicates calls
@@ -70,7 +43,6 @@ const syncCurrentUserOrganizationMemberships = cache(async () => {
     console.error("[auth/roles] Failed to sync current user memberships:", error.message);
   }
 });
-
 export async function getOrgRole(params: {
   orgId: string;
   userId?: string;
@@ -122,91 +94,17 @@ export async function requireOrgRole(params: {
 /**
  * Main org context loader — cached per orgSlug within a single request.
  *
- * React.cache() deduplicates layout + page calls.
- * 2-stage parallel fetch:
- *   Stage 1: getCurrentUser() + org query (parallel, independent)
- *   Stage 2: subscription RPC + membership query (parallel, both need org.id)
+ * React.cache() deduplicates layout + page calls. User validation and the
+ * consolidated org-context RPC run concurrently, replacing separate
+ * organization, membership, and subscription round trips.
  */
 export const getOrgContext = cache(async (orgSlug: string): Promise<OrgContextResult> => {
-  // Stage 1: user + org lookup in parallel (independent of each other)
   const supabase = await createClient();
-  const [user, { data: org }] = await Promise.all([
-    getCurrentUser(),
-    supabase
-      .from("organizations")
-      .select(
-        "id, name, slug, logo_url, base_color, primary_color, secondary_color, nav_config, stripe_connect_account_id, org_type, donation_embed_url, created_at, feed_post_roles, job_post_roles, discussion_post_roles, media_upload_roles, timezone, hide_donor_names, captcha_provider"
-      )
-      .eq("slug", orgSlug)
-      .maybeSingle(),
-  ]);
-
-  const userId = user?.id ?? null;
-
-  if (userId) {
-    await syncCurrentUserOrganizationMemberships();
-  }
-
-  if (!org) {
-    const flags = roleFlags(null);
-    return {
-      organization: null as Organization | null,
-      status: null as MembershipStatus | null,
-      userId,
-      subscription: null,
-      gracePeriod: getGracePeriodInfo(null),
-      hasAlumniAccess: false,
-      hasParentsAccess: false,
-      ...flags,
-    };
-  }
-
-  // Stage 2: subscription + membership in parallel (both need org.id but not each other)
-  const [{ data: subscriptionRows }, membershipData] = await Promise.all([
-    supabase.rpc("get_subscription_status", { p_org_id: org.id }),
-    userId
-      ? supabase
-          .from("user_organization_roles")
-          .select("role,status")
-          .eq("organization_id", org.id)
-          .eq("user_id", userId)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
-
-  const subscriptionData = subscriptionRows?.[0] ?? null;
-
-  const subscription: SubscriptionStatus | null = subscriptionData
-    ? {
-        status: subscriptionData.status,
-        gracePeriodEndsAt: subscriptionData.grace_period_ends_at,
-        currentPeriodEnd: subscriptionData.current_period_end,
-      }
-    : null;
-
-  const hasAlumniAccess =
-    subscriptionData?.status === "enterprise_managed" ||
-    (subscriptionData?.alumni_bucket != null && subscriptionData.alumni_bucket !== "none");
-
-  const hasParentsAccess =
-    subscriptionData?.status === "enterprise_managed" ||
-    (subscriptionData?.parents_bucket != null && subscriptionData.parents_bucket !== "none");
-
-  const gracePeriod = getGracePeriodInfo(subscription);
-
-  const { role, status: memberStatus } = normalizeMembershipRow(membershipData?.data);
-  const flags = memberStatus === "active" ? roleFlags(role) : roleFlags(null);
-
-  return {
-    organization: org as unknown as Organization,
-    status: memberStatus,
-    userId,
-    subscription,
-    gracePeriod,
-    hasAlumniAccess,
-    hasParentsAccess,
-    ...flags,
-  };
+  return loadOrgContextFromRpc({
+    orgSlug,
+    getUserId: async () => (await getCurrentUser())?.id ?? null,
+    rpc: async (functionName, args) => supabase.rpc(functionName, args),
+  });
 });
 
 export { normalizeRole, roleFlags };

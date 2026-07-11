@@ -7899,6 +7899,10 @@ export type Database = {
       }
       get_media_storage_stats: { Args: { p_org_id: string }; Returns: Json }
       get_org_context_by_slug: { Args: { p_slug: string }; Returns: Json }
+      get_render_org_context_by_slug: {
+        Args: { p_slug: string }
+        Returns: Json
+      }
       get_org_stats_snapshot: {
         Args: { p_org_id: string }
         Returns: {
