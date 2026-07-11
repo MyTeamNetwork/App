@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Link, Redirect, useRouter, useNavigation } from "expo-router";
 import { ChevronLeft, Eye, EyeOff } from "lucide-react-native";
 import { isExistingAccountSignup } from "@teammeet/core";
+import {
+  baseSchemas,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_REQUIREMENTS,
+} from "@teammeet/validation";
 import { supabase } from "@/lib/supabase";
 import { isAppleAuthCanceled, signUpWithApple } from "@/lib/apple-auth";
 import { captureException, track } from "@/lib/analytics";
@@ -67,11 +72,12 @@ const colors = {
   disabledButton: "#94a3b8",
 };
 
-// Simple email validation (no regex)
-const isEmailValid = (email: string) => {
-  const trimmed = email.trim();
-  return trimmed.length >= 5 && trimmed.includes("@") && trimmed.includes(".");
-};
+// Shared email schema so web and mobile accept the same addresses.
+const isEmailValid = (email: string) => baseSchemas.email.safeParse(email).success;
+
+// Give Turnstile a bounded window to load; otherwise a stalled widget leaves
+// the screen in a loading state forever (mirrors login.tsx).
+const CAPTCHA_LOAD_TIMEOUT_MS = 15_000;
 
 type SignupStep = "age_gate" | "registration";
 type AgeGateData = {
@@ -130,10 +136,24 @@ export default function SignupScreen() {
   // Captcha
   const turnstileRef = useRef<TurnstileRef>(null);
   const pendingCredsRef = useRef<{ email: string; password: string } | null>(null);
+  const captchaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCaptchaTimeout = () => {
+    if (captchaTimeoutRef.current) {
+      clearTimeout(captchaTimeoutRef.current);
+      captchaTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearCaptchaTimeout();
+    };
+  }, []);
 
   const isFormValid =
     isEmailValid(email) &&
-    password.length >= 6 &&
+    password.length >= PASSWORD_MIN_LENGTH &&
     confirmPassword.length > 0 &&
     password === confirmPassword;
 
@@ -200,8 +220,8 @@ export default function SignupScreen() {
       setPasswordError("Please enter a password");
       return;
     }
-    if (password.length < 6) {
-      setPasswordError("Password must be at least 6 characters");
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      setPasswordError(PASSWORD_REQUIREMENTS);
       return;
     }
     if (!confirmPassword) {
@@ -221,9 +241,15 @@ export default function SignupScreen() {
     pendingCredsRef.current = { email: trimmedEmail.toLowerCase(), password };
     setLoading(true);
     turnstileRef.current?.show();
+    clearCaptchaTimeout();
+    captchaTimeoutRef.current = setTimeout(() => {
+      captchaTimeoutRef.current = null;
+      handleCaptchaError("captcha load timeout");
+    }, CAPTCHA_LOAD_TIMEOUT_MS);
   };
 
   const handleCaptchaVerify = async (captchaToken: string) => {
+    clearCaptchaTimeout();
     const creds = pendingCredsRef.current;
     pendingCredsRef.current = null;
     if (!creds) {
@@ -292,11 +318,13 @@ export default function SignupScreen() {
   };
 
   const handleCaptchaCancel = () => {
+    clearCaptchaTimeout();
     pendingCredsRef.current = null;
     setLoading(false);
   };
 
   const handleCaptchaError = (message: string) => {
+    clearCaptchaTimeout();
     pendingCredsRef.current = null;
     setLoading(false);
     setApiError("Verification failed. Please try again.");
@@ -490,7 +518,7 @@ export default function SignupScreen() {
                     getInputStyle(passwordFocused, !!passwordError),
                     styles.passwordInput,
                   ]}
-                  placeholder="Password"
+                  placeholder={`Password (${PASSWORD_MIN_LENGTH}+ characters)`}
                   placeholderTextColor={colors.placeholder}
                   value={password}
                   onChangeText={handlePasswordChange}

@@ -310,13 +310,14 @@ function RootLayoutInner() {
 
     const inAuthGroup = segments[0] === "(auth)";
     const isOnCallback = segments[1] === "callback";
-    const isOnResetPassword = segments[1] === "reset-password";
     const isOnClaim = segments[1] === "claim";
 
-    // Don't redirect away from callback, reset-password, or claim screens
-    // while processing. Claim mirrors the web flow: signed-in users may
-    // re-verify their email via OTP without being bounced to /(app).
-    if (isOnCallback || isOnResetPassword || isOnClaim) return;
+    // Don't redirect away from callback or claim screens while processing.
+    // Claim mirrors the web flow: signed-in users may re-verify their email
+    // via OTP without being bounced to /(app). Password recovery is web-only
+    // (buildMobileRecoveryRedirectTo targets /auth/confirm), so there is no
+    // native reset-password screen to exempt.
+    if (isOnCallback || isOnClaim) return;
 
     if (!session && !inAuthGroup) {
       router.replace("/(auth)");

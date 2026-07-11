@@ -115,7 +115,7 @@ Then in ASC:
 
 ```
 AuthProvider → GestureHandlerRootView → StripeProvider → Stack
-  └─ (auth): login, signup, forgot-password, reset-password, callback
+  └─ (auth): login, signup, forgot-password, callback
   └─ (app)/(drawer): org list, profile, terms
        └─ [orgSlug] (OrgProvider)
             └─ (tabs): home, members, alumni, announcements, calendar, menu

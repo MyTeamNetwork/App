@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Link, useRouter, useNavigation } from "expo-router";
 import { ChevronLeft, CheckCircle } from "lucide-react-native";
+import { baseSchemas } from "@teammeet/validation";
 import { supabase } from "@/lib/supabase";
 import { captureException } from "@/lib/analytics";
 import { borderRadius, spacing, fontSize } from "@/lib/theme";
@@ -55,11 +56,12 @@ const colors = {
   disabledButton: "#94a3b8",
 };
 
-// Simple email validation
-const isEmailValid = (email: string) => {
-  const trimmed = email.trim();
-  return trimmed.length >= 5 && trimmed.includes("@") && trimmed.includes(".");
-};
+// Shared email schema so web and mobile accept the same addresses.
+const isEmailValid = (email: string) => baseSchemas.email.safeParse(email).success;
+
+// Give Turnstile a bounded window to load; otherwise a stalled widget leaves
+// the screen in a loading state forever (mirrors login.tsx).
+const CAPTCHA_LOAD_TIMEOUT_MS = 15_000;
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -88,6 +90,20 @@ export default function ForgotPasswordScreen() {
   // reset request is only sent after Turnstile verifies.
   const turnstileRef = useRef<TurnstileRef>(null);
   const pendingEmailRef = useRef<string | null>(null);
+  const captchaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCaptchaTimeout = () => {
+    if (captchaTimeoutRef.current) {
+      clearTimeout(captchaTimeoutRef.current);
+      captchaTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearCaptchaTimeout();
+    };
+  }, []);
 
   const handleEmailChange = (text: string) => {
     setEmail(text);
@@ -112,9 +128,15 @@ export default function ForgotPasswordScreen() {
     pendingEmailRef.current = trimmedEmail.toLowerCase();
     setLoading(true);
     turnstileRef.current?.show();
+    clearCaptchaTimeout();
+    captchaTimeoutRef.current = setTimeout(() => {
+      captchaTimeoutRef.current = null;
+      handleCaptchaError("captcha load timeout");
+    }, CAPTCHA_LOAD_TIMEOUT_MS);
   };
 
   const handleCaptchaVerify = async (captchaToken: string) => {
+    clearCaptchaTimeout();
     const pendingEmail = pendingEmailRef.current;
     pendingEmailRef.current = null;
     if (!pendingEmail) {
@@ -158,11 +180,13 @@ export default function ForgotPasswordScreen() {
   };
 
   const handleCaptchaCancel = () => {
+    clearCaptchaTimeout();
     pendingEmailRef.current = null;
     setLoading(false);
   };
 
   const handleCaptchaError = (message: string) => {
+    clearCaptchaTimeout();
     pendingEmailRef.current = null;
     setLoading(false);
     setApiError("Verification failed. Please try again.");

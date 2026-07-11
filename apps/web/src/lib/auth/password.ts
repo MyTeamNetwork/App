@@ -1,15 +1,12 @@
-const PASSWORD_MIN_LENGTH = 12;
+import {
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_REQUIREMENTS,
+  isStrongPassword,
+} from "@teammeet/validation";
 
-export const PASSWORD_REQUIREMENTS =
-  `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
-
-/**
- * Checks if a password meets minimum length requirements.
- * Used by Zod schemas for validation.
- */
-export function isStrongPassword(password: string): boolean {
-  return password.length >= PASSWORD_MIN_LENGTH;
-}
+// Password policy is shared across web and mobile via @teammeet/validation so
+// the clients can never drift apart. Keep the web-facing API re-exported here.
+export { PASSWORD_MIN_LENGTH, PASSWORD_REQUIREMENTS, isStrongPassword };
 
 /**
  * Validates a new password and its confirmation.
@@ -19,8 +16,8 @@ export function validateNewPassword(
   password: string,
   confirmPassword: string
 ): string | null {
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+  if (!isStrongPassword(password)) {
+    return PASSWORD_REQUIREMENTS;
   }
   if (password !== confirmPassword) {
     return "Passwords do not match";

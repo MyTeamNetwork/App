@@ -29,6 +29,20 @@ export const baseSchemas = {
 } as const;
 
 /**
+ * Password policy shared by every client. The backend minimum
+ * (supabase config.toml `minimum_password_length`) must match this value —
+ * a weaker client minimum lets one platform create credentials another rejects.
+ */
+export const PASSWORD_MIN_LENGTH = 12;
+
+export const PASSWORD_REQUIREMENTS =
+  `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+
+export function isStrongPassword(password: string): boolean {
+  return password.length >= PASSWORD_MIN_LENGTH;
+}
+
+/**
  * Creates a required string schema with min/max length.
  */
 export const safeString = (max: number, min = 1) =>
