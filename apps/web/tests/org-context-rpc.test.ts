@@ -180,3 +180,18 @@ test("migration preserves subscription row detection and membership visibility",
   );
   assert.doesNotMatch(migration, /CREATE OR REPLACE FUNCTION public\.get_org_context_by_slug/);
 });
+
+test("authenticated org context RPC permits membership self-healing writes", () => {
+  const migration = fs.readFileSync(
+    path.resolve(
+      process.cwd(),
+      "../../supabase/migrations/20270106000000_fix_render_org_context_volatility.sql"
+    ),
+    "utf8"
+  );
+
+  assert.match(
+    migration,
+    /ALTER FUNCTION public\.get_render_org_context_by_slug\(text\) VOLATILE;/
+  );
+});

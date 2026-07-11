@@ -117,3 +117,18 @@ test("directory migration enforces bounded server pagination and ACLs", () => {
   assert.match(migration, /'roles', COALESCE/);
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.get_org_member_directory/);
 });
+
+test("directory RPC is not executable by anonymous users", () => {
+  const migration = fs.readFileSync(
+    path.resolve(
+      process.cwd(),
+      "../../supabase/migrations/20270107000000_restrict_member_directory_rpc.sql"
+    ),
+    "utf8"
+  );
+
+  assert.match(
+    migration,
+    /REVOKE ALL ON FUNCTION public\.get_org_member_directory\([\s\S]*\) FROM anon;/
+  );
+});
