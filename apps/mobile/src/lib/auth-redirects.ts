@@ -15,11 +15,24 @@ export function buildMobileRecoveryRedirectTo(
   return `${base}/auth/confirm?next=${encodeURIComponent(resetPage)}`;
 }
 
-export function buildMobileEmailSignupCallbackUrl(siteUrl: string): string {
+export function buildMobileEmailSignupCallbackUrl(
+  siteUrl: string,
+  params: { handoffChallenge: string }
+): string {
   const url = new URL("/auth/callback", normalizeOrigin(siteUrl));
   url.searchParams.set("mobile", "1");
   url.searchParams.set("mode", "signup");
   url.searchParams.set("redirect", "/app");
+
+  // Without a device-bound challenge the web callback mints an unbound handoff
+  // whose deep link parseMobileAuthCallbackUrl (below) refuses — the signup
+  // confirmation would silently dead-end. Fail loudly here instead, mirroring
+  // buildMobileOAuthUrl.
+  if (!/^[a-f0-9]{64}$/i.test(params.handoffChallenge)) {
+    throw new Error("Invalid mobile handoff challenge");
+  }
+  url.searchParams.set("handoff_challenge", params.handoffChallenge.toLowerCase());
+
   return url.toString();
 }
 

@@ -27,6 +27,7 @@ import {
   type MobileOAuthProvider,
 } from "@/lib/auth-redirects";
 import { runMobileOAuth } from "@/lib/mobile-oauth-flow";
+import { createMobileOAuthChallenge } from "@/lib/mobile-oauth-challenge";
 import { validateSignupAge } from "@/lib/mobile-auth";
 import { getWebAppUrl } from "@/lib/web-api";
 
@@ -237,6 +238,10 @@ export default function SignupScreen() {
     }
 
     try {
+      // Device-bound challenge: the verifier stays in SecureStore until the
+      // confirmation deep link comes back (possibly days later), so the web
+      // callback can mint a handoff only this install can redeem.
+      const handoffChallenge = await createMobileOAuthChallenge();
       const { data, error } = await supabase.auth.signUp({
         email: creds.email,
         password: creds.password,
@@ -246,7 +251,9 @@ export default function SignupScreen() {
             is_minor: ageGate.isMinor,
             age_validation_token: ageGate.token,
           },
-          emailRedirectTo: buildMobileEmailSignupCallbackUrl(getWebAppUrl()),
+          emailRedirectTo: buildMobileEmailSignupCallbackUrl(getWebAppUrl(), {
+            handoffChallenge,
+          }),
           captchaToken,
         },
       });

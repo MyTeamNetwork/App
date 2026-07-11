@@ -38,12 +38,52 @@ const KNOWN_UNAPPLIED = new Map([
   ["20261206000001", "wallet_pass_registrations table absent in prod (deferred, feature gated)"],
 ]);
 
+// Prefix collisions that predate the uniqueness guard. Prod's ledger already
+// reconciled these (both files applied, one shared version row), so renaming
+// them retroactively would desync ledger and disk. Do NOT add new entries —
+// fix new collisions by renaming the unapplied file to a unique prefix.
+const KNOWN_LEGACY_DUPLICATE_PREFIXES = new Set([
+  "20260423000000",
+  "20260610000000",
+  "20260813000001",
+  "20261012000000",
+  "20261015100000",
+  "20261015110000",
+  "20261015120000",
+  "20261019000000",
+  "20261101000000",
+  "20261204000000",
+  "20261208000000",
+  "20261215000000",
+  "20261219000000",
+  "20270102000000",
+]);
+
 function repoVersions() {
   return fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => /^\d+_.*\.sql$/.test(f))
     .map((f) => f.match(/^(\d+)_/)[1])
     .reduce((set, v) => set.add(v), new Set());
+}
+
+// Supabase uses the numeric filename prefix as the migration VERSION. Two files
+// sharing a prefix are ambiguous on a fresh `db reset`/preview deploy: ordering
+// between them is undefined and only one ledger row can exist, so the second
+// file can be silently skipped. This check is static (no credentials needed),
+// so it runs even where the ledger comparison soft-skips.
+function duplicatePrefixes() {
+  const byPrefix = new Map();
+  for (const f of fs.readdirSync(MIGRATIONS_DIR)) {
+    const match = f.match(/^(\d+)_.*\.sql$/);
+    if (!match) continue;
+    const files = byPrefix.get(match[1]) ?? [];
+    files.push(f);
+    byPrefix.set(match[1], files);
+  }
+  return [...byPrefix.entries()]
+    .filter(([prefix, files]) => files.length > 1 && !KNOWN_LEGACY_DUPLICATE_PREFIXES.has(prefix))
+    .sort(([a], [b]) => a.localeCompare(b));
 }
 
 async function appliedVersions(url, key) {
@@ -59,6 +99,19 @@ async function appliedVersions(url, key) {
 }
 
 async function main() {
+  // Static uniqueness guard first — needs no credentials, so it must run even
+  // where the ledger comparison below soft-skips (e.g. fork PRs).
+  const dupes = duplicatePrefixes();
+  if (dupes.length > 0) {
+    console.error(
+      "::error::Duplicate migration version prefix(es) — Supabase treats the prefix as the " +
+        "migration version, so colliding files break fresh/preview deploys:\n" +
+        dupes.map(([prefix, files]) => `  - ${prefix}: ${files.join(", ")}`).join("\n") +
+        "\n\nRename the unapplied file(s) to a unique prefix greater than the current max."
+    );
+    process.exit(1);
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 

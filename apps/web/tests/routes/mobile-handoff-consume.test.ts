@@ -280,7 +280,7 @@ describe("consume route wiring", () => {
 describe("bound handoff migration contract", () => {
   it("keeps legacy rows compatible while requiring a matching challenge for bound rows", () => {
     const migration = readFileSync(
-      resolve(process.cwd(), "../../supabase/migrations/20270105000000_bind_mobile_auth_handoffs.sql"),
+      resolve(process.cwd(), "../../supabase/migrations/20270105100000_bind_mobile_auth_handoffs.sql"),
       "utf8"
     ).replace(/\s+/g, " ");
 

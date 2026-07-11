@@ -50,10 +50,41 @@ describe("mobile Google auth redirects", () => {
     expect(parsed.searchParams.get("age_token")).toBe("age-token");
   });
 
-  it("routes email signup confirmations through the web mobile callback", () => {
-    expect(buildMobileEmailSignupCallbackUrl("https://www.myteamnetwork.com")).toBe(
-      "https://www.myteamnetwork.com/auth/callback?mobile=1&mode=signup&redirect=%2Fapp"
+  it("routes email signup confirmations through the web mobile callback with a device challenge", () => {
+    expect(
+      buildMobileEmailSignupCallbackUrl("https://www.myteamnetwork.com", {
+        handoffChallenge: "a".repeat(64),
+      })
+    ).toBe(
+      `https://www.myteamnetwork.com/auth/callback?mobile=1&mode=signup&redirect=%2Fapp&handoff_challenge=${"a".repeat(64)}`
     );
+  });
+
+  it("rejects a malformed email-signup challenge instead of downgrading to an unbound handoff", () => {
+    expect(() =>
+      buildMobileEmailSignupCallbackUrl("https://www.myteamnetwork.com", {
+        handoffChallenge: "not-a-sha256-challenge",
+      })
+    ).toThrow(/invalid mobile handoff challenge/i);
+  });
+
+  it("email-signup handoffs round-trip through the parser (regression: challenge-less links were ignored)", () => {
+    // The web callback echoes the challenge from the emailRedirectTo URL onto
+    // the teammeet://callback deep link. The parser must accept exactly what
+    // the signup builder emits — this is the end-to-end pair that previously
+    // drifted apart (builder omitted the challenge, hardened parser required it).
+    const challenge = new URL(
+      buildMobileEmailSignupCallbackUrl("https://www.myteamnetwork.com", {
+        handoffChallenge: "D".repeat(64),
+      })
+    ).searchParams.get("handoff_challenge");
+
+    expect(challenge).toBe("d".repeat(64));
+    expect(
+      parseMobileAuthCallbackUrl(
+        `teammeet://callback?handoff_code=abc123&handoff_challenge=${challenge}`
+      )
+    ).toEqual({ type: "handoff", code: "abc123", challenge: "d".repeat(64) });
   });
 
   it("parses one-time handoff callbacks", () => {
