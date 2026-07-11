@@ -149,7 +149,7 @@ export function MessageInput({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg,image/jpg"
+            accept=".pdf,.png,.jpg,.jpeg,.csv,image/*,application/pdf"
             className="hidden"
             onChange={handleFileChange}
           />

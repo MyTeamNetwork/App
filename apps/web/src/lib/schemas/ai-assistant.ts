@@ -12,6 +12,8 @@ const aiAttachmentMimeTypeSchema = z.enum([
   "image/png",
   "image/jpeg",
   "image/jpg",
+  "text/csv",
+  "application/vnd.ms-excel",
 ]);
 
 const rawSendMessageSchema = z.object({

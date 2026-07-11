@@ -1,0 +1,225 @@
+- generic [active] [ref=e2]:
+  - generic [ref=e3]:
+    - link "Skip to main content" [ref=e4] [cursor=pointer]:
+      - /url: "#main-content"
+    - complementary [ref=e5]:
+      - generic [ref=e6]:
+        - link "South Rock Ridge High School South Rock Ridge High School TeamNetwork" [ref=e7] [cursor=pointer]:
+          - /url: /south-rock-ridge
+          - img "South Rock Ridge High School" [ref=e9]
+          - generic [ref=e10]:
+            - heading "South Rock Ridge High School" [level=2] [ref=e11]
+            - paragraph [ref=e12]: TeamNetwork
+        - button "Unpin sidebar" [pressed] [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+      - link "LD Logan Doyle Active Member" [ref=e18] [cursor=pointer]:
+        - /url: /south-rock-ridge/members/78f061c6-5719-4a1d-8226-20caec6ed6e3
+        - generic [ref=e19]: LD
+        - generic [ref=e20]:
+          - paragraph [ref=e21]: Logan Doyle
+          - generic [ref=e22]: Active Member
+      - button "Open search" [ref=e24] [cursor=pointer]:
+        - img [ref=e25]
+        - generic [ref=e28]:
+          - generic [ref=e29]: Search
+          - generic [ref=e30]: ⌘K
+      - navigation [ref=e31]:
+        - generic [ref=e32]:
+          - list [ref=e33]:
+            - listitem [ref=e34]:
+              - link "Home" [ref=e35] [cursor=pointer]:
+                - /url: /south-rock-ridge
+                - img [ref=e36]
+                - generic [ref=e38]: Home
+          - list [ref=e39]:
+            - listitem [ref=e40]:
+              - link "Calendar" [ref=e41] [cursor=pointer]:
+                - /url: /south-rock-ridge/calendar
+                - img [ref=e42]
+                - generic [ref=e44]: Calendar
+            - listitem [ref=e45]:
+              - link "Assistant" [ref=e46] [cursor=pointer]:
+                - /url: /south-rock-ridge/assistant
+                - img [ref=e47]
+                - generic [ref=e49]: Assistant
+          - generic [ref=e50]:
+            - button "People" [ref=e51] [cursor=pointer]:
+              - text: People
+              - img [ref=e52]
+            - list [ref=e54]:
+              - listitem [ref=e55]:
+                - link [ref=e56] [cursor=pointer]:
+                  - /url: /south-rock-ridge/members
+                  - img [ref=e57]
+                  - generic [ref=e59]: Student-Athletes
+              - listitem [ref=e60]:
+                - link [ref=e61] [cursor=pointer]:
+                  - /url: /south-rock-ridge/alumni
+                  - img [ref=e62]
+                  - generic [ref=e64]: Alumni
+              - listitem [ref=e65]:
+                - link [ref=e66] [cursor=pointer]:
+                  - /url: /south-rock-ridge/mentorship
+                  - img [ref=e67]
+                  - generic [ref=e69]: Mentorship
+          - generic [ref=e70]:
+            - button "Community" [expanded] [ref=e71] [cursor=pointer]:
+              - text: Community
+              - img [ref=e72]
+            - list [ref=e76]:
+              - listitem [ref=e77]:
+                - link "Announcements" [ref=e78] [cursor=pointer]:
+                  - /url: /south-rock-ridge/announcements
+                  - img [ref=e79]
+                  - generic [ref=e81]: Announcements
+              - listitem [ref=e82]:
+                - link "Forms" [ref=e83] [cursor=pointer]:
+                  - /url: /south-rock-ridge/forms
+                  - img [ref=e84]
+                  - generic [ref=e86]: Forms
+              - listitem [ref=e87]:
+                - link "Messages" [ref=e88] [cursor=pointer]:
+                  - /url: /south-rock-ridge/messages
+                  - img [ref=e89]
+                  - generic [ref=e91]: Messages
+              - listitem [ref=e92]:
+                - link "Jobs" [ref=e93] [cursor=pointer]:
+                  - /url: /south-rock-ridge/jobs
+                  - img [ref=e94]
+                  - generic [ref=e96]: Jobs
+              - listitem [ref=e97]:
+                - link "Media" [ref=e98] [cursor=pointer]:
+                  - /url: /south-rock-ridge/media
+                  - img [ref=e99]
+                  - generic [ref=e101]: Media
+          - generic [ref=e102]:
+            - button "Activity" [ref=e103] [cursor=pointer]:
+              - text: Activity
+              - img [ref=e104]
+            - list [ref=e106]:
+              - listitem [ref=e107]:
+                - link [ref=e108] [cursor=pointer]:
+                  - /url: /south-rock-ridge/competition
+                  - img [ref=e109]
+                  - generic [ref=e111]: Intersquad
+              - listitem [ref=e112]:
+                - link [ref=e113] [cursor=pointer]:
+                  - /url: /south-rock-ridge/records
+                  - img [ref=e114]
+                  - generic [ref=e116]: Recognition
+              - listitem [ref=e117]:
+                - link [ref=e118] [cursor=pointer]:
+                  - /url: /south-rock-ridge/workouts
+                  - img [ref=e119]
+                  - generic [ref=e121]: Workouts
+          - generic [ref=e122]:
+            - button "Finance" [ref=e123] [cursor=pointer]:
+              - text: Finance
+              - img [ref=e124]
+            - list [ref=e126]:
+              - listitem [ref=e127]:
+                - link [ref=e128] [cursor=pointer]:
+                  - /url: /south-rock-ridge/donations
+                  - img [ref=e129]
+                  - generic [ref=e131]: Dues
+              - listitem [ref=e132]:
+                - link [ref=e133] [cursor=pointer]:
+                  - /url: /south-rock-ridge/philanthropy
+                  - img [ref=e134]
+                  - generic [ref=e136]: Team Funding
+              - listitem [ref=e137]:
+                - link [ref=e138] [cursor=pointer]:
+                  - /url: /south-rock-ridge/expenses
+                  - img [ref=e139]
+                  - generic [ref=e141]: Expenses
+          - separator [ref=e142]
+          - generic [ref=e143]:
+            - button "Admin" [ref=e144] [cursor=pointer]:
+              - text: Admin
+              - img [ref=e145]
+            - list [ref=e147]:
+              - listitem [ref=e148]:
+                - link [ref=e149] [cursor=pointer]:
+                  - /url: /south-rock-ridge/customization
+                  - img [ref=e150]
+                  - generic [ref=e153]: Customization
+      - generic [ref=e154]:
+        - link "Switch Organization" [ref=e155] [cursor=pointer]:
+          - /url: /app
+          - img [ref=e156]
+          - generic [ref=e158]: Switch Organization
+        - button "Sign out" [ref=e160] [cursor=pointer]:
+          - img [ref=e161]
+          - generic [ref=e163]: Sign out
+      - link "Powered by TeamNetwork" [ref=e165] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e166]: Powered by
+        - img "TeamNetwork" [ref=e167]
+    - main [ref=e168]:
+      - generic [ref=e169]:
+        - generic [ref=e171]:
+          - heading "Messages" [level=2] [ref=e173]
+          - generic [ref=e174]:
+            - button "Discussions" [ref=e175] [cursor=pointer]:
+              - text: Discussions
+              - img [ref=e176]
+            - generic [ref=e179]:
+              - link "Which alumni mentor should I talk to for finance? 3" [ref=e180] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/e7c037c3-7f21-4416-9e59-bb9d8b56bd56
+                - generic [ref=e181]:
+                  - img [ref=e182]
+                  - generic [ref=e184]: Which alumni mentor should I talk to for finance?
+                - generic [ref=e185]: "3"
+              - link "Best pre-game meal? 2" [ref=e186] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/535ca8ab-c5fe-45d7-898e-41f05476f96e
+                - generic [ref=e188]: Best pre-game meal?
+                - generic [ref=e189]: "2"
+              - link "Housing / roommates for next year 3" [ref=e190] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/b4d77080-5c5b-4fb6-97f8-8a644a144472
+                - generic [ref=e192]: Housing / roommates for next year
+                - generic [ref=e193]: "3"
+              - link "Spring classes — easy A or worth it? 1" [ref=e194] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/2088c3a3-b9ba-4ae2-854f-d36cf7f2a730
+                - generic [ref=e196]: Spring classes — easy A or worth it?
+                - generic [ref=e197]: "1"
+              - link "Lift playlist — drop your gym songs 2" [ref=e198] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/767f75af-1fea-4596-b1ae-da2ceb537abc
+                - generic [ref=e200]: Lift playlist — drop your gym songs
+                - generic [ref=e201]: "2"
+              - link "Spring break training plan 1" [ref=e202] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/5cc6c555-1c2d-4d30-9ea7-3399b0b791c0
+                - generic [ref=e204]: Spring break training plan
+                - generic [ref=e205]: "1"
+              - link "Bs banana banana 2" [ref=e206] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/f76bfdc1-c76e-4df7-b787-fa285197dc12
+                - generic [ref=e208]: Bs banana banana
+                - generic [ref=e209]: "2"
+              - link "Feed 4" [ref=e210] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/9a12d51f-7f17-437a-9d9a-6729011e1c93
+                - generic [ref=e212]: Feed
+                - generic [ref=e213]: "4"
+              - link "jjklk 4" [ref=e214] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/6f519a5a-5920-464b-b808-50075db01335
+                - generic [ref=e216]: jjklk
+                - generic [ref=e217]: "4"
+              - link "My new Thread - Check it out! 6" [ref=e218] [cursor=pointer]:
+                - /url: /south-rock-ridge/messages/threads/cda9a7aa-c621-480f-a740-e49ab3df56a8
+                - generic [ref=e220]: My new Thread - Check it out!
+                - generic [ref=e221]: "6"
+            - generic [ref=e222]:
+              - button "Chats" [ref=e223] [cursor=pointer]:
+                - text: Chats
+                - img [ref=e224]
+              - paragraph [ref=e228]: No chats yet
+          - link "New Discussion" [ref=e230] [cursor=pointer]:
+            - /url: /south-rock-ridge/messages/threads/new
+            - img [ref=e231]
+            - text: New Discussion
+        - generic [ref=e236]:
+          - img [ref=e237]
+          - paragraph [ref=e239]: Select a conversation
+          - paragraph [ref=e240]: Choose a channel or thread from the sidebar
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e246] [cursor=pointer]:
+    - img [ref=e247]
+  - alert [ref=e1]

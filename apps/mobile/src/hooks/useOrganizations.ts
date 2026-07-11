@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
+import { supabase, createPostgresChangesChannel } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useRequestTracker } from "@/hooks/useRequestTracker";
 import type { Organization } from "@teammeet/types";
@@ -30,6 +30,17 @@ export function extractOrganizations(
     .filter((org): org is Organization => org !== null);
 }
 
+async function syncCurrentUserOrganizationMemberships() {
+  const { error } = await (
+    supabase as unknown as {
+      rpc: (fn: "sync_current_user_organization_memberships") => Promise<{
+        error: { message: string } | null;
+      }>;
+    }
+  ).rpc("sync_current_user_organization_memberships");
+  if (error) throw error;
+}
+
 export function useOrganizations(): UseOrganizationsReturn {
   const isMountedRef = useRef(true);
   const { user } = useAuth();
@@ -53,6 +64,8 @@ export function useOrganizations(): UseOrganizationsReturn {
         }
         return;
       }
+
+      await syncCurrentUserOrganizationMemberships();
 
       const [activeResult, pendingResult] = await Promise.all([
         supabase

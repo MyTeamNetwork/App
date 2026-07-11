@@ -8,7 +8,9 @@ export type ScheduleFileToolErrorCode =
   | "image_unreadable"
   | "image_model_misconfigured"
   | "pdf_unreadable"
-  | "pdf_timeout";
+  | "pdf_timeout"
+  | "csv_unreadable"
+  | "csv_timeout";
 
 export type ToolExecutionErrorCode =
   | ScheduleFileToolErrorCode

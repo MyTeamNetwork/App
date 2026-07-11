@@ -687,10 +687,6 @@ export function verifyListMembers(
         [...names].some((known) => {
           if (known.length < 3) return false;
           const paddedKnown = ` ${known} `;
-          // candidate-contains-known: only if (a) known is multi-word, OR
-          // (b) known is single-word AND the candidate starts with that word
-          //     AND the very next token is a lowercase connector (prose continuation,
-          //     not a fabricated surname)
           const candidateContainsKnown = known.includes(" ")
             ? paddedCandidate.includes(paddedKnown)
             : (() => {

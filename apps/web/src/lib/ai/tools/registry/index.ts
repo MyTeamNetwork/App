@@ -45,6 +45,7 @@ import { prepareEnterpriseInviteModule } from "./prepare-enterprise-invite";
 import { revokeEnterpriseInviteModule } from "./revoke-enterprise-invite";
 import { scrapeScheduleWebsiteModule } from "./scrape-schedule-website";
 import { extractSchedulePdfModule } from "./extract-schedule-pdf";
+import { importEventsCsvModule } from "./import-events-csv";
 import { searchOrgContentModule } from "./search-org-content";
 import { prepareUpdateAnnouncementModule } from "./prepare-update-announcement";
 import { prepareDeleteAnnouncementModule } from "./prepare-delete-announcement";
@@ -95,6 +96,7 @@ const MODULES: ReadonlyArray<ToolModule<any>> = [
   revokeEnterpriseInviteModule,
   scrapeScheduleWebsiteModule,
   extractSchedulePdfModule,
+  importEventsCsvModule,
   searchOrgContentModule,
   prepareUpdateAnnouncementModule,
   prepareDeleteAnnouncementModule,

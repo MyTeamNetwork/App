@@ -36,6 +36,12 @@ interface AIPanelProps {
 
 const DEFAULT_SCHEDULE_FILE_PROMPT =
   "Please extract this schedule file and prepare events for confirmation.";
+const DEFAULT_CSV_IMPORT_PROMPT =
+  "Please import the events from this CSV and prepare them for confirmation.";
+const CSV_MIME_TYPES = new Set<AIChatAttachment["mimeType"]>([
+  "text/csv",
+  "application/vnd.ms-excel",
+]);
 const MAX_SCHEDULE_IMAGE_BYTES = 2 * 1024 * 1024;
 const SCHEDULE_IMAGE_MIME_TYPES = new Set<AIChatAttachment["mimeType"]>([
   "image/png",
@@ -544,7 +550,10 @@ export function AIPanel({ orgId }: AIPanelProps) {
           mimeType: data.mimeType,
         },
       });
-      setDraftInput((current) => current.trim() ? current : DEFAULT_SCHEDULE_FILE_PROMPT);
+      const defaultPrompt = CSV_MIME_TYPES.has(data.mimeType as AIChatAttachment["mimeType"])
+        ? DEFAULT_CSV_IMPORT_PROMPT
+        : DEFAULT_SCHEDULE_FILE_PROMPT;
+      setDraftInput((current) => current.trim() ? current : defaultPrompt);
       clearError();
     } catch (error) {
       setAttachmentError(

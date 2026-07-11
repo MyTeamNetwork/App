@@ -127,7 +127,10 @@ export interface PrepareEventArgs {
   location?: string;
   event_type?: string;
   is_philanthropy?: boolean;
+  audience?: "both" | "members" | "alumni";
 }
+
+export type ImportEventsCsvArgs = Record<string, never>;
 
 export interface PrepareEventsBatchArgs {
   events: PrepareEventArgs[];
@@ -721,6 +724,11 @@ const TOOL_BY_NAME = {
             enum: ["general", "philanthropy", "game", "practice", "meeting", "social", "workout", "fundraiser", "class"],
           },
           is_philanthropy: { type: "boolean" as const },
+          audience: {
+            type: "string" as const,
+            enum: ["both", "members", "alumni"],
+            description: "Who can see this event. 'both' = members + alumni (default), 'members' = active members only, 'alumni' = alumni only. Set this when the user specifies who should see the event.",
+          },
         },
         additionalProperties: false as const,
       },
@@ -767,12 +775,30 @@ const TOOL_BY_NAME = {
                   enum: ["general", "philanthropy", "game", "practice", "meeting", "social", "workout", "fundraiser", "class"],
                 },
                 is_philanthropy: { type: "boolean" as const },
+                audience: {
+                  type: "string" as const,
+                  enum: ["both", "members", "alumni"],
+                  description: "Who can see this event. 'both' = members + alumni (default), 'members' = active members only, 'alumni' = alumni only.",
+                },
               },
               additionalProperties: false as const,
             },
           },
         },
         required: ["events"] as const,
+        additionalProperties: false as const,
+      },
+    },
+  },
+  import_events_csv: {
+    type: "function" as const,
+    function: {
+      name: "import_events_csv" as const,
+      description:
+        "Read the uploaded CSV file of events from the current chat request, infer how its columns map to event fields, and prepare calendar events into pending event confirmations. Use when the user attaches a CSV/spreadsheet of events.",
+      parameters: {
+        type: "object" as const,
+        properties: {},
         additionalProperties: false as const,
       },
     },
@@ -1677,6 +1703,7 @@ export const AI_TOOLS = [
   TOOL_BY_NAME.prepare_discussion_thread,
   TOOL_BY_NAME.prepare_event,
   TOOL_BY_NAME.prepare_events_batch,
+  TOOL_BY_NAME.import_events_csv,
   TOOL_BY_NAME.prepare_update_event,
   TOOL_BY_NAME.prepare_delete_event,
   TOOL_BY_NAME.scrape_schedule_website,

@@ -1105,7 +1105,7 @@ export function createAiPendingActionConfirmHandler(deps: AiPendingActionConfirm
             await sendNotificationBlastFn({
               supabase: ctx.serviceSupabase,
               organizationId: ctx.orgId,
-              audience: "both",
+              audience: payload.audience ?? "both",
               channel: "email",
               title: `New Event: ${result.event.title}`,
               body: `Event scheduled for ${payload.start_date} at ${payload.start_time}${payload.location ? `\nWhere: ${payload.location}` : ""}`,

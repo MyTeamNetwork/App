@@ -14,6 +14,8 @@ const ALLOWED_MIME_TYPES = [
   "image/png",
   "image/jpeg",
   "image/jpg",
+  "text/csv",
+  "application/vnd.ms-excel",
 ] as const;
 const ALLOWED_MIME_TYPE_SET = new Set<ScheduleUploadMimeType>(ALLOWED_MIME_TYPES);
 const IMAGE_MIME_TYPES = new Set<ScheduleUploadMimeType>([
@@ -21,6 +23,15 @@ const IMAGE_MIME_TYPES = new Set<ScheduleUploadMimeType>([
   "image/jpeg",
   "image/jpg",
 ]);
+// CSV has no reliable magic-byte signature; some browsers (macOS Chrome) report
+// `.csv` as `application/vnd.ms-excel` or `text/plain`. These skip magic-byte
+// validation in favor of a lightweight UTF-8 text sniff.
+const CSV_MIME_TYPES = new Set<ScheduleUploadMimeType>([
+  "text/csv",
+  "application/vnd.ms-excel",
+]);
+// macOS may send .csv files as text/plain — detect by extension
+const CSV_EXTENSION_RE = /\.csv$/i;
 const BUCKET_OPTIONS = {
   public: false,
   fileSizeLimit: MAX_BYTES,
@@ -306,9 +317,15 @@ export function createAiScheduleUploadHandler(
         );
       }
 
-      if (!ALLOWED_MIME_TYPE_SET.has(file.type as ScheduleUploadMimeType)) {
+      // macOS Chrome sends .csv files as text/plain — allow it when extension confirms CSV
+      const isCsvByExtension = CSV_EXTENSION_RE.test(file.name);
+      const effectiveMimeType = (file.type === "text/plain" && isCsvByExtension)
+        ? "text/csv"
+        : file.type;
+
+      if (!ALLOWED_MIME_TYPE_SET.has(effectiveMimeType as ScheduleUploadMimeType)) {
         return NextResponse.json(
-          { error: "File must be a PDF or image" },
+          { error: "File must be a PDF, image, or CSV" },
           { status: 400, headers: rateLimit.headers }
         );
       }
@@ -325,7 +342,15 @@ export function createAiScheduleUploadHandler(
       const storagePath = `${orgId}/${ctx.userId}/${timestamp}_${fileName}`;
       const buffer = Buffer.from(await file.arrayBuffer());
 
-      if (!validateMagicBytes(buffer, file.type)) {
+      const isCsvUpload = CSV_MIME_TYPES.has(effectiveMimeType as ScheduleUploadMimeType);
+      if (isCsvUpload) {
+        if (buffer.includes(0x00) || (() => { try { new TextDecoder("utf-8", { fatal: true }).decode(buffer); return false; } catch { return true; } })()) {
+          return NextResponse.json(
+            { error: "CSV file must be valid UTF-8 text" },
+            { status: 400, headers: rateLimit.headers }
+          );
+        }
+      } else if (!validateMagicBytes(buffer, effectiveMimeType)) {
         return NextResponse.json(
           { error: "File content does not match the declared file type" },
           { status: 400, headers: rateLimit.headers }
@@ -334,7 +359,7 @@ export function createAiScheduleUploadHandler(
 
       const bucketError = await ensureScheduleUploadBucket(ctx.serviceSupabase.storage as unknown as StorageApi, {
         orgId,
-        mimeType: file.type,
+        mimeType: effectiveMimeType,
       });
       if (bucketError) {
         return NextResponse.json(
@@ -346,7 +371,7 @@ export function createAiScheduleUploadHandler(
       const { error: uploadError } = await (ctx.serviceSupabase.storage as unknown as StorageApi)
         .from(BUCKET)
         .upload(storagePath, buffer, {
-          contentType: file.type,
+          contentType: effectiveMimeType,
           upsert: false,
         });
 
@@ -354,7 +379,7 @@ export function createAiScheduleUploadHandler(
         console.error("[ai/upload-schedule] Upload error:", uploadError, {
           orgId,
           storagePath,
-          mimeType: file.type,
+          mimeType: effectiveMimeType,
           errorName: uploadError.name,
           errorMessage: uploadError.message,
           errorCode: uploadError.code,
@@ -363,13 +388,13 @@ export function createAiScheduleUploadHandler(
         });
 
         return NextResponse.json(
-          { error: getUploadFailureMessage(file.type, uploadError) },
+          { error: getUploadFailureMessage(effectiveMimeType, uploadError) },
           { status: 500, headers: rateLimit.headers }
         );
       }
 
       return NextResponse.json(
-        { storagePath, fileName, mimeType: file.type },
+        { storagePath, fileName, mimeType: effectiveMimeType },
         { status: 201, headers: rateLimit.headers }
       );
     } catch (error) {

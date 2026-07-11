@@ -1,0 +1,183 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - link "Skip to main content" [ref=e3] [cursor=pointer]:
+      - /url: "#main-content"
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - link "South Rock Ridge High School South Rock Ridge High School TeamNetwork" [ref=e6] [cursor=pointer]:
+          - /url: /south-rock-ridge
+          - img "South Rock Ridge High School" [ref=e8]
+          - generic [ref=e9]:
+            - heading "South Rock Ridge High School" [level=2] [ref=e10]
+            - paragraph [ref=e11]: TeamNetwork
+        - button "Unpin sidebar" [pressed] [ref=e13] [cursor=pointer]:
+          - img [ref=e14]
+      - link "LD Logan Doyle Active Member" [ref=e17] [cursor=pointer]:
+        - /url: /south-rock-ridge/members/78f061c6-5719-4a1d-8226-20caec6ed6e3
+        - generic [ref=e18]: LD
+        - generic [ref=e19]:
+          - paragraph [ref=e20]: Logan Doyle
+          - generic [ref=e21]: Active Member
+      - button "Open search" [ref=e23] [cursor=pointer]:
+        - img [ref=e24]
+        - generic [ref=e27]:
+          - generic [ref=e28]: Search
+          - generic [ref=e29]: ⌘K
+      - navigation [ref=e30]:
+        - generic [ref=e31]:
+          - list [ref=e32]:
+            - listitem [ref=e33]:
+              - link "Home" [ref=e34] [cursor=pointer]:
+                - /url: /south-rock-ridge
+                - img [ref=e35]
+                - generic [ref=e37]: Home
+          - list [ref=e38]:
+            - listitem [ref=e39]:
+              - link "Calendar" [ref=e40] [cursor=pointer]:
+                - /url: /south-rock-ridge/calendar
+                - img [ref=e41]
+                - generic [ref=e43]: Calendar
+            - listitem [ref=e44]:
+              - link "Assistant" [ref=e45] [cursor=pointer]:
+                - /url: /south-rock-ridge/assistant
+                - img [ref=e46]
+                - generic [ref=e48]: Assistant
+          - generic [ref=e49]:
+            - button "People" [ref=e50] [cursor=pointer]:
+              - text: People
+              - img [ref=e51]
+            - list [ref=e53]:
+              - listitem [ref=e54]:
+                - link [ref=e55] [cursor=pointer]:
+                  - /url: /south-rock-ridge/members
+                  - img [ref=e56]
+                  - generic [ref=e58]: Student-Athletes
+              - listitem [ref=e59]:
+                - link [ref=e60] [cursor=pointer]:
+                  - /url: /south-rock-ridge/alumni
+                  - img [ref=e61]
+                  - generic [ref=e63]: Alumni
+              - listitem [ref=e64]:
+                - link [ref=e65] [cursor=pointer]:
+                  - /url: /south-rock-ridge/mentorship
+                  - img [ref=e66]
+                  - generic [ref=e68]: Mentorship
+          - generic [ref=e69]:
+            - button "Community" [expanded] [ref=e70] [cursor=pointer]:
+              - text: Community
+              - img [ref=e71]
+            - list [ref=e75]:
+              - listitem [ref=e76]:
+                - link "Announcements" [ref=e77] [cursor=pointer]:
+                  - /url: /south-rock-ridge/announcements
+                  - img [ref=e78]
+                  - generic [ref=e80]: Announcements
+              - listitem [ref=e81]:
+                - link "Forms" [ref=e82] [cursor=pointer]:
+                  - /url: /south-rock-ridge/forms
+                  - img [ref=e83]
+                  - generic [ref=e85]: Forms
+              - listitem [ref=e86]:
+                - link "Messages" [ref=e87] [cursor=pointer]:
+                  - /url: /south-rock-ridge/messages
+                  - img [ref=e88]
+                  - generic [ref=e90]: Messages
+              - listitem [ref=e91]:
+                - link "Jobs" [ref=e92] [cursor=pointer]:
+                  - /url: /south-rock-ridge/jobs
+                  - img [ref=e93]
+                  - generic [ref=e95]: Jobs
+              - listitem [ref=e96]:
+                - link "Media" [ref=e97] [cursor=pointer]:
+                  - /url: /south-rock-ridge/media
+                  - img [ref=e98]
+                  - generic [ref=e100]: Media
+          - generic [ref=e101]:
+            - button "Activity" [ref=e102] [cursor=pointer]:
+              - text: Activity
+              - img [ref=e103]
+            - list [ref=e105]:
+              - listitem [ref=e106]:
+                - link [ref=e107] [cursor=pointer]:
+                  - /url: /south-rock-ridge/competition
+                  - img [ref=e108]
+                  - generic [ref=e110]: Intersquad
+              - listitem [ref=e111]:
+                - link [ref=e112] [cursor=pointer]:
+                  - /url: /south-rock-ridge/records
+                  - img [ref=e113]
+                  - generic [ref=e115]: Recognition
+              - listitem [ref=e116]:
+                - link [ref=e117] [cursor=pointer]:
+                  - /url: /south-rock-ridge/workouts
+                  - img [ref=e118]
+                  - generic [ref=e120]: Workouts
+          - generic [ref=e121]:
+            - button "Finance" [ref=e122] [cursor=pointer]:
+              - text: Finance
+              - img [ref=e123]
+            - list [ref=e125]:
+              - listitem [ref=e126]:
+                - link [ref=e127] [cursor=pointer]:
+                  - /url: /south-rock-ridge/donations
+                  - img [ref=e128]
+                  - generic [ref=e130]: Dues
+              - listitem [ref=e131]:
+                - link [ref=e132] [cursor=pointer]:
+                  - /url: /south-rock-ridge/philanthropy
+                  - img [ref=e133]
+                  - generic [ref=e135]: Team Funding
+              - listitem [ref=e136]:
+                - link [ref=e137] [cursor=pointer]:
+                  - /url: /south-rock-ridge/expenses
+                  - img [ref=e138]
+                  - generic [ref=e140]: Expenses
+          - separator [ref=e141]
+          - generic [ref=e142]:
+            - button "Admin" [ref=e143] [cursor=pointer]:
+              - text: Admin
+              - img [ref=e144]
+            - list [ref=e146]:
+              - listitem [ref=e147]:
+                - link [ref=e148] [cursor=pointer]:
+                  - /url: /south-rock-ridge/customization
+                  - img [ref=e149]
+                  - generic [ref=e152]: Customization
+      - generic [ref=e153]:
+        - link "Switch Organization" [ref=e154] [cursor=pointer]:
+          - /url: /app
+          - img [ref=e155]
+          - generic [ref=e157]: Switch Organization
+        - button "Sign out" [ref=e159] [cursor=pointer]:
+          - img [ref=e160]
+          - generic [ref=e162]: Sign out
+      - link "Powered by TeamNetwork" [ref=e164] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e165]: Powered by
+        - img "TeamNetwork" [ref=e166]
+    - main [ref=e167]:
+      - generic [ref=e168]:
+        - generic [ref=e171]:
+          - heading "Forms" [level=1] [ref=e172]
+          - paragraph [ref=e173]: View and fill out organization forms
+        - generic [ref=e174]:
+          - generic [ref=e176]:
+            - heading "Mentor Intake" [level=3] [ref=e178]
+            - paragraph [ref=e179]: Tell us about your mentorship availability and background so we can match you with the right mentees.
+            - generic [ref=e180]:
+              - generic [ref=e181]: 10 fields
+              - link "Fill Out" [ref=e182] [cursor=pointer]:
+                - /url: /south-rock-ridge/forms/a172ebdd-1798-4f0a-9dd2-165b5e11834e
+                - button "Fill Out" [ref=e183]
+          - generic [ref=e185]:
+            - heading "Mentee Intake" [level=3] [ref=e187]
+            - paragraph [ref=e188]: Tell us about your mentorship goals so we can match you with the right mentor.
+            - generic [ref=e189]:
+              - generic [ref=e190]: 11 fields
+              - link "Fill Out" [ref=e191] [cursor=pointer]:
+                - /url: /south-rock-ridge/forms/3a7b98e9-5330-4c03-a859-ce8308cb3eef
+                - button "Fill Out" [ref=e192]
+  - region "Notifications alt+T"
+  - button "Open Next.js Dev Tools" [ref=e199] [cursor=pointer]:
+    - img [ref=e200]
+  - alert [ref=e193]

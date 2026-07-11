@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { MembershipStatus, Organization, UserRole } from "@/types/database";
 import { normalizeRole, roleFlags, type OrgRole } from "@teammeet/core";
-import { getGracePeriodInfo, type GracePeriodInfo, type SubscriptionStatus } from "@/lib/subscription/grace-period";
+import {
+  getGracePeriodInfo,
+  type GracePeriodInfo,
+  type SubscriptionStatus,
+} from "@/lib/subscription/grace-period";
 import { resolveCheck } from "@/lib/supabase/resolve-check";
 
 type OrgRoleResult = {
@@ -45,17 +49,38 @@ function normalizeMembershipRow(data: { role?: unknown; status?: unknown } | nul
  */
 export const getCurrentUser = cache(async () => {
   const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
   if (error || !user) return null;
   return user;
 });
 
-export async function getOrgRole(params: { orgId: string; userId?: string }): Promise<OrgRoleResult> {
+const syncCurrentUserOrganizationMemberships = cache(async () => {
+  const supabase = await createClient();
+  const { error } = await (
+    supabase as unknown as {
+      rpc: (fn: "sync_current_user_organization_memberships") => Promise<{
+        error: { message: string } | null;
+      }>;
+    }
+  ).rpc("sync_current_user_organization_memberships");
+  if (error) {
+    console.error("[auth/roles] Failed to sync current user memberships:", error.message);
+  }
+});
+
+export async function getOrgRole(params: {
+  orgId: string;
+  userId?: string;
+}): Promise<OrgRoleResult> {
   let uid = params.userId ?? null;
   if (!uid) {
     const user = await getCurrentUser();
     if (!user) return { role: null, status: null, userId: null };
     uid = user.id;
+    await syncCurrentUserOrganizationMemberships();
   }
 
   const supabase = await createClient();
@@ -80,7 +105,9 @@ export async function requireOrgRole(params: {
 }): Promise<OrgRoleResult> {
   const membership = await getOrgRole({ orgId: params.orgId, userId: undefined });
   const allowed =
-    membership.role && membership.status === "active" && params.allowedRoles.includes(membership.role);
+    membership.role &&
+    membership.status === "active" &&
+    params.allowedRoles.includes(membership.role);
 
   if (!allowed) {
     if (params.redirectTo) {
@@ -115,6 +142,10 @@ export const getOrgContext = cache(async (orgSlug: string): Promise<OrgContextRe
   ]);
 
   const userId = user?.id ?? null;
+
+  if (userId) {
+    await syncCurrentUserOrganizationMemberships();
+  }
 
   if (!org) {
     const flags = roleFlags(null);

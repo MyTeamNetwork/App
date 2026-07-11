@@ -29,6 +29,7 @@ export const assistantEventDraftSchema = z.object({
   location: optionalSafeString(500),
   event_type: eventTypeSchema.optional(),
   is_philanthropy: z.boolean().optional(),
+  audience: z.enum(["both", "members", "alumni"]).optional(),
 });
 
 export type AssistantEventDraft = z.infer<typeof assistantEventDraftSchema>;
@@ -44,6 +45,7 @@ export const assistantPreparedEventSchema = z
     location: optionalSafeString(500),
     event_type: eventTypeSchema,
     is_philanthropy: z.boolean(),
+    audience: z.enum(["both", "members", "alumni"]).optional(),
   })
   .refine(
     (data) => {

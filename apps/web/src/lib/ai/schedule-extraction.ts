@@ -1178,7 +1178,7 @@ function getTrimmedStringField(
   return undefined;
 }
 
-function normalizeDateValue(value: string | undefined): string | undefined {
+export function normalizeDateValue(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
   }
@@ -1197,7 +1197,7 @@ function normalizeDateValue(value: string | undefined): string | undefined {
   return undefined;
 }
 
-function normalizeTimeValue(value: string | undefined): string | undefined {
+export function normalizeTimeValue(value: string | undefined): string | undefined {
   if (!value) {
     return undefined;
   }
@@ -1240,7 +1240,7 @@ function normalizeTimeValue(value: string | undefined): string | undefined {
   return undefined;
 }
 
-function normalizeEventType(value: string | undefined): ExtractedScheduleEvent["event_type"] {
+export function normalizeEventType(value: string | undefined): ExtractedScheduleEvent["event_type"] {
   if (!value) {
     return undefined;
   }

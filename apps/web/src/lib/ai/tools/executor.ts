@@ -20,6 +20,8 @@ import { getSafeErrorMessage, isScheduleImageAttachment } from "@/lib/ai/tools/s
 
 const IMAGE_EXTRACTION_TOOL_TIMEOUT_MS = 60_000;
 const PDF_EXTRACTION_TOOL_TIMEOUT_MS = 60_000;
+// One LLM mapping call (30s profile) + up to MAX_CSV_ROWS sequential inserts.
+const CSV_IMPORT_TOOL_TIMEOUT_MS = 60_000;
 
 export type {
   ScheduleFileToolErrorCode,
@@ -215,6 +217,9 @@ function resolveToolTimeoutMs(toolName: ToolName, ctx: ToolExecutionContext): nu
       ? IMAGE_EXTRACTION_TOOL_TIMEOUT_MS
       : PDF_EXTRACTION_TOOL_TIMEOUT_MS;
   }
+  if (toolName === "import_events_csv") {
+    return CSV_IMPORT_TOOL_TIMEOUT_MS;
+  }
   if (toolName === "prepare_events_batch") {
     return TOOL_EXECUTION_TIMEOUT_MS * 3;
   }
@@ -311,6 +316,9 @@ export async function executeToolCall(
       }
       if (toolName === "extract_schedule_pdf" && ctx.attachment?.mimeType === "application/pdf") {
         return toolError("Schedule PDF extraction timed out", "pdf_timeout");
+      }
+      if (toolName === "import_events_csv") {
+        return toolError("CSV event import timed out", "csv_timeout");
       }
       return { kind: "timeout", error: "Tool timed out" };
     }

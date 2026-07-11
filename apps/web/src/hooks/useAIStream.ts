@@ -13,7 +13,13 @@ interface UseAIStreamOptions {
 export interface AIChatAttachment {
   storagePath: string;
   fileName: string;
-  mimeType: "application/pdf" | "image/png" | "image/jpeg" | "image/jpg";
+  mimeType:
+    | "application/pdf"
+    | "image/png"
+    | "image/jpeg"
+    | "image/jpg"
+    | "text/csv"
+    | "application/vnd.ms-excel";
 }
 
 interface AIStreamState {

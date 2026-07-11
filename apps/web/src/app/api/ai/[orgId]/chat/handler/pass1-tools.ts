@@ -14,6 +14,7 @@ import type { CacheSurface } from "@/lib/ai/semantic-cache-utils";
 import type { TurnExecutionPolicy } from "@/lib/ai/turn-execution-policy";
 import { getEnterprisePermissions, type EnterpriseRole } from "@teammeet/types";
 import {
+  CSV_ATTACHMENT_MIME_TYPES,
   SCHEDULE_ATTACHMENT_MIME_TYPES,
   type ChatAttachment,
 } from "./shared";
@@ -150,6 +151,11 @@ export const SCRAPE_SCHEDULE_PROMPT_PATTERN =
   /(?:scrape|import|extract|pull|get|grab|fetch|load)\b[\s\S]{0,120}\b(?:schedule|events?|calendar)[\s\S]{0,60}(?:from|at|on)\s+(?:https?:\/\/|(?:the\s+)?(?:website|page|url|link|site))/i;
 export const PDF_SCHEDULE_PROMPT_PATTERN =
   /(?:extract|import|upload|read|parse|pull)\b[\s\S]{0,120}\b(?:schedule|events?|calendar)[\s\S]{0,60}(?:pdf|file|document|upload)/i;
+// Text-only CSV intent requires an explicit csv/spreadsheet keyword. A bare
+// "add an event" must stay with create_event; CSV import always needs an
+// attached file, so the attachment check is the primary routing signal.
+export const CSV_IMPORT_PROMPT_PATTERN =
+  /(?:import|upload|load|add|parse|read)\b[\s\S]{0,80}\b(?:csv|spreadsheet)\b/i;
 export const ALUMNI_ROSTER_PROMPT_PATTERN =
   /(?<!\w)(?:alumni|alumnus|alumna|alumnae|graduates?|who\s+graduated|graduation\s+(?:year|class)|class\s+of\b)(?!\w)/i;
 export const DONATION_STATS_PROMPT_PATTERN =
@@ -452,6 +458,16 @@ const PASS1_ROUTING_RULES: ReadonlyArray<RoutingRule> = [
     id: "create_discussion",
     when: (ctx) => CREATE_DISCUSSION_PROMPT_PATTERN.test(ctx.message),
     tools: () => ["prepare_discussion_thread"],
+  },
+  {
+    // CSV must precede schedule_pdf so a `.csv` attachment routes to the
+    // structured importer rather than the PDF/image extractor.
+    id: "import_events_csv",
+    when: (ctx) =>
+      (ctx.attachment?.mimeType != null &&
+        CSV_ATTACHMENT_MIME_TYPES.has(ctx.attachment.mimeType)) ||
+      CSV_IMPORT_PROMPT_PATTERN.test(ctx.message),
+    tools: () => ["import_events_csv"],
   },
   {
     id: "schedule_pdf",
@@ -802,6 +818,7 @@ export const FORCED_PASS1_TOOL_CHOICE_ELIGIBLE: ReadonlySet<ToolName> = new Set<
   "search_org_content",
   "scrape_schedule_website",
   "extract_schedule_pdf",
+  "import_events_csv",
 ]);
 
 /**

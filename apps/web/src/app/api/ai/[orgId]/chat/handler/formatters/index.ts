@@ -46,7 +46,10 @@ import {
   formatPrepareUpdateAnnouncementResponse,
   formatPrepareDeleteAnnouncementResponse,
 } from "./prepares";
-import { formatExtractScheduleFileResponse } from "./schedules";
+import {
+  formatExtractScheduleFileResponse,
+  formatImportEventsCsvResponse,
+} from "./schedules";
 import { formatSuggestConnectionsResponse } from "./connections";
 
 export function getNonEmptyString(value: unknown): string | null {
@@ -82,7 +85,7 @@ export function formatDeterministicToolErrorResponse(
   error: string,
   errorCode?: string | null
 ): string | null {
-  if (name !== "extract_schedule_pdf") {
+  if (name !== "extract_schedule_pdf" && name !== "import_events_csv") {
     if (
       name === "get_enterprise_quota" &&
       (errorCode === "enterprise_billing_role_required" ||
@@ -95,8 +98,12 @@ export function formatDeterministicToolErrorResponse(
   }
 
   switch (errorCode) {
+    case "csv_unreadable":
+      return "I couldn’t read that CSV. Make sure it’s a valid comma- or tab-separated file with a header row, then re-upload it.";
+    case "csv_timeout":
+      return "Importing that CSV took too long. Try again, or split it into a smaller file with fewer rows.";
     case "attachment_required":
-      return "I need an uploaded schedule file before I can import anything. Please attach a PDF or schedule image and try again.";
+      return "I need an uploaded schedule file before I can import anything. Please attach a PDF, image, or CSV and try again.";
     case "invalid_attachment_path":
       return "That uploaded schedule file is no longer valid for this session. Please upload it again.";
     case "org_context_failed":
@@ -397,6 +404,8 @@ export function formatDeterministicToolResponse(
       return formatPrepareEventsBatchResponse(data);
     case "extract_schedule_pdf":
       return formatExtractScheduleFileResponse(data);
+    case "import_events_csv":
+      return formatImportEventsCsvResponse(data);
     case "get_org_stats":
       return formatOrgStatsResponse(data);
     case "get_engagement_metrics":

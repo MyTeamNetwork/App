@@ -116,6 +116,7 @@ export const prepareEventSchema = z
       ])
       .optional(),
     is_philanthropy: z.boolean().optional(),
+    audience: z.enum(["both", "members", "alumni"]).optional(),
   })
   .strict();
 

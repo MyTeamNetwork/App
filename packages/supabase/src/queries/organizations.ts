@@ -16,6 +16,15 @@ export async function fetchUserOrganizations(
   userId: string
 ): Promise<FetchOrganizationsResult> {
   try {
+    const { error: syncError } = await (
+      supabase as unknown as {
+        rpc: (fn: "sync_current_user_organization_memberships") => Promise<{
+          error: { message: string } | null;
+        }>;
+      }
+    ).rpc("sync_current_user_organization_memberships");
+    if (syncError) throw syncError;
+
     const { data, error } = await supabase
       .from("user_organization_roles")
       .select("organization:organizations(*)")

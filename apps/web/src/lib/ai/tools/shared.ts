@@ -203,6 +203,18 @@ export function isScheduleImageAttachment(attachment?: {
   );
 }
 
+const CSV_ATTACHMENT_MIME_TYPES = new Set<string>([
+  "text/csv",
+  "application/vnd.ms-excel",
+]);
+
+/** True when the attachment is a CSV accepted for structured event import. */
+export function isCsvAttachment(attachment?: {
+  mimeType: string;
+} | null): boolean {
+  return Boolean(attachment && CSV_ATTACHMENT_MIME_TYPES.has(attachment.mimeType));
+}
+
 /**
  * Case-insensitive substring filter used by listing tools (member preferences,
  * available mentors). An absent needle matches everything.

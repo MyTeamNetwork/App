@@ -228,7 +228,7 @@ function normalizeStringValue(value: string): string | null {
  * commas, and escaped quotes. Returns an array of records (each record is an
  * array of field strings).
  */
-function parseRfc4180(text: string, delimiter: string): string[][] {
+export function parseRfc4180(text: string, delimiter: string): string[][] {
   const records: string[][] = [];
   let pos = 0;
   const len = text.length;
@@ -290,7 +290,7 @@ function parseRfc4180(text: string, delimiter: string): string[][] {
   return records;
 }
 
-function detectDelimiter(headerLine: string): string {
+export function detectDelimiter(headerLine: string): string {
   // Only check up to the first newline for delimiter detection
   const firstLine = headerLine.split(/\r?\n/)[0] ?? headerLine;
   const tabCount = (firstLine.match(/\t/g) ?? []).length;
