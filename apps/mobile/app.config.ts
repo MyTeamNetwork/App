@@ -23,7 +23,7 @@ const config: ExpoConfig = {
   name: "TeamNetwork",
   slug: "teammeet",
   owner: "teamnetwork",
-  version: "1.0.2",
+  version: "1.0.4",
   platforms: ["ios", "android", "web"],
   orientation: "portrait",
   icon: "./assets/icon.png",

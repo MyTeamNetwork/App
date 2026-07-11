@@ -7,9 +7,12 @@ import { Button } from "@/components/ui";
 
 interface AcceptTermsClientProps {
   redirectTo: string;
+  /** Present when the interstitial was reached from a mobile auth callback:
+   *  acceptance mints a challenge-bound handoff and deep-links back to the app. */
+  mobileHandoffChallenge?: string | null;
 }
 
-export function AcceptTermsClient({ redirectTo }: AcceptTermsClientProps) {
+export function AcceptTermsClient({ redirectTo, mobileHandoffChallenge }: AcceptTermsClientProps) {
   const router = useRouter();
   const [accepted, setAccepted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -26,12 +29,29 @@ export function AcceptTermsClient({ redirectTo }: AcceptTermsClientProps) {
       const response = await fetch("/api/auth/accept-terms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accepted: true }),
+        body: JSON.stringify(
+          mobileHandoffChallenge
+            ? { accepted: true, mobile: true, handoff_challenge: mobileHandoffChallenge }
+            : { accepted: true },
+        ),
       });
 
       if (!response.ok) {
         const data = await response.json();
         setError(data.error || "Failed to accept terms");
+        setIsLoading(false);
+        return;
+      }
+
+      if (mobileHandoffChallenge) {
+        const data = await response.json();
+        if (typeof data.handoffDeepLink === "string" && data.handoffDeepLink.startsWith("teammeet://")) {
+          // Hand the session back to the app; keep the button in its loading
+          // state while the OS switches apps.
+          window.location.assign(data.handoffDeepLink);
+          return;
+        }
+        setError("Could not return to the app. Please open the app and sign in.");
         setIsLoading(false);
         return;
       }

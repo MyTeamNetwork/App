@@ -268,22 +268,24 @@ export async function GET(request: NextRequest) {
       // are missing. This covers new OAuth signups, email confirmation, and
       // future policy version bumps without trusting client-side signup state.
       if (!hasAcceptedCurrentAgreementVersions(agreements ?? [])) {
-        if (isMobile) {
-          // The accept-terms page is a web flow that can't deep-link back. Surface
-          // a typed error so the app can route the user to complete terms on web.
-          debugLog("auth-callback", "Mobile: missing agreement acceptance — deep-linking error");
-          return NextResponse.redirect(
-            buildMobileErrorDeepLink(
-              "terms_acceptance_required",
-              "Please finish creating your account on the web before signing in."
-            )
-          );
-        }
         const acceptTermsUrl = new URL("/auth/accept-terms", siteUrl);
         if (redirect !== "/app") {
           acceptTermsUrl.searchParams.set("redirect", redirect);
         }
-        debugLog("auth-callback", "Missing current agreement acceptance — redirecting to accept-terms");
+        if (isMobile) {
+          // Mobile lands here from the confirmation link already open in the
+          // device browser, so show the same accept-terms interstitial as web.
+          // The page carries the handoff challenge through; after explicit
+          // acceptance the accept-terms API mints the challenge-bound handoff
+          // and deep-links teammeet://callback back to the app.
+          acceptTermsUrl.searchParams.set("mobile", "1");
+          if (handoffChallenge) {
+            acceptTermsUrl.searchParams.set("handoff_challenge", handoffChallenge);
+          }
+          debugLog("auth-callback", "Mobile: missing agreement acceptance — redirecting to accept-terms with handoff context");
+        } else {
+          debugLog("auth-callback", "Missing current agreement acceptance — redirecting to accept-terms");
+        }
         const tosRedirect = NextResponse.redirect(acceptTermsUrl);
         // Copy auth cookies from the session response to the new redirect
         for (const cookie of response.cookies.getAll()) {
