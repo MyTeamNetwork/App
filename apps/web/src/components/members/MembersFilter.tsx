@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { trackBehavioralEvent } from "@/lib/analytics/events";
+import { buildMembersPageHref } from "@/lib/members/routing";
 
 const SYSTEM_ROLE_KEYS: Record<string, string> = {
   active_member: "activeMember",
@@ -20,7 +21,13 @@ interface MembersFilterProps {
   roles: Array<string | null>;
 }
 
-export function MembersFilter({ orgSlug, orgId, currentStatus, currentRole, roles }: MembersFilterProps) {
+export function MembersFilter({
+  orgSlug,
+  orgId,
+  currentStatus,
+  currentRole,
+  roles,
+}: MembersFilterProps) {
   const tCommon = useTranslations("common");
   const tMembers = useTranslations("members");
   const tRoles = useTranslations("roles");
@@ -35,14 +42,6 @@ export function MembersFilter({ orgSlug, orgId, currentStatus, currentRole, role
     if (status && status !== "active") keys.push("status");
     if (role) keys.push("role");
     return keys;
-  };
-
-  const buildHref = (status?: string, role?: string) => {
-    const params = new URLSearchParams();
-    if (status && status !== "active") params.set("status", status);
-    if (role) params.set("role", role);
-    const query = params.toString();
-    return query ? `/${orgSlug}/members?${query}` : `/${orgSlug}/members`;
   };
 
   const statusItems = [
@@ -75,7 +74,13 @@ export function MembersFilter({ orgSlug, orgId, currentStatus, currentRole, role
         }
         className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-muted text-foreground hover:bg-border transition-colors motion-reduce:transition-none"
       >
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg
+          className="h-4 w-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
         </svg>
         {tCommon("filter")}
@@ -84,7 +89,13 @@ export function MembersFilter({ orgSlug, orgId, currentStatus, currentRole, role
             {activeFilterCount}
           </span>
         )}
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg
+          className="h-4 w-4"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
         </svg>
       </button>
@@ -92,22 +103,35 @@ export function MembersFilter({ orgSlug, orgId, currentStatus, currentRole, role
       {open && (
         <div className="absolute mt-2 w-52 rounded-xl border border-border bg-card shadow-lg z-10">
           <div className="py-2">
-            <p className="px-4 pb-2 text-xs text-muted-foreground uppercase tracking-wide">{tCommon("status")}</p>
+            <p className="px-4 pb-2 text-xs text-muted-foreground uppercase tracking-wide">
+              {tCommon("status")}
+            </p>
             {statusItems.map((item) => {
               const active = (currentStatus || "active") === (item.value || "active");
               return (
                 <Link
                   key={item.label}
-                  href={buildHref(item.value, currentRole)}
+                  href={buildMembersPageHref({
+                    orgSlug,
+                    page: 1,
+                    status: item.value,
+                    role: currentRole,
+                  })}
                   className={`block px-4 py-2 text-sm transition-colors ${
-                    active ? "text-org-primary-foreground bg-org-primary" : "text-foreground hover:bg-muted"
+                    active
+                      ? "text-org-primary-foreground bg-org-primary"
+                      : "text-foreground hover:bg-muted"
                   }`}
                   onClick={() => {
-                    trackBehavioralEvent("directory_filter_apply", {
-                      directory_type: "active_members",
-                      filter_keys: buildFilterKeys(item.value, currentRole),
-                      filters_count: buildFilterKeys(item.value, currentRole).length,
-                    }, orgId);
+                    trackBehavioralEvent(
+                      "directory_filter_apply",
+                      {
+                        directory_type: "active_members",
+                        filter_keys: buildFilterKeys(item.value, currentRole),
+                        filters_count: buildFilterKeys(item.value, currentRole).length,
+                      },
+                      orgId
+                    );
                     setOpen(false);
                   }}
                 >
@@ -118,22 +142,35 @@ export function MembersFilter({ orgSlug, orgId, currentStatus, currentRole, role
 
             <div className="h-px bg-border my-2" />
 
-            <p className="px-4 pb-2 text-xs text-muted-foreground uppercase tracking-wide">{tCommon("role")}</p>
+            <p className="px-4 pb-2 text-xs text-muted-foreground uppercase tracking-wide">
+              {tCommon("role")}
+            </p>
             {roleItems.map((item) => {
               const active = (currentRole ?? "") === (item.value ?? "");
               return (
                 <Link
                   key={item.label}
-                  href={buildHref(currentStatus, item.value)}
+                  href={buildMembersPageHref({
+                    orgSlug,
+                    page: 1,
+                    status: currentStatus,
+                    role: item.value,
+                  })}
                   className={`block px-4 py-2 text-sm transition-colors ${
-                    active ? "text-org-primary-foreground bg-org-primary" : "text-foreground hover:bg-muted"
+                    active
+                      ? "text-org-primary-foreground bg-org-primary"
+                      : "text-foreground hover:bg-muted"
                   }`}
                   onClick={() => {
-                    trackBehavioralEvent("directory_filter_apply", {
-                      directory_type: "active_members",
-                      filter_keys: buildFilterKeys(currentStatus, item.value),
-                      filters_count: buildFilterKeys(currentStatus, item.value).length,
-                    }, orgId);
+                    trackBehavioralEvent(
+                      "directory_filter_apply",
+                      {
+                        directory_type: "active_members",
+                        filter_keys: buildFilterKeys(currentStatus, item.value),
+                        filters_count: buildFilterKeys(currentStatus, item.value).length,
+                      },
+                      orgId
+                    );
                     setOpen(false);
                   }}
                 >

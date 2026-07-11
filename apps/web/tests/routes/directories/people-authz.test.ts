@@ -4,13 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Source-grep tests asserting that Members / Alumni / Parents directory
- * + detail pages route their "who can edit this person?" + "what badge
- * do we render?" decisions through the unified `getPersonAdminContext`
- * helper, instead of per-page `isOrgAdmin` / `getOrgRole` /
- * `canEditNavItem` / local `orgRoleLabels` lookups. Also asserts the
- * read-only billing gate has been extended to the member detail page
- * for symmetry with alumni detail.
+ * Source-grep tests asserting that person directories and detail pages use
+ * their canonical authorization and role-label sources. The paginated members
+ * RPC now carries per-row org roles, while edit/detail authorization remains
+ * centralized in `getPersonAdminContext`.
  *
  * Parent detail (`/parents/[parentId]`) is intentionally NOT changed in
  * this PR; the parents directory still flips to `getPersonAdminContext`.
@@ -22,20 +19,18 @@ function readSource(relativePath: string): string {
 
 // ─── Members directory ────────────────────────────────────────────────
 
-test("members directory imports getPersonAdminContext", () => {
+test("members directory delegates its full data path to the paginated RPC", () => {
   const source = readSource("src/app/[orgSlug]/members/page.tsx");
-  assert.match(source, /from "@\/lib\/people\/permissions"/);
-  assert.match(source, /getPersonAdminContext/);
+  assert.match(source, /dataClient\.rpc\("get_org_member_directory"/);
+  assert.doesNotMatch(source, /getPersonAdminContext/);
+  assert.doesNotMatch(source, /getBlockedUserIds/);
+  assert.doesNotMatch(source, /\.from\("members"\)/);
+  assert.match(source, /p_viewer_id: user\?\.id \?\? null/);
 });
 
-test("members directory derives adminUserIds from personCtx, not a per-page query", () => {
+test("members directory renders the RPC-provided org-role label", () => {
   const source = readSource("src/app/[orgSlug]/members/page.tsx");
-  assert.match(source, /adminUserIds = personCtx\.adminUserIds/);
-});
-
-test("members directory renders org-role badge via personCtx.orgRoleLabelFor", () => {
-  const source = readSource("src/app/[orgSlug]/members/page.tsx");
-  assert.match(source, /personCtx\.orgRoleLabelFor\(member\.user_id\)/);
+  assert.match(source, /orgRoleLabel = member\.orgRoleLabel/);
 });
 
 test("members directory uses formatPersonHeadline for headline rendering", () => {
@@ -43,14 +38,14 @@ test("members directory uses formatPersonHeadline for headline rendering", () =>
   assert.match(source, /formatPersonHeadline\(\{[^}]*current_company: member\.current_company/s);
 });
 
-test("members directory SELECT widens to include current_company, current_city, school", () => {
+test("members directory bounds rich rows to the shared 48-row page size", () => {
   const source = readSource("src/app/[orgSlug]/members/page.tsx");
-  assert.match(source, /current_company, current_city, school/);
+  assert.match(source, /p_page_size: MEMBER_DIRECTORY_PAGE_SIZE/);
 });
 
 test("members directory shows Parent badge for parent-source rows", () => {
   const source = readSource("src/app/[orgSlug]/members/page.tsx");
-  assert.match(source, /member\.isParent && \(/);
+  assert.match(source, /member\.isParent && <Badge/);
   assert.match(source, /<Badge variant="primary">Parent<\/Badge>/);
 });
 

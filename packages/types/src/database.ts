@@ -7898,6 +7898,18 @@ export type Database = {
         Returns: Json
       }
       get_media_storage_stats: { Args: { p_org_id: string }; Returns: Json }
+      get_org_member_directory: {
+        Args: {
+          p_excluded_emails?: string[]
+          p_org_id: string
+          p_page?: number
+          p_page_size?: number
+          p_role?: string | null
+          p_status?: string | null
+          p_viewer_id?: string | null
+        }
+        Returns: Json
+      }
       get_org_context_by_slug: { Args: { p_slug: string }; Returns: Json }
       get_render_org_context_by_slug: {
         Args: { p_slug: string }

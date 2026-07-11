@@ -26,6 +26,10 @@ const ORG_ROLE_LABEL: Record<string, OrgRoleLabel> = {
   parent: "Parent",
 };
 
+export function orgRoleLabelForRole(role: string | null | undefined): OrgRoleLabel | null {
+  return role ? (ORG_ROLE_LABEL[role] ?? null) : null;
+}
+
 export interface BuildPersonAdminContextInput {
   viewerUserId: string | null;
   isAdmin: boolean;
@@ -38,9 +42,7 @@ export interface BuildPersonAdminContextInput {
  * Pure builder used by `getPersonAdminContext`. Holds the canEditPerson +
  * orgRoleLabelFor invariants and is unit-testable without a database.
  */
-export function buildPersonAdminContext(
-  input: BuildPersonAdminContextInput,
-): PersonAdminContext {
+export function buildPersonAdminContext(input: BuildPersonAdminContextInput): PersonAdminContext {
   const { viewerUserId, isAdmin, isReadOnly, roleRows } = input;
 
   const roleByUserId = new Map<string, string>();
@@ -59,8 +61,7 @@ export function buildPersonAdminContext(
   const orgRoleLabelFor = (userId: string | null | undefined): OrgRoleLabel | null => {
     if (!userId) return null;
     const role = roleByUserId.get(userId);
-    if (!role) return null;
-    return ORG_ROLE_LABEL[role] ?? null;
+    return orgRoleLabelForRole(role);
   };
 
   return { adminUserIds, isAdmin, canEditPerson, isReadOnly, orgRoleLabelFor };
