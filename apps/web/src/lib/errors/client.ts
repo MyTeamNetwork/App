@@ -1,6 +1,7 @@
 "use client";
 
 import { getSessionId } from "@/lib/session";
+import { redactSensitiveUrlParams } from "@/lib/errors/redact-url";
 import type { ErrorEventInput, ErrorEnv } from "@/lib/schemas/errors";
 import { trackOpsEvent } from "@/lib/analytics/events";
 
@@ -291,8 +292,8 @@ function collectClientMeta(): Record<string, unknown> {
       height: win?.innerHeight ?? 0,
       devicePixelRatio: win?.devicePixelRatio ?? 1,
     },
-    url: win?.location.href ?? "",
-    referrer: document?.referrer || undefined,
+    url: redactSensitiveUrlParams(win?.location.href ?? ""),
+    referrer: redactSensitiveUrlParams(document?.referrer || "") || undefined,
   };
 
   // Navigator.connection (experimental API)

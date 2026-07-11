@@ -8,7 +8,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Card, Captcha, CaptchaRef, InlineBanner } from "@/components/ui";
 import { useCaptcha } from "@/hooks/useCaptcha";
-import { sanitizeRedirectPath, buildRecoveryRedirectTo } from "@/lib/auth/redirect";
+import { requestPasswordReset } from "@/lib/auth/form-flows";
+import { buildAuthLink, sanitizeRedirectPath } from "@/lib/auth/redirect";
 import { forgotPasswordSchema, type ForgotPasswordForm } from "@/lib/schemas/auth";
 import { useTranslations } from "next-intl";
 
@@ -36,7 +37,9 @@ function ForgotPasswordFormComponent({ captchaSiteKey }: ForgotPasswordFormProps
 
   const searchParams = useSearchParams();
   const redirect = sanitizeRedirectPath(searchParams.get("redirect"));
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "");
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
 
   const onSubmit = async (data: ForgotPasswordForm) => {
     if (!isVerified || !captchaToken) {
@@ -48,13 +51,17 @@ function ForgotPasswordFormComponent({ captchaSiteKey }: ForgotPasswordFormProps
     setError(null);
 
     const supabase = createClient()!;
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(data.email, {
-      redirectTo: buildRecoveryRedirectTo(siteUrl, redirect),
+    const result = await requestPasswordReset({
+      email: data.email,
       captchaToken,
+      siteUrl,
+      redirectTo: redirect,
+      resetPasswordForEmail: (email, options) =>
+        supabase.auth.resetPasswordForEmail(email, options),
     });
 
-    if (resetError) {
-      setError(resetError.message);
+    if (result.status === "error") {
+      setError(result.message);
       setIsLoading(false);
       captchaRef.current?.reset();
       return;
@@ -115,7 +122,10 @@ function ForgotPasswordFormComponent({ captchaSiteKey }: ForgotPasswordFormProps
 
       <div className="mt-6 text-center text-sm text-white/50">
         {t("rememberPassword")}{" "}
-        <Link href="/auth/login" className="text-white font-medium hover:underline">
+        <Link
+          href={buildAuthLink("/auth/login", redirect)}
+          className="text-white font-medium hover:underline"
+        >
           {t("signIn")}
         </Link>
       </div>
@@ -125,14 +135,16 @@ function ForgotPasswordFormComponent({ captchaSiteKey }: ForgotPasswordFormProps
 
 export function ForgotPasswordClient({ captchaSiteKey }: ForgotPasswordFormProps) {
   return (
-    <Suspense fallback={
-      <Card className="p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-white/5 rounded-xl" />
-          <div className="h-10 bg-white/5 rounded-xl" />
-        </div>
-      </Card>
-    }>
+    <Suspense
+      fallback={
+        <Card className="p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-10 bg-white/5 rounded-xl" />
+            <div className="h-10 bg-white/5 rounded-xl" />
+          </div>
+        </Card>
+      }
+    >
       <ForgotPasswordFormComponent captchaSiteKey={captchaSiteKey} />
     </Suspense>
   );

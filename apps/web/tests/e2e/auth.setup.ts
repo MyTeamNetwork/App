@@ -1,4 +1,5 @@
 import { test as setup, expect } from "@playwright/test";
+import { createServerClient } from "@supabase/ssr";
 import { TestData } from "./fixtures/test-data";
 
 const authFile = "playwright/.auth/e2e-state.json";
@@ -7,21 +8,28 @@ const authFile = "playwright/.auth/e2e-state.json";
  * Authenticate as the E2E admin via Supabase admin-issued magic link.
  *
  * Password login is blocked by hCaptcha on the Supabase project, so we mint
- * a one-shot magiclink token with the service role key and navigate the
- * browser to /auth/confirm. This requires:
+ * a one-shot magiclink token with the service role key. /auth/confirm only
+ * handles recovery links (and no longer verifies on GET — see
+ * recovery-confirm-handler), so the token is exchanged directly against
+ * GoTrue here and the resulting session cookies are injected into the
+ * browser context. This requires:
  *   - NEXT_PUBLIC_SUPABASE_URL
+ *   - NEXT_PUBLIC_SUPABASE_ANON_KEY
  *   - SUPABASE_SERVICE_ROLE_KEY
  *   - E2E_ADMIN_EMAIL
  *   - E2E_ORG_SLUG (read via TestData.getOrgSlug())
  */
-setup("authenticate as E2E admin", async ({ page }) => {
+setup("authenticate as E2E admin", async ({ page, baseURL }) => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const { email } = TestData.getAdminCredentials();
   const orgSlug = TestData.getOrgSlug();
 
   if (!supabaseUrl) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL");
+  if (!anonKey) throw new Error("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY");
   if (!serviceKey) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  if (!baseURL) throw new Error("Missing Playwright baseURL");
 
   const res = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
     method: "POST",
@@ -48,24 +56,39 @@ setup("authenticate as E2E admin", async ({ page }) => {
     throw new Error(`No hashed_token in generate_link response: ${JSON.stringify(payload)}`);
   }
 
-  const confirmUrl = `/auth/confirm?token_hash=${encodeURIComponent(
-    hashedToken
-  )}&type=magiclink&next=${encodeURIComponent(`/${orgSlug}`)}`;
-
-  await page.goto(confirmUrl);
-
-  // After confirm, Supabase redirects somewhere authenticated — could be the
-  // org page, /app, or /auth/reset-password (forced password setup flow).
-  // Any non-/auth/(login|confirm) destination means the session cookie is set.
-  await page.waitForURL(
-    (url) => {
-      const path = url.pathname;
-      if (path.startsWith("/auth/login")) return false;
-      if (path.startsWith("/auth/confirm")) return false;
-      if (path.startsWith("/auth/error")) return false;
-      return true;
+  // Exchange the token with GoTrue through @supabase/ssr so the session is
+  // serialized into the exact cookie format the app's middleware expects.
+  const cookieJar: { name: string; value: string }[] = [];
+  const supabase = createServerClient(supabaseUrl, anonKey, {
+    cookies: {
+      getAll() {
+        return cookieJar;
+      },
+      setAll(cookiesToSet) {
+        for (const { name, value } of cookiesToSet) {
+          cookieJar.push({ name, value });
+        }
+      },
     },
-    { timeout: 30000 }
+  });
+
+  const { error: verifyError } = await supabase.auth.verifyOtp({
+    type: "magiclink",
+    token_hash: hashedToken,
+  });
+  if (verifyError) {
+    throw new Error(`verifyOtp failed: ${verifyError.message}`);
+  }
+  if (cookieJar.length === 0) {
+    throw new Error("verifyOtp succeeded but no session cookies were produced");
+  }
+
+  await page.context().addCookies(
+    cookieJar.map(({ name, value }) => ({
+      name,
+      value,
+      url: baseURL,
+    }))
   );
 
   // Hop to the org home so the saved storageState reflects an authenticated

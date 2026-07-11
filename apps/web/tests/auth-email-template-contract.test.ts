@@ -26,3 +26,22 @@ test("magic-link email is code-only so link scanners cannot consume the OTP", ()
   assert.doesNotMatch(template, /ConfirmationURL|TokenHash|RedirectTo/);
   assert.doesNotMatch(template, /<a\b/i);
 });
+
+test("recovery email routes through /auth/confirm with an explicit token hash", () => {
+  const config = readFileSync(path.join(repoRoot, "supabase/config.toml"), "utf8");
+  const template = readFileSync(
+    path.join(repoRoot, "supabase/templates/recovery.html"),
+    "utf8",
+  );
+
+  assert.match(config, /\[auth\.email\.template\.recovery\]/);
+  // token_hash + type=recovery appended to RedirectTo (/auth/confirm) — the
+  // confirm route forwards these to reset-password, where verifyOtp runs only
+  // on form submit so link scanners cannot consume the single-use token.
+  assert.match(
+    template,
+    /{{\s*\.RedirectTo\s*}}&amp;token_hash={{\s*\.TokenHash\s*}}&amp;type=recovery/,
+  );
+  // PKCE ConfirmationURL would break cross-browser opens and verify on GET.
+  assert.doesNotMatch(template, /ConfirmationURL/);
+});

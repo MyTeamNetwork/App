@@ -135,10 +135,12 @@ export default function ForgotPasswordScreen() {
         // Provide user-friendly error messages
         if (error.message.includes("rate limit")) {
           setApiError("Too many requests. Please wait a few minutes and try again.");
-        } else if (error.message.includes("not found") || error.message.includes("Invalid")) {
+        } else if (error.message.includes("not found")) {
           // Don't reveal if email exists for security
           setEmailSent(true);
         } else {
+          // Anything else (captcha, config, network) is a real failure —
+          // claiming "email sent" would strand the user waiting on nothing.
           setApiError(error.message);
         }
         return;

@@ -9,7 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Card, Captcha, CaptchaRef, InlineBanner } from "@/components/ui";
 import { FeedbackButton } from "@/components/feedback";
 import { useCaptcha } from "@/hooks/useCaptcha";
-import { sanitizeRedirectPath, buildAuthCallbackUrl, buildAuthLink } from "@/lib/auth/redirect";
+import { sanitizeRedirectPath, buildAuthLink } from "@/lib/auth/redirect";
+import { performPasswordLogin, sendMagicLoginLink, startOAuthLogin } from "@/lib/auth/form-flows";
 import { loginSchema, type LoginForm } from "@/lib/schemas/auth";
 import { LinkedInIcon } from "@/components/shared/LinkedInIcon";
 import { MicrosoftIcon } from "@/components/shared/MicrosoftIcon";
@@ -55,10 +56,14 @@ function LoginFormComponent({
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = sanitizeRedirectPath(searchParams.get("redirect"));
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "");
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
   const isSocialLoading = isGoogleLoading || isLinkedInLoading || isMicrosoftLoading;
 
-  const handleSocialLogin = async (provider: "google" | typeof LINKEDIN_OIDC_PROVIDER | typeof MICROSOFT_SSO_PROVIDER) => {
+  const handleSocialLogin = async (
+    provider: "google" | typeof LINKEDIN_OIDC_PROVIDER | typeof MICROSOFT_SSO_PROVIDER
+  ) => {
     if (!isVerified || !captchaToken) {
       setError(t("completeCaptcha"));
       return;
@@ -74,16 +79,16 @@ function LoginFormComponent({
     setError(null);
 
     const supabase = createClient()!;
-    const { error } = await supabase.auth.signInWithOAuth({
+    const result = await startOAuthLogin({
       provider,
-      options: {
-        redirectTo: buildAuthCallbackUrl(siteUrl, redirectTo, "login"),
-        ...(provider === MICROSOFT_SSO_PROVIDER && { scopes: "openid profile email" }),
-      },
+      scopes: provider === MICROSOFT_SSO_PROVIDER ? "openid profile email" : undefined,
+      siteUrl,
+      redirectTo,
+      signInWithOAuth: (credentials) => supabase.auth.signInWithOAuth(credentials),
     });
 
-    if (error) {
-      setError(error.message);
+    if (result.status === "error") {
+      setError(result.message);
       setLoading(false);
       captchaRef.current?.reset();
     }
@@ -99,16 +104,15 @@ function LoginFormComponent({
     setError(null);
 
     const supabase = createClient()!;
-    const { error } = await supabase.auth.signInWithPassword({
+    const result = await performPasswordLogin({
       email: data.email,
       password: data.password,
-      options: {
-        captchaToken,
-      },
+      captchaToken,
+      signInWithPassword: (credentials) => supabase.auth.signInWithPassword(credentials),
     });
 
-    if (error) {
-      setError(error.message);
+    if (result.status === "error") {
+      setError(result.message);
       setIsLoading(false);
       captchaRef.current?.reset();
       return;
@@ -130,16 +134,16 @@ function LoginFormComponent({
     setError(null);
 
     const supabase = createClient()!;
-    const { error } = await supabase.auth.signInWithOtp({
+    const result = await sendMagicLoginLink({
       email,
-      options: {
-        emailRedirectTo: buildAuthCallbackUrl(siteUrl, redirectTo, "login"),
-        captchaToken,
-      },
+      captchaToken,
+      siteUrl,
+      redirectTo,
+      signInWithOtp: (credentials) => supabase.auth.signInWithOtp(credentials),
     });
 
-    if (error) {
-      setError(error.message);
+    if (result.status === "error") {
+      setError(result.message);
       setIsLoading(false);
       captchaRef.current?.reset();
       return;
@@ -263,7 +267,10 @@ function LoginFormComponent({
         </InlineBanner>
       )}
 
-      <form data-testid="login-form" onSubmit={mode === "password" ? handleSubmit(onPasswordLogin) : handleMagicLink}>
+      <form
+        data-testid="login-form"
+        onSubmit={mode === "password" ? handleSubmit(onPasswordLogin) : handleMagicLink}
+      >
         <div className="space-y-2.5">
           <Input
             label={t("emailLabel")}
@@ -318,14 +325,20 @@ function LoginFormComponent({
 
       <div className="mt-4 text-center text-sm text-white/50">
         {t("noAccount")}{" "}
-        <Link href={buildAuthLink("/auth/signup", redirectTo)} className="text-white font-medium hover:underline">
+        <Link
+          href={buildAuthLink("/auth/signup", redirectTo)}
+          className="text-white font-medium hover:underline"
+        >
           {t("signUp")}
         </Link>
       </div>
 
       <div className="mt-2 text-center text-xs text-white/40">
         {t("claimLinkPrompt")}{" "}
-        <Link href={buildAuthLink("/auth/claim", redirectTo)} className="text-white font-medium hover:underline">
+        <Link
+          href={buildAuthLink("/auth/claim", redirectTo)}
+          className="text-white font-medium hover:underline"
+        >
           {t("claimLinkText")}
         </Link>
       </div>
@@ -339,15 +352,17 @@ export function LoginClient({
   microsoftOauthAvailable,
 }: LoginFormProps) {
   return (
-    <Suspense fallback={
-      <Card className="p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-white/5 rounded-xl" />
-          <div className="h-10 bg-white/5 rounded-xl" />
-          <div className="h-10 bg-white/5 rounded-xl" />
-        </div>
-      </Card>
-    }>
+    <Suspense
+      fallback={
+        <Card className="p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-10 bg-white/5 rounded-xl" />
+            <div className="h-10 bg-white/5 rounded-xl" />
+            <div className="h-10 bg-white/5 rounded-xl" />
+          </div>
+        </Card>
+      }
+    >
       <LoginFormComponent
         captchaSiteKey={captchaSiteKey}
         linkedinOauthAvailable={linkedinOauthAvailable}
