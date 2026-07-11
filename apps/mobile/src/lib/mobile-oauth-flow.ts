@@ -8,7 +8,11 @@ import {
   type MobileAuthMode,
   type MobileOAuthProvider,
 } from "@/lib/auth-redirects";
-import { consumeMobileAuthHandoff } from "@/lib/mobile-auth";
+import { consumeBoundMobileAuthHandoff } from "@/lib/mobile-auth";
+import {
+  clearMobileOAuthVerifier,
+  createMobileOAuthChallenge,
+} from "@/lib/mobile-oauth-challenge";
 import { getWebAppUrl } from "@/lib/web-api";
 import { captureException, captureMessage, track } from "@/lib/analytics";
 
@@ -41,8 +45,20 @@ export async function runMobileOAuth(
   options: { mode: MobileAuthMode; signup?: SignupContext }
 ): Promise<MobileOAuthResult> {
   const redirectUri = makeRedirectUri({ scheme: "teammeet", path: "callback" });
+  let handoffChallenge: string;
+  try {
+    handoffChallenge = await createMobileOAuthChallenge();
+  } catch (error) {
+    captureException(error as Error, {
+      context: "runMobileOAuth.challenge",
+      provider,
+      source,
+    });
+    return { ok: false, error: "Could not secure sign-in. Please try again." };
+  }
   const authUrl = buildMobileOAuthUrl(provider, getWebAppUrl(), {
     mode: options.mode,
+    handoffChallenge,
     ...(options.signup
       ? {
           ageBracket: options.signup.ageBracket,
@@ -56,6 +72,7 @@ export async function runMobileOAuth(
   try {
     result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
   } catch (error) {
+    await clearMobileOAuthVerifier(handoffChallenge).catch(() => {});
     captureException(error as Error, { context: "runMobileOAuth.open", provider, source });
     return { ok: false, error: "Could not start sign-in. Please try again." };
   }
@@ -84,6 +101,7 @@ export async function runMobileOAuth(
 
   const callback = parseMobileAuthCallbackUrl(result.url);
   if (callback.type === "error") {
+    await clearMobileOAuthVerifier(handoffChallenge).catch(() => {});
     captureException(new Error(`Mobile OAuth callback error: ${callback.message}`), {
       context: "runMobileOAuth",
       provider,
@@ -92,6 +110,7 @@ export async function runMobileOAuth(
     return { ok: false, error: getMobileAuthCallbackErrorMessage(callback.error) };
   }
   if (callback.type !== "handoff") {
+    await clearMobileOAuthVerifier(handoffChallenge).catch(() => {});
     captureException(new Error(`Mobile OAuth unrecognized callback (${diag})`), {
       context: "runMobileOAuth",
       provider,
@@ -101,7 +120,7 @@ export async function runMobileOAuth(
   }
 
   try {
-    await consumeMobileAuthHandoff(callback.code);
+    await consumeBoundMobileAuthHandoff(callback.code, callback.challenge);
   } catch (error) {
     captureException(error as Error, { context: "runMobileOAuth.consume", provider, source });
     return { ok: false, error: (error as Error).message || "Could not complete sign in." };

@@ -26,15 +26,17 @@ describe("mobile Google auth redirects", () => {
   it("starts Google login through the web-owned mobile route", () => {
     const url = buildMobileGoogleAuthUrl("https://www.myteamnetwork.com", {
       mode: "login",
+      handoffChallenge: "e".repeat(64),
     });
 
-    expect(url).toBe("https://www.myteamnetwork.com/auth/mobile/google?mode=login&redirect=%2Fapp");
+    expect(new URL(url).searchParams.get("handoff_challenge")).toBe("e".repeat(64));
     expect(url).not.toContain("supabase.co");
   });
 
   it("passes signup age data to the web mobile start route", () => {
     const url = buildMobileGoogleAuthUrl("https://www.myteamnetwork.com/", {
       mode: "signup",
+      handoffChallenge: "f".repeat(64),
       ageBracket: "13_17",
       isMinor: true,
       ageToken: "age-token",
@@ -55,9 +57,16 @@ describe("mobile Google auth redirects", () => {
   });
 
   it("parses one-time handoff callbacks", () => {
-    expect(parseMobileAuthCallbackUrl("teammeet://callback?handoff_code=abc123")).toEqual({
+    expect(parseMobileAuthCallbackUrl(`teammeet://callback?handoff_code=abc123&handoff_challenge=${"a".repeat(64)}`)).toEqual({
       type: "handoff",
       code: "abc123",
+      challenge: "a".repeat(64),
+    });
+  });
+
+  it("rejects handoff codes that are not bound to this device flow", () => {
+    expect(parseMobileAuthCallbackUrl("teammeet://callback?handoff_code=abc123")).toEqual({
+      type: "ignored",
     });
   });
 
@@ -123,29 +132,37 @@ describe("mobile Google auth redirects", () => {
 });
 
 describe("buildMobileOAuthUrl", () => {
+  it("rejects a malformed challenge instead of downgrading to an unbound flow", () => {
+    expect(() =>
+      buildMobileOAuthUrl("google", "https://www.myteamnetwork.com", {
+        mode: "login",
+        handoffChallenge: "not-a-sha256-challenge",
+      })
+    ).toThrow(/invalid mobile handoff challenge/i);
+  });
+
   it("starts LinkedIn login through the web-owned mobile route", () => {
     const url = buildMobileOAuthUrl("linkedin", "https://www.myteamnetwork.com", {
       mode: "login",
+      handoffChallenge: "a".repeat(64),
     });
 
-    expect(url).toBe(
-      "https://www.myteamnetwork.com/auth/mobile/linkedin?mode=login&redirect=%2Fapp"
-    );
+    expect(new URL(url).searchParams.get("handoff_challenge")).toBe("a".repeat(64));
   });
 
   it("starts Microsoft login through the web-owned mobile route", () => {
     const url = buildMobileOAuthUrl("microsoft", "https://www.myteamnetwork.com", {
       mode: "login",
+      handoffChallenge: "b".repeat(64),
     });
 
-    expect(url).toBe(
-      "https://www.myteamnetwork.com/auth/mobile/microsoft?mode=login&redirect=%2Fapp"
-    );
+    expect(new URL(url).searchParams.get("handoff_challenge")).toBe("b".repeat(64));
   });
 
   it("forwards age signup params for any provider", () => {
     const url = buildMobileOAuthUrl("linkedin", "https://www.myteamnetwork.com/", {
       mode: "signup",
+      handoffChallenge: "c".repeat(64),
       ageBracket: "13_17",
       isMinor: true,
       ageToken: "age-token",
@@ -160,8 +177,9 @@ describe("buildMobileOAuthUrl", () => {
   });
 
   it("buildMobileGoogleAuthUrl is preserved as a backward-compat wrapper", () => {
-    expect(buildMobileGoogleAuthUrl("https://www.myteamnetwork.com", { mode: "login" })).toBe(
-      buildMobileOAuthUrl("google", "https://www.myteamnetwork.com", { mode: "login" })
+    const params = { mode: "login" as const, handoffChallenge: "d".repeat(64) };
+    expect(buildMobileGoogleAuthUrl("https://www.myteamnetwork.com", params)).toBe(
+      buildMobileOAuthUrl("google", "https://www.myteamnetwork.com", params)
     );
   });
 });

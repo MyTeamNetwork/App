@@ -1,5 +1,6 @@
 import {
   getConnectionSuggestions,
+  startMemberProfileChat,
   startConnectionChat,
 } from "@/lib/connections-api";
 import { fetchWithAuth } from "@/lib/web-api";
@@ -75,6 +76,29 @@ describe("connections api", () => {
         body: JSON.stringify({
           profileType: "parent",
           profileId: "parent-1",
+        }),
+      }
+    );
+  });
+
+  it("routes member profile chats through the authorized server endpoint", async () => {
+    mockFetchWithAuth.mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({ chatGroupId: "chat-member", reused: false }),
+    });
+
+    await expect(
+      startMemberProfileChat({ orgId: "org-1", memberId: "member-1" })
+    ).resolves.toEqual({ chatGroupId: "chat-member", reused: false });
+
+    expect(mockFetchWithAuth).toHaveBeenCalledWith(
+      "/api/organizations/org-1/direct-chat/profile",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileType: "member",
+          profileId: "member-1",
         }),
       }
     );

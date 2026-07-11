@@ -1,9 +1,16 @@
 import { supabase } from "@/lib/supabase";
 import {
+  consumeBoundMobileAuthHandoff,
   consumeMobileAuthHandoff,
   validateSignupAge,
   MobileAuthError,
 } from "@/lib/mobile-auth";
+import { getMobileOAuthVerifier, clearMobileOAuthVerifier } from "@/lib/mobile-oauth-challenge";
+
+jest.mock("@/lib/mobile-oauth-challenge", () => ({
+  getMobileOAuthVerifier: jest.fn(),
+  clearMobileOAuthVerifier: jest.fn(),
+}));
 
 function mockFetchResponse(opts: {
   ok: boolean;
@@ -28,6 +35,51 @@ describe("mobile auth API helpers", () => {
   });
 
   describe("consumeMobileAuthHandoff", () => {
+    it("sends the device-held verifier with a bound handoff", async () => {
+      mockFetchResponse({
+        ok: true,
+        status: 200,
+        body: { access_token: "access-token", refresh_token: "refresh-token" },
+      });
+
+      await consumeMobileAuthHandoff("handoff-code", "device-verifier");
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://www.myteamnetwork.com/api/auth/mobile-handoff/consume",
+        expect.objectContaining({
+          body: JSON.stringify({ code: "handoff-code", verifier: "device-verifier" }),
+        })
+      );
+    });
+
+    it("rejects a callback without a verifier created on this device", async () => {
+      (getMobileOAuthVerifier as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        consumeBoundMobileAuthHandoff("handoff-code", "a".repeat(64))
+      ).rejects.toMatchObject({ status: "unauthorized" });
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(clearMobileOAuthVerifier).not.toHaveBeenCalled();
+    });
+
+    it("does not turn a successful sign-in into a failure when verifier cleanup fails", async () => {
+      (getMobileOAuthVerifier as jest.Mock).mockResolvedValue("device-verifier");
+      (clearMobileOAuthVerifier as jest.Mock).mockRejectedValue(
+        new Error("SecureStore cleanup failed")
+      );
+      mockFetchResponse({
+        ok: true,
+        status: 200,
+        body: { access_token: "access-token", refresh_token: "refresh-token" },
+      });
+
+      await expect(
+        consumeBoundMobileAuthHandoff("handoff-code", "a".repeat(64))
+      ).resolves.toBeUndefined();
+      expect(supabase.auth.setSession).toHaveBeenCalledTimes(1);
+    });
+
     it("consumes a handoff code and applies the Supabase session", async () => {
       mockFetchResponse({
         ok: true,

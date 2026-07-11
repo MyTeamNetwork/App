@@ -1,13 +1,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   buildMobileAuthCallbackUrl,
   buildMobileCallbackDeepLink,
   buildMobileErrorDeepLink,
+  buildMobileHandoffInsert,
   isMobileAuthMode,
   mapMobileOAuthProvider,
 } from "@/lib/auth/mobile-oauth";
+import type { Session } from "@supabase/supabase-js";
 import { getEncryptionKeyBuffer } from "@/lib/crypto/token-encryption";
 
 const SITE = "https://www.myteamnetwork.com";
@@ -27,6 +31,8 @@ describe("mapMobileOAuthProvider", () => {
 });
 
 describe("buildMobileAuthCallbackUrl", () => {
+  const handoffChallenge = "A1".repeat(32);
+
   it("targets /auth/mobile-callback (not the universal-link /auth/callback path) with mobile=1", () => {
     const url = new URL(buildMobileAuthCallbackUrl(SITE, { mode: "login" }));
     // /auth/callback is a registered universal link; if the OAuth mid-flight
@@ -55,11 +61,88 @@ describe("buildMobileAuthCallbackUrl", () => {
     assert.equal(url.searchParams.get("redirect"), "/app/join?token=abc");
   });
 
+  it("propagates and normalizes the native handoff challenge through the OAuth callback", () => {
+    const url = new URL(
+      buildMobileAuthCallbackUrl(SITE, {
+        mode: "login",
+        handoffChallenge,
+      })
+    );
+
+    assert.equal(url.searchParams.get("handoff_challenge"), handoffChallenge.toLowerCase());
+  });
+
+  it("rejects a malformed native handoff challenge instead of downgrading to an unbound flow", () => {
+    assert.throws(
+      () =>
+        buildMobileAuthCallbackUrl(SITE, {
+          mode: "login",
+          handoffChallenge: "not-64-hex",
+        }),
+      /invalid mobile handoff challenge/i
+    );
+  });
+
   it("falls back to /app for open-redirect attempts", () => {
     const url = new URL(
       buildMobileAuthCallbackUrl(SITE, { mode: "login", redirect: "https://evil.com" })
     );
     assert.equal(url.searchParams.get("redirect"), "/app");
+  });
+});
+
+describe("mobile OAuth route challenge propagation", () => {
+  const startRouteSource = readFileSync(
+    resolve(process.cwd(), "src/app/auth/mobile/[provider]/route.ts"),
+    "utf8"
+  );
+  const callbackRouteSource = readFileSync(
+    resolve(process.cwd(), "src/app/auth/callback/route.ts"),
+    "utf8"
+  );
+
+  it("carries handoff_challenge from native initiation into the server callback", () => {
+    assert.match(startRouteSource, /searchParams\.get\("handoff_challenge"\)/);
+    assert.match(startRouteSource, /handoffChallenge/);
+  });
+
+  it("stores and echoes the challenge when minting a bound handoff", () => {
+    assert.match(
+      callbackRouteSource,
+      /buildMobileHandoffInsert\([\s\S]*handoffChallenge/
+    );
+    assert.match(callbackRouteSource, /handoff_challenge/);
+  });
+});
+
+describe("buildMobileHandoffInsert", () => {
+  const encryptionKey = "a".repeat(64);
+  const session = {
+    access_token: "access-token",
+    refresh_token: "refresh-token",
+    user: { id: "user-1" },
+  } as Session;
+
+  it("stores a normalized challenge hash on bound handoff rows", () => {
+    const originalKey = process.env.AUTH_HANDOFF_ENCRYPTION_KEY;
+    process.env.AUTH_HANDOFF_ENCRYPTION_KEY = encryptionKey;
+    try {
+      const result = buildMobileHandoffInsert(session, "fixed-code", "AB".repeat(32));
+      assert.equal(result.row.challenge_hash, "ab".repeat(32));
+    } finally {
+      process.env.AUTH_HANDOFF_ENCRYPTION_KEY = originalKey;
+    }
+  });
+
+  it("keeps legacy handoff rows explicitly unbound", () => {
+    const originalKey = process.env.AUTH_HANDOFF_ENCRYPTION_KEY;
+    process.env.AUTH_HANDOFF_ENCRYPTION_KEY = encryptionKey;
+    try {
+      const result = buildMobileHandoffInsert(session, "legacy-code");
+      assert.equal(result.row.challenge_hash, null);
+    } finally {
+      process.env.AUTH_HANDOFF_ENCRYPTION_KEY = originalKey;
+    }
   });
 });
 

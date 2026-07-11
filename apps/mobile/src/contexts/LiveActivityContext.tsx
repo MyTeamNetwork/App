@@ -5,6 +5,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useActiveEventsForLiveActivity, type ActiveEventForLiveActivity } from "@/hooks/useActiveEventsForLiveActivity";
 import { fetchWithAuth } from "@/lib/web-api";
 import { isFeatureEnabled } from "@/lib/featureFlags";
+import {
+  completeLiveActivityStart,
+  createLiveActivityCoordinationState,
+  hydrateLiveActivityCoordination,
+  reserveLiveActivityStart,
+  resetLiveActivityCoordination,
+} from "@/lib/live-activity-coordination";
 import * as sentry from "@/lib/analytics/sentry";
 import {
   LiveActivityNative,
@@ -57,10 +64,11 @@ export function LiveActivityProvider({ children }: LiveActivityProviderProps) {
   const { events: active } = useActiveEventsForLiveActivity(userId);
   const [activityIds, setActivityIds] = useState<Record<string, string>>({});
   const [eligible, setEligible] = useState<boolean>(false);
+  const [hydrationComplete, setHydrationComplete] = useState(false);
   const platformOk = useMemo(() => Platform.OS === "ios", []);
   const buildFlagOn = useMemo(() => isFeatureEnabled("liveActivitiesEnabled"), []);
 
-  const knownActivitiesRef = useRef<Map<string, string>>(new Map()); // eventId -> activityId
+  const coordinationRef = useRef(createLiveActivityCoordinationState());
 
   // Stable per-install device id so the server can group LAs on sign-out.
   const deviceIdRef = useRef<string | null>(null);
@@ -140,17 +148,21 @@ export function LiveActivityProvider({ children }: LiveActivityProviderProps) {
   // person to wake the device. End every known activity immediately.
   useEffect(() => {
     if (userId) return;
-    const running = knownActivitiesRef.current;
-    if (running.size === 0) return;
+    const coordination = coordinationRef.current;
+    const hasActivities =
+      coordination.activities.size > 0 || coordination.startingEventIds.size > 0;
     void (async () => {
-      try {
-        await LiveActivityNative.endAll("immediate");
-      } catch (err) {
-        sentry.captureException(err as Error, {
-          context: "LiveActivityContext.endAll.signout",
-        });
+      if (hasActivities) {
+        try {
+          await LiveActivityNative.endAll("immediate");
+        } catch (err) {
+          sentry.captureException(err as Error, {
+            context: "LiveActivityContext.endAll.signout",
+          });
+        }
       }
-      running.clear();
+      resetLiveActivityCoordination(coordination);
+      setHydrationComplete(false);
       setActivityIds({});
     })();
   }, [userId]);
@@ -159,25 +171,50 @@ export function LiveActivityProvider({ children }: LiveActivityProviderProps) {
   // (e.g., from a prior session). Without this we'd request a duplicate LA
   // every cold start.
   useEffect(() => {
-    if (!eligible) return;
+    const coordination = coordinationRef.current;
+    resetLiveActivityCoordination(coordination);
+    setHydrationComplete(false);
+    if (!eligible) {
+      setActivityIds({});
+      return;
+    }
+
+    let cancelled = false;
     void (async () => {
       try {
         const records = await LiveActivityNative.listActive();
-        const map = new Map<string, string>();
-        const next: Record<string, string> = {};
-        for (const r of records) {
-          map.set(r.eventId, r.activityId);
-          next[r.eventId] = r.activityId;
+        if (cancelled) return;
+        const duplicateActivityIds = hydrateLiveActivityCoordination(
+          coordination,
+          records,
+        );
+        for (const activityId of duplicateActivityIds) {
+          try {
+            await LiveActivityNative.end(activityId, undefined, "immediate");
+          } catch (err) {
+            sentry.captureException(err as Error, {
+              context: "LiveActivityContext.endDuplicate",
+              activityId,
+            });
+          }
         }
-        knownActivitiesRef.current = map;
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        coordination.activities.forEach((activityId, eventId) => {
+          next[eventId] = activityId;
+        });
         setActivityIds(next);
+        setHydrationComplete(true);
       } catch (err) {
         sentry.captureException(err as Error, {
           context: "LiveActivityContext.listActive",
         });
       }
     })();
-  }, [eligible]);
+    return () => {
+      cancelled = true;
+    };
+  }, [eligible, userId]);
 
   const registerWithServer = useCallback(
     async (
@@ -220,7 +257,7 @@ export function LiveActivityProvider({ children }: LiveActivityProviderProps) {
     const sub = addPushTokenListener(({ activityId, pushToken }) => {
       // Find the event id for this activity from our map.
       let eventId: string | null = null;
-      knownActivitiesRef.current.forEach((aid, eid) => {
+      coordinationRef.current.activities.forEach((aid, eid) => {
         if (aid === activityId) eventId = eid;
       });
       if (!eventId) return;
@@ -235,21 +272,29 @@ export function LiveActivityProvider({ children }: LiveActivityProviderProps) {
   // one running, and end LAs for any running activity whose event has dropped
   // out of `active`.
   useEffect(() => {
-    if (!eligible) return;
+    if (!eligible || !hydrationComplete) return;
 
     void (async () => {
       // Start missing.
       const activeIds = new Set(active.map((e) => e.eventId));
-      const running = knownActivitiesRef.current;
-      let runningCount = running.size;
+      const coordination = coordinationRef.current;
+      const running = coordination.activities;
+      let runningCount = running.size + coordination.startingEventIds.size;
 
       for (const event of active) {
-        if (running.has(event.eventId)) continue;
+        if (
+          running.has(event.eventId) ||
+          coordination.startingEventIds.has(event.eventId)
+        ) {
+          continue;
+        }
         if (runningCount >= SOFT_CONCURRENT_CAP) {
           // Skip silently; the most recent ones win on the next tick when an
           // earlier one ends.
           break;
         }
+        if (!reserveLiveActivityStart(coordination, event.eventId)) continue;
+        runningCount += 1;
         const contentState = buildContentState(event);
         try {
           const res = await LiveActivityNative.start({
@@ -261,8 +306,7 @@ export function LiveActivityProvider({ children }: LiveActivityProviderProps) {
             staleDate: contentState.endsAt,
           });
           if (res?.activityId) {
-            running.set(event.eventId, res.activityId);
-            runningCount += 1;
+            completeLiveActivityStart(coordination, event.eventId, res.activityId);
             setActivityIds((prev) => ({
               ...prev,
               [event.eventId]: res.activityId,
@@ -270,8 +314,13 @@ export function LiveActivityProvider({ children }: LiveActivityProviderProps) {
             if (res.pushToken) {
               await registerWithServer(res.activityId, res.pushToken, event);
             }
+          } else {
+            completeLiveActivityStart(coordination, event.eventId, null);
+            runningCount -= 1;
           }
         } catch (err) {
+          completeLiveActivityStart(coordination, event.eventId, null);
+          runningCount -= 1;
           sentry.captureException(err as Error, {
             context: "LiveActivityContext.start",
             eventId: event.eventId,
@@ -315,7 +364,7 @@ export function LiveActivityProvider({ children }: LiveActivityProviderProps) {
         }
       }
     })();
-  }, [eligible, active, registerWithServer]);
+  }, [eligible, hydrationComplete, active, registerWithServer]);
 
   const value = useMemo<LiveActivityContextValue>(
     () => ({

@@ -19,7 +19,7 @@ jest.mock("@/lib/supabase", () => ({
 }));
 
 jest.mock("@/lib/mobile-auth", () => ({
-  consumeMobileAuthHandoff: jest.fn(),
+  consumeBoundMobileAuthHandoff: jest.fn(),
 }));
 
 jest.mock("@/lib/analytics", () => ({
@@ -42,7 +42,7 @@ jest.mock("@teammeet/validation", () => ({
 
 import { parseTeammeetUrl, routeIntent } from "@/lib/deep-link";
 import { supabase } from "@/lib/supabase";
-import { consumeMobileAuthHandoff } from "@/lib/mobile-auth";
+import { consumeBoundMobileAuthHandoff } from "@/lib/mobile-auth";
 import { surfaceMobileAuthError } from "@/lib/mobile-auth-errors";
 import { showToast } from "@/components/ui/Toast";
 import { captureException } from "@/lib/analytics";
@@ -50,8 +50,11 @@ import { captureException } from "@/lib/analytics";
 describe("parseTeammeetUrl", () => {
   describe("auth (native scheme)", () => {
     it("parses handoff codes", () => {
-      const intent = parseTeammeetUrl("teammeet://callback?handoff_code=abc123");
-      expect(intent).toEqual({ kind: "auth-handoff", code: "abc123" });
+      const challenge = "a".repeat(64);
+      const intent = parseTeammeetUrl(
+        `teammeet://callback?handoff_code=abc123&handoff_challenge=${challenge}`
+      );
+      expect(intent).toEqual({ kind: "auth-handoff", code: "abc123", challenge });
     });
 
     it("parses error callbacks with description (code preserved separately from raw message)", () => {
@@ -473,12 +476,12 @@ describe("routeIntent auth-handoff (OS-listener fallback)", () => {
   it("surfaces the error (toast + Sentry) when the consume fails", async () => {
     const router = { push: jest.fn(), replace: jest.fn() };
     const consumeError = new Error("consume boom");
-    (consumeMobileAuthHandoff as jest.Mock).mockRejectedValue(consumeError);
+    (consumeBoundMobileAuthHandoff as jest.Mock).mockRejectedValue(consumeError);
 
     await routeIntent(
       router,
-      { kind: "auth-handoff", code: "abc123" },
-      "teammeet://callback?handoff_code=abc123"
+      { kind: "auth-handoff", code: "abc123", challenge: "a".repeat(64) },
+      `teammeet://callback?handoff_code=abc123&handoff_challenge=${"a".repeat(64)}`
     );
 
     // The previously-silent path now routes through the shared surfacing helper,
@@ -497,11 +500,19 @@ describe("routeIntent auth-handoff (OS-listener fallback)", () => {
 
   it("does not surface an error when the consume succeeds", async () => {
     const router = { push: jest.fn(), replace: jest.fn() };
-    (consumeMobileAuthHandoff as jest.Mock).mockResolvedValue(undefined);
+    (consumeBoundMobileAuthHandoff as jest.Mock).mockResolvedValue(undefined);
 
-    await routeIntent(router, { kind: "auth-handoff", code: "ok" });
+    await routeIntent(router, {
+      kind: "auth-handoff",
+      code: "ok",
+      challenge: "b".repeat(64),
+    });
 
     expect(surfaceMobileAuthError).not.toHaveBeenCalled();
+    expect(consumeBoundMobileAuthHandoff).toHaveBeenCalledWith(
+      "ok",
+      "b".repeat(64)
+    );
   });
 });
 

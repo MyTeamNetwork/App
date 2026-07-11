@@ -94,3 +94,14 @@ export async function startConnectionChat(input: {
   );
   return asJson<{ chatGroupId: string; reused?: boolean }>(res);
 }
+
+export function startMemberProfileChat(input: {
+  orgId: string;
+  memberId: string;
+}) {
+  return startConnectionChat({
+    orgId: input.orgId,
+    profileType: "member",
+    profileId: input.memberId,
+  });
+}

@@ -20,6 +20,9 @@ import {
 const HANDOFF_CODE = "s3cr3t-one-time-code-abcdefghijklmnopqrstuvwxyz-0123456789";
 const CODE_HASH =
   "0000000000000000000000000000000000000000000000000000000000000000";
+const VERIFIER = "mobile-handoff-verifier-abcdefghijklmnopqrstuvwxyz-0123456789";
+const CHALLENGE_HASH =
+  "1111111111111111111111111111111111111111111111111111111111111111";
 const ACCESS_TOKEN = "plaintext-access-token-DO-NOT-LOG-1111";
 const REFRESH_TOKEN = "plaintext-refresh-token-DO-NOT-LOG-2222";
 const ENC_ACCESS = "enc::access::ciphertext";
@@ -30,14 +33,17 @@ type RpcResult = {
   error: { message: string } | null;
 };
 
-function makeServiceClient(result: RpcResult) {
+function makeServiceClient(result: RpcResult, expectedChallengeHash?: string | null) {
   return {
-    rpc(fn: string, args: { p_code_hash: string }) {
+    rpc(fn: string, args: { p_code_hash: string; p_challenge_hash?: string | null }) {
       assert.equal(fn, "consume_mobile_auth_handoff");
       // The route must hash the code before it reaches the RPC — the raw code
       // must never cross this boundary.
       assert.equal(args.p_code_hash, CODE_HASH);
       assert.notEqual(args.p_code_hash, HANDOFF_CODE);
+      if (expectedChallengeHash !== undefined) {
+        assert.equal(args.p_challenge_hash, expectedChallengeHash);
+      }
       return Promise.resolve(result);
     },
   } as any;
@@ -100,6 +106,8 @@ function assertNoSecretsLogged() {
     ENC_ACCESS,
     ENC_REFRESH,
     CODE_HASH,
+    VERIFIER,
+    CHALLENGE_HASH,
   ]) {
     assert.ok(
       !text.includes(secret),
@@ -113,13 +121,29 @@ const LOG_CONTEXT = { env: "test", ip: "203.0.113.7" } as const;
 // ── U2: logging + no-PII guarantee ───────────────────────────────────────────
 
 describe("consumeMobileHandoff — structured logging + no-PII guarantee", () => {
+  it("passes the server-derived verifier hash to the two-argument consume RPC", async () => {
+    const result = await consumeMobileHandoff({
+      serviceClient: makeServiceClient({ data: [], error: null }, CHALLENGE_HASH),
+      codeHash: CODE_HASH,
+      challengeHash: CHALLENGE_HASH,
+      decrypt: realDecrypt,
+      logContext: LOG_CONTEXT,
+    });
+
+    assert.equal(result.status, "not_found");
+  });
+
   it("logs category rpc_error and returns rpc_error when the RPC fails", async () => {
     const result: ConsumeMobileHandoffResult = await consumeMobileHandoff({
-      serviceClient: makeServiceClient({
-        data: null,
-        error: { message: "connection refused" },
-      }),
+      serviceClient: makeServiceClient(
+        {
+          data: null,
+          error: { message: "connection refused" },
+        },
+        CHALLENGE_HASH
+      ),
       codeHash: CODE_HASH,
+      challengeHash: CHALLENGE_HASH,
       decrypt: realDecrypt,
       logContext: LOG_CONTEXT,
     });
@@ -228,6 +252,10 @@ describe("consume route wiring", () => {
   it("delegates to consumeMobileHandoff with hashed code + derived IP/env", () => {
     assert.match(source, /consumeMobileHandoff\(/);
     assert.match(source, /codeHash: hashMobileHandoffCode\(parsed\.data\.code\)/);
+    assert.match(
+      source,
+      /challengeHash: parsed\.data\.verifier[\s\S]*hashMobileHandoffVerifier\(parsed\.data\.verifier\)/
+    );
     assert.match(source, /ip: deriveClientIp\(request\)/);
     assert.match(source, /env: resolveHandoffEnv\(\)/);
   });
@@ -245,6 +273,30 @@ describe("consume route wiring", () => {
 
   it("never logs the raw code in the route", () => {
     assert.doesNotMatch(source, /console\.error[\s\S]*parsed\.data\.code/);
+    assert.doesNotMatch(source, /console\.error[\s\S]*parsed\.data\.verifier/);
+  });
+});
+
+describe("bound handoff migration contract", () => {
+  it("keeps legacy rows compatible while requiring a matching challenge for bound rows", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "../../supabase/migrations/20270105000000_bind_mobile_auth_handoffs.sql"),
+      "utf8"
+    ).replace(/\s+/g, " ");
+
+    assert.match(migration, /ADD COLUMN IF NOT EXISTS challenge_hash text/);
+    assert.match(
+      migration,
+      /consume_mobile_auth_handoff\(\s*p_code_hash text, p_challenge_hash text DEFAULT NULL\s*\)/
+    );
+    assert.match(
+      migration,
+      /\(challenge_hash IS NULL AND p_challenge_hash IS NULL\) OR challenge_hash = p_challenge_hash/
+    );
+    assert.match(migration, /consumed_at IS NULL/);
+    assert.match(migration, /expires_at > now\(\)/);
+    assert.match(migration, /FOR UPDATE SKIP LOCKED/);
+    assert.match(migration, /GRANT EXECUTE[\s\S]*service_role/);
   });
 });
 

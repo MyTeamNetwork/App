@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import {
   decryptMobileHandoffToken,
   hashMobileHandoffCode,
+  hashMobileHandoffVerifier,
 } from "@/lib/auth/mobile-oauth";
 import {
   consumeMobileHandoff,
@@ -17,6 +18,7 @@ import {
 
 const requestSchema = z.object({
   code: z.string().min(32).max(256),
+  verifier: z.string().min(32).max(256).optional(),
 });
 
 export async function POST(request: Request) {
@@ -48,6 +50,9 @@ export async function POST(request: Request) {
   const result = await consumeMobileHandoff({
     serviceClient: createServiceClient(),
     codeHash: hashMobileHandoffCode(parsed.data.code),
+    challengeHash: parsed.data.verifier
+      ? hashMobileHandoffVerifier(parsed.data.verifier)
+      : null,
     decrypt: decryptMobileHandoffToken,
     // Safe, non-secret context for any failure log the core emits.
     logContext: { env: resolveHandoffEnv(), ip: deriveClientIp(request) },

@@ -6,7 +6,7 @@
 //   - Dynamic Island compact / minimal / expanded leading + trailing + center.
 //
 // Interactive iOS 17 button "Open in TeamMeet" deep-links to
-// `teammeet://events/<id>` so a single tap takes the user from the Lock Screen
+// `teammeet://event/<id>?org=<slug>` so a single tap takes the user from the Lock Screen
 // to the event detail screen in the host app.
 //
 // We intentionally keep typography and palette inline rather than depending on
@@ -75,7 +75,7 @@ struct EventLiveActivityWidget: Widget {
                 )
                 .foregroundStyle(.tint)
             }
-            .widgetURL(URL(string: "teammeet://events/\(context.attributes.eventId)"))
+            .widgetURL(URL(string: "teammeet://event/\(context.attributes.eventId)?org=\(context.attributes.orgSlug)"))
             .keylineTint(Color(red: 0.145, green: 0.388, blue: 0.922))
         }
     }
@@ -220,7 +220,7 @@ private struct OpenInAppButton: View {
     let orgSlug: String
 
     var body: some View {
-        Link(destination: URL(string: "teammeet://events/\(eventId)")!) {
+        Link(destination: URL(string: "teammeet://event/\(eventId)?org=\(orgSlug)")!) {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.up.forward.app")
                 Text("Open in TeamNetwork")

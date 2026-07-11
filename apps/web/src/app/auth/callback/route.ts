@@ -17,6 +17,7 @@ import {
   buildMobileErrorDeepLink,
   buildMobileHandoffInsert,
   mobileErrorFromCallbackRedirect,
+  normalizeMobileHandoffChallenge,
 } from "@/lib/auth/mobile-oauth";
 import {
   logMobileHandoffFailure,
@@ -38,6 +39,18 @@ export async function GET(request: NextRequest) {
   // Instead of web redirects they must deep-link back to the native app via
   // teammeet://callback — successes carry a one-time handoff_code, failures an error.
   const isMobile = requestUrl.searchParams.get("mobile") === "1";
+  let handoffChallenge: string | null = null;
+  if (isMobile) {
+    try {
+      handoffChallenge = normalizeMobileHandoffChallenge(
+        requestUrl.searchParams.get("handoff_challenge")
+      );
+    } catch {
+      return NextResponse.redirect(
+        buildMobileErrorDeepLink("auth_callback_failed", "Invalid sign-in request.")
+      );
+    }
+  }
 
   debugLog("auth-callback", "Starting", {
     hasCode: !!code,
@@ -296,17 +309,12 @@ export async function GET(request: NextRequest) {
       // instead of setting web cookies. The app exchanges the code for tokens via
       // /api/auth/mobile-handoff/consume.
       if (isMobile) {
-        const { code, row } = buildMobileHandoffInsert(data.session);
-        // Cast: mobile_auth_handoffs is in the DB but not yet in the generated
-        // Database types. Regenerate via `bun run gen:types` to drop. Mirrors the
-        // consume route's cast.
-        const { error: handoffError } = await (
-          createServiceClient() as unknown as {
-            from: (table: string) => {
-              insert: (values: unknown) => Promise<{ error: { message: string } | null }>;
-            };
-          }
-        )
+        const { code, row } = buildMobileHandoffInsert(
+          data.session,
+          undefined,
+          handoffChallenge
+        );
+        const { error: handoffError } = await createServiceClient()
           .from("mobile_auth_handoffs")
           .insert(row);
 
@@ -322,7 +330,12 @@ export async function GET(request: NextRequest) {
         }
 
         debugLog("auth-callback", "Mobile: created handoff, deep-linking to app");
-        return NextResponse.redirect(buildMobileCallbackDeepLink({ handoff_code: code }));
+        return NextResponse.redirect(
+          buildMobileCallbackDeepLink({
+            handoff_code: code,
+            handoff_challenge: handoffChallenge,
+          })
+        );
       }
 
       debugLog("auth-callback", "Cookies set:", response.cookies.getAll().map((c) => ({

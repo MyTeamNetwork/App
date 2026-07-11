@@ -5,7 +5,10 @@ import * as sentry from "@/lib/analytics/sentry";
 import { useBlockedUsers } from "@/contexts/BlockedUsersContext";
 import type { FeedComment, PostAuthor, UseCommentsReturn } from "@/types/feed";
 
-export function useComments(postId: string | undefined, orgId: string | null): UseCommentsReturn {
+export function useComments(
+  postId: string | undefined,
+  organizationId: string | null,
+): UseCommentsReturn {
   const isMountedRef = useRef(true);
   const [comments, setComments] = useState<FeedComment[]>([]);
   const { blockedUserIds } = useBlockedUsers();
@@ -15,7 +18,7 @@ export function useComments(postId: string | undefined, orgId: string | null): U
   const [error, setError] = useState<string | null>(null);
 
   const fetchComments = useCallback(async () => {
-    if (!postId) {
+    if (!postId || !organizationId) {
       if (isMountedRef.current) {
         setComments([]);
         setError(null);
@@ -31,6 +34,7 @@ export function useComments(postId: string | undefined, orgId: string | null): U
         .from("feed_comments")
         .select("*, author:users!feed_comments_author_id_fkey(id, full_name:name, avatar_url)")
         .eq("post_id", postId)
+        .eq("organization_id", organizationId)
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
 
@@ -60,11 +64,11 @@ export function useComments(postId: string | undefined, orgId: string | null): U
         setLoading(false);
       }
     }
-  }, [postId]);
+  }, [postId, organizationId]);
 
   const createComment = useCallback(
     async (body: string) => {
-      if (!postId || !orgId) return;
+      if (!postId || !organizationId) return;
 
       try {
         const {
@@ -80,7 +84,7 @@ export function useComments(postId: string | undefined, orgId: string | null): U
         const optimistic: FeedComment = {
           id: optimisticId,
           post_id: postId,
-          organization_id: orgId,
+          organization_id: organizationId,
           author_id: user.id,
           body: trimmed,
           created_at: now,
@@ -99,7 +103,7 @@ export function useComments(postId: string | undefined, orgId: string | null): U
 
         const { error: insertError } = await supabase.from("feed_comments").insert({
           post_id: postId,
-          organization_id: orgId,
+          organization_id: organizationId,
           author_id: user.id,
           body: trimmed,
         });
@@ -119,7 +123,7 @@ export function useComments(postId: string | undefined, orgId: string | null): U
         throw e;
       }
     },
-    [postId, orgId]
+    [postId, organizationId]
   );
 
   const deleteComment = useCallback(async (commentId: string) => {

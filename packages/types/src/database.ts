@@ -4939,6 +4939,7 @@ export type Database = {
       }
       mobile_auth_handoffs: {
         Row: {
+          challenge_hash: string | null
           code_hash: string
           consumed_at: string | null
           created_at: string
@@ -4949,6 +4950,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          challenge_hash?: string | null
           code_hash: string
           consumed_at?: string | null
           created_at?: string
@@ -4959,6 +4961,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          challenge_hash?: string | null
           code_hash?: string
           consumed_at?: string | null
           created_at?: string
@@ -7606,7 +7609,7 @@ export type Database = {
         Returns: Json
       }
       consume_mobile_auth_handoff: {
-        Args: { p_code_hash: string }
+        Args: { p_challenge_hash?: string; p_code_hash: string }
         Returns: {
           encrypted_access_token: string
           encrypted_refresh_token: string

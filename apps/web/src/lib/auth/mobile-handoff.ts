@@ -84,6 +84,8 @@ export type ConsumeMobileHandoffDeps = {
   serviceClient: ServiceSupabase;
   /** SHA-256 hex of the one-time code (never logged). */
   codeHash: string;
+  /** SHA-256 of the native verifier, or null for legacy unbound handoffs. */
+  challengeHash?: string | null;
   /** Decrypts a stored ciphertext token; throws on tampered/invalid input. */
   decrypt: (encryptedToken: string) => string;
   /** Safe context for any failure log emitted by this function. */
@@ -99,10 +101,11 @@ export type ConsumeMobileHandoffDeps = {
 export async function consumeMobileHandoff(
   deps: ConsumeMobileHandoffDeps
 ): Promise<ConsumeMobileHandoffResult> {
-  const { serviceClient, codeHash, decrypt, logContext } = deps;
+  const { serviceClient, codeHash, challengeHash = null, decrypt, logContext } = deps;
 
   const { data, error } = await serviceClient.rpc("consume_mobile_auth_handoff", {
     p_code_hash: codeHash,
+    p_challenge_hash: challengeHash ?? undefined,
   });
 
   if (error) {

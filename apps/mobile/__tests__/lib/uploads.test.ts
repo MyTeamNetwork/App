@@ -120,6 +120,26 @@ describe("upload helpers", () => {
     });
   });
 
+  it("rejects empty file bytes before calling storage", async () => {
+    const upload = jest.fn().mockResolvedValue({ error: null });
+    const storage = {
+      from: jest.fn().mockReturnValue({ upload }),
+    };
+
+    await expect(
+      uploadToStorage({
+        storage,
+        bucket: "form-documents",
+        path: "org-1/submissions/user-1/form.pdf",
+        body: new Uint8Array(),
+        contentType: "application/pdf",
+      })
+    ).rejects.toThrow("File is empty");
+
+    expect(storage.from).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it("throws storage upload errors", async () => {
     const storage = {
       from: jest.fn().mockReturnValue({

@@ -105,6 +105,7 @@ export async function uploadToSignedUrl(
   mimeType: string,
   fetchImpl: FetchLike = fetch as unknown as FetchLike
 ): Promise<void> {
+  assertNonEmptyUploadBody(body);
   const response = await fetchImpl(signedUrl, {
     method: "PUT",
     headers: { "Content-Type": mimeType },
@@ -125,6 +126,7 @@ export async function uploadToStorage(params: {
   upsert?: boolean;
 }): Promise<void> {
   const { storage, bucket, path, body, contentType, upsert } = params;
+  assertNonEmptyUploadBody(body);
   const { error } = await storage.from(bucket).upload(path, body, {
     contentType,
     upsert,
@@ -132,5 +134,20 @@ export async function uploadToStorage(params: {
 
   if (error) {
     throw new Error(error.message || "Upload failed");
+  }
+}
+
+function assertNonEmptyUploadBody(
+  body: BodyInit | ArrayBuffer | Uint8Array,
+): void {
+  const byteLength =
+    body instanceof Uint8Array || body instanceof ArrayBuffer
+      ? body.byteLength
+      : typeof Blob !== "undefined" && body instanceof Blob
+        ? body.size
+        : null;
+
+  if (byteLength === 0) {
+    throw new Error("File is empty");
   }
 }

@@ -20,7 +20,11 @@ import { APP_CHROME } from "@/lib/chrome";
 import { spacing, borderRadius, fontSize, fontWeight } from "@/lib/theme";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { formatDefaultDateFromString } from "@/lib/date-format";
-import { buildTimestampedUploadPath, readBlobFromUri, uploadToStorage } from "@/lib/uploads";
+import {
+  buildTimestampedUploadPath,
+  readArrayBufferFromUri,
+  uploadToStorage,
+} from "@/lib/uploads";
 import { openHttpsUrl } from "@/lib/url-safety";
 
 const DOC_COLORS = {
@@ -193,8 +197,12 @@ export default function DocumentFormDetailScreen() {
         return;
       }
 
-      // Read file and upload to storage
-      const blob = await readBlobFromUri(selectedFile.uri);
+      // Read the actual file bytes. React Native's fetch(file://).blob() can
+      // resolve to an empty Blob on iOS even when the selected file is valid.
+      const bytes = await readArrayBufferFromUri(selectedFile.uri);
+      if (bytes.byteLength > 20 * 1024 * 1024) {
+        throw new Error("File size must be under 20MB");
+      }
       const fileName = selectedFile.name || "submission";
       const filePath = buildTimestampedUploadPath(
         `${document.organization_id}/submissions/${user.id}`,
@@ -204,7 +212,7 @@ export default function DocumentFormDetailScreen() {
         storage: supabase.storage,
         bucket: "form-documents",
         path: filePath,
-        body: blob,
+        body: bytes,
         contentType: selectedFile.mimeType || "application/octet-stream",
       });
 
@@ -217,7 +225,7 @@ export default function DocumentFormDetailScreen() {
           user_id: user.id,
           file_name: fileName,
           file_path: filePath,
-          file_size: selectedFile.size || null,
+          file_size: bytes.byteLength,
           mime_type: selectedFile.mimeType || null,
         });
 

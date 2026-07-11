@@ -11,7 +11,6 @@ import { supabase } from "@/lib/supabase";
 
 const BIOMETRIC_SESSION_KEY = "teammeet.biometric_session.v1";
 const BIOMETRIC_SESSION_MARKER_KEY = "teammeet.biometric_session_available.v1";
-const BIOMETRIC_SESSION_EXPIRY_SKEW_SECONDS = 30;
 
 const BIOMETRIC_SESSION_OPTIONS: SecureStore.SecureStoreOptions = {
   keychainService: "com.myteamnetwork.teammeet.biometric-signin",
@@ -34,8 +33,20 @@ interface StoredBiometricSession {
 }
 
 export type BiometricSignInResult =
-  | { success: true }
+  | { success: true; warning?: string; biometricDisabled?: boolean }
   | { success: false; error: string; expired?: boolean; cancelled?: boolean };
+
+const BIOMETRIC_REFRESH_RETRY_ERROR =
+  "Couldn't refresh your session. Check your connection and try again.";
+const BIOMETRIC_REENABLE_WARNING =
+  "You're signed in, but biometric sign-in must be enabled again.";
+
+function isRetryableSessionError(error: { name?: string; status?: number }): boolean {
+  return (
+    error.name === "AuthRetryableFetchError" ||
+    (typeof error.status === "number" && error.status >= 500)
+  );
+}
 
 function canUseProtectedSecureStore(): boolean {
   if (Platform.OS === "web") return false;
@@ -77,16 +88,6 @@ function parseStoredSession(raw: string): StoredBiometricSession | null {
   } catch {
     return null;
   }
-}
-
-function isStoredSessionExpired(stored: StoredBiometricSession): boolean {
-  const expiresAt = stored.expires_at;
-  if (typeof expiresAt !== "number" || !Number.isFinite(expiresAt)) {
-    return true;
-  }
-
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  return expiresAt - nowSeconds < BIOMETRIC_SESSION_EXPIRY_SKEW_SECONDS;
 }
 
 function expiredBiometricSignInResult(): BiometricSignInResult {
@@ -210,17 +211,15 @@ export async function signInWithBiometrics(): Promise<BiometricSignInResult> {
     return expiredBiometricSignInResult();
   }
 
-  if (isStoredSessionExpired(stored)) {
-    await clearBiometricSignIn();
-    return expiredBiometricSignInResult();
-  }
-
   const { data, error } = await supabase.auth.setSession({
     access_token: stored.access_token,
     refresh_token: stored.refresh_token,
   });
 
   if (error) {
+    if (isRetryableSessionError(error)) {
+      return { success: false, error: BIOMETRIC_REFRESH_RETRY_ERROR };
+    }
     await clearBiometricSignIn();
     return expiredBiometricSignInResult();
   }
@@ -228,7 +227,19 @@ export async function signInWithBiometrics(): Promise<BiometricSignInResult> {
   if (data.session) {
     // Refresh tokens can rotate during setSession. Update only inside this
     // user-initiated biometric flow so the OS never prompts from the background.
-    await saveBiometricSession(data.session).catch(() => undefined);
+    try {
+      const saved = await saveBiometricSession(data.session);
+      if (!saved) throw new Error("Could not save refreshed biometric credentials.");
+    } catch {
+      // The current session is already active, but retaining the pre-refresh
+      // token would make the next biometric attempt fail after token rotation.
+      await clearBiometricSignIn();
+      return {
+        success: true,
+        biometricDisabled: true,
+        warning: BIOMETRIC_REENABLE_WARNING,
+      };
+    }
   }
 
   return { success: true };

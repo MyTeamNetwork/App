@@ -40,13 +40,21 @@ export async function GET(
   const modeParam = requestUrl.searchParams.get("mode");
   const mode = isMobileAuthMode(modeParam) ? modeParam : "login";
 
-  const callbackUrl = buildMobileAuthCallbackUrl(siteUrl, {
-    mode,
-    redirect: sanitizeRedirectPath(requestUrl.searchParams.get("redirect")),
-    ageBracket: requestUrl.searchParams.get("age_bracket"),
-    isMinor: requestUrl.searchParams.get("is_minor"),
-    ageToken: requestUrl.searchParams.get("age_token"),
-  });
+  let callbackUrl: string;
+  try {
+    callbackUrl = buildMobileAuthCallbackUrl(siteUrl, {
+      mode,
+      redirect: sanitizeRedirectPath(requestUrl.searchParams.get("redirect")),
+      ageBracket: requestUrl.searchParams.get("age_bracket"),
+      isMinor: requestUrl.searchParams.get("is_minor"),
+      ageToken: requestUrl.searchParams.get("age_token"),
+      handoffChallenge: requestUrl.searchParams.get("handoff_challenge"),
+    });
+  } catch {
+    return NextResponse.redirect(
+      buildMobileErrorDeepLink("oauth_init_failed", "Invalid sign-in request.")
+    );
+  }
 
   // Collect cookies Supabase sets during signInWithOAuth (the PKCE verifier) so
   // we can attach them to the redirect that sends the browser to the provider.

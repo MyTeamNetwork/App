@@ -32,11 +32,17 @@ export function buildMobileOAuthUrl(
     ageBracket?: Exclude<MobileAgeBracket, "under_13">;
     isMinor?: boolean;
     ageToken?: string;
+    handoffChallenge: string;
   }
 ): string {
   const url = new URL(`/auth/mobile/${provider}`, normalizeOrigin(siteUrl));
   url.searchParams.set("mode", params.mode);
   url.searchParams.set("redirect", params.redirect ?? "/app");
+
+  if (!/^[a-f0-9]{64}$/i.test(params.handoffChallenge)) {
+    throw new Error("Invalid mobile handoff challenge");
+  }
+  url.searchParams.set("handoff_challenge", params.handoffChallenge.toLowerCase());
 
   if (params.ageBracket) {
     url.searchParams.set("age_bracket", params.ageBracket);
@@ -59,7 +65,7 @@ export function buildMobileGoogleAuthUrl(
 }
 
 export type MobileAuthCallbackResult =
-  | { type: "handoff"; code: string }
+  | { type: "handoff"; code: string; challenge: string }
   | { type: "error"; error: string; message: string }
   | { type: "ignored" };
 
@@ -85,8 +91,13 @@ export function parseMobileAuthCallbackUrl(url: string): MobileAuthCallbackResul
   }
 
   const handoffCode = parsed.searchParams.get("handoff_code");
-  if (handoffCode) {
-    return { type: "handoff", code: handoffCode };
+  const handoffChallenge = parsed.searchParams.get("handoff_challenge");
+  if (handoffCode && handoffChallenge && /^[a-f0-9]{64}$/i.test(handoffChallenge)) {
+    return {
+      type: "handoff",
+      code: handoffCode,
+      challenge: handoffChallenge.toLowerCase(),
+    };
   }
 
   return { type: "ignored" };

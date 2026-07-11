@@ -1,10 +1,8 @@
 import { useEffect, useCallback, useRef } from "react";
 import { LogBox, StyleSheet, Platform, View } from "react-native";
 
-// Silences a React-19 vs @stripe/stripe-react-native@0.65.1 compat warning
-// that fires during module load. We're already on the latest Stripe SDK
-// version (no upstream fix yet) and the SDK still functions. Remove once
-// stripe-react-native ships a React-19-safe release.
+// Silences a React 19 compatibility warning from the Stripe version bundled
+// for Expo SDK 54. Remove once the SDK supports a release that fixes it.
 LogBox.ignoreLogs([
   /forwardRef render functions accept exactly two parameters/,
 ]);
@@ -31,13 +29,15 @@ import { LiveActivityProvider } from "@/contexts/LiveActivityContext";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
 import { setGlobalShowToast } from "@/components/ui/Toast";
 import AuthLoadingScreen from "@/components/AuthLoadingScreen";
+import { RootNavigationGate } from "@/components/RootNavigationGate";
 import { init as initAnalytics, identify, reset as resetAnalytics, captureException, hydrateEnabled, setTrackingLevel, registerNavigationContainer, wrap as sentryWrap } from "@/lib/analytics";
 import { getAgeBracketFromUserMetadata, resolveTrackingLevel } from "@/lib/analytics/policy";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useActivityHeartbeat } from "@/hooks/useActivityHeartbeat";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useSupabaseAppState } from "@/hooks/useSupabaseAppState";
-import { parseTeammeetUrl, routeIntent } from "@/lib/deep-link";
+import { parseTeammeetUrl, routeIntent, type Intent } from "@/lib/deep-link";
+import { requiresAuthenticatedSession } from "@/lib/intent-auth-gate";
 import {
   clearQuickActions,
   registerQuickActions,
@@ -144,6 +144,11 @@ function RootLayoutInner() {
   const segments = useSegments() as string[];
   const navigationRef = useNavigationContainerRef();
   const { session, isLoading } = useAuth();
+  const sessionRef = useRef(session);
+  const isAuthLoadingRef = useRef(isLoading);
+  const pendingIntentRef = useRef<{ intent: Intent; url: string } | null>(null);
+  sessionRef.current = session;
+  isAuthLoadingRef.current = isLoading;
   const prevUserIdRef = useRef<string | undefined>(undefined);
   const [fontsLoaded, fontError] = useFonts({
     DMSerifDisplay_400Regular,
@@ -174,7 +179,7 @@ function RootLayoutInner() {
   // Initialize push notifications
   usePushNotifications({
     userId: session?.user?.id ?? null,
-    enabled: true,
+    enabled: !!session,
   });
 
   // Bump users.last_active_at on sign-in + every foreground.
@@ -260,6 +265,13 @@ function RootLayoutInner() {
   // also touches this handler — coordinate convergence on parseTeammeetUrl.
   const handleDeepLink = useCallback(async (event: { url: string }) => {
     const intent = parseTeammeetUrl(event.url);
+    if (
+      requiresAuthenticatedSession(intent) &&
+      (isAuthLoadingRef.current || !sessionRef.current)
+    ) {
+      pendingIntentRef.current = { intent, url: event.url };
+      return;
+    }
     await routeIntent(router, intent, event.url);
   }, [router]);
 
@@ -313,9 +325,16 @@ function RootLayoutInner() {
     }
   }, [session, isLoading, segments, router]);
 
-  if (!fontsReady || isLoading) {
-    return <AuthLoadingScreen />;
-  }
+  // Replay a protected cold-start destination after auth restoration (or after
+  // a logged-out user signs in). This follows the generic auth redirect effect
+  // so the specific destination wins over /(app).
+  useEffect(() => {
+    if (isLoading || !session) return;
+    const pending = pendingIntentRef.current;
+    if (!pending) return;
+    pendingIntentRef.current = null;
+    void routeIntent(router, pending.intent, pending.url);
+  }, [isLoading, session, router]);
 
   const navigation = (
     <Stack>
@@ -343,7 +362,17 @@ function RootLayoutInner() {
       >
         <ToastProvider>
           <ToastBridge />
-          {navigation}
+          <View style={styles.navigationFrame}>
+            <RootNavigationGate
+              navigation={navigation}
+              isLoading={!fontsReady || isLoading}
+              loading={
+                <View style={styles.loadingOverlay}>
+                  <AuthLoadingScreen />
+                </View>
+              }
+            />
+          </View>
         </ToastProvider>
       </StripeProvider>
     </GestureHandlerRootView>
@@ -353,6 +382,13 @@ function RootLayoutInner() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  navigationFrame: {
+    flex: 1,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
 });
 

@@ -1,6 +1,10 @@
 import { supabase } from "@/lib/supabase";
 import { getWebAppUrl } from "@/lib/web-api";
 import { captureMessage } from "@/lib/analytics";
+import {
+  clearMobileOAuthVerifier,
+  getMobileOAuthVerifier,
+} from "@/lib/mobile-oauth-challenge";
 
 type MobileHandoffResponse = {
   access_token?: string;
@@ -41,14 +45,14 @@ export class MobileAuthError extends Error {
 // couple of times before surfacing a failure.
 const HANDOFF_RETRY_DELAYS_MS = [300, 800];
 
-export async function consumeMobileAuthHandoff(code: string) {
+export async function consumeMobileAuthHandoff(code: string, verifier?: string) {
   let response: Response | null = null;
   for (let attempt = 0; ; attempt++) {
     try {
       response = await fetch(`${getWebAppUrl()}/api/auth/mobile-handoff/consume`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify(verifier ? { code, verifier } : { code }),
       });
       break;
     } catch (err) {
@@ -103,6 +107,27 @@ export async function consumeMobileAuthHandoff(code: string) {
       "We signed you in but couldn't start your session. Please try again.",
       { cause: error }
     );
+  }
+}
+
+export async function consumeBoundMobileAuthHandoff(
+  code: string,
+  challenge: string
+): Promise<void> {
+  const verifier = await getMobileOAuthVerifier(challenge);
+  if (!verifier) {
+    throw new MobileAuthError(
+      "unauthorized",
+      "We couldn't verify this sign-in on this device. Please try signing in again."
+    );
+  }
+
+  try {
+    await consumeMobileAuthHandoff(code, verifier);
+  } finally {
+    await clearMobileOAuthVerifier(challenge).catch(() => {
+      captureMessage("[mobile-handoff] verifier cleanup failed", "warning");
+    });
   }
 }
 

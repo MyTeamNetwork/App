@@ -425,6 +425,12 @@ export default function LoginScreen() {
         return;
       }
 
+      if (result.biometricDisabled) {
+        setBiometricSignInAvailable(false);
+      }
+      if (result.warning) {
+        showToast(result.warning, "info");
+      }
       track("user_logged_in", { method: "biometric" });
     } catch (error: unknown) {
       captureException(error as Error, { screen: "Login", method: "biometric" });

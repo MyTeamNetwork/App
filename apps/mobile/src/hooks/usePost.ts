@@ -3,6 +3,7 @@ import { supabase, createPostgresChangesChannel} from "@/lib/supabase";
 import * as sentry from "@/lib/analytics/sentry";
 import { showToast } from "@/components/ui/Toast";
 import { useBlockedUsers } from "@/contexts/BlockedUsersContext";
+import { useOrg } from "@/contexts/OrgContext";
 import type {
   FeedPost,
   PostAuthor,
@@ -11,7 +12,14 @@ import type {
   UsePostReturn,
 } from "@/types/feed";
 
-export function usePost(postId: string | undefined): UsePostReturn {
+export function usePost(
+  postId: string | undefined,
+  organizationId?: string | null,
+): UsePostReturn {
+  const { orgId: contextOrganizationId } = useOrg();
+  const scopedOrganizationId = organizationId === undefined
+    ? contextOrganizationId
+    : organizationId;
   const isMountedRef = useRef(true);
   const [post, setPost] = useState<FeedPost | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,11 +32,11 @@ export function usePost(postId: string | undefined): UsePostReturn {
   }, [post]);
 
   const fetchPost = useCallback(async () => {
-    if (!postId) {
+    if (!postId || !scopedOrganizationId) {
       if (isMountedRef.current) {
         setPost(null);
         setError(null);
-        setLoading(false);
+        setLoading(Boolean(postId));
       }
       return;
     }
@@ -43,12 +51,13 @@ export function usePost(postId: string | undefined): UsePostReturn {
       if (!user) throw new Error("Not authenticated");
 
       // Fetch post with author
-      const { data: postData, error: postError } = await supabase
+      let postQuery = supabase
         .from("feed_posts")
         .select("*, author:users!feed_posts_author_id_fkey(id, full_name:name, avatar_url)")
         .eq("id", postId)
-        .is("deleted_at", null)
-        .single();
+        .is("deleted_at", null);
+      postQuery = postQuery.eq("organization_id", scopedOrganizationId);
+      const { data: postData, error: postError } = await postQuery.single();
 
       if (postError) throw postError;
       if (!postData) {
@@ -157,7 +166,7 @@ export function usePost(postId: string | undefined): UsePostReturn {
         setLoading(false);
       }
     }
-  }, [postId]);
+  }, [postId, scopedOrganizationId]);
 
   const votePoll = useCallback(
     async (optionIndex: number) => {

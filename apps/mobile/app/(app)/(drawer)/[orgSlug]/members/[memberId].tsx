@@ -12,7 +12,7 @@ import { APP_CHROME } from "@/lib/chrome";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 import { TYPOGRAPHY } from "@/lib/typography";
 import { openEmailAddress, openHttpsUrl } from "@/lib/url-safety";
-import { ensureMobileDirectChatGroup } from "@/lib/chat-helpers";
+import { startMemberProfileChat } from "@/lib/connections-api";
 import { showToast } from "@/components/ui/Toast";
 import { useBlockedUsers } from "@/contexts/BlockedUsersContext";
 import { OverflowMenu, type OverflowMenuItem } from "@/components/OverflowMenu";
@@ -192,19 +192,17 @@ export default function MemberProfileScreen() {
 
     setOpeningChat(true);
     try {
-      const result = await ensureMobileDirectChatGroup(supabase, {
-        organizationId: orgId,
-        currentUserId: user.id,
-        recipientUserId: member.user_id,
-        recipientDisplayName: getDisplayName(),
+      const result = await startMemberProfileChat({
+        orgId,
+        memberId: member.id,
       });
-
-      if (!result.ok) {
-        showToast(result.error, "error");
-        return;
-      }
-
       router.push(`/(app)/${orgSlug}/chat/${result.chatGroupId}`);
+    } catch (chatError) {
+      const message =
+        chatError instanceof Error
+          ? chatError.message
+          : "Unable to open this conversation.";
+      showToast(message, "error");
     } finally {
       setOpeningChat(false);
     }

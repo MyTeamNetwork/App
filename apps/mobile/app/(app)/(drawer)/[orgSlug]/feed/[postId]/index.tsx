@@ -51,7 +51,8 @@ export default function PostDetailScreen() {
   const { isOffline } = useNetwork();
   const userId = user?.id ?? null;
 
-  const { post, loading: postLoading, votePoll } = usePost(postId);
+  const { post, loading: postLoading, votePoll } = usePost(postId, orgId);
+  const postOrganizationId = post?.organization_id ?? null;
 
   const handlePollVote = useCallback(
     (_postId: string, optionIndex: number) => {
@@ -63,7 +64,10 @@ export default function PostDetailScreen() {
     },
     [isOffline, votePoll],
   );
-  const { comments, createComment, deleteComment } = useComments(postId, orgId);
+  const { comments, createComment, deleteComment } = useComments(
+    postId,
+    postOrganizationId,
+  );
 
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -237,7 +241,7 @@ export default function PostDetailScreen() {
       return;
     }
 
-    if (!userId || !orgId || !postId) return;
+    if (!userId || !postId || !postOrganizationId) return;
 
     const wasLiked = liked;
     // Optimistic update
@@ -250,13 +254,14 @@ export default function PostDetailScreen() {
           .from("feed_likes")
           .delete()
           .eq("post_id", postId)
+          .eq("organization_id", postOrganizationId)
           .eq("user_id", userId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("feed_likes").insert({
           post_id: postId,
           user_id: userId,
-          organization_id: orgId,
+          organization_id: postOrganizationId,
         });
         if (error) throw error;
       }
@@ -267,7 +272,7 @@ export default function PostDetailScreen() {
       showToast("Failed to update like", "error");
       sentry.captureException(e as Error, { context: "PostDetail.toggleLike", postId });
     }
-  }, [isOffline, liked, userId, orgId, postId]);
+  }, [isOffline, liked, userId, postId, postOrganizationId]);
 
   // Send comment
   const handleSendComment = useCallback(async () => {

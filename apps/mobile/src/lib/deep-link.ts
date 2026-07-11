@@ -20,7 +20,7 @@ import {
   parseMobileAuthCallbackUrl,
   getMobileAuthCallbackErrorMessage,
 } from "@/lib/auth-redirects";
-import { consumeMobileAuthHandoff } from "@/lib/mobile-auth";
+import { consumeBoundMobileAuthHandoff } from "@/lib/mobile-auth";
 import { surfaceMobileAuthError } from "@/lib/mobile-auth-errors";
 import { showToast } from "@/components/ui/Toast";
 import { getNativeAppLinkRoute, sanitizeUrlForTelemetry } from "@/lib/url-safety";
@@ -36,7 +36,7 @@ export type ShortcutAction =
 export type Intent =
   // Auth — native scheme (teammeet://callback). Only handoff codes and errors;
   // raw tokens on the native scheme are rejected as a session-fixation defense.
-  | { kind: "auth-handoff"; code: string }
+  | { kind: "auth-handoff"; code: string; challenge: string }
   // `errorCode` is the app/provider error CODE (a fixed enum, safe to map to
   // copy). `rawMessage` is the untrusted `error_description` — Sentry-only,
   // never rendered (see the routeIntent auth-error case).
@@ -104,7 +104,11 @@ export function parseTeammeetUrl(url: string): Intent {
   // 1. Native scheme — auth callback.
   const mobileAuth = parseMobileAuthCallbackUrl(url);
   if (mobileAuth.type === "handoff") {
-    return { kind: "auth-handoff", code: mobileAuth.code };
+    return {
+      kind: "auth-handoff",
+      code: mobileAuth.code,
+      challenge: mobileAuth.challenge,
+    };
   }
   if (mobileAuth.type === "error") {
     return {
@@ -302,7 +306,7 @@ export async function routeIntent(
   switch (intent.kind) {
     case "auth-handoff":
       try {
-        await consumeMobileAuthHandoff(intent.code);
+        await consumeBoundMobileAuthHandoff(intent.code, intent.challenge);
       } catch (err) {
         // surfaceMobileAuthError captures to Sentry AND surfaces a toast, so the
         // OS-listener fallback (iOS delivers the deep link to the app instead of

@@ -11,6 +11,77 @@
  *     when the provider mounts.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  completeLiveActivityStart,
+  createLiveActivityCoordinationState,
+  hydrateLiveActivityCoordination,
+  reserveLiveActivityStart,
+} from "../../src/lib/live-activity-coordination";
+
+describe("Live Activity coordination", () => {
+  it("does not reserve a start until ActivityKit hydration completes", () => {
+    const state = createLiveActivityCoordinationState();
+
+    expect(reserveLiveActivityStart(state, "event-1")).toBe(false);
+
+    hydrateLiveActivityCoordination(state, [
+      { eventId: "event-1", activityId: "activity-1" },
+    ]);
+    expect(reserveLiveActivityStart(state, "event-1")).toBe(false);
+  });
+
+  it("reserves one concurrent start per event and records its completion", () => {
+    const state = createLiveActivityCoordinationState();
+    hydrateLiveActivityCoordination(state, []);
+
+    expect(reserveLiveActivityStart(state, "event-1")).toBe(true);
+    expect(reserveLiveActivityStart(state, "event-1")).toBe(false);
+
+    completeLiveActivityStart(state, "event-1", "activity-1");
+    expect(reserveLiveActivityStart(state, "event-1")).toBe(false);
+  });
+
+  it("keeps one hydrated activity per event and returns duplicates for cleanup", () => {
+    const state = createLiveActivityCoordinationState();
+
+    expect(
+      hydrateLiveActivityCoordination(state, [
+        { eventId: "event-1", activityId: "activity-canonical" },
+        { eventId: "event-1", activityId: "activity-duplicate" },
+        { eventId: "event-2", activityId: "activity-2" },
+      ])
+    ).toEqual(["activity-duplicate"]);
+    expect(state.activities).toEqual(
+      new Map([
+        ["event-1", "activity-canonical"],
+        ["event-2", "activity-2"],
+      ])
+    );
+  });
+});
+
+describe("Event Live Activity widget URLs", () => {
+  const widgetSource = readFileSync(
+    join(__dirname, "../../targets/widget/EventLiveActivityWidget.swift"),
+    "utf8",
+  );
+
+  it("uses the canonical routeable event URL for the Dynamic Island", () => {
+    expect(widgetSource).toContain(
+      '.widgetURL(URL(string: "teammeet://event/\\(context.attributes.eventId)?org=\\(context.attributes.orgSlug)"))',
+    );
+  });
+
+  it("uses the canonical routeable event URL for the explicit open button", () => {
+    expect(widgetSource).toContain(
+      'Link(destination: URL(string: "teammeet://event/\\(eventId)?org=\\(orgSlug)")!)',
+    );
+    expect(widgetSource).not.toContain("teammeet://events/");
+  });
+});
+
 describe("LiveActivity native bridge stub", () => {
   beforeEach(() => {
     jest.resetModules();

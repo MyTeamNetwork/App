@@ -23,11 +23,18 @@ function mockBiometricSignInModules({
   marker = "1",
   protectedSession,
   setSessionError = null,
+  protectedSessionWriteError = null,
 }: {
   enabled?: string | null;
   marker?: string | null;
   protectedSession?: string | null;
-  setSessionError?: { message: string } | null;
+  setSessionError?: {
+    message: string;
+    name?: string;
+    status?: number;
+    code?: string;
+  } | null;
+  protectedSessionWriteError?: Error | null;
 } = {}) {
   jest.resetModules();
 
@@ -37,7 +44,12 @@ function mockBiometricSignInModules({
     if (key === SESSION_KEY) return Promise.resolve(protectedSession ?? null);
     return Promise.resolve(null);
   });
-  const setItemAsync = jest.fn().mockResolvedValue(undefined);
+  const setItemAsync = jest.fn((key: string) => {
+    if (key === SESSION_KEY && protectedSessionWriteError) {
+      return Promise.reject(protectedSessionWriteError);
+    }
+    return Promise.resolve(undefined);
+  });
   const deleteItemAsync = jest.fn().mockResolvedValue(undefined);
   const canUseBiometricAuthentication = jest.fn().mockReturnValue(true);
   const hasHardwareAsync = jest.fn().mockResolvedValue(true);
@@ -146,58 +158,42 @@ describe("biometric sign-in", () => {
     expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(ENABLED_KEY);
   });
 
-  it("clears biometric sign-in when the stored session is expired", async () => {
+  it("refreshes an expired access token with the stored refresh token", async () => {
     const { module, secureStore, supabaseAuth } = mockBiometricSignInModules({
       protectedSession: storedBiometricSession(futureExpiry(-1)),
     });
 
-    await expect(module.signInWithBiometrics()).resolves.toMatchObject({
-      success: false,
-      expired: true,
+    await expect(module.signInWithBiometrics()).resolves.toEqual({ success: true });
+    expect(supabaseAuth.setSession).toHaveBeenCalledWith({
+      access_token: "stored-access",
+      refresh_token: "stored-refresh",
     });
-
-    expect(supabaseAuth.setSession).not.toHaveBeenCalled();
-    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(
+    expect(secureStore.setItemAsync).toHaveBeenCalledWith(
       SESSION_KEY,
+      expect.stringContaining("new-refresh"),
       expect.objectContaining({ requireAuthentication: true })
     );
-    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(ENABLED_KEY);
+    expect(secureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 
-  it("clears biometric sign-in when the stored session has no expiry metadata", async () => {
+  it("lets Supabase validate a refreshable session with no local expiry metadata", async () => {
     const { module, secureStore, supabaseAuth } = mockBiometricSignInModules({
       protectedSession: storedBiometricSession(),
     });
 
-    await expect(module.signInWithBiometrics()).resolves.toMatchObject({
-      success: false,
-      expired: true,
-    });
-
-    expect(supabaseAuth.setSession).not.toHaveBeenCalled();
-    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(
-      SESSION_KEY,
-      expect.objectContaining({ requireAuthentication: true })
-    );
-    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(ENABLED_KEY);
+    await expect(module.signInWithBiometrics()).resolves.toEqual({ success: true });
+    expect(supabaseAuth.setSession).toHaveBeenCalledTimes(1);
+    expect(secureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 
-  it("clears biometric sign-in when the stored session expires inside the refresh skew window", async () => {
+  it("refreshes a session whose access token expires inside the skew window", async () => {
     const { module, secureStore, supabaseAuth } = mockBiometricSignInModules({
       protectedSession: storedBiometricSession(futureExpiry(10)),
     });
 
-    await expect(module.signInWithBiometrics()).resolves.toMatchObject({
-      success: false,
-      expired: true,
-    });
-
-    expect(supabaseAuth.setSession).not.toHaveBeenCalled();
-    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(
-      SESSION_KEY,
-      expect.objectContaining({ requireAuthentication: true })
-    );
-    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(ENABLED_KEY);
+    await expect(module.signInWithBiometrics()).resolves.toEqual({ success: true });
+    expect(supabaseAuth.setSession).toHaveBeenCalledTimes(1);
+    expect(secureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 
   it("clears biometric sign-in when Supabase rejects a future-dated stored session", async () => {
@@ -219,6 +215,52 @@ describe("biometric sign-in", () => {
       SESSION_KEY,
       expect.objectContaining({ requireAuthentication: true })
     );
+    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(ENABLED_KEY);
+  });
+
+  it.each([
+    {
+      name: "AuthRetryableFetchError",
+      message: "Network request failed",
+    },
+    {
+      name: "AuthApiError",
+      message: "Auth service unavailable",
+      status: 503,
+    },
+  ])("preserves refreshable credentials for $name", async (setSessionError) => {
+    const { module, secureStore, supabaseAuth } = mockBiometricSignInModules({
+      protectedSession: storedBiometricSession(futureExpiry(-1)),
+      setSessionError,
+    });
+
+    await expect(module.signInWithBiometrics()).resolves.toEqual({
+      success: false,
+      error: "Couldn't refresh your session. Check your connection and try again.",
+    });
+
+    expect(supabaseAuth.setSession).toHaveBeenCalledTimes(1);
+    expect(secureStore.deleteItemAsync).not.toHaveBeenCalled();
+  });
+
+  it("disables stale biometric credentials when rotated-session persistence fails", async () => {
+    const { module, secureStore, supabaseAuth } = mockBiometricSignInModules({
+      protectedSession: storedBiometricSession(futureExpiry(-1)),
+      protectedSessionWriteError: new Error("Keychain write failed"),
+    });
+
+    await expect(module.signInWithBiometrics()).resolves.toEqual({
+      success: true,
+      biometricDisabled: true,
+      warning: "You're signed in, but biometric sign-in must be enabled again.",
+    });
+
+    expect(supabaseAuth.setSession).toHaveBeenCalledTimes(1);
+    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(
+      SESSION_KEY,
+      expect.objectContaining({ requireAuthentication: true })
+    );
+    expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(MARKER_KEY, expect.any(Object));
     expect(secureStore.deleteItemAsync).toHaveBeenCalledWith(ENABLED_KEY);
   });
 
