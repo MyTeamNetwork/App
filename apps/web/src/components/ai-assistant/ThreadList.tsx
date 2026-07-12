@@ -52,7 +52,7 @@ export function ThreadList({
 
       {/* Thread list */}
       <div className="flex-1 overflow-y-auto px-3 pb-3">
-        {loading ? (
+        {loading && threads.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-org-secondary border-t-transparent" />
           </div>

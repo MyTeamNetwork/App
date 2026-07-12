@@ -187,7 +187,7 @@ export function ConversationSidebar({
         <p className="px-1 pb-2 pt-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
           Previous chats
         </p>
-        {loading ? (
+        {loading && threads.length === 0 ? (
           <ThreadListSkeleton />
         ) : threads.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
