@@ -19,6 +19,7 @@ import {
   Circle,
   ExternalLink,
   Send,
+  X,
 } from "lucide-react-native";
 import * as Linking from "expo-linking";
 import { useNotifications, type Notification } from "@/hooks/useNotifications";
@@ -173,6 +174,10 @@ export default function NotificationsScreen() {
       flex: 1,
       paddingRight: SPACING.sm,
     },
+    notificationActions: {
+      alignItems: "center" as const,
+      gap: 4,
+    },
     notificationTitle: {
       ...TYPOGRAPHY.titleMedium,
       color: n.foreground,
@@ -267,6 +272,7 @@ export default function NotificationsScreen() {
     markAsRead,
     markAllAsRead,
     markAsUnread,
+    clearNotification,
   } = useNotifications(orgId);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -445,20 +451,37 @@ export default function NotificationsScreen() {
             </View>
           </View>
 
-          {/* Read/Unread toggle */}
-          <Pressable
-            onPress={() => handleToggleRead(item)}
-            style={styles.readToggle}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={item.isRead ? "Mark as unread" : "Mark as read"}
-          >
-            {item.isRead ? (
-              <BellOff size={18} color={neutral.muted} />
-            ) : (
-              <Circle size={18} color={semantic.info} fill={semantic.infoLight} />
-            )}
-          </Pressable>
+          {/* Per-notification actions */}
+          <View style={styles.notificationActions}>
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                void handleToggleRead(item);
+              }}
+              style={styles.readToggle}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={item.isRead ? "Mark as unread" : "Mark as read"}
+            >
+              {item.isRead ? (
+                <BellOff size={18} color={neutral.muted} />
+              ) : (
+                <Circle size={18} color={semantic.info} fill={semantic.infoLight} />
+              )}
+            </Pressable>
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                void clearNotification(item.id);
+              }}
+              style={styles.readToggle}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Clear notification"
+            >
+              <X size={18} color={neutral.muted} />
+            </Pressable>
+          </View>
         </View>
       </Pressable>
     );

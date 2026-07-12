@@ -20,11 +20,13 @@ const DEFAULT_PAGE_SIZE = 50;
 type ReadEvent = { orgId: string; userId: string; notificationId: string };
 type ReadAllEvent = { orgId: string; userId: string };
 type UnreadEvent = { orgId: string; userId: string; notificationId: string };
+type ClearEvent = { orgId: string; userId: string; notificationId: string };
 
 type EventMap = {
   read: ReadEvent;
   readAll: ReadAllEvent;
   unread: UnreadEvent;
+  clear: ClearEvent;
 };
 
 type EventHandler<T> = (data: T) => void;
@@ -97,6 +99,13 @@ function canViewNotification(
   }
 }
 
+export function filterDismissedNotifications<T extends { id: string }>(
+  notifications: T[],
+  dismissedIds: ReadonlySet<string>,
+): T[] {
+  return notifications.filter((notification) => !dismissedIds.has(notification.id));
+}
+
 interface UseNotificationsOptions {
   /** Number of records to fetch per page. Default: 50. Set to 0 to fetch all records. */
   limit?: number;
@@ -116,6 +125,7 @@ interface UseNotificationsReturn {
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   markAsUnread: (notificationId: string) => Promise<void>;
+  clearNotification: (notificationId: string) => Promise<void>;
 }
 
 /**
@@ -247,23 +257,30 @@ export function useNotifications(
         // Best-effort one-time import of legacy AsyncStorage read state.
         await migrateLegacyReadIds();
 
-        // Load read IDs from notification_reads (server-side source of truth).
+        // Load read and dismissed IDs from notification_reads (server-side
+        // source of truth).
         let storedReadIds = new Set<string>();
+        let dismissedNotificationIds = new Set<string>();
         try {
           const { data: reads } = await (supabase as unknown as {
             from: (table: string) => {
               select: (cols: string) => {
                 eq: (col: string, val: string) => Promise<{
-                  data: Array<{ notification_id: string }> | null;
+                  data: Array<{ notification_id: string; dismissed_at: string | null }> | null;
                 }>;
               };
             };
           })
             .from("notification_reads")
-            .select("notification_id")
+            .select("notification_id, dismissed_at")
             .eq("user_id", userId);
           if (reads) {
             storedReadIds = new Set(reads.map((r) => r.notification_id));
+            dismissedNotificationIds = new Set(
+              reads
+                .filter((r) => r.dismissed_at != null)
+                .map((r) => r.notification_id),
+            );
           }
         } catch {
           // Fall through with empty set; next refetch will retry.
@@ -291,8 +308,12 @@ export function useNotifications(
         if (!isCurrentRequest(requestId)) return;
 
         // Filter based on audience targeting
-        const filtered = (notificationsData || []).filter((notification) =>
+        const audienceFiltered = (notificationsData || []).filter((notification) =>
           canViewNotification(notification, viewerContextRef.current!)
+        );
+        const filtered = filterDismissedNotifications(
+          audienceFiltered,
+          dismissedNotificationIds,
         );
 
         // Annotate with read status using the server-fetched set.
@@ -479,6 +500,53 @@ export function useNotifications(
     [orgId, userId]
   );
 
+  // Clear a notification for this user only. The organization-level
+  // notification remains available to everyone else.
+  const clearNotification = useCallback(
+    async (notificationId: string) => {
+      if (!orgId || !userId) return;
+
+      setReadIds((current) => {
+        if (current.has(notificationId)) return current;
+        const next = new Set(current);
+        next.add(notificationId);
+        return next;
+      });
+      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
+
+      try {
+        const now = new Date().toISOString();
+        const { error } = await (supabase as unknown as {
+          from: (table: string) => {
+            upsert: (
+              rows: Array<Record<string, unknown>>,
+              opts: { onConflict: string },
+            ) => Promise<{ error: { message: string } | null }>;
+          };
+        })
+          .from("notification_reads")
+          .upsert(
+            [{
+              notification_id: notificationId,
+              user_id: userId,
+              read_at: now,
+              dismissed_at: now,
+            }],
+            { onConflict: "notification_id,user_id" },
+          );
+
+        if (error) throw error;
+        readStatusEmitter.emit("clear", { orgId, userId, notificationId });
+      } catch (e) {
+        sentry.captureException(e as Error, {
+          context: "useNotifications.clearNotification",
+        });
+        await fetchNotifications(0, false);
+      }
+    },
+    [orgId, userId, fetchNotifications]
+  );
+
   // Compute unread count
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -544,14 +612,32 @@ export function useNotifications(
       }
     };
 
+    const handleClear = (data: {
+      orgId: string;
+      userId: string;
+      notificationId: string;
+    }) => {
+      if (data.orgId === orgId && data.userId === userId && isMountedRef.current) {
+        setNotifications((prev) => prev.filter((n) => n.id !== data.notificationId));
+        setReadIds((prev) => {
+          if (prev.has(data.notificationId)) return prev;
+          const next = new Set(prev);
+          next.add(data.notificationId);
+          return next;
+        });
+      }
+    };
+
     readStatusEmitter.on("read", handleRead);
     readStatusEmitter.on("readAll", handleReadAll);
     readStatusEmitter.on("unread", handleUnread);
+    readStatusEmitter.on("clear", handleClear);
 
     return () => {
       readStatusEmitter.off("read", handleRead);
       readStatusEmitter.off("readAll", handleReadAll);
       readStatusEmitter.off("unread", handleUnread);
+      readStatusEmitter.off("clear", handleClear);
     };
   }, [orgId, userId]);
 
@@ -629,5 +715,6 @@ export function useNotifications(
     markAsRead,
     markAllAsRead,
     markAsUnread,
+    clearNotification,
   };
 }

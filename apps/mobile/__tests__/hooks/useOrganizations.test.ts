@@ -25,7 +25,10 @@ jest.mock("@/hooks/useAuth", () => ({ useAuth: jest.fn() }));
 jest.mock("@/hooks/useRequestTracker", () => ({ useRequestTracker: jest.fn() }));
 jest.mock("@/lib/analytics/sentry", () => ({ captureException: jest.fn() }));
 
-const { extractOrganizations } = require("../../src/hooks/useOrganizations");
+const {
+  extractOrganizations,
+  shouldShowOrganizationsLoading,
+} = require("../../src/hooks/useOrganizations");
 
 // Minimal Organization-shaped fixtures (only id/slug matter for these tests).
 const orgA = { id: "org-a", slug: "team-a", name: "Team A" };
@@ -63,5 +66,27 @@ describe("extractOrganizations", () => {
   it("preserves order and does not de-duplicate distinct orgs", () => {
     const rows = [{ organization: orgB }, { organization: orgA }];
     expect(extractOrganizations(rows)).toEqual([orgB, orgA]);
+  });
+});
+
+describe("shouldShowOrganizationsLoading", () => {
+  it("keeps loading visible until the restored user's organizations resolve", () => {
+    expect(
+      shouldShowOrganizationsLoading({ authLoading: true, userId: null, loadedUserId: null })
+    ).toBe(true);
+    expect(
+      shouldShowOrganizationsLoading({
+        authLoading: false,
+        userId: "user-a",
+        loadedUserId: null,
+      })
+    ).toBe(true);
+    expect(
+      shouldShowOrganizationsLoading({
+        authLoading: false,
+        userId: "user-a",
+        loadedUserId: "user-a",
+      })
+    ).toBe(false);
   });
 });

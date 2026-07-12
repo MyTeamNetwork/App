@@ -30,6 +30,18 @@ export function extractOrganizations(
     .filter((org): org is Organization => org !== null);
 }
 
+export function shouldShowOrganizationsLoading({
+  authLoading,
+  userId,
+  loadedUserId,
+}: {
+  authLoading: boolean;
+  userId: string | null;
+  loadedUserId: string | null;
+}): boolean {
+  return authLoading || loadedUserId !== userId;
+}
+
 async function syncCurrentUserOrganizationMemberships() {
   const { error } = await (
     supabase as unknown as {
@@ -43,15 +55,17 @@ async function syncCurrentUserOrganizationMemberships() {
 
 export function useOrganizations(): UseOrganizationsReturn {
   const isMountedRef = useRef(true);
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const userId = user?.id ?? null;
   const { beginRequest, invalidateRequests, isCurrentRequest } = useRequestTracker();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [pendingOrganizations, setPendingOrganizations] = useState<Organization[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const fetchOrganizations = useCallback(async () => {
+    if (authLoading) return;
+
     const requestId = beginRequest();
 
     try {
@@ -60,7 +74,7 @@ export function useOrganizations(): UseOrganizationsReturn {
           setOrganizations([]);
           setPendingOrganizations([]);
           setError(null); // Not an error, just not logged in
-          setLoading(false);
+          setLoadedUserId(null);
         }
         return;
       }
@@ -100,10 +114,10 @@ export function useOrganizations(): UseOrganizationsReturn {
       }
     } finally {
       if (isMountedRef.current && isCurrentRequest(requestId)) {
-        setLoading(false);
+        setLoadedUserId(userId);
       }
     }
-  }, [userId, beginRequest, isCurrentRequest]);
+  }, [authLoading, userId, beginRequest, isCurrentRequest]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -136,6 +150,8 @@ export function useOrganizations(): UseOrganizationsReturn {
       supabase.removeChannel(channel);
     };
   }, [userId, fetchOrganizations]);
+
+  const loading = shouldShowOrganizationsLoading({ authLoading, userId, loadedUserId });
 
   return { organizations, pendingOrganizations, loading, error, refetch: fetchOrganizations };
 }
