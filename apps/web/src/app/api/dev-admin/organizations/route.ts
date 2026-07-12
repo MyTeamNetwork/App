@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import {
-  isDevAdmin,
-  logDevAdminAction,
-  extractRequestContext,
-} from "@/lib/auth/dev-admin";
+import { isDevAdmin, logDevAdminAction, extractRequestContext } from "@/lib/auth/dev-admin";
 import { checkRateLimit, buildRateLimitResponse } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +27,9 @@ export async function GET(req: Request) {
 
     // 2. Check authentication
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     // 3. Rate limit authenticated users (separate from IP limit above)
     const userRateLimit = await checkRateLimit(req, {
@@ -66,7 +64,8 @@ export async function GET(req: Request) {
     // 4. Query all organizations with related data
     const { data: orgs, error } = await serviceClient
       .from("organizations")
-      .select(`
+      .select(
+        `
         id,
         name,
         slug,
@@ -75,10 +74,12 @@ export async function GET(req: Request) {
         stripe_connect_account_id,
         organization_subscriptions(
           status,
+          stripe_customer_id,
           stripe_subscription_id,
           current_period_end
         )
-      `)
+      `
+      )
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -89,16 +90,11 @@ export async function GET(req: Request) {
     // 5. Batch-fetch enterprise names/slugs for orgs with enterprise_id
     const enterpriseIds = [
       ...new Set(
-        (orgs ?? [])
-          .map((org) => org.enterprise_id)
-          .filter((id): id is string => id != null)
+        (orgs ?? []).map((org) => org.enterprise_id).filter((id): id is string => id != null)
       ),
     ];
 
-    const enterpriseMap = new Map<
-      string,
-      { name: string; slug: string }
-    >();
+    const enterpriseMap = new Map<string, { name: string; slug: string }>();
 
     if (enterpriseIds.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -123,9 +119,7 @@ export async function GET(req: Request) {
           .eq("organization_id", org.id)
           .is("deleted_at", null);
 
-        const enterprise = org.enterprise_id
-          ? enterpriseMap.get(org.enterprise_id)
-          : null;
+        const enterprise = org.enterprise_id ? enterpriseMap.get(org.enterprise_id) : null;
 
         return {
           ...org,
@@ -141,9 +135,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ organizations: orgsWithCounts });
   } catch (error) {
     console.error("Unexpected error in dev-admin organizations endpoint:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
