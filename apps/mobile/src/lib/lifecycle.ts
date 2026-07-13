@@ -11,7 +11,7 @@
  *
  * P0a: only push token deregistration. Later phases extend in place:
  *   - R3 calendar — remove device calendars created for this user/device
- *   - R5 biometric — clear biometric flag + biometric-protected SecureStore items
+ *   - R5 biometric — clear the device-scoped app-lock preference
  *   - R6 wallet — enqueue server-side wallet pass revocation push
  *   - R7 live activities — end any active LA + clear stored push tokens
  *   - R8 quick actions — clear dynamic shortcut items
@@ -20,7 +20,7 @@
 import { Platform } from "react-native";
 import * as Application from "expo-application";
 import { unregisterPushToken } from "@/lib/notifications";
-import { clearBiometricSignIn } from "@/lib/biometric-signin";
+import { clearBiometricLock } from "@/lib/biometric";
 import { clearLastActiveOrg, clearQuickActions } from "@/lib/quick-actions";
 import { fetchWithAuth } from "@/lib/web-api";
 import * as sentry from "@/lib/analytics/sentry";
@@ -73,10 +73,10 @@ export async function signOutCleanup({ userId }: SignOutCleanupOptions): Promise
   }
 
   try {
-    await clearBiometricSignIn();
+    await clearBiometricLock();
   } catch (err) {
     sentry.captureException(err as Error, {
-      context: "signOutCleanup.clearBiometricSignIn",
+      context: "signOutCleanup.clearBiometricLock",
     });
   }
 

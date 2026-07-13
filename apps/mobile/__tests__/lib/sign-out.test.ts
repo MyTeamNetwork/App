@@ -6,16 +6,20 @@ const mockSignOutCleanup = jest.fn();
 const mockResetAnalytics = jest.fn();
 const mockCaptureException = jest.fn();
 const mockRemoveItem = jest.fn();
+const mockProcessLock = jest.fn();
+const mockSupabaseClient = {
+  auth: {
+    getSession: mockGetSession,
+    signOut: mockAuthSignOut,
+    stopAutoRefresh: mockStopAutoRefresh,
+    startAutoRefresh: mockStartAutoRefresh,
+  },
+};
+const mockCreateClient = jest.fn(() => mockSupabaseClient);
 
 jest.mock("@supabase/supabase-js", () => ({
-  createClient: jest.fn(() => ({
-    auth: {
-      getSession: mockGetSession,
-      signOut: mockAuthSignOut,
-      stopAutoRefresh: mockStopAutoRefresh,
-      startAutoRefresh: mockStartAutoRefresh,
-    },
-  })),
+  createClient: mockCreateClient,
+  processLock: mockProcessLock,
 }));
 
 jest.mock("@/lib/auth-storage", () => ({
@@ -44,6 +48,7 @@ describe("mobile signOut", () => {
   });
 
   beforeEach(() => {
+    mockCreateClient.mockImplementation(() => mockSupabaseClient);
     mockGetSession.mockReset();
     mockAuthSignOut.mockReset();
     mockStopAutoRefresh.mockReset();
@@ -59,6 +64,21 @@ describe("mobile signOut", () => {
     mockStartAutoRefresh.mockResolvedValue(undefined);
     mockSignOutCleanup.mockResolvedValue(undefined);
     mockRemoveItem.mockResolvedValue(undefined);
+  });
+
+  it("serializes native session operations with Supabase's process lock", () => {
+    const { getAuthLockOptions } = require("@/lib/supabase");
+
+    expect(mockCreateClient).toHaveBeenCalledWith(
+      "https://example.supabase.co",
+      "anon-key",
+      expect.objectContaining({
+        auth: expect.objectContaining({ lock: mockProcessLock }),
+      })
+    );
+    expect(getAuthLockOptions("ios")).toEqual({ lock: mockProcessLock });
+    expect(getAuthLockOptions("android")).toEqual({ lock: mockProcessLock });
+    expect(getAuthLockOptions("web")).toEqual({});
   });
 
   it("runs authenticated cleanup before globally revoking the session", async () => {

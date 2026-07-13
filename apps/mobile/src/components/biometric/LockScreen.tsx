@@ -6,20 +6,26 @@ import { TYPOGRAPHY } from "@/lib/typography";
 import { SPACING, RADIUS } from "@/lib/design-tokens";
 
 interface LockScreenProps {
-  onUnlock: () => Promise<{ success: boolean }>;
+  onUnlock: () => Promise<{ success: boolean; lockUnavailable?: boolean }>;
 }
 
 export function LockScreen({ onUnlock }: LockScreenProps) {
   const [busy, setBusy] = useState(false);
   const [failures, setFailures] = useState(0);
+  const [lockUnavailable, setLockUnavailable] = useState(false);
   const [signOutFailed, setSignOutFailed] = useState(false);
 
   const tryUnlock = useCallback(async () => {
     if (busy) return;
     setBusy(true);
-    const { success } = await onUnlock();
+    const result = await onUnlock();
     setBusy(false);
-    if (!success) setFailures((n) => n + 1);
+    if (result.success) return;
+    if (result.lockUnavailable) {
+      setLockUnavailable(true);
+      return;
+    }
+    setFailures((n) => n + 1);
   }, [busy, onUnlock]);
 
   // Auto-prompt on mount.
@@ -48,18 +54,17 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
         </View>
         <Text style={styles.title}>TeamNetwork locked</Text>
         <Text style={styles.body}>
-          {failures === 0
-            ? "Use Face ID, Touch ID, or your device passcode to unlock."
-            : "Authentication failed. Try again or sign out."}
+          {lockUnavailable
+            ? "Biometric unlock is unavailable. Sign out and sign in again to continue."
+            : failures === 0
+              ? "Use Face ID, Touch ID, or your device passcode to unlock."
+              : "Authentication failed. Try again or sign out."}
         </Text>
 
         <Pressable
           onPress={tryUnlock}
           disabled={busy}
-          style={({ pressed }) => [
-            styles.cta,
-            { opacity: busy ? 0.6 : pressed ? 0.85 : 1 },
-          ]}
+          style={({ pressed }) => [styles.cta, { opacity: busy ? 0.6 : pressed ? 0.85 : 1 }]}
         >
           {busy ? (
             <ActivityIndicator color="#fff" />
@@ -71,7 +76,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
           )}
         </Pressable>
 
-        {failures >= 2 && (
+        {(lockUnavailable || failures >= 2) && (
           <>
             <Pressable
               onPress={handleSignOut}
@@ -82,7 +87,9 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
               <Text style={styles.signOutText}>Sign out instead</Text>
             </Pressable>
             {signOutFailed && (
-              <Text style={styles.signOutError}>Couldn&apos;t securely sign out. Please try again.</Text>
+              <Text style={styles.signOutError}>
+                Couldn&apos;t securely sign out. Please try again.
+              </Text>
             )}
           </>
         )}

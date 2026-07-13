@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, processLock } from "@supabase/supabase-js";
 import type { Database } from "@teammeet/types";
 import { captureException } from "@/lib/analytics";
 import { getSupabaseStorage } from "@/lib/auth-storage";
@@ -16,6 +16,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const authStorage = getSupabaseStorage();
 export const authStorageKey = `sb-${new URL(supabaseUrl).hostname.split(".")[0]}-auth-token`;
 
+export function getAuthLockOptions(platform: typeof Platform.OS) {
+  return platform === "web" ? {} : { lock: processLock };
+}
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: authStorage,
@@ -24,6 +28,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: Platform.OS === "web", // Enable for web to handle OAuth redirects
     flowType: "pkce",
+    ...getAuthLockOptions(Platform.OS),
   },
 });
 

@@ -5,13 +5,12 @@
  * has opted in. Renders a `<LockScreen />` overlay that prompts for biometric
  * (or device passcode fallback) and clears the lock on success.
  *
- * Scope decisions for v1:
+ * Scope decisions:
  * - Timeout is a constant (BIOMETRIC_LOCK_TIMEOUT_MS = 5 min). User-configurable
  *   timeout deferred until we add a `user_app_preferences` row.
- * - On re-enrollment failure (OS reports `biometric_changed`), we clear the
- *   opt-in flag so the user has to re-opt-in next session — matches plan R5.4.
- * - No privacy-overlay screenshot blur for v1; iOS/Android default screenshot
- *   behaviour is acceptable.
+ * - Biometrics guard local app access only. Supabase owns the one persisted
+ *   login session and continues its normal foreground refresh lifecycle.
+ * - A privacy overlay obscures app-switcher snapshots while opted in.
  */
 
 import React, {
@@ -19,6 +18,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PropsWithChildren,
@@ -28,20 +28,33 @@ import { Image } from "expo-image";
 import {
   authenticate,
   BIOMETRIC_LOCK_TIMEOUT_MS,
+  clearBiometricLock,
+  clearLegacyBiometricCredentials,
+  didAuthenticatedSessionEnd,
+  enableBiometricLock,
   isBiometricEnabled,
-  setBiometricEnabled,
+  shouldLockOnAuthTransition,
+  type AuthResult,
 } from "@/lib/biometric";
+import * as sentry from "@/lib/analytics/sentry";
 import { LockScreen } from "@/components/biometric/LockScreen";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface BiometricLockState {
   /** True while the lock overlay should cover the app. */
   isLocked: boolean;
+  /** Current device-scoped lock preference. */
+  isEnabled: boolean;
   /** True while initial enabled-flag lookup is pending — render nothing visible. */
   isResolving: boolean;
   /** Trigger a lock immediately (used after enabling from settings). */
   lock: () => void;
   /** Attempt to unlock — surfaces a system biometric prompt. */
-  unlock: () => Promise<{ success: boolean }>;
+  unlock: () => Promise<{ success: boolean; lockUnavailable?: boolean }>;
+  /** Enable the persisted app-lock preference and update mounted state. */
+  enableLock: () => Promise<AuthResult>;
+  /** Clear the persisted preference and retired credentials, then update state. */
+  disableLock: () => Promise<void>;
 }
 
 const BiometricLockContext = createContext<BiometricLockState | null>(null);
@@ -55,6 +68,8 @@ export function useBiometricLock(): BiometricLockState {
 }
 
 export function BiometricLockProvider({ children }: PropsWithChildren) {
+  const { isLoading: isAuthLoading, session } = useAuth();
+  const [storedEnabled, setStoredEnabled] = useState<boolean | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [isResolving, setIsResolving] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
@@ -63,25 +78,30 @@ export function BiometricLockProvider({ children }: PropsWithChildren) {
   // dialog's rapid inactive↔active churn doesn't re-render the entire
   // children tree mid-prompt — that re-render was the source of the lock
   // screen flicker on notification tap.
-  const [isBackgrounded, setIsBackgrounded] = useState(
-    AppState.currentState !== "active",
-  );
+  const [isBackgrounded, setIsBackgrounded] = useState(AppState.currentState !== "active");
   const lastBackgroundedAtRef = useRef<number | null>(null);
+  const previousUserIdRef = useRef<string | null>(null);
   // Read inside the AppState handler so the listener can stay stable across
   // enable/disable toggles. Avoids a race where re-subscribing drops the
   // backgrounded timestamp mid-toggle.
   const enabledRef = useRef(false);
 
-  // Cold-start: read enabled flag and lock if needed.
+  // Cold-start: migrate retired credentials and hydrate the device preference.
+  // Applying the lock waits for auth resolution below so a signed-out launch
+  // never receives an account-specific overlay.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      try {
+        await clearLegacyBiometricCredentials();
+      } catch (error) {
+        sentry.captureException(error as Error, {
+          context: "BiometricLockContext.clearLegacyBiometricCredentials",
+        });
+      }
       const on = await isBiometricEnabled();
       if (cancelled) return;
-      enabledRef.current = on;
-      setEnabled(on);
-      if (on) setIsLocked(true);
-      setIsResolving(false);
+      setStoredEnabled(on);
     })();
     return () => {
       cancelled = true;
@@ -124,24 +144,85 @@ export function BiometricLockProvider({ children }: PropsWithChildren) {
 
   const lock = useCallback(() => setIsLocked(true), []);
 
-  const unlock = useCallback(async (): Promise<{ success: boolean }> => {
+  const setLockEnabled = useCallback((nextEnabled: boolean) => {
+    enabledRef.current = nextEnabled;
+    setEnabled(nextEnabled);
+    if (!nextEnabled) {
+      setIsLocked(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthLoading || storedEnabled === null) return;
+
+    const currentUserId = session?.user.id ?? null;
+    const previousUserId = previousUserIdRef.current;
+    const sessionEnded = didAuthenticatedSessionEnd(previousUserId, currentUserId);
+    const shouldLock = shouldLockOnAuthTransition({
+      previousUserId,
+      currentUserId,
+      isEnabled: storedEnabled,
+    });
+    previousUserIdRef.current = currentUserId;
+
+    if (currentUserId === null) {
+      setLockEnabled(false);
+      if (sessionEnded) {
+        setStoredEnabled(false);
+        void clearBiometricLock().catch((error) => {
+          sentry.captureException(error as Error, {
+            context: "BiometricLockContext.clearLockAfterSessionEnd",
+          });
+        });
+      }
+    } else {
+      setLockEnabled(storedEnabled);
+      if (shouldLock) setIsLocked(true);
+    }
+    setIsResolving(false);
+  }, [isAuthLoading, session?.user.id, setLockEnabled, storedEnabled]);
+
+  const enableLock = useCallback(async (): Promise<AuthResult> => {
+    const result = await enableBiometricLock();
+    if (result.success) {
+      setStoredEnabled(true);
+      setLockEnabled(true);
+    }
+    return result;
+  }, [setLockEnabled]);
+
+  const disableLock = useCallback(async (): Promise<void> => {
+    try {
+      await clearBiometricLock();
+      setStoredEnabled(false);
+      setLockEnabled(false);
+    } catch (error) {
+      const persistedEnabled = await isBiometricEnabled();
+      setStoredEnabled(persistedEnabled);
+      setLockEnabled(persistedEnabled);
+      throw error;
+    }
+  }, [setLockEnabled]);
+
+  const unlock = useCallback(async (): Promise<{
+    success: boolean;
+    lockUnavailable?: boolean;
+  }> => {
     const result = await authenticate("Unlock TeamNetwork");
     if (result.success) {
       setIsLocked(false);
       return { success: true };
     }
-    if (result.reEnrolled) {
-      // Re-enrollment invalidates the credential — force re-opt-in.
-      await setBiometricEnabled(false);
-      enabledRef.current = false;
-      setEnabled(false);
-      setIsLocked(false);
-    }
-    return { success: false };
+    return { success: false, lockUnavailable: result.lockUnavailable };
   }, []);
 
+  const value = useMemo(
+    () => ({ isLocked, isEnabled: enabled, isResolving, lock, unlock, enableLock, disableLock }),
+    [disableLock, enableLock, enabled, isLocked, isResolving, lock, unlock]
+  );
+
   return (
-    <BiometricLockContext.Provider value={{ isLocked, isResolving, lock, unlock }}>
+    <BiometricLockContext.Provider value={value}>
       {/* While we don't yet know the enabled flag, render nothing — avoids a
           flash of unlocked content when biometric IS enabled. */}
       {isResolving ? <View style={{ flex: 1, backgroundColor: "#0f172a" }} /> : children}

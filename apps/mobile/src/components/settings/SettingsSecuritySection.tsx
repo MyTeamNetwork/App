@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, Switch } from "react-native";
 import { ChevronDown, Lock } from "lucide-react-native";
-import { getBiometricCapabilities, isBiometricEnabled } from "@/lib/biometric";
-import { clearBiometricSignIn, enableBiometricSignIn } from "@/lib/biometric-signin";
-import { useAuth } from "@/contexts/AuthContext";
+import { getBiometricCapabilities, isBiometricLockToggleDisabled } from "@/lib/biometric";
+import { showToast } from "@/components/ui/Toast";
+import { useBiometricLock } from "@/contexts/BiometricLockContext";
 import { useAppColorScheme } from "@/contexts/ColorSchemeContext";
 import { buildSettingsColors } from "./settingsColors";
 import { useBaseStyles, fontSize, fontWeight } from "./settingsShared";
@@ -14,14 +14,13 @@ import { useThemedStyles } from "@/hooks/useThemedStyles";
  * hardware (matches plan R5.1).
  */
 export function SettingsSecuritySection() {
-  const { session } = useAuth();
+  const { disableLock, enableLock, isEnabled } = useBiometricLock();
   const { neutral, semantic } = useAppColorScheme();
   const colors = useMemo(() => buildSettingsColors(neutral, semantic), [neutral, semantic]);
   const baseStyles = useBaseStyles();
 
   const [hasHardware, setHasHardware] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
-  const [enabled, setEnabled] = useState(false);
   const [resolved, setResolved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(true);
@@ -29,14 +28,10 @@ export function SettingsSecuritySection() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [caps, on] = await Promise.all([
-        getBiometricCapabilities(),
-        isBiometricEnabled(),
-      ]);
+      const caps = await getBiometricCapabilities();
       if (cancelled) return;
       setHasHardware(caps.hasHardware);
       setIsEnrolled(caps.isEnrolled);
-      setEnabled(on);
       setResolved(true);
     })();
     return () => {
@@ -80,13 +75,18 @@ export function SettingsSecuritySection() {
           setIsEnrolled(caps.isEnrolled);
           if (!caps.isEnrolled) return;
         }
-        const result = await enableBiometricSignIn(session);
-        if (!result.success) return;
-        setEnabled(true);
+        const result = await enableLock();
+        if (!result.success) {
+          if (!result.cancelled) {
+            showToast(result.error, "error");
+          }
+          return;
+        }
       } else {
-        await clearBiometricSignIn();
-        setEnabled(false);
+        await disableLock();
       }
+    } catch {
+      showToast("Could not update biometric unlock. Please try again.", "error");
     } finally {
       setBusy(false);
     }
@@ -113,17 +113,19 @@ export function SettingsSecuritySection() {
         <View style={styles.body}>
           <View style={styles.row}>
             <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={styles.rowLabel}>Unlock with biometrics</Text>
+              <Text style={styles.rowLabel}>App Lock</Text>
               <Text style={styles.hint}>
-                {isEnrolled
-                  ? "Use Face ID, Touch ID, or your device passcode when you sign in, open, or return to TeamNetwork."
-                  : "Set up Face ID, Touch ID, or a fingerprint in your device settings to enable this."}
+                {isEnabled && !isEnrolled
+                  ? "App Lock is on. Use your device credential to unlock, or turn it off here."
+                  : isEnrolled
+                    ? "Keep me signed in and require biometrics or my device credential when reopening TeamNetwork."
+                    : "Set up biometrics in your device settings to turn on App Lock."}
               </Text>
             </View>
             <Switch
-              value={enabled}
+              value={isEnabled}
               onValueChange={handleToggle}
-              disabled={busy || !isEnrolled}
+              disabled={isBiometricLockToggleDisabled({ busy, isEnrolled, isEnabled })}
             />
           </View>
         </View>

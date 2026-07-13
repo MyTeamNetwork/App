@@ -154,7 +154,7 @@ const config: ExpoConfig = {
     [
       "expo-secure-store",
       {
-        faceIDPermission: "Use Face ID to quickly and securely sign in to TeamNetwork.",
+        faceIDPermission: "Use Face ID to quickly and securely unlock TeamNetwork.",
       },
     ],
     [
@@ -186,7 +186,7 @@ const config: ExpoConfig = {
     [
       "expo-local-authentication",
       {
-        faceIDPermission: "Use Face ID to quickly and securely sign in to TeamNetwork.",
+        faceIDPermission: "Use Face ID to quickly and securely unlock TeamNetwork.",
       },
     ],
     // NOTE: We previously stripped the NSReminders* keys via a custom plugin to
