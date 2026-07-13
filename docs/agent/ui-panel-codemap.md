@@ -4,14 +4,14 @@ title: UI Panel
 description: Slide-out AI assistant panel — SSE stream consumer, thread/message display, pending-action review UI.
 resource: apps/web/src/components/ai-assistant/AIPanel.tsx
 tags: [ai, ui, panel, sse]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-12T00:00:00Z
 ---
 
 # UI Panel — Code Map
 
 ## Overview
 
-The AI assistant UI is a slide-out panel anchored to the right edge of the screen, available to admins. It supports chat with streaming responses, thread management, markdown rendering, route-aware scope hints, starter prompts, one attached schedule file per draft (`PDF`, `PNG`, `JPEG`, `JPG`), persisted open/close preference, persisted active-thread selection per org and surface, live tool-status labels, and review/confirm UI for assistant pending actions. Event/job update cards render before/after fields, delete cards show destructive warnings, and successful confirmations dispatch normalized domain events before one panel refresh. All state is local to the panel and hook layer. The panel communicates with the backend via `fetch` and consumes Server-Sent Events for streaming responses.
+The AI assistant UI is a slide-out panel anchored to the right edge of the screen, available to admins. It supports chat with streaming responses, thread management, markdown rendering, route-aware scope hints, starter prompts, one attached schedule file per draft (`PDF`, `PNG`, `JPEG`, `JPG`), persisted open/close preference, persisted active-thread selection per org and surface, live tool-status labels, and review/confirm UI for assistant pending actions. Assistant markdown rendering removes images and allowlists link schemes, including rejecting browser-normalized protocol-relative forms, so model output cannot trigger automatic external image loads or dangerous links. Event/job update cards render before/after fields, delete cards show destructive warnings, and successful confirmations dispatch normalized domain events before one panel refresh. All state is local to the panel and hook layer. The panel communicates with the backend via `fetch` and consumes Server-Sent Events for streaming responses.
 
 The same panel is mounted on org layouts and enterprise layouts. Enterprise behavior is conditional: enterprise-oriented starter prompts and capability hints should appear only when the current context is enterprise-eligible. Non-enterprise organizations should not advertise enterprise-only questions in panel copy.
 
@@ -28,7 +28,7 @@ The same panel is mounted on org layouts and enterprise layouts. Enterprise beha
 | `src/components/ai-assistant/MessageList.tsx` | Renders message bubbles, streaming indicator, empty state, starter prompts | `MessageList` (L16) |
 | `src/components/ai-assistant/MessageInput.tsx` | Textarea with send/stop buttons, schedule-file picker, error display, route-aware placeholder text | `MessageInput` (L14) |
 | `src/components/ai-assistant/ThreadList.tsx` | Thread listing with select, new, and delete actions | `ThreadList` (L16) |
-| `src/components/ai-assistant/AssistantMessageContent.tsx` | Markdown renderer (react-markdown + remark-gfm) | `AssistantMessageContent` (L11) |
+| `src/components/ai-assistant/AssistantMessageContent.tsx` | Markdown renderer with image removal and URL transformation (react-markdown + remark-gfm) | `AssistantMessageContent` |
 | `src/components/ai-assistant/MessageFeedback.tsx` | Thumbs up/down UI with persisted rating hydration + delete-on-toggle behavior | `MessageFeedback` |
 | `src/components/ai-assistant/PendingActionCard.tsx` | Confirmation UI for assistant-prepared writes | `PendingActionCard` |
 
@@ -42,6 +42,7 @@ The same panel is mounted on org layouts and enterprise layouts. Enterprise beha
 | `src/components/ai-assistant/route-surface.ts` | Client-side pathname to assistant surface mapping | `routeToSurface` |
 | `src/components/ai-assistant/tool-status.ts` | Maps SSE tool events into short user-facing progress labels | `deriveToolStatusLabel` |
 | `src/components/ai-assistant/thread-date.ts` | Date formatter for thread timestamps | `formatThreadUpdatedAt` (L8) |
+| `src/lib/ai/safe-markdown-url.ts` | Allowlist-based assistant markdown URL sanitizer; rejects dangerous schemes and slash/backslash protocol-relative forms | `safeUrl` |
 
 ### Hook
 

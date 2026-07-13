@@ -3,6 +3,7 @@
 import type { ComponentPropsWithoutRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { safeUrl } from "@/lib/ai/safe-markdown-url";
 
 interface AssistantMessageContentProps {
   content: string;
@@ -17,6 +18,9 @@ export function AssistantMessageContent({ content }: AssistantMessageContentProp
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
+      disallowedElements={["img"]}
+      unwrapDisallowed={true}
+      urlTransform={safeUrl}
       components={{
         a: (props) => (
           <a

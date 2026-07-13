@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working anywher
 
 ## Repository Layout
 
-This is a **Bun + Turborepo monorepo**. Package manager is `bun@1.3.6`, Node ≥22.
+This is a **Bun + Turborepo monorepo**. Package manager is `bun@1.3.6`, Node ≥22.19.0.
 
 ```
 apps/

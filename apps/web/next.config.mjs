@@ -430,7 +430,7 @@ const nextConfig = {
           },
           {
             key: "X-DNS-Prefetch-Control",
-            value: "on",
+            value: "off",
           },
           ...(process.env.NODE_ENV === "production"
             ? [

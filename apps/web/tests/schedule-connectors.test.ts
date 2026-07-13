@@ -9,6 +9,10 @@ import { setAllowlistOverride } from "../src/lib/schedule-security/allowlist";
 import { extractTableEvents, extractJsonLdEvents, hashEventId } from "../src/lib/schedule-connectors/html-utils";
 import { getTitleForHash } from "../src/lib/schedule-connectors/sanitize";
 import { genericHtmlConnector } from "../src/lib/schedule-connectors/genericHtml";
+import {
+  setSafeFetchImplementationForTests,
+  type SafeFetchImplementation,
+} from "../src/lib/schedule-security/safe-fetch";
 
 function fixturePath(name: string) {
   return new URL(`../src/lib/schedule-connectors/__fixtures__/${name}`, import.meta.url);
@@ -52,20 +56,19 @@ function buildSampleIcs() {
   ].join("\r\n");
 }
 
-const originalFetch = globalThis.fetch;
-const BASE_URL = "https://203.0.113.10";
+const BASE_URL = "https://example.com";
 
-setAllowlistOverride(["203.0.113.10"]);
+setAllowlistOverride(["example.com"]);
 
 async function withMockedFetch<T>(
   mockFn: typeof globalThis.fetch,
   testFn: () => Promise<T>
 ): Promise<T> {
-  globalThis.fetch = mockFn;
+  setSafeFetchImplementationForTests(mockFn as unknown as SafeFetchImplementation);
   try {
     return await testFn();
   } finally {
-    globalThis.fetch = originalFetch;
+    setSafeFetchImplementationForTests(null);
   }
 }
 
@@ -331,11 +334,11 @@ test("genericHtmlConnector.preview uses rawTitle for event hashing", async () =>
     headers: { "content-type": "text/html" },
   });
 
-  setAllowlistOverride(["203.0.113.20"]);
+  setAllowlistOverride(["events.example.com"]);
   try {
     await withMockedFetch(mockFetch as typeof globalThis.fetch, async () => {
       const preview = await genericHtmlConnector.preview({
-        url: "https://203.0.113.20/schedule",
+        url: "https://events.example.com/schedule",
         orgId: "org-test",
       });
 
@@ -349,17 +352,17 @@ test("genericHtmlConnector.preview uses rawTitle for event hashing", async () =>
 
       // Verify hash is deterministic - calling again produces same hash
       const preview2 = await genericHtmlConnector.preview({
-        url: "https://203.0.113.20/schedule",
+        url: "https://events.example.com/schedule",
         orgId: "org-test",
       });
       assert.equal(preview.events[0].external_uid, preview2.events[0].external_uid);
     });
   } finally {
-    setAllowlistOverride(["203.0.113.10"]);
+    setAllowlistOverride(["example.com"]);
   }
 });
 
 process.on("exit", () => {
-  globalThis.fetch = originalFetch;
+  setSafeFetchImplementationForTests(null);
   setAllowlistOverride(null);
 });

@@ -19,6 +19,7 @@ import {
   extractQuotedTitles,
   normalizeIdentifier,
 } from "@/lib/ai/grounding/primitives";
+import { neutralizeUntrustedText } from "../untrusted-text";
 
 export type RagGroundingMode = "shadow" | "overwrite" | "block" | "bypass";
 
@@ -194,7 +195,7 @@ export function buildRagGroundingFallback(
   topChunk: RagChunkForGrounding | null
 ): string {
   const excerpt = topChunk
-    ? topChunk.contentText.slice(0, FALLBACK_CHUNK_EXCERPT_LIMIT).trim()
+    ? neutralizeUntrustedText(topChunk.contentText.slice(0, FALLBACK_CHUNK_EXCERPT_LIMIT).trim())
     : "";
   if (!excerpt) {
     return "I couldn't verify that from your organization's data. Try rephrasing or ask a more specific question.";
