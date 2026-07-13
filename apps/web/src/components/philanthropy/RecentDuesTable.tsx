@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui";
 import { SETTLED_DONATION_STATUSES } from "@/lib/payments/donation-status";
-import type { OrganizationDonation } from "@/types/database";
+import type { DonationDisplayRow } from "@/lib/payments/donation-projections";
 
 interface RecentDuesTableTranslations {
   noDonationsYet: string;
@@ -17,7 +17,7 @@ interface RecentDuesTableTranslations {
 }
 
 interface RecentDuesTableProps {
-  donations: OrganizationDonation[];
+  donations: DonationDisplayRow[];
   isAdmin: boolean;
   isPublicView?: boolean;
   translations: RecentDuesTableTranslations;

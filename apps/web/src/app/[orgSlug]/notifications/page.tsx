@@ -24,12 +24,14 @@ export default async function NotificationsPage({ params }: NotificationsPagePro
   // Fetch notifications
   const { data: notifications } = await supabase
     .from("notifications")
-    .select("*")
+    .select("id, title, audience, body, created_at, sent_at")
     .eq("organization_id", org.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  const formatDate = (dateStr: string) => {
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "Unknown date";
+
     return new Date(dateStr).toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",
@@ -124,4 +126,3 @@ export default async function NotificationsPage({ params }: NotificationsPagePro
     </div>
   );
 }
-

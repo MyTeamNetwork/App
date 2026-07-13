@@ -15,7 +15,7 @@ import { OrgAnalyticsProvider } from "@/components/analytics/OrgAnalyticsContext
 import { ConsentModal } from "@/components/analytics/ConsentModal";
 import { LinkedInUrlPrompt } from "@/components/linkedin/LinkedInUrlPrompt";
 import { AnalyticsProvider } from "@/components/analytics/AnalyticsProvider";
-import { AIPanelProvider } from "@/components/ai-assistant";
+import { AIPanelProvider } from "@/components/ai-assistant/AIPanelContext";
 import { JoinOrgGate } from "@/components/join/JoinOrgGate";
 import { MediaUploadManagerProvider } from "@/components/media/MediaUploadManagerContext";
 import { pickCurrentOrgProfile } from "@/lib/auth/current-org-profile";

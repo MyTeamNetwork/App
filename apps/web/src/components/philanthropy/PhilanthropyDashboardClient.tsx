@@ -8,14 +8,14 @@ import { PurposeDotLeaders } from "./PurposeDotLeaders";
 import { DonationDrawer } from "./DonationDrawer";
 import { buildDonationPurposeTotals } from "@/lib/payments/donation-purpose-totals";
 import { SETTLED_DONATION_STATUSES } from "@/lib/payments/donation-status";
-import type { OrganizationDonation } from "@/types/database";
+import type { DonationDisplayRow } from "@/lib/payments/donation-projections";
 
 interface PhilanthropyDashboardClientProps {
   organizationId: string;
   organizationSlug: string;
   isAdmin: boolean;
   isStripeConnected: boolean;
-  donations: OrganizationDonation[];
+  donations: DonationDisplayRow[];
   purposeTotals: Record<string, number>;
   philanthropyEventsForForm: { id: string; title: string }[];
   purposeEmptyMessage: string;

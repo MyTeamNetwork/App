@@ -6,8 +6,11 @@ import { getOrgContext } from "@/lib/auth/roles";
 import { resolveLabel } from "@/lib/navigation/label-resolver";
 import { getLocale, getTranslations } from "next-intl/server";
 import type { NavConfig } from "@/lib/navigation/nav-items";
-import type { Form, FormDocument } from "@/types/database";
 import { FormsAdminView } from "@/components/forms/FormsAdminView";
+import {
+  FORM_DOCUMENT_LIST_SELECT,
+  FORM_LIST_SELECT,
+} from "@/lib/forms/form-projections";
 
 interface FormsPageProps {
   params: Promise<{ orgSlug: string }>;
@@ -29,23 +32,33 @@ export default async function FormsPage({ params }: FormsPageProps) {
   const tCommon = await getTranslations("common");
 
   if (orgCtx.isAdmin) {
-    // Admin view: fetch ALL forms (including inactive)
-    const { data: forms, error: formsError } = await supabase
-      .from("forms")
-      .select("*")
-      .eq("organization_id", orgId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false });
+    const [formsResult, submissionsResult, documentsResult] = await Promise.all([
+      supabase
+        .from("forms")
+        .select(FORM_LIST_SELECT)
+        .eq("organization_id", orgId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("form_submissions")
+        .select("form_id, submitted_at")
+        .eq("organization_id", orgId)
+        .is("deleted_at", null),
+      supabase
+        .from("form_documents")
+        .select(FORM_DOCUMENT_LIST_SELECT)
+        .eq("organization_id", orgId)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const { data: forms, error: formsError } = formsResult;
+    const { data: allSubmissions, error: subsError } = submissionsResult;
+    const { data: documents, error: docsError } = documentsResult;
 
     if (formsError)
       console.error("[forms] Failed to fetch forms:", formsError.message);
-
-    // Fetch all submissions for counts and last-submitted
-    const { data: allSubmissions, error: subsError } = await supabase
-      .from("form_submissions")
-      .select("form_id, submitted_at")
-      .eq("organization_id", orgId)
-      .is("deleted_at", null);
 
     if (subsError)
       console.error("[forms] Failed to fetch submissions:", subsError.message);
@@ -60,20 +73,11 @@ export default async function FormsPage({ params }: FormsPageProps) {
       }
     });
 
-    // Fetch document forms for the documents section
-    const { data: documents, error: docsError } = await supabase
-      .from("form_documents")
-      .select("*")
-      .eq("organization_id", orgId)
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false });
-
     if (docsError)
       console.error("[forms] Failed to fetch documents:", docsError.message);
 
-    const typedForms = (forms || []) as Form[];
-    const typedDocs = (documents || []) as FormDocument[];
+    const typedForms = forms || [];
+    const typedDocs = documents || [];
 
     // Build submission data for each form
     const formSubmissionData = typedForms.map((form) => ({
@@ -214,45 +218,48 @@ export default async function FormsPage({ params }: FormsPageProps) {
     );
   }
 
-  // Member view: only active forms
-  const { data: forms, error: formsError } = await supabase
-    .from("forms")
-    .select("*")
-    .eq("organization_id", orgId)
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
+  const [formsResult, documentsResult, submissionsResult, docSubmissionsResult] = await Promise.all([
+    supabase
+      .from("forms")
+      .select(FORM_LIST_SELECT)
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("form_documents")
+      .select(FORM_DOCUMENT_LIST_SELECT)
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("form_submissions")
+      .select("form_id")
+      .eq("organization_id", orgId)
+      .eq("user_id", orgCtx.userId)
+      .is("deleted_at", null),
+    supabase
+      .from("form_document_submissions")
+      .select("document_id")
+      .eq("organization_id", orgId)
+      .eq("user_id", orgCtx.userId)
+      .is("deleted_at", null),
+  ]);
+
+  const { data: forms, error: formsError } = formsResult;
+  const { data: documents, error: docsError } = documentsResult;
+  const { data: submissions, error: subsError } = submissionsResult;
+  const { data: docSubmissions, error: docSubsError } = docSubmissionsResult;
 
   if (formsError)
     console.error("[forms] Failed to fetch forms:", formsError.message);
 
-  const { data: documents, error: docsError } = await supabase
-    .from("form_documents")
-    .select("*")
-    .eq("organization_id", orgId)
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
-
   if (docsError)
     console.error("[forms] Failed to fetch documents:", docsError.message);
 
-  const { data: submissions, error: subsError } = await supabase
-    .from("form_submissions")
-    .select("form_id")
-    .eq("organization_id", orgId)
-    .eq("user_id", orgCtx.userId)
-    .is("deleted_at", null);
-
   if (subsError)
     console.error("[forms] Failed to fetch submissions:", subsError.message);
-
-  const { data: docSubmissions, error: docSubsError } = await supabase
-    .from("form_document_submissions")
-    .select("document_id")
-    .eq("organization_id", orgId)
-    .eq("user_id", orgCtx.userId)
-    .is("deleted_at", null);
 
   if (docSubsError)
     console.error(
@@ -267,7 +274,7 @@ export default async function FormsPage({ params }: FormsPageProps) {
   const submittedDocIds = new Set(
     submissionStatusUnavailable ? [] : (docSubmissions?.map((s) => s.document_id) || []),
   );
-  const typedDocs = (documents || []) as FormDocument[];
+  const typedDocs = documents || [];
 
   const memberFetchFailures: string[] = [];
   if (formsError) memberFetchFailures.push(pageLabel.toLowerCase());
@@ -302,7 +309,7 @@ export default async function FormsPage({ params }: FormsPageProps) {
         </Card>
       ) : forms && forms.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {(forms as Form[]).map((form) => {
+          {forms.map((form) => {
             const isSubmitted = submittedFormIds.has(form.id);
             return (
               <Card key={form.id} className="p-5">

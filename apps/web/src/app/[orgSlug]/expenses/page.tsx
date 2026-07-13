@@ -67,7 +67,7 @@ export default async function ExpensesPage({ params, searchParams }: ExpensesPag
   // Build query
   let query = supabase
     .from("expenses")
-    .select("*")
+    .select("id, user_id, name, expense_type, amount, created_at, venmo_link")
     .eq("organization_id", org.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false });

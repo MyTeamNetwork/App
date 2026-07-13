@@ -3,20 +3,24 @@
 import { Fragment, useState, useEffect, useMemo, useCallback } from "react";
 import { useHasMounted } from "@/hooks/useHasMounted";
 import { buildAvailabilityWeek, getCurrentTimeMarker } from "@/components/schedules/availability-week";
-import { computeEventBlocks, type EventBlock } from "@/components/schedules/availability-blocks";
+import {
+  computeEventBlocks,
+  type EventBlock,
+} from "@/components/schedules/availability-blocks";
+import type { AvailabilitySchedule } from "@/lib/calendar/academic-schedule-projections";
 import { computeSummaryStats, formatDateKey } from "@/components/schedules/availability-stats";
-import type { AcademicSchedule, User } from "@/types/database";
+import type { User } from "@/types/database";
 import { ChevronLeftIcon, ChevronRightIcon } from "@/components/icons/nav-icons";
 import { minutesToTimeLabel } from "@/lib/utils/dates";
 
 type TeamMember = {
   userId: string;
   name: string;
-  schedules: AcademicSchedule[];
+  schedules: AvailabilitySchedule[];
 };
 
 type TeamAvailabilityRowsProps = {
-  schedules: (AcademicSchedule & { users: Pick<User, "name" | "email"> | null })[];
+  schedules: (AvailabilitySchedule & { users: Pick<User, "name" | "email"> | null })[];
   orgId: string;
   timeZone?: string;
 };

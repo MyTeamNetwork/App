@@ -11,11 +11,18 @@ import { getConnectAccountStatus } from "@/lib/stripe";
 import { resolveLabel } from "@/lib/navigation/label-resolver";
 import { buildDonationPurposeTotals } from "@/lib/payments/donation-purpose-totals";
 import { SETTLED_DONATION_STATUSES } from "@/lib/payments/donation-status";
+import {
+  DONATION_DISPLAY_SELECT,
+  DONATION_PUBLIC_SELECT,
+  DONATION_STATS_SELECT,
+  type DonationDisplayRow,
+  type DonationPublicRow,
+  type DonationStatsSummary,
+} from "@/lib/payments/donation-projections";
 import { getLocale, getTranslations } from "next-intl/server";
 import { PhilanthropyFilter } from "@/components/philanthropy/PhilanthropyFilter";
 import { ExportCsvButton } from "@/components/shared";
 import type { NavConfig } from "@/lib/navigation/nav-items";
-import type { OrganizationDonationStat, OrganizationDonation } from "@/types/database";
 
 interface PhilanthropyPageProps {
   params: Promise<{ orgSlug: string }>;
@@ -30,11 +37,12 @@ export default async function PhilanthropyPage({ params, searchParams }: Philant
   if (!orgCtx.organization) return null;
   const org = orgCtx.organization;
   const canEdit = canEditNavItem(org.nav_config as NavConfig, "/philanthropy", orgCtx.role, ["admin", "active_member"]);
+  const canSeeDonors = orgCtx.isAdmin || canEditNavItem(org.nav_config as NavConfig, "/donations", orgCtx.role, ["admin"]);
   const supabase = await createClient();
 
   let eventsQuery = supabase
     .from("events")
-    .select("*")
+    .select("id, title, description, start_date, location")
     .eq("organization_id", org.id)
     .is("deleted_at", null)
     .or("is_philanthropy.eq.true,event_type.eq.philanthropy");
@@ -45,13 +53,29 @@ export default async function PhilanthropyPage({ params, searchParams }: Philant
     eventsQuery = eventsQuery.gte("start_date", new Date().toISOString()).order("start_date");
   }
 
+  const donationsQuery = canSeeDonors
+    ? supabase
+        .from("organization_donations")
+        .select(DONATION_DISPLAY_SELECT)
+        .eq("organization_id", org.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : supabase
+        .from("organization_donations")
+        .select(DONATION_PUBLIC_SELECT)
+        .eq("organization_id", org.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
   const [{ data: events }, { data: donationStats }, { data: allPhilanthropyEvents }, { data: donations }, connectStatus] = await Promise.all([
     eventsQuery,
-    supabase
-      .from("organization_donation_stats")
-      .select("*")
-      .eq("organization_id", org.id)
-      .maybeSingle(),
+    canSeeDonors
+      ? supabase
+          .from("organization_donation_stats")
+          .select(DONATION_STATS_SELECT)
+          .eq("organization_id", org.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
     supabase
       .from("events")
       .select("id, title, start_date")
@@ -59,24 +83,23 @@ export default async function PhilanthropyPage({ params, searchParams }: Philant
       .is("deleted_at", null)
       .or("is_philanthropy.eq.true,event_type.eq.philanthropy")
       .order("start_date"),
-    supabase
-      .from("organization_donations")
-      .select("*")
-      .eq("organization_id", org.id)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false }),
+    donationsQuery,
     org.stripe_connect_account_id
       ? getConnectAccountStatus(org.stripe_connect_account_id)
       : Promise.resolve(null),
   ]);
 
-  const donationStat = (donationStats || null) as OrganizationDonationStat | null;
-  const allDonationRows = (donations || []) as OrganizationDonation[];
+  const donationStat: DonationStatsSummary | null = donationStats ?? null;
+  const allDonationRows: DonationDisplayRow[] = canSeeDonors
+    ? (donations ?? []) as DonationDisplayRow[]
+    : ((donations ?? []) as DonationPublicRow[]).map((donation) => ({
+        ...donation,
+        donor_email: null,
+      }));
 
   // Server-side privacy gate: non-admins/non-editors only see public donations, no donor emails
   // When hide_donor_names is enabled, non-admins/editors see no donation rows at all
   const hideDonorNames = Boolean((org as Record<string, unknown>).hide_donor_names);
-  const canSeeDonors = orgCtx.isAdmin || canEditNavItem(org.nav_config as NavConfig, "/donations", orgCtx.role, ["admin"]);
   const donationRows = canSeeDonors
     ? allDonationRows
     : hideDonorNames

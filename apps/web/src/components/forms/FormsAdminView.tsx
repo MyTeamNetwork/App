@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Card, EmptyState, Button } from "@/components/ui";
 import { FormAdminCard } from "@/components/forms/FormAdminCard";
+import type { FormListItem } from "@/lib/forms/form-projections";
 import Link from "next/link";
-import type { Form } from "@/types/database";
 
 interface FormSubmissionData {
   formId: string;
@@ -14,7 +14,7 @@ interface FormSubmissionData {
 }
 
 interface FormsAdminViewProps {
-  forms: Form[];
+  forms: FormListItem[];
   formSubmissionData: FormSubmissionData[];
   orgSlug: string;
   pageLabel: string;

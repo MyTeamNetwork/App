@@ -3,14 +3,15 @@
 import { Card } from "@/components/ui";
 import { PersonalAvailabilityAgenda } from "@/components/schedules/PersonalAvailabilityAgenda";
 import { TeamAvailabilityRows } from "@/components/schedules/TeamAvailabilityRows";
-import type { AcademicSchedule, User } from "@/types/database";
+import type { AvailabilitySchedule } from "@/lib/calendar/academic-schedule-projections";
+import type { User } from "@/types/database";
 
 type AvailabilityTabProps = {
   orgId: string;
   orgSlug: string;
   isAdmin: boolean;
-  mySchedules: AcademicSchedule[];
-  allSchedules: (AcademicSchedule & { users: Pick<User, "name" | "email"> | null })[];
+  mySchedules: AvailabilitySchedule[];
+  allSchedules: (AvailabilitySchedule & { users: Pick<User, "name" | "email"> | null })[];
   timeZone?: string;
 };
 

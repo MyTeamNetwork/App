@@ -9,10 +9,17 @@ import { getConnectAccountStatus } from "@/lib/stripe";
 import { resolveLabel } from "@/lib/navigation/label-resolver";
 import { buildDonationPurposeTotals } from "@/lib/payments/donation-purpose-totals";
 import { SETTLED_DONATION_STATUSES } from "@/lib/payments/donation-status";
+import {
+  DONATION_DISPLAY_SELECT,
+  DONATION_PUBLIC_SELECT,
+  DONATION_STATS_SELECT,
+  type DonationDisplayRow,
+  type DonationPublicRow,
+  type DonationStatsSummary,
+} from "@/lib/payments/donation-projections";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ExportCsvButton } from "@/components/shared";
 import type { NavConfig } from "@/lib/navigation/nav-items";
-import type { OrganizationDonationStat, OrganizationDonation } from "@/types/database";
 
 interface DonationsPageProps {
   params: Promise<{ orgSlug: string }>;
@@ -25,20 +32,32 @@ export default async function DonationsPage({ params }: DonationsPageProps) {
   const org = orgCtx.organization;
 
   const canEdit = canEditNavItem(org.nav_config as NavConfig, "/donations", orgCtx.role, ["admin"]);
+  const canSeeDonors = orgCtx.isAdmin || canEdit;
   const supabase = await createClient();
 
+  const donationsQuery = canSeeDonors
+    ? supabase
+        .from("organization_donations")
+        .select(DONATION_DISPLAY_SELECT)
+        .eq("organization_id", org.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : supabase
+        .from("organization_donations")
+        .select(DONATION_PUBLIC_SELECT)
+        .eq("organization_id", org.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
   const [{ data: donationStats }, { data: donations }, { data: philanthropyEvents }, connectStatus] = await Promise.all([
-    supabase
-      .from("organization_donation_stats")
-      .select("*")
-      .eq("organization_id", org.id)
-      .maybeSingle(),
-    supabase
-      .from("organization_donations")
-      .select("*")
-      .eq("organization_id", org.id)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false }),
+    orgCtx.isAdmin
+      ? supabase
+          .from("organization_donation_stats")
+          .select(DONATION_STATS_SELECT)
+          .eq("organization_id", org.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    donationsQuery,
     supabase
       .from("events")
       .select("id, title")
@@ -51,14 +70,19 @@ export default async function DonationsPage({ params }: DonationsPageProps) {
       : Promise.resolve(null),
   ]);
 
-  const stats = (donationStats || null) as OrganizationDonationStat | null;
-  const allDonationRows = (donations || []) as OrganizationDonation[];
-  const eventsForForm = (philanthropyEvents || []) as { id: string; title: string }[];
+  const stats: DonationStatsSummary | null = donationStats ?? null;
+  const allDonationRows: DonationDisplayRow[] = canSeeDonors
+    ? (donations ?? []) as DonationDisplayRow[]
+    : ((donations ?? []) as DonationPublicRow[]).map((donation) => ({
+        ...donation,
+        donor_email: null,
+      }));
+  const eventsForForm = philanthropyEvents ?? [];
 
   // Server-side privacy gate: non-admins/non-editors only see public donations, no donor emails
   // When hide_donor_names is enabled, non-admins/editors see no donation rows at all
   const hideDonorNames = Boolean((org as Record<string, unknown>).hide_donor_names);
-  const donationRows = (orgCtx.isAdmin || canEdit)
+  const donationRows = canSeeDonors
     ? allDonationRows
     : hideDonorNames
       ? []

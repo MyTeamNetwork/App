@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { AIPanelProvider } from "@/components/ai-assistant";
+import { AIPanelProvider } from "@/components/ai-assistant/AIPanelContext";
 import { AIEdgeTab, AIPanel } from "@/components/enterprise/EnterpriseClientShell";
 import { EnterpriseSidebar } from "@/components/enterprise/EnterpriseSidebar";
 import { getEnterpriseContext } from "@/lib/auth/enterprise-context";

@@ -101,7 +101,9 @@ describe("philanthropy soft-delete filters", () => {
       const source = readSource(file);
       const idx = source.indexOf("philanthropyEvents");
       assert.ok(idx > -1, "philanthropyEvents query must exist");
-      const block = source.slice(idx, idx + 400);
+      const fromEventsIdx = source.indexOf('.from("events")', idx);
+      assert.ok(fromEventsIdx > -1, "philanthropyEvents must query events table");
+      const block = source.slice(fromEventsIdx, fromEventsIdx + 400);
       assert.ok(
         block.includes('.is("deleted_at", null)') || block.includes(".is('deleted_at', null)"),
         "philanthropyEvents must filter .is('deleted_at', null)",

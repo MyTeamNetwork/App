@@ -4,10 +4,10 @@ import Link from "next/link";
 import { Card, Button, Badge } from "@/components/ui";
 import { ShareFormLink } from "@/components/forms/ShareFormLink";
 import { relativeTime } from "@/lib/utils/relative-time";
-import type { Form } from "@/types/database";
+import type { FormListItem } from "@/lib/forms/form-projections";
 
 interface FormAdminCardProps {
-  form: Form;
+  form: FormListItem;
   orgSlug: string;
   submissionCount: number | null;
   lastSubmittedAt: string | null;

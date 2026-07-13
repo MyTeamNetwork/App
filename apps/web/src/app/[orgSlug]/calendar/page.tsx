@@ -15,8 +15,11 @@ import { parseCalendarView } from "@/lib/calendar/view-state";
 import { resolveEventActionLabel } from "@/lib/events/labels";
 import type { NavConfig } from "@/lib/navigation/nav-items";
 import { resolveOrgTimezone } from "@/lib/utils/timezone";
-import type { AcademicSchedule, User } from "@/types/database";
 import type { UnifiedEvent } from "@/lib/calendar/unified-events";
+import {
+  ACADEMIC_SCHEDULE_SELECT,
+  ACADEMIC_SCHEDULE_WITH_USER_SELECT,
+} from "@/lib/calendar/academic-schedule-projections";
 
 interface CalendarPageProps {
   params: Promise<{ orgSlug: string }>;
@@ -46,7 +49,7 @@ export default async function CalendarPage({ params, searchParams }: CalendarPag
   const [mySchedulesResult, allSchedulesResult, initialEventsResult] = await Promise.all([
     supabase
       .from("academic_schedules")
-      .select("*")
+      .select(ACADEMIC_SCHEDULE_SELECT)
       .eq("organization_id", orgId)
       .eq("user_id", orgCtx.userId)
       .is("deleted_at", null)
@@ -54,7 +57,7 @@ export default async function CalendarPage({ params, searchParams }: CalendarPag
     orgCtx.isAdmin
       ? supabase
           .from("academic_schedules")
-          .select("*, users(name, email)")
+          .select(ACADEMIC_SCHEDULE_WITH_USER_SELECT)
           .eq("organization_id", orgId)
           .is("deleted_at", null)
           .order("start_time", { ascending: true })
@@ -69,8 +72,11 @@ export default async function CalendarPage({ params, searchParams }: CalendarPag
     }),
   ]);
 
+  const allSchedules = (allSchedulesResult.data || []).map((schedule) => ({
+    ...schedule,
+    users: Array.isArray(schedule.users) ? (schedule.users[0] ?? null) : schedule.users,
+  }));
   const mySchedules = mySchedulesResult.data || [];
-  const allSchedules = (allSchedulesResult.data || []) as (AcademicSchedule & { users: Pick<User, "name" | "email"> | null })[];
   const initialEvents: UnifiedEvent[] | undefined = initialEventsResult ?? undefined;
 
   const navConfig = orgCtx.organization.nav_config as NavConfig | null;

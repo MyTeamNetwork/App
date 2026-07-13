@@ -4,14 +4,17 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useHasMounted } from "@/hooks/useHasMounted";
 import Link from "next/link";
 import { buildAvailabilityWeek } from "@/components/schedules/availability-week";
-import { computeEventBlocks, type EventBlock } from "@/components/schedules/availability-blocks";
+import {
+  computeEventBlocks,
+  type EventBlock,
+} from "@/components/schedules/availability-blocks";
+import type { AvailabilitySchedule } from "@/lib/calendar/academic-schedule-projections";
 import { computeSummaryStats, formatDateKey } from "@/components/schedules/availability-stats";
-import type { AcademicSchedule } from "@/types/database";
 import { ChevronLeftIcon, ChevronRightIcon } from "@/components/icons/nav-icons";
 import { minutesToTimeLabel } from "@/lib/utils/dates";
 
 type PersonalAvailabilityAgendaProps = {
-  schedules: AcademicSchedule[];
+  schedules: AvailabilitySchedule[];
   orgId: string;
   orgSlug: string;
   timeZone?: string;

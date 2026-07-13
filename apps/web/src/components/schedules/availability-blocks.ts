@@ -4,6 +4,7 @@
  */
 
 import { splitEventIntoLocalDaySegments } from "@/lib/calendar/event-segments";
+import type { AvailabilitySchedule } from "@/lib/calendar/academic-schedule-projections";
 
 export type EventBlock = {
   id: string;
@@ -21,17 +22,7 @@ export type PositionedBlock = EventBlock & {
   totalColumns: number; // total columns in this overlap group
 };
 
-type ScheduleInput = {
-  id?: string;
-  user_id: string;
-  title: string;
-  start_date: string;
-  end_date: string | null;
-  start_time: string;
-  end_time: string;
-  occurrence_type: string;
-  day_of_week: number | number[] | null;
-  day_of_month: number | null;
+type ScheduleInput = AvailabilitySchedule & {
   users?: { name: string | null; email: string | null } | null;
 };
 
