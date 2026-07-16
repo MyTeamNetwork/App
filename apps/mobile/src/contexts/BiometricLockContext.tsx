@@ -169,11 +169,15 @@ export function BiometricLockProvider({ children }: PropsWithChildren) {
       setLockEnabled(false);
       if (sessionEnded) {
         setStoredEnabled(false);
-        void clearBiometricLock().catch((error) => {
-          sentry.captureException(error as Error, {
-            context: "BiometricLockContext.clearLockAfterSessionEnd",
+        // Retry once: a failed delete strands the persisted flag, so the next
+        // signed-in launch would inherit the previous user's lock preference.
+        void clearBiometricLock()
+          .catch(() => clearBiometricLock())
+          .catch((error) => {
+            sentry.captureException(error as Error, {
+              context: "BiometricLockContext.clearLockAfterSessionEnd",
+            });
           });
-        });
       }
     } else {
       setLockEnabled(storedEnabled);

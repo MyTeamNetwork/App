@@ -3,11 +3,11 @@
 // Uses Node 22+ built-in fs.globSync — no external dependencies.
 const { globSync } = require("node:fs");
 
-// This MUST match the glob used in package.json test:fast
-const DISCOVERY_GLOB = "tests/**/*.test.ts";
+// This MUST match the globs used in scripts/run-fast-tests.js (test:fast)
+const DISCOVERY_GLOBS = ["tests/**/*.test.ts", "tests/**/*.test.tsx"];
 const EXCLUDED_DIRS = ["tests/e2e/**", "tests/integration/**"];
 
-const allTests = globSync(DISCOVERY_GLOB, { exclude: EXCLUDED_DIRS, cwd: process.cwd() })
+const allTests = globSync(DISCOVERY_GLOBS, { exclude: EXCLUDED_DIRS, cwd: process.cwd() })
   .map((p) => p.toString());
 
 if (allTests.length === 0) {

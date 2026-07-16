@@ -7,10 +7,10 @@ const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
 
-const DISCOVERY_GLOB = "tests/**/*.test.ts";
+const DISCOVERY_GLOBS = ["tests/**/*.test.ts", "tests/**/*.test.tsx"];
 const EXCLUDED_DIRS = ["tests/e2e/**", "tests/integration/**"];
 
-const testFiles = globSync(DISCOVERY_GLOB, { exclude: EXCLUDED_DIRS, cwd: root })
+const testFiles = globSync(DISCOVERY_GLOBS, { exclude: EXCLUDED_DIRS, cwd: root })
   .map((p) => p.toString())
   .sort();
 
