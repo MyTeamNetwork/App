@@ -26,9 +26,9 @@
     "format:check": "prettier --check .",
     "test": "turbo run test --filter=@teammeet/web",
     "test:e2e": "bun run --cwd apps/web test:e2e",
-    "validate:okf": "node scripts/validate-okf-frontmatter.mjs docs/agent",
+    "validate:okf": "node scripts/validate-okf-frontmatter.mjs docs/agent docs/db/okf",
     "gen:db-okf": "node scripts/generate-db-okf.mjs",
-    "gen:types": "supabase gen types --lang=typescript --project-id rytsziwekhtjdqzzpdso > packages/types/src/database.ts"
+    "gen:types": "node scripts/require-supabase-access-token.mjs && (supabase gen types --lang=typescript --project-id rytsziwekhtjdqzzpdso > packages/types/src/database.ts.tmp; node scripts/install-generated-supabase-types.mjs packages/types/src/database.ts.tmp packages/types/src/database.ts)"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0",

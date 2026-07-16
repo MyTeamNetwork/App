@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "13.0.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       academic_schedules: {
@@ -1127,6 +1102,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      api_rate_limit_buckets: {
+        Row: {
+          bucket_key: string
+          count: number
+          created_at: string
+          id: number
+          window_start: string
+        }
+        Insert: {
+          bucket_key: string
+          count?: number
+          created_at?: string
+          id?: number
+          window_start: string
+        }
+        Update: {
+          bucket_key?: string
+          count?: number
+          created_at?: string
+          id?: number
+          window_start?: string
+        }
+        Relationships: []
       }
       apify_webhook_events: {
         Row: {
@@ -5165,16 +5164,19 @@ export type Database = {
       }
       notification_reads: {
         Row: {
+          dismissed_at: string | null
           notification_id: string
           read_at: string
           user_id: string
         }
         Insert: {
+          dismissed_at?: string | null
           notification_id: string
           read_at?: string
           user_id: string
         }
         Update: {
+          dismissed_at?: string | null
           notification_id?: string
           read_at?: string
           user_id?: string
@@ -5966,6 +5968,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      parent_invite_redemption_attempts: {
+        Row: {
+          attempt_count: number
+          attempt_key: string
+          id: string
+          updated_at: string
+          window_start: string
+        }
+        Insert: {
+          attempt_count?: number
+          attempt_key: string
+          id?: string
+          updated_at?: string
+          window_start?: string
+        }
+        Update: {
+          attempt_count?: number
+          attempt_key?: string
+          id?: string
+          updated_at?: string
+          window_start?: string
+        }
+        Relationships: []
       }
       parent_invites: {
         Row: {
@@ -7554,6 +7580,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      check_api_rate_limit: {
+        Args: { p_scopes: Json; p_window_ms: number }
+        Returns: Json
+      }
       check_in_event_attendee: {
         Args: { p_rsvp_id: string; p_undo?: boolean }
         Returns: Json
@@ -7901,21 +7931,24 @@ export type Database = {
         Returns: Json
       }
       get_media_storage_stats: { Args: { p_org_id: string }; Returns: Json }
+      get_mentorship_distances: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: {
+          distance: number
+          user_id: string
+        }[]
+      }
+      get_org_context_by_slug: { Args: { p_slug: string }; Returns: Json }
       get_org_member_directory: {
         Args: {
           p_excluded_emails?: string[]
           p_org_id: string
           p_page?: number
           p_page_size?: number
-          p_role?: string | null
-          p_status?: string | null
-          p_viewer_id?: string | null
+          p_role?: string
+          p_status?: string
+          p_viewer_id?: string
         }
-        Returns: Json
-      }
-      get_org_context_by_slug: { Args: { p_slug: string }; Returns: Json }
-      get_render_org_context_by_slug: {
-        Args: { p_slug: string }
         Returns: Json
       }
       get_org_stats_snapshot: {
@@ -7944,6 +7977,10 @@ export type Database = {
           status: Database["public"]["Enums"]["membership_status"]
           user_id: string
         }[]
+      }
+      get_render_org_context_by_slug: {
+        Args: { p_slug: string }
+        Returns: Json
       }
       get_subscription_status: {
         Args: { p_org_id: string }
@@ -8084,6 +8121,7 @@ export type Database = {
       }
       purge_analytics_events: { Args: never; Returns: Json }
       purge_expired_ai_semantic_cache: { Args: never; Returns: number }
+      purge_expired_api_rate_limit_buckets: { Args: never; Returns: number }
       purge_expired_usage_events: { Args: never; Returns: Json }
       purge_mentor_bio_backfill_queue: { Args: never; Returns: number }
       purge_old_data_access_logs: { Args: never; Returns: number }
@@ -8205,6 +8243,16 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      sync_current_user_organization_memberships: {
+        Args: never
+        Returns: {
+          out_organization_id: string
+          out_role: Database["public"]["Enums"]["user_role"]
+          out_slug: string
+          out_source: string
+          out_status: Database["public"]["Enums"]["membership_status"]
+        }[]
+      }
       sync_enterprise_nav_to_org: {
         Args: { p_enterprise_id: string; p_organization_id: string }
         Returns: boolean
@@ -8449,9 +8497,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       agreement_type: ["terms_of_service", "privacy_policy"],

@@ -1,15 +1,17 @@
 ---
 type: index
 title: "Database schema OKF bundle"
-description: "OKF bundle of 130 Postgres tables generated from /apps/web/src/types/database.ts."
-resource: /apps/web/src/types/database.ts
+description: "OKF bundle of 134 Postgres tables generated from /packages/types/src/database.ts."
+resource: /packages/types/src/database.ts
 tags: [db, schema, index]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # Database schema OKF bundle
 
-Generated from `/apps/web/src/types/database.ts`. 130 public tables. Each table doc links to the tables it references via foreign keys; those links form the OKF graph. Regenerate with `bun run gen:db-okf`.
+Generated from `/packages/types/src/database.ts`. 134 public tables. Each table doc links to the tables it references via foreign keys; those links form the OKF graph. Regenerate with `bun run gen:db-okf`.
+
+For runtime AI behavior and agent-facing codemaps, see the [AI Agent Knowledge Bundle](/docs/agent/index.md).
 
 ## Tables
 
@@ -25,12 +27,13 @@ Generated from `/apps/web/src/types/database.ts`. 130 public tables. Each table 
 - [ai_semantic_cache](./ai_semantic_cache.md) — 13 columns
 - [ai_spend_ledger](./ai_spend_ledger.md) — 7 columns
 - [ai_threads](./ai_threads.md) — 9 columns
-- [alumni](./alumni.md) — 37 columns
+- [alumni](./alumni.md) — 40 columns
 - [alumni_external_ids](./alumni_external_ids.md) — 7 columns
 - [analytics_consent](./analytics_consent.md) — 4 columns
 - [analytics_events](./analytics_events.md) — 11 columns
 - [analytics_ops_events](./analytics_ops_events.md) — 13 columns
 - [announcements](./announcements.md) — 14 columns
+- [api_rate_limit_buckets](./api_rate_limit_buckets.md) — 5 columns
 - [apify_webhook_events](./apify_webhook_events.md) — 4 columns
 - [badges](./badges.md) — 7 columns
 - [breach_incidents](./breach_incidents.md) — 12 columns
@@ -77,6 +80,7 @@ Generated from `/apps/web/src/types/database.ts`. 130 public tables. Each table 
 - [integration_sync_log](./integration_sync_log.md) — 11 columns
 - [internal_advisor_snapshots](./internal_advisor_snapshots.md) — 3 columns
 - [job_postings](./job_postings.md) — 17 columns
+- [knowledge_documents](./knowledge_documents.md) — 14 columns
 - [linkedin_connections](./linkedin_connections.md) — 12 columns
 - [linkedin_enrichment_runs](./linkedin_enrichment_runs.md) — 11 columns
 - [linkedin_manual_sync_attempts](./linkedin_manual_sync_attempts.md) — 8 columns
@@ -88,7 +92,7 @@ Generated from `/apps/web/src/types/database.ts`. 130 public tables. Each table 
 - [media_uploads](./media_uploads.md) — 15 columns
 - [member_badges](./member_badges.md) — 4 columns
 - [member_streaks](./member_streaks.md) — 8 columns
-- [members](./members.md) — 30 columns
+- [members](./members.md) — 31 columns
 - [mentee_preferences](./mentee_preferences.md) — 19 columns
 - [mentor_bio_backfill_queue](./mentor_bio_backfill_queue.md) — 8 columns
 - [mentor_profiles](./mentor_profiles.md) — 26 columns
@@ -98,10 +102,10 @@ Generated from `/apps/web/src/types/database.ts`. 130 public tables. Each table 
 - [mentorship_pairs](./mentorship_pairs.md) — 17 columns
 - [mentorship_reminders](./mentorship_reminders.md) — 6 columns
 - [mentorship_tasks](./mentorship_tasks.md) — 11 columns
-- [mobile_auth_handoffs](./mobile_auth_handoffs.md) — 8 columns
+- [mobile_auth_handoffs](./mobile_auth_handoffs.md) — 9 columns
 - [notification_jobs](./notification_jobs.md) — 19 columns
 - [notification_preferences](./notification_preferences.md) — 33 columns
-- [notification_reads](./notification_reads.md) — 3 columns
+- [notification_reads](./notification_reads.md) — 4 columns
 - [notifications](./notifications.md) — 14 columns
 - [ops_events](./ops_events.md) — 14 columns
 - [org_donation_embeds](./org_donation_embeds.md) — 8 columns
@@ -111,11 +115,13 @@ Generated from `/apps/web/src/types/database.ts`. 130 public tables. Each table 
 - [org_philanthropy_embeds](./org_philanthropy_embeds.md) — 8 columns
 - [organization_donation_stats](./organization_donation_stats.md) — 5 columns
 - [organization_donations](./organization_donations.md) — 17 columns
+- [organization_email_domains](./organization_email_domains.md) — 13 columns
 - [organization_invites](./organization_invites.md) — 11 columns
 - [organization_subscriptions](./organization_subscriptions.md) — 18 columns
 - [organizations](./organizations.md) — 33 columns
+- [parent_invite_redemption_attempts](./parent_invite_redemption_attempts.md) — 5 columns
 - [parent_invites](./parent_invites.md) — 9 columns
-- [parents](./parents.md) — 29 columns
+- [parents](./parents.md) — 30 columns
 - [payment_attempts](./payment_attempts.md) — 20 columns
 - [performance_notes](./performance_notes.md) — 4 columns
 - [philanthropy_events](./philanthropy_events.md) — 10 columns

@@ -2,9 +2,9 @@
 type: db-table
 title: "form_submissions"
 description: "Postgres table `form_submissions`: 7 columns. References forms, organizations, users."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, form]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # form_submissions

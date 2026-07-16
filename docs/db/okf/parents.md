@@ -1,15 +1,15 @@
 ---
 type: db-table
 title: "parents"
-description: "Postgres table `parents`: 29 columns. References organizations."
-resource: /apps/web/src/types/database.ts
+description: "Postgres table `parents`: 30 columns. References organizations."
+resource: /packages/types/src/database.ts
 tags: [db, schema]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # parents
 
-Postgres table `parents`: 29 columns. References organizations.
+Postgres table `parents`: 30 columns. References organizations.
 
 ## Columns
 
@@ -32,6 +32,7 @@ Postgres table `parents`: 29 columns. References organizations.
 | `linkedin_url` | `string \| null` | yes |
 | `major` | `string \| null` | yes |
 | `notes` | `string \| null` | yes |
+| `open_to_networking` | `boolean` | no |
 | `organization_id` | `string` | no |
 | `phone_number` | `string \| null` | yes |
 | `photo_url` | `string \| null` | yes |

@@ -2,9 +2,9 @@
 type: db-table
 title: "linkedin_enrichment_runs"
 description: "Postgres table `linkedin_enrichment_runs`: 11 columns. No outbound foreign keys."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, linkedin]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # linkedin_enrichment_runs

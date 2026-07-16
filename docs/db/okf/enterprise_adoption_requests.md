@@ -2,9 +2,9 @@
 type: db-table
 title: "enterprise_adoption_requests"
 description: "Postgres table `enterprise_adoption_requests`: 9 columns. References enterprise_alumni_counts, enterprises, organizations."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, enterprise]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # enterprise_adoption_requests

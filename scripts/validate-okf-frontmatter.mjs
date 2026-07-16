@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // Validates the Open Knowledge Format (OKF) frontmatter of a markdown bundle.
 //
-// Why: docs/agent/ is an OKF bundle whose `resource:` fields point at source
-// files. When code is renamed (e.g. lib/falkordb -> lib/people-graph) those
-// paths silently rot. This script is the rot-catcher: it asserts every doc has
-// valid frontmatter, no misspelled reserved keys, and that every `resource:`
-// path (and every index.md bundle link) still resolves on disk.
+// Why: docs/agent/ and docs/db/okf/ are OKF bundles whose `resource:` fields
+// point at source files. When code is renamed (e.g. lib/falkordb ->
+// lib/people-graph) those paths silently rot. This script is the rot-catcher:
+// it asserts every doc has valid frontmatter, no misspelled reserved keys, and
+// that every `resource:` path (and every index.md bundle link) still resolves.
 //
 // Usage:
 //   node scripts/validate-okf-frontmatter.mjs <dir> [<dir> ...]
-//   bun run validate:okf            # -> node scripts/... docs/agent
+//   bun run validate:okf            # -> node scripts/... docs/agent docs/db/okf
 //
 // Exits non-zero with a per-file reason list on any failure; zero when clean.
 

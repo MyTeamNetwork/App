@@ -2,9 +2,9 @@
 type: db-table
 title: "feed_poll_votes"
 description: "Postgres table `feed_poll_votes`: 7 columns. References feed_posts, organizations."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # feed_poll_votes

@@ -16,7 +16,7 @@ packages/
 ├── validation/         # @teammeet/validation — shared Zod schemas
 └── supabase/           # @teammeet/supabase — shared Supabase helpers
 supabase/               # Migrations, config, seeds (symlinked from apps/web/supabase)
-docs/                   # Cross-cutting docs. AI docs in agent/ are an OKF bundle — start at docs/agent/index.md
+docs/                   # Cross-cutting docs. AI OKF starts at docs/agent/index.md; schema OKF is docs/db/okf/index.md
 turbo.json              # Pipeline config + globalPassThroughEnv allowlist
 ```
 
@@ -27,6 +27,7 @@ Workspaces are declared in root `package.json` (`apps/*`, `packages/*`). Interna
 Run from repo root unless noted. Turbo handles task orchestration and caching.
 
 ### Top-level
+
 ```bash
 bun install              # Install all workspaces
 bun run build            # Build all packages/apps
@@ -51,12 +52,14 @@ cd apps/web && bun run dev
 ```
 
 Stripe webhook listeners (separate terminals, requires `stripe` CLI logged in):
+
 ```bash
 stripe listen --forward-to localhost:3000/api/stripe/webhook
 stripe listen --forward-connect-to localhost:3000/api/stripe/webhook-connect
 ```
 
 Production-style local run:
+
 ```bash
 bun run build:web && bun run --cwd apps/web start
 ```
@@ -68,6 +71,7 @@ Per-suite test commands, Supabase wrappers, and middleware flow live in `apps/we
 Expo SDK 54 with a **custom dev client** — Expo Go does NOT work (native modules: Stripe, Apple auth, Google sign-in, lucide). A dev-client build must be installed on the simulator/device before Metro will attach. Rebuild the dev client only when native config (`app.json`, native deps) changes.
 
 Daily dev loop:
+
 ```bash
 bun run mobile:start:dev-client   # Metro bundler for dev client (primary)
 bun run mobile:ios                # Boot iOS Simulator + dev client
@@ -77,12 +81,14 @@ bun run dev:mobile                # bun run --cwd apps/mobile start
 ```
 
 Regenerate native projects (after native config change):
+
 ```bash
 bun run mobile:prebuild           # Generate ios/ + android/
 bun run mobile:prebuild:clean     # Wipe + regenerate from scratch
 ```
 
 EAS cloud builds + store submission (from `apps/mobile/`, requires `eas` CLI logged in as org `teamnetwork`):
+
 ```bash
 cd apps/mobile
 eas build --platform ios --profile preview        # Internal dogfood (no store)
@@ -93,6 +99,7 @@ eas submit --platform android --latest            # Upload latest Android → Pl
 ```
 
 Diagnostics:
+
 ```bash
 bun run --cwd apps/mobile config           # Print resolved Expo config
 bun run --cwd apps/mobile android:doctor   # Verify Android SDK / Java / adb
@@ -103,7 +110,9 @@ Mobile is excluded from root `bun run lint` (`--filter=!@teammeet/mobile`). Mobi
 Apple Developer / ASC release flow, TestFlight steps, drawer + tab routing, and styling tokens live in `apps/mobile/CLAUDE.md`.
 
 ### Per-workspace
+
 Use `--filter`:
+
 ```bash
 turbo run build --filter=@teammeet/web
 turbo run typecheck --filter=@teammeet/core
@@ -149,13 +158,14 @@ Before answering, gather required context efficiently. Read independent files an
 When multiple tool calls are independent, execute them in parallel rather than sequentially.
 
 Rules:
+
 - If there are no dependencies between tool calls, batch them and run them simultaneously.
 - If one tool call is needed to determine the parameters for another, run them sequentially.
 - Never guess missing parameters and never use placeholders in tool calls.
 - Prefer parallel reads, searches, and inspections when gathering context from multiple files or sources.
 - Prefer sequential execution for edits, patches, or actions that depend on earlier results.
 - When in doubt, preserve correctness over parallelism.
-</use_parallel_tool_calls>
+  </use_parallel_tool_calls>
 
 ## Context Management
 
@@ -176,6 +186,7 @@ When renaming or changing any function/type/variable, search separately for: dir
 ## Landing the Plane (Session Completion)
 
 Work is NOT complete until `git push` succeeds. Mandatory:
+
 1. File issues for remaining work
 2. Run quality gates (tests, lint, build) — `bun run typecheck && bun run lint && bun run test`
 3. Push: `git pull --rebase && git push && git status`

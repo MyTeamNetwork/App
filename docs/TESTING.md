@@ -1,47 +1,47 @@
 # Testing Patterns
 
-**Last Updated:** 2026-04-16
+**Last Updated:** 2026-07-12
 
 ## Test Framework
 
 - Runner: Node.js built-in test runner (`node:test`)
 - Assertions: `node:assert/strict`
-- TypeScript loader: `tests/ts-loader.js` (custom — see [TypeScript loader strategy](#typescript-loader-strategy))
+- TypeScript loader: `apps/web/tests/register-ts-loader.mjs` registers the custom `ts-loader.mjs` (see [TypeScript loader strategy](#typescript-loader-strategy))
 - E2E: Playwright (`@playwright/test`)
 - Property-based testing: `fast-check`
 
 ## Run Commands
 
 ```bash
-npm run test
-npm run test:unit
-npm run test:security
-npm run test:payments
-npm run test:schedules
-npm run test:routes
-npm run test:jobs
-npm run test:media
-npm run test:qrcode
-npm run test:e2e
-npm run test:e2e:ui
-npm run test:e2e:debug
+bun run test
+bun run --cwd apps/web test:unit
+bun run --cwd apps/web test:security
+bun run --cwd apps/web test:payments
+bun run --cwd apps/web test:schedules
+bun run --cwd apps/web test:routes
+bun run --cwd apps/web test:jobs
+bun run --cwd apps/web test:media
+bun run --cwd apps/web test:qrcode
+bun run test:e2e
+bun run --cwd apps/web test:e2e:ui
+bun run --cwd apps/web test:e2e:debug
 ```
 
 Single-file example:
 
 ```bash
-node --test --loader ./tests/ts-loader.js tests/payment-idempotency.test.ts
+cd apps/web && node --import ./tests/register-ts-loader.mjs --test tests/payment-idempotency.test.ts
 ```
 
 Enterprise example:
 
 ```bash
-node --test --loader ./tests/ts-loader.js tests/enterprise/*.test.ts tests/routes/enterprise/*.test.ts
+cd apps/web && node --import ./tests/register-ts-loader.mjs --test tests/enterprise/*.test.ts tests/routes/enterprise/*.test.ts
 ```
 
 ## Current Inventory Snapshot
 
-- Total files under `tests/`: 217
+- Total files under `apps/web/tests/`: 575
 - Tests are not colocated with source files
 - Route simulation suites live under `tests/routes/`
 
@@ -92,7 +92,8 @@ tests/
 │   └── specs/
 ├── fixtures/
 ├── utils/
-└── ts-loader.js
+├── register-ts-loader.mjs
+└── ts-loader.mjs
 ```
 
 ## Common Patterns
@@ -114,25 +115,14 @@ tests/
 
 ## TypeScript Loader Strategy
 
-Three options, in current order of preference:
-
-1. **Recommended: `tsx` via `--import tsx`** (Node ≥ 20).
-   - Zero-config, supports enums / namespaces / parameter properties.
-   - Single-file: `node --import tsx --test tests/foo.test.ts`
-   - Migration target; allows deleting `tests/ts-loader.js`.
-2. **Node built-in type stripping** (`--experimental-strip-types`, default in Node 23.6+).
-   - Works for pure type-annotation TS only. No enums, no parameter properties.
-   - Not ready as the default path until we retire enums/decorators from test code.
-3. **Current: custom `tests/ts-loader.js`**.
-   - Hand-rolled. Keeps `@/` path alias resolution and `next/*` extension rewrites.
-   - Deferred migration — see the follow-up todo in `docs/agent/todos/`.
+The current path is the custom `apps/web/tests/ts-loader.mjs`, registered by `apps/web/tests/register-ts-loader.mjs`. It keeps `@/` path alias resolution, rewrites the small set of `next/*` imports used by tests, and sets test-only rate-limit environment flags. The package scripts invoke the registering loader directly; keep direct test commands consistent with that path.
 
 ## Coverage Reporting
 
 `node:test` has built-in coverage since Node 22.
 
 ```bash
-node --import tsx --test \
+cd apps/web && node --import ./tests/register-ts-loader.mjs --test \
      --experimental-test-coverage \
      --test-reporter=lcov --test-reporter-destination=coverage/lcov.info \
      --enable-source-maps \
@@ -142,7 +132,7 @@ node --import tsx --test \
 `--enable-source-maps` is required for correct line numbers under TypeScript. If coverage is flaky or you need consolidated HTML reports, fall back to `c8`:
 
 ```bash
-npx c8 --reporter=lcov --reporter=html node --import tsx --test 'tests/**/*.test.ts'
+bunx c8 --reporter=lcov --reporter=html node --import ./tests/register-ts-loader.mjs --test 'tests/**/*.test.ts'
 ```
 
 ## Route-Handler Testing

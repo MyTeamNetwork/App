@@ -2,9 +2,9 @@
 type: db-table
 title: "mentor_profiles"
 description: "Postgres table `mentor_profiles`: 26 columns. References organizations, users."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, mentor]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # mentor_profiles

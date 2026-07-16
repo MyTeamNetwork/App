@@ -2,9 +2,9 @@
 type: db-table
 title: "media_uploads"
 description: "Postgres table `media_uploads`: 15 columns. References organizations, users."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # media_uploads

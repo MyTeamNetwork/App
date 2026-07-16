@@ -2,9 +2,9 @@
 type: db-table
 title: "user_linkedin_connections"
 description: "Postgres table `user_linkedin_connections`: 22 columns. No outbound foreign keys."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, user]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # user_linkedin_connections

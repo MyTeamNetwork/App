@@ -1,21 +1,21 @@
 ---
 type: reference
 title: AI Data Flow — Privacy and Compliance
-description: PII entering the AI pipeline, what is stored, and what is sent to the AWS Bedrock provider.
+description: PII entering the AI pipeline, what is stored, and what is sent to the AWS Bedrock and Google Gemini-compatible providers.
 resource: apps/web/src/lib/ai/context-builder.ts
 tags: [ai, privacy, compliance, pii]
-timestamp: 2026-07-07T00:00:00Z
+timestamp: 2026-07-12T00:00:00Z
 ---
 
 # AI Data Flow — Privacy & Compliance Documentation
 
-**Last Updated:** June 2026
+**Last Updated:** July 12, 2026
 
 ---
 
 ## 1. Overview
 
-The AI assistant is an org-scoped chat feature, currently **admin-only in production** (member access exists behind the `AI_MEMBER_ACCESS_KILL` switch, default on — see §4). This document describes what PII enters the AI pipeline, what is stored, what is sent to the external LLM provider (AWS Bedrock), and the retention/access controls in place.
+The AI assistant is an org-scoped chat feature, **admin-only by repository default** (member access exists behind the `AI_MEMBER_ACCESS_KILL` switch, default on — see §4). This document describes what PII enters the AI pipeline, what is stored, what is sent to the external model providers (AWS Bedrock for generation and Google Gemini-compatible embeddings), and the retention/access controls in place.
 
 This document describes **shipped behavior**, including the parts that send PII to the external provider. Earlier revisions understated §3.2; do not regress it to aspirational claims.
 
@@ -25,7 +25,7 @@ This document describes **shipped behavior**, including the parts that send PII 
 
 ```
 User → Chat Panel (client)
-  → POST /api/ai/chat (validated by Zod; role-gated, see §4)
+    → POST /api/ai/[orgId]/chat (validated by Zod; role-gated, see §4)
     → Context Builder (queries org data via RLS)
     → Semantic Cache Check (exact hash of prompt)
       → Cache HIT: return cached response (no external API call)
@@ -48,26 +48,28 @@ User → Chat Panel (client)
 
 ### 3.1 What Enters the Pipeline
 
-| Data | Source | Purpose |
-|---|---|---|
-| User's prompt text | User input | The question being asked |
-| Org member names | `members` / `users` tables (context builder, tools) | Grounding LLM responses in real org data |
-| Org member emails | `users` table (tools) | Member identification when names are missing |
+| Data                           | Source                                                                       | Purpose                                                |
+| ------------------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------ |
+| User's prompt text             | User input                                                                   | The question being asked                               |
+| Org member names               | `members` / `users` tables (context builder, tools)                          | Grounding LLM responses in real org data               |
+| Org member emails              | `users` table (tools)                                                        | Member identification when names are missing           |
 | LinkedIn-enriched profile data | `alumni` / `members` (headline, summary, skills, work history, linkedin_url) | Mentorship matching, directory answers, bio generation |
-| Donation rows | `donations` (donor name/email/amount unless org hides donor names) | Donation analytics and listing tools |
-| Event titles/descriptions | `events` table | Calendar context for scheduling questions |
-| Mentee goals free text | `mentee_preferences.goals` | Mentorship signal extraction |
-| Organization metadata | `organizations` table | Org name, settings, member counts |
+| Donation rows                  | `donations` (donor name/email/amount unless org hides donor names)           | Donation analytics and listing tools                   |
+| Event titles/descriptions      | `events` table                                                               | Calendar context for scheduling questions              |
+| Mentee goals free text         | `mentee_preferences.goals`                                                   | Mentorship signal extraction                           |
+| Organization metadata          | `organizations` table                                                        | Org name, settings, member counts                      |
 
 ### 3.2 What is Sent to the External API (AWS Bedrock)
 
 **Pass 1** (tool selection) sends:
+
 - System prompt (static template, no PII)
 - Org context summary (member counts, org name)
 - RAG chunks (may contain member names and content excerpts)
 - User's prompt text and conversation history for the thread
 
 **Pass 2** (response composition) additionally sends the **complete JSON output of every executed tool** (`response-composer.ts` serializes `toolResult.data` verbatim into the tool message). Depending on the tools invoked, this includes:
+
 - Member **names and emails** (`list_members`; `list_member_preferences` sends emails for admin actors — non-admin actors receive `email: null` before serialization)
 - **LinkedIn-derived fields**: `linkedin_url`, headline, summary, skills, work history, company, industry
 - **Donor names, emails, and amounts** (`list_donations`, unless the org enables `hide_donor_names`)
@@ -81,30 +83,34 @@ User → Chat Panel (client)
 
 Three server-side features also call AWS Bedrock with org PII:
 
-| Pipeline | File | Data sent to AWS Bedrock |
-|---|---|---|
-| **Mentor bio generation** | `lib/mentorship/bio-generator.ts` (cron `mentor-bio-process`, explicit regenerate endpoint) | Mentor name, job title, company, industry, graduation year, sanitized LinkedIn headline/summary, custom attributes, chosen expertise/topics/sports/positions |
-| **Match "why" generation** | `lib/mentorship/why-generator.ts` | Mentor/mentee names plus match-signal labels/values |
-| **Mentee signal backfill** | `lib/mentorship/signal-backfill.ts` | Mentee goals free text (truncated to 400 chars, control characters stripped); a deterministic extractor short-circuits the LLM when it suffices |
+| Pipeline                   | File                                                                                        | Data sent to AWS Bedrock                                                                                                                                     |
+| -------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Mentor bio generation**  | `lib/mentorship/bio-generator.ts` (cron `mentor-bio-process`, explicit regenerate endpoint) | Mentor name, job title, company, industry, graduation year, sanitized LinkedIn headline/summary, custom attributes, chosen expertise/topics/sports/positions |
+| **Match "why" generation** | `lib/mentorship/why-generator.ts`                                                           | Mentor/mentee names plus match-signal labels/values                                                                                                          |
+| **Mentee signal backfill** | `lib/mentorship/signal-backfill.ts`                                                         | Mentee goals free text (truncated to 400 chars, control characters stripped); a deterministic extractor short-circuits the LLM when it suffices              |
 
 All three are spend-capped per org (`checkAiSpend`) and audit-logged via `logAiRequest`.
 
-### 3.4 What is Stored
+### 3.4 Embedding Pipeline (Google Gemini)
 
-| Table | Data Stored | Retention |
-|---|---|---|
-| `ai_threads` | Thread metadata (user_id, org_id, surface, title) | Until user deletes or account deletion cascade |
-| `ai_messages` | Full prompt and response text | Until thread deletion or account deletion cascade |
-| `ai_audit_log` | Request metadata: user_id, org_id, latency_ms, token counts, cache status, model, grounding outcome | Service-role only; no retention purge currently |
-| `ai_semantic_cache` | Hashed prompt + cached response text | 12-hour TTL, purged by hourly cron |
-| `ai_document_chunks` | Chunked org content with vector embeddings | Until re-indexed or org deletion |
-| `mentor_profiles.bio` | AI-generated or manual mentor bio (`bio_source` records provenance) | Until edited/cleared by the mentor or admin |
+RAG embeddings are generated outside the Bedrock chat path through the OpenAI-shaped Google Gemini endpoint configured by `EMBEDDING_BASE_URL` (default `https://generativelanguage.googleapis.com/v1beta/openai`), `EMBEDDING_API_KEY`, and `EMBEDDING_MODEL` (default `gemini-embedding-001`). The service sends chunked organization content to the embedding provider and requests 768-dimensional vectors. It stores the resulting vector and source metadata in `ai_document_chunks`; audience restrictions are enforced during retrieval.
+
+### 3.5 What is Stored
+
+| Table                 | Data Stored                                                                                         | Retention                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `ai_threads`          | Thread metadata (user_id, org_id, surface, title)                                                   | Until user deletes or account deletion cascade    |
+| `ai_messages`         | Full prompt and response text                                                                       | Until thread deletion or account deletion cascade |
+| `ai_audit_log`        | Request metadata: user_id, org_id, latency_ms, token counts, cache status, model, grounding outcome | Service-role only; no retention purge currently   |
+| `ai_semantic_cache`   | Hashed prompt + cached response text                                                                | 12-hour TTL, purged by hourly cron                |
+| `ai_document_chunks`  | Chunked org content with vector embeddings                                                          | Until re-indexed or org deletion                  |
+| `mentor_profiles.bio` | AI-generated or manual mentor bio (`bio_source` records provenance)                                 | Until edited/cleared by the mentor or admin       |
 
 ---
 
 ## 4. Access Controls
 
-- **Admin-only today:** production access requires the `admin` org role. A member-access allowlist (`ACTIVE_MEMBER_ALLOWED_TOOLS` in `access-policy.ts`) exists but is disabled behind `AI_MEMBER_ACCESS_KILL` (default on; flip with `AI_MEMBER_ACCESS_KILL=0`).
+- **Default access today:** repository defaults require the `admin` org role. A member-access allowlist (`ACTIVE_MEMBER_ALLOWED_TOOLS` in `access-policy.ts`) exists but is disabled behind `AI_MEMBER_ACCESS_KILL` (default on; flip with `AI_MEMBER_ACCESS_KILL=0`).
 - **Per-role tool clients:** admins' tools run on the service-role client. Non-admin actors are restricted to an allowlisted read-tool set executed with their **RLS-bound client** (`NON_ADMIN_RLS_READ_TOOL_NAMES` in `tools/executor.ts`); if the RLS client is unavailable the call fails closed with an auth error. Tool modules additionally receive the resolved `actorRole` and must redact PII for non-admins — `list_member_preferences` returns `email: null` and never uses an email as a display-name fallback for non-admin actors.
 - **Org-scoped RLS:** all AI tables enforce organization scoping via RLS policies.
 - **Thread ownership:** users can only read/write their own threads (RLS on `ai_threads`, composite FK on `ai_messages`).
@@ -152,14 +158,16 @@ When a user account is deleted:
 
 ---
 
-## 9. External API Provider
+## 9. External Model Providers
 
-| Property | Value |
-|---|---|
-| Provider | AWS Bedrock |
-| Model | Amazon Nova (per-profile overrides in `lib/ai/llm.ts`) |
-| API format | AWS Bedrock Converse (OpenAI shapes translated by `lib/ai/bedrock-adapter.ts`) |
-| Data retention by provider | Per AWS Bedrock terms of service |
-| Encryption in transit | TLS 1.2+ |
+| Property                   | Value                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------- |
+| Chat provider              | AWS Bedrock                                                                                 |
+| Chat model                 | Amazon Nova (per-profile overrides in `apps/web/src/lib/ai/llm.ts`)                         |
+| Chat API format            | AWS Bedrock Converse (OpenAI shapes translated by `apps/web/src/lib/ai/bedrock-adapter.ts`) |
+| Embedding provider         | Google Gemini-compatible OpenAI endpoint (`EMBEDDING_BASE_URL`)                             |
+| Embedding model            | `gemini-embedding-001` by default, 768 dimensions                                           |
+| Data retention by provider | Per provider terms of service; verify both providers before expanding access                |
+| Encryption in transit      | TLS 1.2+                                                                                    |
 
-**Note:** No education records (grades, transcripts, attendance) are sent to the external API. However, per §3.2–3.3, member/donor emails, LinkedIn-derived profile data, and mentee goals text **are** sent when the relevant tools or pipelines run. Review the provider DPA against this surface before expanding access beyond admins.
+**Note:** No education records (grades, transcripts, attendance) are sent to the external model providers. However, per §3.2–3.4, member/donor emails, LinkedIn-derived profile data, mentee goals text, and indexed organization content **are** sent when the relevant tools or embedding pipeline runs. Review both provider DPAs against this surface before expanding access beyond admins.

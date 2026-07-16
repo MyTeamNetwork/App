@@ -2,8 +2,8 @@
 
 This document catalogs the main classes of PII and education-adjacent data currently stored by TeamNetwork.
 
-**Last Updated:** April 16, 2026
-**Primary Sources:** `src/types/database.ts`, `src/lib/analytics/policy.ts`, and current Supabase migrations (351 as of this revision; this inventory was last fully reviewed at the 266-migration mark — re-review for PII added since).
+**Last Updated:** July 12, 2026
+**Primary Sources:** `packages/types/src/database.ts`, `apps/web/src/lib/analytics/policy.ts`, and current Supabase migrations (384 files through `20270110000000_add_notification_dismissals.sql`). This refresh includes the current AI, parent, analytics, and enterprise data surfaces; migration files and generated types remain authoritative.
 
 ---
 
@@ -15,28 +15,28 @@ TeamNetwork is a multi-tenant SaaS platform for schools, teams, booster groups, 
 
 ## Core Identity Data
 
-| Data Type | Source Table(s) | Classification | Notes |
-|-----------|-----------------|----------------|-------|
-| `first_name`, `last_name` | `members`, `alumni`, `parents`, `users` | Direct identifier | Primary user-facing identity fields |
-| `email` | `users`, `members`, `alumni`, `parents`, `parent_invites`, `enterprise_invites` | Direct identifier | Contact, invite, and account lookup data |
-| `phone_number` | `alumni`, `parents`, `notification_preferences` | Direct identifier | Optional contact data |
-| `photo_url`, `avatar_url` | `members`, `alumni`, `parents`, `users`, `media_items` | Direct/visual identifier | Profile and media-related imagery |
-| `linkedin_url` | `members`, `alumni`, `parents` | Indirect identifier | External profile linkage |
-| `user_id`, `organization_id`, `enterprise_id` | Membership and role tables | Indirect identifier | Links a person to an organization or enterprise context |
+| Data Type                                     | Source Table(s)                                                                 | Classification           | Notes                                                   |
+| --------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------- |
+| `first_name`, `last_name`                     | `members`, `alumni`, `parents`, `users`                                         | Direct identifier        | Primary user-facing identity fields                     |
+| `email`                                       | `users`, `members`, `alumni`, `parents`, `parent_invites`, `enterprise_invites` | Direct identifier        | Contact, invite, and account lookup data                |
+| `phone_number`                                | `alumni`, `parents`, `notification_preferences`                                 | Direct identifier        | Optional contact data                                   |
+| `photo_url`, `avatar_url`                     | `members`, `alumni`, `parents`, `users`, `media_items`                          | Direct/visual identifier | Profile and media-related imagery                       |
+| `linkedin_url`                                | `members`, `alumni`, `parents`                                                  | Indirect identifier      | External profile linkage                                |
+| `user_id`, `organization_id`, `enterprise_id` | Membership and role tables                                                      | Indirect identifier      | Links a person to an organization or enterprise context |
 
 ---
 
 ## Education- and Organization-Context Data
 
-| Data Type | Source Table(s) | Sensitive? | Notes |
-|-----------|-----------------|------------|-------|
-| `graduation_year` | `members`, `alumni` | Medium | Cohort/roster history |
-| `academic_schedules` | `academic_schedules` | High | Class/activity timing and notes |
-| Organization membership and role assignment | `user_organization_roles` | High | Ties a person to a school/team context |
-| Parent-to-student relationship metadata | `parents` | High | Includes `student_name` and `relationship` |
-| Forms and document submissions | `form_submissions`, `form_document_submissions` | High | Freeform user-provided content |
-| Chat, discussions, feed, and comments | `chat_messages`, `discussion_threads`, `discussion_replies`, `feed_posts`, `feed_comments` | High | Private or semi-private communications |
-| Workout, event RSVP, and competition records | `workout_logs`, `event_rsvps`, `competition_points` | Medium | Participation and performance data |
+| Data Type                                    | Source Table(s)                                                                            | Sensitive? | Notes                                      |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------ |
+| `graduation_year`                            | `members`, `alumni`                                                                        | Medium     | Cohort/roster history                      |
+| `academic_schedules`                         | `academic_schedules`                                                                       | High       | Class/activity timing and notes            |
+| Organization membership and role assignment  | `user_organization_roles`                                                                  | High       | Ties a person to a school/team context     |
+| Parent-to-student relationship metadata      | `parents`                                                                                  | High       | Includes `student_name` and `relationship` |
+| Forms and document submissions               | `form_submissions`, `form_document_submissions`                                            | High       | Freeform user-provided content             |
+| Chat, discussions, feed, and comments        | `chat_messages`, `discussion_threads`, `discussion_replies`, `feed_posts`, `feed_comments` | High       | Private or semi-private communications     |
+| Workout, event RSVP, and competition records | `workout_logs`, `event_rsvps`, `competition_points`                                        | Medium     | Participation and performance data         |
 
 ---
 
@@ -44,41 +44,57 @@ TeamNetwork is a multi-tenant SaaS platform for schools, teams, booster groups, 
 
 Parent and guardian records are now first-class data in the app and must be included in compliance reviews.
 
-| Data Type | Source Table(s) | Classification | Notes |
-|-----------|-----------------|----------------|-------|
-| Parent profile data | `parents` | Direct identifier | Names, email, phone, photo, notes |
-| Parent invite data | `parent_invites` | Direct identifier | Email or code-based onboarding metadata |
-| Student linkage | `parents.student_name`, `parents.relationship` | Education-adjacent | Connects guardian identity to a student/member context |
-| Parent role membership | `user_organization_roles.role = 'parent'` | Access-control data | Parent access is enforced throughout org-scoped routes and navigation |
+| Data Type              | Source Table(s)                                | Classification      | Notes                                                                 |
+| ---------------------- | ---------------------------------------------- | ------------------- | --------------------------------------------------------------------- |
+| Parent profile data    | `parents`                                      | Direct identifier   | Names, email, phone, photo, notes                                     |
+| Parent invite data     | `parent_invites`                               | Direct identifier   | Email or code-based onboarding metadata                               |
+| Student linkage        | `parents.student_name`, `parents.relationship` | Education-adjacent  | Connects guardian identity to a student/member context                |
+| Parent role membership | `user_organization_roles.role = 'parent'`      | Access-control data | Parent access is enforced throughout org-scoped routes and navigation |
 
 ---
 
 ## Analytics and Operational Telemetry
 
-TeamNetwork now stores limited behavioral and operational analytics. This is governed by allowlisted event names and policy checks in `src/lib/analytics/policy.ts`; it is not accurate to describe the system as collecting "no behavioral data."
+TeamNetwork now stores limited behavioral and operational analytics. This is governed by allowlisted event names and policy checks in `apps/web/src/lib/analytics/policy.ts`; it is not accurate to describe the system as collecting "no behavioral data."
 
-| Data Type | Source Table(s) | Sensitivity Reason |
-|-----------|-----------------|-------------------|
-| Product analytics events | `analytics_events` | Behavioral usage data tied to org/session context |
-| Analytics consent state | `analytics_consent` | Consent and privacy state |
-| Operational analytics events | `analytics_ops_events`, `ops_events` | Internal operational telemetry with route/session metadata |
-| Error and telemetry events | `error_groups`, `error_events` (via current schema/migrations), telemetry routes | Diagnostic data that may include route, environment, and user context |
+| Data Type                    | Source Table(s)                                                                  | Sensitivity Reason                                                    |
+| ---------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Product analytics events     | `analytics_events`                                                               | Behavioral usage data tied to org/session context                     |
+| Analytics consent state      | `analytics_consent`                                                              | Consent and privacy state                                             |
+| Operational analytics events | `analytics_ops_events`, `ops_events`                                             | Internal operational telemetry with route/session metadata            |
+| Error and telemetry events   | `error_groups`, `error_events` (via current schema/migrations), telemetry routes | Diagnostic data that may include route, environment, and user context |
 
 Behavioral analytics remains constrained by product policy and schema enforcement, but it is still stored data and should be documented as such.
 
 ---
 
+## AI Assistant and Knowledge Content
+
+The AI assistant adds prompts, responses, model/tool telemetry, feedback, embeddings, and admin-curated knowledge content to the compliance surface. See [`docs/agent/ai-data-flow.md`](agent/ai-data-flow.md) for provider-visible PII and [`docs/db/ai-schema.md`](db/ai-schema.md) for the schema narrative.
+
+| Data Type                 | Source Table(s)             | Sensitivity Reason                                                                                   |
+| ------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------- |
+| AI prompts and responses  | `ai_threads`, `ai_messages` | User-provided text and organization context may contain personal or education-adjacent information   |
+| AI request telemetry      | `ai_audit_log`              | User/org identifiers, model, token, latency, safety, grounding, and tool metadata; service-role only |
+| AI feedback               | `ai_feedback`               | User ratings and optional freeform comments about assistant responses                                |
+| RAG chunks and embeddings | `ai_document_chunks`        | Derived searchable copies of indexed organization content and audience metadata                      |
+| Curated knowledge base    | `knowledge_documents`       | Admin-authored policies, guides, and reference content; admin-managed and RAG-indexed                |
+
+The `ai_audit_log.expires_at` column defaults to 90 days, but the current repository does not have an AI-audit-specific purge route. Do not treat the default expiry column as proof of enforced deletion.
+
+---
+
 ## Sensitive Data Classes
 
-| Data Type | Source Table(s) | Sensitivity Reason |
-|-----------|-----------------|-------------------|
-| Private communications | `chat_messages`, `discussion_threads`, `discussion_replies`, `feed_comments` | Student/community communications |
-| Form responses | `form_submissions.responses` | Freeform input may contain sensitive personal information |
-| Parent notes | `parents.notes` | Freeform guardian/student context |
-| Athletic/performance metrics | `workout_logs`, `competition_points` | Performance and participation data |
-| Location-related fields | `alumni.current_city` | Location data |
-| Media uploads and moderation state | `media_items`, `media_uploads` | Visual identity and moderation metadata |
-| Enterprise audit logs | `enterprise_audit_logs` | Admin activity metadata including actor email, IP, and user agent |
+| Data Type                          | Source Table(s)                                                              | Sensitivity Reason                                                |
+| ---------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Private communications             | `chat_messages`, `discussion_threads`, `discussion_replies`, `feed_comments` | Student/community communications                                  |
+| Form responses                     | `form_submissions.responses`                                                 | Freeform input may contain sensitive personal information         |
+| Parent notes                       | `parents.notes`                                                              | Freeform guardian/student context                                 |
+| Athletic/performance metrics       | `workout_logs`, `competition_points`                                         | Performance and participation data                                |
+| Location-related fields            | `alumni.current_city`                                                        | Location data                                                     |
+| Media uploads and moderation state | `media_items`, `media_uploads`                                               | Visual identity and moderation metadata                           |
+| Enterprise audit logs              | `enterprise_audit_logs`                                                      | Admin activity metadata including actor email, IP, and user agent |
 
 ---
 
@@ -86,15 +102,15 @@ Behavioral analytics remains constrained by product policy and schema enforcemen
 
 The current app still does **not** appear to store the following as first-class product data:
 
-| Data Type | Status | Notes |
-|-----------|--------|-------|
-| Social Security Numbers | Not collected | No government ID storage |
-| Student ID numbers | Not collected | No institutional SIS identifier field in current schema |
-| Date of birth | Not collected | Current identity model relies on graduation year and age-gate logic, not DOB storage |
-| Home street address | Not collected | City-level alumni field exists, but not a full postal address model |
-| Grades / GPA / transcripts | Not collected | No academic performance record model |
-| Financial aid records | Not collected | Billing data is for platform subscriptions/donations, not school aid |
-| Medical records | Not collected | No HIPAA-style health record model |
+| Data Type                  | Status        | Notes                                                                                |
+| -------------------------- | ------------- | ------------------------------------------------------------------------------------ |
+| Social Security Numbers    | Not collected | No government ID storage                                                             |
+| Student ID numbers         | Not collected | No institutional SIS identifier field in current schema                              |
+| Date of birth              | Not collected | Current identity model relies on graduation year and age-gate logic, not DOB storage |
+| Home street address        | Not collected | City-level alumni field exists, but not a full postal address model                  |
+| Grades / GPA / transcripts | Not collected | No academic performance record model                                                 |
+| Financial aid records      | Not collected | Billing data is for platform subscriptions/donations, not school aid                 |
+| Medical records            | Not collected | No HIPAA-style health record model                                                   |
 
 Disciplinary data is also not modeled as a dedicated feature, but the app does now store limited behavioral analytics and communication data, so older wording that implied "no behavioral data" is no longer accurate.
 
@@ -104,17 +120,17 @@ Disciplinary data is also not modeled as a dedicated feature, but the app does n
 
 Enterprise accounts add another layer of admin and billing PII:
 
-| Data Type | Source Table(s) | Classification | Notes |
-|-----------|-----------------|----------------|-------|
-| Billing contact email | `enterprises` | Direct identifier | Enterprise billing contact |
-| Admin invite emails | `enterprise_invites` | Direct identifier | Enterprise onboarding |
-| Enterprise role assignments | `user_enterprise_roles` | Indirect identifier | Links user identity to enterprise privileges |
-| Enterprise audit logs | `enterprise_audit_logs` | Sensitive admin metadata | Includes actor email, IP, user agent, action metadata |
-| Record access log | `data_access_log` | Sensitive audit metadata | Per-resource access telemetry for FERPA / NY Ed Law 2-d; raw IPs hashed (`20261012030000_hash_existing_raw_ips.sql`) |
-| Incident log | `breach_incidents` | Sensitive incident metadata | Discovery / containment / resolution timestamps, notification log (backs `Incident_Response_Runbook.md`) |
-| User agreement log | `user_agreements` | Consent/version metadata | ToS / Privacy / DSA version acceptance per user |
+| Data Type                   | Source Table(s)         | Classification              | Notes                                                                                                                |
+| --------------------------- | ----------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Billing contact email       | `enterprises`           | Direct identifier           | Enterprise billing contact                                                                                           |
+| Admin invite emails         | `enterprise_invites`    | Direct identifier           | Enterprise onboarding                                                                                                |
+| Enterprise role assignments | `user_enterprise_roles` | Indirect identifier         | Links user identity to enterprise privileges                                                                         |
+| Enterprise audit logs       | `enterprise_audit_logs` | Sensitive admin metadata    | Includes actor email, IP, user agent, action metadata                                                                |
+| Record access log           | `data_access_log`       | Sensitive audit metadata    | Per-resource access telemetry for FERPA / NY Ed Law 2-d; raw IPs hashed (`20261012030000_hash_existing_raw_ips.sql`) |
+| Incident log                | `breach_incidents`      | Sensitive incident metadata | Discovery / containment / resolution timestamps, notification log (backs `Incident_Response_Runbook.md`)             |
+| User agreement log          | `user_agreements`       | Consent/version metadata    | ToS / Privacy / DSA version acceptance per user                                                                      |
 
-Current retention guidance is no longer "undefined." The repo includes audit-log retention work in `supabase/migrations/20260501110000_audit_log_retention.sql`, so future compliance docs should describe the implemented retention behavior instead of calling it unbounded.
+Retention is table-specific. The repo has retention RPC/cron work for enterprise and data-access logs in `supabase/migrations/20260501110000_audit_log_retention.sql` and related migrations; `ai_audit_log` has a 90-day expiry default but no AI-specific purge route. Future compliance docs must name the table and enforcement path instead of describing all audit data as uniformly retained or purged.
 
 ---
 
@@ -134,16 +150,16 @@ Even without grades or transcripts, the platform still handles education-adjacen
 
 ## Security Controls Present in the App
 
-| Control | Status | Implementation |
-|---------|--------|----------------|
-| Encryption at rest | Active | Supabase/PostgreSQL managed storage |
-| Encryption in transit | Active | HTTPS/TLS |
-| Row-Level Security | Active | Supabase RLS policies across product tables |
-| Role-based access control | Active | Org and enterprise role helpers in `src/lib/auth/` |
-| Input validation | Active | Zod schemas in `src/lib/schemas/` |
-| Rate limiting | Active | `src/lib/security/rate-limit.ts` and related helpers |
-| Data export | Active | `src/app/api/user/export-data/route.ts` |
-| Account deletion | Active | `src/app/api/user/delete-account/route.ts` |
+| Control                   | Status | Implementation                                       |
+| ------------------------- | ------ | ---------------------------------------------------- |
+| Encryption at rest        | Active | Supabase/PostgreSQL managed storage                  |
+| Encryption in transit     | Active | HTTPS/TLS                                            |
+| Row-Level Security        | Active | Supabase RLS policies across product tables          |
+| Role-based access control | Active | Org and enterprise role helpers in `src/lib/auth/`   |
+| Input validation          | Active | Zod schemas in `src/lib/schemas/`                    |
+| Rate limiting             | Active | `src/lib/security/rate-limit.ts` and related helpers |
+| Data export               | Active | `src/app/api/user/export-data/route.ts`              |
+| Account deletion          | Active | `src/app/api/user/delete-account/route.ts`           |
 
 ---
 

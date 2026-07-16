@@ -198,6 +198,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - run: bun run validate:okf
+      - run: bun run gen:db-okf -- --check
 
   build:
     name: Build
@@ -206,7 +207,7 @@ jobs:
     env:
       # CI builds skip Stripe price-ID validation — we're verifying the app
       # compiles, not that prod Stripe configuration is present.
-      SKIP_STRIPE_VALIDATION: 'true'
+      SKIP_STRIPE_VALIDATION: "true"
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@v4

@@ -2,9 +2,9 @@
 type: db-table
 title: "organization_donations"
 description: "Postgres table `organization_donations`: 17 columns. References events, organizations."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, organization]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # organization_donations

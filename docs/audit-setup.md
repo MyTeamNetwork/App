@@ -2,7 +2,7 @@
 
 ## Current Status
 
-The repository still contains audit helper scripts under `scripts/audit/` and audit-specific environment variables in `playwright.config.ts`, but the old `npm run audit:*` wrappers are no longer present in `package.json`.
+The repository still contains audit helper scripts under `scripts/audit/` and audit-specific environment variables in `playwright.config.ts`, but the old `audit:*` wrappers are no longer present in `package.json`.
 
 The Playwright config also still defines an `audit-crawler` project, but there is no committed `tests/audit/` suite at the moment.
 
@@ -12,13 +12,13 @@ The Playwright config also still defines an `audit-crawler` project, but there i
 
 The 2025-era "full site audit crawler" pattern is obsolete. Current practice is to split audit concerns into narrow, CI-integrated tools:
 
-| Concern | Tool | Scope |
-|---|---|---|
-| Accessibility | [`@axe-core/playwright`](https://playwright.dev/docs/accessibility-testing) in the existing `e2e` project | Assert zero violations on ~20 critical paths; run on every PR |
-| Broken links | [`lychee`](https://github.com/lycheeverse/lychee) or [`linkinator`](https://github.com/JustinBeckwith/linkinator) | Nightly job against staging |
-| Performance / SEO | [Lighthouse CI](https://github.com/GoogleChrome/lighthouse-ci) | Score-budget per critical route, PR gate |
-| Backend data integrity | `scripts/audit/backend-audit.js` | Weekly cron; eventually moves to `scripts/ops/` |
-| Static route inventory | `scripts/audit/static-routes.js` | Sitemap generation; keep |
+| Concern                | Tool                                                                                                              | Scope                                                         |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Accessibility          | [`@axe-core/playwright`](https://playwright.dev/docs/accessibility-testing) in the existing `e2e` project         | Assert zero violations on ~20 critical paths; run on every PR |
+| Broken links           | [`lychee`](https://github.com/lycheeverse/lychee) or [`linkinator`](https://github.com/JustinBeckwith/linkinator) | Nightly job against staging                                   |
+| Performance / SEO      | [Lighthouse CI](https://github.com/GoogleChrome/lighthouse-ci)                                                    | Score-budget per critical route, PR gate                      |
+| Backend data integrity | `scripts/audit/backend-audit.js`                                                                                  | Weekly cron; eventually moves to `scripts/ops/`               |
+| Static route inventory | `scripts/audit/static-routes.js`                                                                                  | Sitemap generation; keep                                      |
 
 Deferred decision: either restore a thin `tests/audit/` suite that just wires up axe-core on a handful of routes, or drop the `audit-crawler` Playwright project entirely. Until that lands, the section below describes the remaining manual workflow.
 

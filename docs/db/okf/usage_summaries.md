@@ -2,9 +2,9 @@
 type: db-table
 title: "usage_summaries"
 description: "Postgres table `usage_summaries`: 12 columns. References organizations."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # usage_summaries

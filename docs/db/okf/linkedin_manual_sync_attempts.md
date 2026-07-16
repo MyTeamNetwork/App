@@ -2,9 +2,9 @@
 type: db-table
 title: "linkedin_manual_sync_attempts"
 description: "Postgres table `linkedin_manual_sync_attempts`: 8 columns. No outbound foreign keys."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, linkedin]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # linkedin_manual_sync_attempts

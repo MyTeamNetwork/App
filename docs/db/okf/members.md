@@ -1,15 +1,15 @@
 ---
 type: db-table
 title: "members"
-description: "Postgres table `members`: 30 columns. References organizations."
-resource: /apps/web/src/types/database.ts
+description: "Postgres table `members`: 31 columns. References organizations."
+resource: /packages/types/src/database.ts
 tags: [db, schema]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # members
 
-Postgres table `members`: 30 columns. References organizations.
+Postgres table `members`: 31 columns. References organizations.
 
 ## Columns
 
@@ -35,6 +35,7 @@ Postgres table `members`: 30 columns. References organizations.
 | `last_name` | `string` | no |
 | `linkedin_url` | `string \| null` | yes |
 | `major` | `string \| null` | yes |
+| `open_to_networking` | `boolean` | no |
 | `organization_id` | `string` | no |
 | `photo_url` | `string \| null` | yes |
 | `role` | `string \| null` | yes |

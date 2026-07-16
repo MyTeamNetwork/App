@@ -2,9 +2,9 @@
 type: db-table
 title: "mentorship_meetings"
 description: "Postgres table `mentorship_meetings`: 15 columns. References mentorship_pairs, organizations."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, mentorship]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # mentorship_meetings

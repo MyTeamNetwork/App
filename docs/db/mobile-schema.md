@@ -2,9 +2,9 @@
 
 **Scope:** The database surface specific to the Expo / React Native client (`apps/mobile/`) — push notifications, iOS Live Activities, Apple Wallet passes, and web→mobile auth handoff — plus the tables the mobile client reads/writes directly.
 
-**Source of truth:** `apps/web/src/types/database.ts`. Per-table column dumps live in `docs/db/okf/*.md`. This doc is hand-maintained and summarized in [`schema-audit.md`](./schema-audit.md).
+**Source of truth:** `packages/types/src/database.ts` (`apps/web/src/types/database.ts` is only a compatibility re-export). Per-table column dumps live in `docs/db/okf/*.md`. This doc is hand-maintained and summarized in [`schema-audit.md`](./schema-audit.md).
 
-> **Freshness note.** `wallet_pass_registrations` (migration `20261206000001`) is documented here from its migration but is missing from the generated `database.ts`/OKF index (types not regenerated). Run `gen:types` then `bun run gen:db-okf` to close that gap. All other tables below have OKF docs.
+> **Freshness note.** Verified July 12, 2026: `wallet_pass_registrations` remains a migration-only Phase 4 placeholder and is not present in `packages/types/src/database.ts` or the OKF index because no application path uses it yet. All other tables below have generated OKF docs. Regenerate with `bun run gen:types` followed by `bun run gen:db-okf` after schema changes.
 
 ---
 
@@ -26,7 +26,7 @@ One row per running ActivityKit Live Activity (lock-screen / Dynamic Island even
 
 ### `wallet_pass_registrations` — Apple Wallet (PassKit) device registrations _(Phase 4 — not yet wired)_
 
-Intended to hold PassKit web-service registrations for push-update of installed `.pkpass` passes. Migration `20261206000001`. _(Not yet in `database.ts`/OKF.)_
+Intended to hold PassKit web-service registrations for push-update of installed `.pkpass` passes. Migration `20261206000001`. _(Not yet in `packages/types/src/database.ts`/OKF.)_
 
 > **Status:** This table is a **forward placeholder**. The migration comment states it is "stored now so Phase 4 can ship without a separate migration window." As of this writing **no application code reads or writes it** — there are no `/api/wallet/v1/devices/...` PassKit registration endpoints and no pass-update push path in `apps/web`. The only _live_ wallet feature is the one-way `.pkpass` download (see Client path below). Treat the registration/push flow below as planned, not implemented.
 

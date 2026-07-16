@@ -2,9 +2,9 @@
 type: db-table
 title: "breach_incidents"
 description: "Postgres table `breach_incidents`: 12 columns. No outbound foreign keys."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # breach_incidents

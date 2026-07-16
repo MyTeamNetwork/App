@@ -2,9 +2,9 @@
 type: db-table
 title: "chat_form_responses"
 description: "Postgres table `chat_form_responses`: 7 columns. References chat_groups, chat_messages, organizations."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, chat]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # chat_form_responses

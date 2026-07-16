@@ -2,9 +2,9 @@
 type: db-table
 title: "ai_audit_log"
 description: "Postgres table `ai_audit_log`: 33 columns. References ai_messages, ai_threads."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, ai]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # ai_audit_log

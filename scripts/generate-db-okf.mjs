@@ -4,7 +4,7 @@
  * generate-db-okf.mjs
  *
  * Deterministic generator for the database-schema OKF (Open Knowledge Format)
- * bundle. Parses `apps/web/src/types/database.ts` (the Supabase-generated type
+ * bundle. Parses `packages/types/src/database.ts` (the Supabase-generated type
  * source of truth) and emits one markdown doc per public table into
  * `docs/db/okf/`, plus an `index.md`. Each doc carries OKF frontmatter and the
  * intra-bundle markdown links between FK-related tables form the OKF graph.
@@ -36,9 +36,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
-const DATABASE_TS = join(REPO_ROOT, "apps/web/src/types/database.ts");
+const DATABASE_TS = join(REPO_ROOT, "packages/types/src/database.ts");
 const OUT_DIR = join(REPO_ROOT, "docs/db/okf");
-const RESOURCE_PATH = "/apps/web/src/types/database.ts";
+const RESOURCE_PATH = "/packages/types/src/database.ts";
 
 // Fixed default so output is reproducible when no --timestamp is passed.
 const DEFAULT_TIMESTAMP = "2026-01-01T00:00:00Z";
@@ -87,8 +87,9 @@ function isValidIso(value) {
  * Returns the substring strictly between the matching braces.
  */
 function sliceBracedSection(source, sectionName) {
-  // Match the section header at 4-space indent: `    Tables: {`
-  const header = new RegExp(`\\n    ${sectionName}: \\{\\n`);
+  // Match the section header inside the public schema object so the
+  // graphql_public.Tables section cannot be mistaken for public.Tables.
+  const header = new RegExp(`\\n  public: \\{\\n    ${sectionName}: \\{\\n`);
   const headerMatch = header.exec(source);
   if (!headerMatch) {
     throw new Error(`Could not locate "${sectionName}:" section in database.ts`);
@@ -383,6 +384,10 @@ function renderIndex(tables, timestamp) {
       "links form the OKF graph. Regenerate with `bun run gen:db-okf`."
   );
   lines.push("");
+  lines.push(
+    "For runtime AI behavior and agent-facing codemaps, see the [AI Agent Knowledge Bundle](/docs/agent/index.md)."
+  );
+  lines.push("");
   lines.push("## Tables");
   lines.push("");
   for (const table of tables) {
@@ -420,7 +425,7 @@ function readFrontmatter(content) {
  * intra-bundle markdown link resolves to a file in the bundle. Throws on the
  * first inconsistency; returns a summary on success.
  */
-function assertBundleConsistent(dir) {
+function assertBundleConsistent(dir, expectedTables = null) {
   if (!existsSync(dir)) {
     throw new Error(`Bundle directory does not exist: ${dir}`);
   }
@@ -429,6 +434,17 @@ function assertBundleConsistent(dir) {
     throw new Error(`Bundle directory has no markdown docs: ${dir}`);
   }
   const present = new Set(files);
+  if (expectedTables) {
+    const expected = new Set(["index.md", ...expectedTables.map((table) => `${table.name}.md`)]);
+    const missing = [...expected].filter((file) => !present.has(file));
+    const stale = [...present].filter((file) => !expected.has(file));
+    if (missing.length > 0 || stale.length > 0) {
+      const details = [];
+      if (missing.length > 0) details.push(`missing: ${missing.join(", ")}`);
+      if (stale.length > 0) details.push(`stale: ${stale.join(", ")}`);
+      throw new Error(`Bundle does not match ${DATABASE_TS}: ${details.join("; ")}`);
+    }
+  }
   const linkRe = /\]\(\.\/([^)]+\.md)\)/g;
   let checkedLinks = 0;
 
@@ -452,6 +468,9 @@ function assertBundleConsistent(dir) {
         `Incomplete frontmatter (need title/description/resource/timestamp) in ${file}`
       );
     }
+    if (fm.resource !== RESOURCE_PATH) {
+      throw new Error(`Unexpected resource in ${file}: ${fm.resource} (expected ${RESOURCE_PATH})`);
+    }
     let lm;
     linkRe.lastIndex = 0;
     while ((lm = linkRe.exec(content)) !== null) {
@@ -473,7 +492,9 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
 
   if (args.check) {
-    const summary = assertBundleConsistent(OUT_DIR);
+    const source = readFileSync(DATABASE_TS, "utf8");
+    const tables = parseDatabase(source);
+    const summary = assertBundleConsistent(OUT_DIR, tables);
     console.log(
       `[gen:db-okf] check OK — ${summary.docCount} docs, ${summary.checkedLinks} intra-bundle links resolved`
     );
@@ -519,7 +540,7 @@ function main() {
   writeFileSync(join(OUT_DIR, "index.md"), renderIndex(tables, args.timestamp), "utf8");
 
   // Inline self-consistency check on what we just wrote.
-  const summary = assertBundleConsistent(OUT_DIR);
+  const summary = assertBundleConsistent(OUT_DIR, tables);
 
   const totalCols = tables.reduce((sum, t) => sum + t.columns.length, 0);
   console.log(

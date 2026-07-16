@@ -44,34 +44,34 @@ Hit-rate is observable via two channels:
 
 ### Source
 
-| File | Purpose | Key Exports (line) |
-|---|---|---|
-| `src/lib/ai/semantic-cache-utils.ts` | Pure functions + centralized cache-key contract | `normalizePrompt`, `hashPrompt`, `buildPermissionScopeKey`, `buildSemanticCacheKeyParts`, `checkCacheEligibility`, `getCacheExpiresAt`, `CACHE_CONTRACT_VERSION`, `CACHE_KEY_SALT`, `CACHE_TTL_HOURS` |
-| `src/lib/ai/turn-execution-policy.ts` | Internal policy gate deciding whether cache lookup/write is allowed at all | `buildTurnExecutionPolicy`, `TurnExecutionPolicy` |
-| `src/lib/ai/semantic-cache.ts` | DB lookup/write via Supabase service client | `lookupSemanticCache`, `writeCacheEntry`, `CacheHit`, `CacheLookupResult`, `CacheWriteResult` |
-| `src/lib/ai/sse.ts` | SSE encoding, stream factory, `CacheStatus` type | `CacheStatus` type (L1), `SSEEvent` type (L10), `encodeSSE` (L32), `createSSEStream` (L36), `SSE_HEADERS` (L25) |
-| `src/lib/ai/audit.ts` | Audit logging with cache columns | `logAiRequest` (L34) — writes `cache_status`, `cache_entry_id`, `cache_bypass_reason` to `ai_audit_log` |
-| `src/lib/ai/context-builder.ts` | Prompt context assembly, including `shared_static` mode for cacheable misses | `buildPromptContext` (L265), `buildSystemPrompt` (L253), `buildUntrustedOrgContextMessage` (L258) |
-| `src/lib/schemas/ai-assistant.ts` | Request validation and cache alias normalization | `sendMessageSchema` (L25), `cacheEligibilitySchema` (L54) |
-| `src/app/api/ai/[orgId]/chat/route.ts` | Orchestration — the POST handler wires everything together | `POST` (L25) — eligibility check, cache lookup, SSE stream, cache write on miss |
-| `src/app/api/cron/ai-cache-purge/route.ts` | Hourly cron endpoint | `GET` — loops `purge_expired_ai_semantic_cache()` until a partial batch or the 5,000-row cap |
+| File                                       | Purpose                                                                      | Key Exports (line)                                                                                                                                                                                    |
+| ------------------------------------------ | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/ai/semantic-cache-utils.ts`       | Pure functions + centralized cache-key contract                              | `normalizePrompt`, `hashPrompt`, `buildPermissionScopeKey`, `buildSemanticCacheKeyParts`, `checkCacheEligibility`, `getCacheExpiresAt`, `CACHE_CONTRACT_VERSION`, `CACHE_KEY_SALT`, `CACHE_TTL_HOURS` |
+| `src/lib/ai/turn-execution-policy.ts`      | Internal policy gate deciding whether cache lookup/write is allowed at all   | `buildTurnExecutionPolicy`, `TurnExecutionPolicy`                                                                                                                                                     |
+| `src/lib/ai/semantic-cache.ts`             | DB lookup/write via Supabase service client                                  | `lookupSemanticCache`, `writeCacheEntry`, `CacheHit`, `CacheLookupResult`, `CacheWriteResult`                                                                                                         |
+| `src/lib/ai/sse.ts`                        | SSE encoding, stream factory, `CacheStatus` type                             | `CacheStatus` type (L1), `SSEEvent` type (L10), `encodeSSE` (L32), `createSSEStream` (L36), `SSE_HEADERS` (L25)                                                                                       |
+| `src/lib/ai/audit.ts`                      | Audit logging with cache columns                                             | `logAiRequest` (L34) — writes `cache_status`, `cache_entry_id`, `cache_bypass_reason` to `ai_audit_log`                                                                                               |
+| `src/lib/ai/context-builder.ts`            | Prompt context assembly, including `shared_static` mode for cacheable misses | `buildPromptContext` (L265), `buildSystemPrompt` (L253), `buildUntrustedOrgContextMessage` (L258)                                                                                                     |
+| `src/lib/schemas/ai-assistant.ts`          | Request validation and cache alias normalization                             | `sendMessageSchema` (L25), `cacheEligibilitySchema` (L54)                                                                                                                                             |
+| `src/app/api/ai/[orgId]/chat/route.ts`     | Orchestration — the POST handler wires everything together                   | `POST` (L25) — eligibility check, cache lookup, SSE stream, cache write on miss                                                                                                                       |
+| `src/app/api/cron/ai-cache-purge/route.ts` | Hourly cron endpoint                                                         | `GET` — loops `purge_expired_ai_semantic_cache()` until a partial batch or the 5,000-row cap                                                                                                          |
 
 ### Schema / Types
 
-| File | Purpose |
-|---|---|
-| `supabase/migrations/20260321100001_ai_semantic_cache.sql` | DDL: table, indexes, purge function, RLS, audit columns |
-| `src/types/database.ts` | Generated Supabase types (includes `ai_semantic_cache` row type) |
+| File                                                       | Purpose                                                          |
+| ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| `supabase/migrations/20260321100001_ai_semantic_cache.sql` | DDL: table, indexes, purge function, RLS, audit columns          |
+| `packages/types/src/database.ts`                           | Generated Supabase types (includes `ai_semantic_cache` row type) |
 
 ### Tests
 
-| File | Cases | Purpose |
-|---|---|---|
-| `tests/ai-semantic-cache.test.ts` | expanded | Unit tests: cache-key helper, salted hashing, eligibility, TTLs, lookup, typed write results |
-| `tests/ai-cache-migration-contract.test.ts` | expanded | Contract tests: migration DDL assertions, audit columns, vector extension, hourly cron schedule |
-| `tests/ai-context-builder.test.ts` | 9 | Context tests: `shared_static` excludes user and mutable org data while preserving organization overview |
-| `tests/routes/ai/chat.test.ts` | 11 (cache) | Route simulation: cache hit/miss/bypass flow, `DISABLE_AI_CACHE`, schema alias validation |
-| `tests/routes/ai/chat-handler.test.ts` | targeted cache coverage | Casual turns skip cache entirely, cacheable static explainers still use `shared_static`, governance-document asks bypass cache as out-of-scope, miss-path writes record `cache_entry_id`, oversized miss-path writes surface skip reasons |
+| File                                        | Cases                   | Purpose                                                                                                                                                                                                                                   |
+| ------------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/ai-semantic-cache.test.ts`           | expanded                | Unit tests: cache-key helper, salted hashing, eligibility, TTLs, lookup, typed write results                                                                                                                                              |
+| `tests/ai-cache-migration-contract.test.ts` | expanded                | Contract tests: migration DDL assertions, audit columns, vector extension, hourly cron schedule                                                                                                                                           |
+| `tests/ai-context-builder.test.ts`          | 9                       | Context tests: `shared_static` excludes user and mutable org data while preserving organization overview                                                                                                                                  |
+| `tests/routes/ai/chat.test.ts`              | 11 (cache)              | Route simulation: cache hit/miss/bypass flow, `DISABLE_AI_CACHE`, schema alias validation                                                                                                                                                 |
+| `tests/routes/ai/chat-handler.test.ts`      | targeted cache coverage | Casual turns skip cache entirely, cacheable static explainers still use `shared_static`, governance-document asks bypass cache as out-of-scope, miss-path writes record `cache_entry_id`, oversized miss-path writes surface skip reasons |
 
 ## Dependency Graph
 
@@ -174,29 +174,29 @@ Vercel Cron (hourly)
 
 ### Table: `ai_semantic_cache`
 
-| Column | Type | Constraints |
-|---|---|---|
-| `id` | `uuid` | PK, `gen_random_uuid()` |
-| `org_id` | `uuid` | NOT NULL, FK → `organizations(id)` ON DELETE CASCADE |
-| `surface` | `text` | NOT NULL, CHECK IN (`general`, `members`, `analytics`, `events`) |
-| `permission_scope_key` | `text` | NOT NULL |
-| `cache_version` | `integer` | NOT NULL |
-| `prompt_normalized` | `text` | NOT NULL |
-| `prompt_hash` | `text` | NOT NULL |
-| `response_content` | `text` | NOT NULL, CHECK `char_length <= 16000` |
-| `source_message_id` | `uuid` | FK → `ai_messages(id)` ON DELETE SET NULL |
-| `created_at` | `timestamptz` | NOT NULL, DEFAULT `now()` |
-| `expires_at` | `timestamptz` | NOT NULL |
-| `invalidated_at` | `timestamptz` | nullable |
-| `invalidation_reason` | `text` | CHECK `char_length <= 500` |
+| Column                 | Type          | Constraints                                                      |
+| ---------------------- | ------------- | ---------------------------------------------------------------- |
+| `id`                   | `uuid`        | PK, `gen_random_uuid()`                                          |
+| `org_id`               | `uuid`        | NOT NULL, FK → `organizations(id)` ON DELETE CASCADE             |
+| `surface`              | `text`        | NOT NULL, CHECK IN (`general`, `members`, `analytics`, `events`) |
+| `permission_scope_key` | `text`        | NOT NULL                                                         |
+| `cache_version`        | `integer`     | NOT NULL                                                         |
+| `prompt_normalized`    | `text`        | NOT NULL                                                         |
+| `prompt_hash`          | `text`        | NOT NULL                                                         |
+| `response_content`     | `text`        | NOT NULL, CHECK `char_length <= 16000`                           |
+| `source_message_id`    | `uuid`        | FK → `ai_messages(id)` ON DELETE SET NULL                        |
+| `created_at`           | `timestamptz` | NOT NULL, DEFAULT `now()`                                        |
+| `expires_at`           | `timestamptz` | NOT NULL                                                         |
+| `invalidated_at`       | `timestamptz` | nullable                                                         |
+| `invalidation_reason`  | `text`        | CHECK `char_length <= 500`                                       |
 
 ### Indexes
 
-| Index | Columns | Condition | Purpose |
-|---|---|---|---|
-| `idx_ai_semantic_cache_unique_key` (UNIQUE) | `(org_id, surface, permission_scope_key, cache_version, prompt_hash)` | `WHERE invalidated_at IS NULL` | Exact lookup + concurrent-write dedup |
-| `idx_ai_semantic_cache_expiry` | `(expires_at)` | `WHERE invalidated_at IS NULL` | TTL filtering on lookups |
-| `idx_ai_semantic_cache_invalidated_at` | `(invalidated_at)` | `WHERE invalidated_at IS NOT NULL` | Purge scan optimization |
+| Index                                       | Columns                                                               | Condition                          | Purpose                               |
+| ------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------- | ------------------------------------- |
+| `idx_ai_semantic_cache_unique_key` (UNIQUE) | `(org_id, surface, permission_scope_key, cache_version, prompt_hash)` | `WHERE invalidated_at IS NULL`     | Exact lookup + concurrent-write dedup |
+| `idx_ai_semantic_cache_expiry`              | `(expires_at)`                                                        | `WHERE invalidated_at IS NULL`     | TTL filtering on lookups              |
+| `idx_ai_semantic_cache_invalidated_at`      | `(invalidated_at)`                                                    | `WHERE invalidated_at IS NOT NULL` | Purge scan optimization               |
 
 ### RLS
 
@@ -211,28 +211,28 @@ RLS enabled, **no policies** — service-role only access. The `service_role` ke
 
 ### Audit columns added to `ai_audit_log`
 
-| Column | Type |
-|---|---|
-| `cache_status` | `text` |
-| `cache_entry_id` | `uuid` |
+| Column                | Type   |
+| --------------------- | ------ |
+| `cache_status`        | `text` |
+| `cache_entry_id`      | `uuid` |
 | `cache_bypass_reason` | `text` |
 
 ## Configuration
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `DISABLE_AI_CACHE` | `undefined` | Set to `"true"` to disable cache (kill switch). Checked in route handler (L31). |
-| `AWS_REGION` | (required) | Bedrock region (config signal); if unset, returns config-error message (no cache write attempted). IAM credentials via the standard AWS provider chain |
-| `CRON_SECRET` | (required) | Auth header for cron purge endpoint |
+| Variable           | Default     | Purpose                                                                                                                                                |
+| ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DISABLE_AI_CACHE` | `undefined` | Set to `"true"` to disable cache (kill switch). Checked in route handler (L31).                                                                        |
+| `AWS_REGION`       | (required)  | Bedrock region (config signal); if unset, returns config-error message (no cache write attempted). IAM credentials via the standard AWS provider chain |
+| `CRON_SECRET`      | (required)  | Auth header for cron purge endpoint                                                                                                                    |
 
 ### TTLs (in `CACHE_TTL_HOURS`)
 
-| Surface | TTL |
-|---|---|
-| `general` | 12 hours |
-| `members` | 4 hours (future-facing; not cache-eligible in v1) |
+| Surface     | TTL                                               |
+| ----------- | ------------------------------------------------- |
+| `general`   | 12 hours                                          |
+| `members`   | 4 hours (future-facing; not cache-eligible in v1) |
 | `analytics` | 2 hours (future-facing; not cache-eligible in v1) |
-| `events` | 4 hours (future-facing; not cache-eligible in v1) |
+| `events`    | 4 hours (future-facing; not cache-eligible in v1) |
 
 ### Cache Version
 
@@ -260,10 +260,10 @@ Additional ineligibility from the pure helper: non-`general` surfaces, messages 
 
 ## Test Coverage
 
-| Test File | What It Covers |
-|---|---|
-| `tests/ai-semantic-cache.test.ts` | Salted hashing, cache-key helper output, eligibility rules, 12h general TTL, lookup behavior, and typed write results (`inserted`, `duplicate`, `skipped_too_large`, `error`). |
-| `tests/ai-cache-migration-contract.test.ts` | RLS enabled, no user-facing policies, unique index columns, expiry index, invalidated_at index, purge function exists, search_path lock, role grants, batch limit, audit columns (3), vector extension, response_content constraint, hourly `vercel.json` cron schedule. |
-| `tests/ai-context-builder.test.ts` (9 cases) | Context construction coverage, including `shared_static` mode omitting current user, counts, events, announcements, and donation sections while preserving organization overview. |
+| Test File                                       | What It Covers                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/ai-semantic-cache.test.ts`               | Salted hashing, cache-key helper output, eligibility rules, 12h general TTL, lookup behavior, and typed write results (`inserted`, `duplicate`, `skipped_too_large`, `error`).                                                                                                                                                                        |
+| `tests/ai-cache-migration-contract.test.ts`     | RLS enabled, no user-facing policies, unique index columns, expiry index, invalidated_at index, purge function exists, search_path lock, role grants, batch limit, audit columns (3), vector extension, response_content constraint, hourly `vercel.json` cron schedule.                                                                              |
+| `tests/ai-context-builder.test.ts` (9 cases)    | Context construction coverage, including `shared_static` mode omitting current user, counts, events, announcements, and donation sections while preserving organization overview.                                                                                                                                                                     |
 | `tests/routes/ai/chat.test.ts` (11 cache cases) | End-to-end simulation: cache hit returns cached content, miss falls through to live path + write, bypass-request handling, threadId bypass, temporal marker bypass, non-general surface ineligible, `DISABLE_AI_CACHE=true` disablement, write-after-miss-then-hit round-trip, `bypass_cache` schema alias normalization, mismatched alias rejection. |
-| `tests/routes/ai/chat-handler.test.ts` | Handler coverage for cache-eligible turns skipping RAG, miss-path inserted `cache_entry_id`, and oversize skip metadata. |
+| `tests/routes/ai/chat-handler.test.ts`          | Handler coverage for cache-eligible turns skipping RAG, miss-path inserted `cache_entry_id`, and oversize skip metadata.                                                                                                                                                                                                                              |

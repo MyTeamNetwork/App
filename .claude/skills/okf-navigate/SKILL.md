@@ -10,7 +10,7 @@ docs, each with YAML frontmatter, cross-linked into a graph. Two bundles exist:
 
 - `docs/agent/` — the AI/assistant knowledge bundle (start at `docs/agent/index.md`).
 - `docs/db/okf/` — the database schema bundle: one `db-table` doc per Postgres
-  table, generated from `apps/web/src/types/database.ts` by
+  table, generated from `packages/types/src/database.ts` by
   `scripts/generate-db-okf.mjs` (`bun run gen:db-okf`).
 
 Each doc's frontmatter carries: `type` (e.g. `index`, `db-table`), `title`,
@@ -32,12 +32,13 @@ Each doc's frontmatter carries: `type` (e.g. `index`, `db-table`), `title`,
 
 3. **Follow each doc's `resource:` field to jump straight to the code.** The
    `resource` value is a repo-relative source path (e.g.
-   `/apps/web/src/types/database.ts`). Open that file directly rather than
+   `/packages/types/src/database.ts`). Open that file directly rather than
    searching for where a table or module is defined.
 
 4. **Use the markdown cross-links as a graph to traverse related concepts.**
    In a `db-table` doc, the `## Related tables` section links to the docs of the
-   tables it references via foreign keys (`[organizations](./organizations.md)`).
+   tables it references via foreign keys (for example,
+   `[organizations](/docs/db/okf/organizations.md)`).
    Follow those links to walk the schema graph — e.g. from `chat_group_members`
    to `chat_groups`, `organizations`, and `users` — to understand how data is
    joined before you write a query or a migration. FK targets that are database
@@ -52,4 +53,6 @@ Each doc's frontmatter carries: `type` (e.g. `index`, `db-table`), `title`,
   links to map the foreign-key neighborhood of the tables you touch.
 
 The bundles are committed artifacts; if `docs/db/okf/` looks stale or empty,
-regenerate it with `bun run gen:db-okf` (deterministic, build-time only).
+regenerate it with `bun run gen:db-okf` and verify it with
+`bun run gen:db-okf -- --check` plus `bun run validate:okf` (deterministic,
+build-time only).

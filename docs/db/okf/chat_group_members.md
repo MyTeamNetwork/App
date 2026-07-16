@@ -2,9 +2,9 @@
 type: db-table
 title: "chat_group_members"
 description: "Postgres table `chat_group_members`: 9 columns. References chat_groups, organizations, users."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, chat]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # chat_group_members

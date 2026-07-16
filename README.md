@@ -5,6 +5,12 @@ TeamNetwork is a multi-tenant Next.js application for organization membership, a
 This repository expects Node.js 22 or newer for the built-in `fs.globSync`
 APIs used by the test discovery scripts.
 
+Install the workspace dependencies with Bun 1.3.6 or newer:
+
+```bash
+bun install
+```
+
 Copy `.env.local.example` to `.env.local` and fill in the values your local environment needs:
 
 ```bash
@@ -13,17 +19,17 @@ cp .env.local.example .env.local
 
 Core environment variables:
 
-| Variable | Description |
-|----------|-------------|
-| `NEXT_PUBLIC_SITE_URL` | Canonical application base URL |
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
-| `STRIPE_SECRET_KEY` | Stripe secret API key |
-| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile site key |
-| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile secret key |
+| Variable                             | Description                     |
+| ------------------------------------ | ------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`               | Canonical application base URL  |
+| `NEXT_PUBLIC_SUPABASE_URL`           | Supabase project URL            |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`      | Supabase anonymous key          |
+| `SUPABASE_SERVICE_ROLE_KEY`          | Supabase service role key       |
+| `STRIPE_SECRET_KEY`                  | Stripe secret API key           |
+| `STRIPE_WEBHOOK_SECRET`              | Stripe webhook signing secret   |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key          |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY`     | Cloudflare Turnstile site key   |
+| `TURNSTILE_SECRET_KEY`               | Cloudflare Turnstile secret key |
 
 Captcha uses Cloudflare Turnstile for auth and donation flows. Site key and secret must be configured for production. Register the site's hostname under the widget in the Cloudflare dashboard.
 
@@ -67,27 +73,29 @@ Useful optional variables:
 ## Development
 
 ```bash
-npm run dev
-npm run build
-npm run lint
-npm run test
-npm run test:unit
-npm run test:security
-npm run test:payments
-npm run test:routes
-npm run test:schedules
-npm run test:e2e
-npm run gen:types
+bun run dev
+bun run build
+bun run lint
+bun run test
+bun run --cwd apps/web test:unit
+bun run --cwd apps/web test:security
+bun run --cwd apps/web test:payments
+bun run --cwd apps/web test:routes
+bun run --cwd apps/web test:schedules
+bun run test:e2e
+bun run gen:types
+bun run validate:okf
+bun run gen:db-okf -- --check
 ```
 
-Open [http://localhost:3000](http://localhost:3000) after `npm run dev`.
+Open [http://localhost:3000](http://localhost:3000) after `bun run dev`.
 
 ## Payments Idempotency
 
 - All payment flows store a `payment_attempts` row keyed by `idempotency_key`.
 - Stripe webhooks are deduplicated in `stripe_events`.
 - Clients reuse stable keys so replayed requests return the existing checkout/session result.
-- `npm run test:payments` covers the core idempotency and webhook dedupe paths.
+- `bun run --cwd apps/web test:payments` covers the core idempotency and webhook dedupe paths.
 
 ## Error Reporting
 
@@ -98,7 +106,7 @@ Open [http://localhost:3000](http://localhost:3000) after `npm run dev`.
 
 ## Audit Tooling
 
-The repo still includes audit helpers under `scripts/audit/` plus audit-oriented Playwright configuration, but there are currently no `npm run audit:*` wrappers in `package.json`.
+The repo still includes audit helpers under `scripts/audit/` plus audit-oriented Playwright configuration, but there are currently no `audit:*` wrappers in `package.json`.
 
 Manual entry points:
 

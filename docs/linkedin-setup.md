@@ -11,11 +11,11 @@ This guide covers configuring the LinkedIn OAuth integration for development and
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `LINKEDIN_CLIENT_ID` | Yes | OAuth client ID from LinkedIn app |
-| `LINKEDIN_CLIENT_SECRET` | Yes | OAuth client secret |
-| `LINKEDIN_TOKEN_ENCRYPTION_KEY` | Yes | 64-hex-char key for AES-256-GCM token encryption |
+| Variable                        | Required | Description                                      |
+| ------------------------------- | -------- | ------------------------------------------------ |
+| `LINKEDIN_CLIENT_ID`            | Yes      | OAuth client ID from LinkedIn app                |
+| `LINKEDIN_CLIENT_SECRET`        | Yes      | OAuth client secret                              |
+| `LINKEDIN_TOKEN_ENCRYPTION_KEY` | Yes      | 64-hex-char key for AES-256-GCM token encryption |
 
 Generate the encryption key:
 
@@ -31,17 +31,17 @@ All three variables must be set together. Setting only 1-2 will produce a build 
 
 Register these redirect URIs in the LinkedIn Developer Console for each environment:
 
-| Environment | Redirect URI |
-|---|---|
-| Local dev | `http://localhost:3000/api/linkedin/callback` |
-| Preview/staging | `https://{branch}.vercel.app/api/linkedin/callback` |
-| Production | `https://www.myteamnetwork.com/api/linkedin/callback` |
+| Environment     | Redirect URI                                          |
+| --------------- | ----------------------------------------------------- |
+| Local dev       | `http://localhost:3000/api/linkedin/callback`         |
+| Preview/staging | `https://{branch}.vercel.app/api/linkedin/callback`   |
+| Production      | `https://www.myteamnetwork.com/api/linkedin/callback` |
 
 ## Local Testing
 
 1. Set the 3 env vars in `.env.local`
 2. In the LinkedIn Developer Console, add `http://localhost:3000/api/linkedin/callback` as a redirect URI
-3. Run `npm run dev`
+3. Run `bun run dev`
 4. Navigate to `/settings/connected-accounts` and click **"Connect LinkedIn"**
 5. Authorize in the LinkedIn popup
 6. Verify redirect back to settings with synced profile data
@@ -65,6 +65,7 @@ We do not request `offline_access` (not generally available to standard LinkedIn
 **Does NOT return:** headline, vanity URL, company, connections count. These require the Marketing API or partner-level access.
 
 Other limitations:
+
 - No token revocation endpoint — disconnect deletes the local record only
 - If LinkedIn expires the access token and does not issue a refresh token, the user must reconnect
 
@@ -82,11 +83,11 @@ For clarity during feature reviews, we intentionally do **not** request:
 
 ## API Operations
 
-| Operation | Endpoint | Description |
-|---|---|---|
-| Re-sync | `POST /api/linkedin/sync` | Fetches fresh profile from userinfo endpoint |
-| Disconnect | `POST /api/linkedin/disconnect` | Deletes the DB record (no remote revocation) |
-| Token refresh | Best effort | `getValidLinkedInToken()` refreshes expired access tokens when a refresh token is present. On failure, status is set to `error` and the user is prompted to reconnect. |
+| Operation     | Endpoint                        | Description                                                                                                                                                            |
+| ------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Re-sync       | `POST /api/linkedin/sync`       | Fetches fresh profile from userinfo endpoint                                                                                                                           |
+| Disconnect    | `POST /api/linkedin/disconnect` | Deletes the DB record (no remote revocation)                                                                                                                           |
+| Token refresh | Best effort                     | `getValidLinkedInToken()` refreshes expired access tokens when a refresh token is present. On failure, status is set to `error` and the user is prompted to reconnect. |
 
 ### Error Status
 
@@ -94,15 +95,15 @@ A connection is marked `error` if token refresh fails or profile fetch fails. Re
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| "Missing required environment variable" on connect | Env var not set | Set all 3 LinkedIn env vars |
-| "There is a server configuration issue" | Partial env config | Ensure all 3 vars are set together |
-| Redirect URI mismatch error from LinkedIn | URI not registered | Add exact callback URL in LinkedIn dev console |
-| Connection status shows "error" after a temporary LinkedIn outage | Profile fetch failed transiently | Click **Sync Now** to retry and clear the error state |
-| Connection status shows "error" and sync keeps failing | Token refresh failed, or no refresh token was available after expiry | Reconnect LinkedIn |
-| Profile photo not loading | CSP blocking `media.licdn.com` | Already added to CSP in `next.config.mjs` |
-| Build warning about partial LinkedIn config | Only 1-2 of 3 vars set | Set all 3 or none |
+| Symptom                                                           | Cause                                                                | Fix                                                   |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------- |
+| "Missing required environment variable" on connect                | Env var not set                                                      | Set all 3 LinkedIn env vars                           |
+| "There is a server configuration issue"                           | Partial env config                                                   | Ensure all 3 vars are set together                    |
+| Redirect URI mismatch error from LinkedIn                         | URI not registered                                                   | Add exact callback URL in LinkedIn dev console        |
+| Connection status shows "error" after a temporary LinkedIn outage | Profile fetch failed transiently                                     | Click **Sync Now** to retry and clear the error state |
+| Connection status shows "error" and sync keeps failing            | Token refresh failed, or no refresh token was available after expiry | Reconnect LinkedIn                                    |
+| Profile photo not loading                                         | CSP blocking `media.licdn.com`                                       | Already added to CSP in `next.config.mjs`             |
+| Build warning about partial LinkedIn config                       | Only 1-2 of 3 vars set                                               | Set all 3 or none                                     |
 
 ## Route Architecture
 

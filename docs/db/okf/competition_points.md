@@ -2,9 +2,9 @@
 type: db-table
 title: "competition_points"
 description: "Postgres table `competition_points`: 12 columns. References competition_teams, competitions, members, organizations."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # competition_points

@@ -2,9 +2,9 @@
 type: db-table
 title: "user_onboarding_progress"
 description: "Postgres table `user_onboarding_progress`: 10 columns. References organizations."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, user]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # user_onboarding_progress

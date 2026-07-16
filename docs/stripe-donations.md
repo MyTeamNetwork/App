@@ -21,6 +21,7 @@ stripe listen --forward-connect-to localhost:3000/api/stripe/webhook-connect
 ```
 
 When you run this command, the CLI will output a webhook signing secret like:
+
 ```
 Ready! Your webhook signing secret is whsec_xxxxxxxxxxxxx
 ```
@@ -40,7 +41,7 @@ STRIPE_WEBHOOK_SECRET_CONNECT=whsec_xxxxxxxxxxxxx
 ### 1. Start the development server
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 ### 2. Complete Connect onboarding
@@ -79,11 +80,11 @@ stripe trigger payment_intent.payment_failed
 
 ## Test Cards
 
-| Card Number | Description |
-|-------------|-------------|
+| Card Number           | Description                                    |
+| --------------------- | ---------------------------------------------- |
 | `4242 4242 4242 4242` | Succeeds and immediately processes the payment |
-| `4000 0000 0000 3220` | 3D Secure authentication required |
-| `4000 0000 0000 9995` | Always fails with a decline code |
+| `4000 0000 0000 3220` | 3D Secure authentication required              |
+| `4000 0000 0000 9995` | Always fails with a decline code               |
 
 See [Stripe Testing Documentation](https://stripe.com/docs/testing) for more test cards.
 

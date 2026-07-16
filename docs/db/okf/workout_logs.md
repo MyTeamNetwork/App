@@ -2,9 +2,9 @@
 type: db-table
 title: "workout_logs"
 description: "Postgres table `workout_logs`: 9 columns. References organizations, workouts."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # workout_logs

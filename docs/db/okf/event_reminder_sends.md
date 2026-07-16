@@ -2,9 +2,9 @@
 type: db-table
 title: "event_reminder_sends"
 description: "Postgres table `event_reminder_sends`: 3 columns. References events."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema, event]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # event_reminder_sends

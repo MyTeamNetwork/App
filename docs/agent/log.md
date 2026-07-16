@@ -3,12 +3,19 @@ type: log
 title: OKF Bundle History
 description: Reserved change history for the TeamNetwork AI agent OKF bundle — when documents were added, restructured, and when resource paths drifted or were repaired.
 tags: [ai, okf, history, changelog]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-12T00:00:00Z
 ---
 
 # OKF Bundle History
 
 A reserved history file for the `docs/agent/` Open Knowledge Format bundle. Entries are grouped by ISO date, newest first. This log exists so that drift in the bundle (renamed source files, restructured docs) leaves a paper trail next to the validator that catches it.
+
+## 2026-07-12
+
+- **Current-state and schema refresh.** Added `current-state.md` as the present-tense agent entrypoint, linked the generated database OKF bundle from `index.md`, and clarified the implementation-versus-production boundary.
+- **Generated-schema source repair.** The database OKF generator now parses `packages/types/src/database.ts` and targets the `public.Tables` section explicitly. `apps/web/src/types/database.ts` is a compatibility shim, not the generated source. The generator check now detects missing/stale table docs and unexpected resource paths.
+- **Bundle coverage.** Regenerated `docs/db/okf/` from the current type dump and expanded `validate:okf` to validate both the AI and database OKF bundles.
+- **AI/schema drift corrections.** Updated stale Next.js/command references, corrected the `knowledge_documents` and `organization_email_domains` status, documented the Google Gemini-compatible embedding boundary, and distinguished the `ai_audit_log.expires_at` default from an active purge job.
 
 ## 2026-06-17
 

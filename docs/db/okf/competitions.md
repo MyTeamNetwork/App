@@ -2,9 +2,9 @@
 type: db-table
 title: "competitions"
 description: "Postgres table `competitions`: 6 columns. References organizations."
-resource: /apps/web/src/types/database.ts
+resource: /packages/types/src/database.ts
 tags: [db, schema]
-timestamp: 2026-06-17T00:00:00Z
+timestamp: 2026-07-15T00:00:00Z
 ---
 
 # competitions

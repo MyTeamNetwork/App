@@ -7,6 +7,7 @@ Guidance for the Next.js web application (`@teammeet/web`). For monorepo-wide gu
 Run from `apps/web/` (or via `turbo run <task> --filter=@teammeet/web` from the repo root).
 
 ### Development
+
 ```bash
 bun run dev          # Start Next.js dev server at localhost:3000
 bun run build        # Build production application
@@ -22,6 +23,7 @@ Supabase types are generated at the repo root: `bun run gen:types` writes
 From the repo root: `bun dev` (web), `bun run build:web`, `bun run lint`, `bun run typecheck`.
 
 ### Testing
+
 ```bash
 bun run test            # Orphan check + fast suites
 bun run test:unit       # Focused unit/integration suites
@@ -35,6 +37,7 @@ bun run test:e2e        # Playwright end-to-end tests
 Single test file: `node --import ./tests/register-ts-loader.mjs --test tests/your-test.test.ts`.
 
 ### Stripe Webhook Testing (Local)
+
 ```bash
 stripe listen --forward-to localhost:3000/api/stripe/webhook
 stripe listen --forward-connect-to localhost:3000/api/stripe/webhook-connect
@@ -43,6 +46,7 @@ stripe listen --forward-connect-to localhost:3000/api/stripe/webhook-connect
 ## Architecture
 
 ### Tech Stack
+
 - **Framework**: Next.js 15 with App Router (TypeScript, React 18)
 - **Database**: Supabase (PostgreSQL with RLS policies)
 - **Authentication**: Supabase Auth with SSR
@@ -51,10 +55,13 @@ stripe listen --forward-connect-to localhost:3000/api/stripe/webhook-connect
 - **Styling**: Tailwind CSS
 
 ### Multi-Tenant SaaS Architecture
+
 Organizations are first-class entities identified by slugs (e.g., `/[orgSlug]/members`). Middleware validates organization access on every request.
 
 ### Project Structure
+
 Paths below are relative to `apps/web/`.
+
 ```
 src/
 ├── app/                    # Next.js App Router
@@ -86,17 +93,22 @@ tests/                      # Test files (unit, routes/, e2e/, fixtures/)
 Shared monorepo packages consumed via workspace deps: `@teammeet/core`, `@teammeet/types`, `@teammeet/validation`. AI agent docs live at repo-root `docs/agent/`.
 
 ### Supabase Client Wrappers
+
 Use the appropriate wrapper for each context:
+
 - `lib/supabase/server.ts` — Server Components (uses cookies)
 - `lib/supabase/client.ts` — Client Components (browser)
 - `lib/supabase/middleware.ts` — Middleware (edge runtime)
 - `lib/supabase/service.ts` — Admin operations (service role key)
 
 ### Role-Based Access Control
+
 Four roles: **admin** (full access), **active_member** (most features), **alumni** (read-only), **parent** (selected features, requires org flag). Role normalization: `member` → `active_member`, `viewer` → `alumni`.
 
 ### Middleware Request Flow
+
 Every request flows through `src/middleware.ts`:
+
 1. Parse auth cookies and validate JWT
 2. Refresh session if needed
 3. Check if route is public vs. protected
@@ -109,28 +121,35 @@ Public routes: `/`, `/demos`, `/terms`, `/privacy`, `/app/parents-join`, `/auth/
 ## Key Architectural Patterns
 
 ### Payment Idempotency System
+
 Client generates stable `idempotency_key` (localStorage) → server creates `payment_attempts` row with unique constraint → duplicate requests return existing attempt/checkout URL → webhooks deduplicated via `stripe_events(event_id unique)`. States: `initiated`, `processing`, `succeeded`, `failed`. Files: `src/lib/payments/idempotency.ts`, `src/lib/payments/stripe-events.ts`.
 
 ### Soft Delete Pattern
+
 Most tables use `deleted_at` timestamp. Always filter: `.is("deleted_at", null)` when querying.
 
 ### Stripe Connect Donations
+
 Funds route directly to org's connected Stripe account, never touching the app. See `docs/stripe-donations.md` (repo root).
 
 ### Schedule Domain Allowlist & Security
+
 External schedule URLs validated before import to prevent SSRF. Domain statuses: `denied` → `pending` → `active` / `blocked`. Files: `src/lib/schedule-security/allowlist.ts`, `safe-fetch.ts`, `verifyAndEnroll.ts`.
 
 ### AI Agent
-Architecture, pipeline, and feature docs live in repo-root `docs/agent/`, structured as an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) (OKF) bundle. **Start at `docs/agent/index.md`** — it lists every doc by `type` and links into each. Each doc carries YAML frontmatter (`type`, `title`, `description`, `resource`, `tags`, `timestamp`); the `resource` field points at the primary source file the doc describes, so the bundle doubles as a concept → code index (e.g. `falkor-people-graph.md` → `src/lib/falkordb/suggestions.ts`).
+
+Architecture, pipeline, and feature docs live in repo-root `docs/agent/`, structured as an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) (OKF) bundle. **Start at `docs/agent/index.md`** — it lists every doc by `type` and links into each. Each doc carries YAML frontmatter (`type`, `title`, `description`, `resource`, `tags`, `timestamp`); the `resource` field points at the primary source file the doc describes, so the bundle doubles as a concept → code index (for example, `people-graph-suggestions.md` → `apps/web/src/lib/people-graph/suggestions.ts`). Database table navigation starts at `docs/db/okf/index.md` and follows the generated `resource: /packages/types/src/database.ts` links.
 
 When modifying AI agent code (`src/lib/ai/`, `src/app/api/ai/`, `src/app/[orgSlug]/chat/`), update the relevant doc in `docs/agent/` to reflect structural changes, new features, or revised taxonomy. Keep the frontmatter current too: bump `timestamp`, and if a file moves or is renamed, update the `resource` path so the index does not rot. New docs must include valid OKF frontmatter (only `type` is required) and be linked from `index.md`.
 
 ### Schema Validation
+
 Centralized Zod schemas in `src/lib/schemas/` — see `index.ts` for all available domains. Usage: `import { schemaName } from "@/lib/schemas"`. Cross-app schemas live in `@teammeet/validation`.
 
 ## Environment Variables
 
 Required variables validated at build time in `next.config.mjs` — see that file for the complete list. Key optional vars:
+
 - `RESEND_API_KEY` — Real email delivery (falls back to stub logging)
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_TOKEN_ENCRYPTION_KEY` — Google Calendar
 - `APIFY_API_TOKEN`, `APIFY_LINKEDIN_ACTOR_ID`, `APIFY_WEBHOOK_SECRET` — LinkedIn profile enrichment via Apify (async actor runs; results land via the `/api/linkedin/apify-webhook` completion webhook, reconciled by the `enrichment-process` cron)
