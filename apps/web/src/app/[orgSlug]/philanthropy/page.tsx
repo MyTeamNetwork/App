@@ -138,7 +138,7 @@ export default async function PhilanthropyPage({ params, searchParams }: Philant
   const purposeTotals = buildDonationPurposeTotals(donationRows, tDonations("generalSupport"));
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <DonationResultTracker organizationId={org.id} />
       <PageHeader
         title={pageLabel}

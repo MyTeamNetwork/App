@@ -33,7 +33,7 @@ export default async function EditRecordPage({ params }: EditRecordPageProps) {
   if (!record) return notFound();
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Edit Record"
         description="Update record details"

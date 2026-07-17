@@ -72,7 +72,7 @@ export default function NewPhilanthropyEventPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="New Community Event"
         description="Add a volunteer or community service event"

@@ -56,11 +56,11 @@ export function Modal({
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
+        <Dialog.Overlay className="modal-overlay fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <Dialog.Content
             data-testid={dataTestId}
-            className={`relative w-full ${SIZE[size]} max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-border bg-card text-foreground shadow-xl focus:outline-none ${noPadding ? "" : "p-6"} ${className}`}
+            className={`modal-content relative w-full ${SIZE[size]} max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-border bg-card text-foreground shadow-xl focus:outline-none ${noPadding ? "" : "p-6"} ${className}`}
           >
             {noPadding ? (
               <Dialog.Title className="sr-only">{ariaLabel ?? "Dialog"}</Dialog.Title>
@@ -79,7 +79,14 @@ export function Modal({
                 aria-label="Close"
                 className="absolute right-4 top-4 rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
               >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden="true"
+                >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </Dialog.Close>

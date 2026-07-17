@@ -107,7 +107,7 @@ export default function NewExpensePage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Submit Expense"
         description="Request reimbursement for an expense"

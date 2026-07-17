@@ -111,7 +111,7 @@ export default function NewSchedulePage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Add Schedule"
         description="Add a class or academic commitment"

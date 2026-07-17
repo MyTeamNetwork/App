@@ -163,7 +163,7 @@ export default function NewAnnouncementPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={`New ${singularLabel}`}
         description="Share news with your organization"

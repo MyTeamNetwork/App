@@ -169,7 +169,7 @@ export default function NewWorkoutPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={`Post ${singularLabel}`}
         description={`Create a new ${singularLabel.toLowerCase()} for the team`}

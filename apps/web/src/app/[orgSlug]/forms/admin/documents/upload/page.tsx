@@ -112,7 +112,7 @@ export default function UploadDocumentPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Upload Document Form"
         description="Upload a PDF form for members to download and fill out"

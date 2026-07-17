@@ -164,7 +164,7 @@ export default async function AlumniDetailPage({ params }: AlumniDetailPageProps
   const hasSchool = Boolean(alum.major || alum.graduation_year);
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={`${alum.first_name} ${alum.last_name}`}
         backHref={`/${orgSlug}/alumni`}

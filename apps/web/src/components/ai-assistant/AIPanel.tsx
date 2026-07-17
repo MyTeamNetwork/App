@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { X, MessageSquare, List, Sparkles } from "lucide-react";
 import { useAIStream } from "@/hooks/useAIStream";
+import { useDrawerTransition } from "@/hooks/useDrawerTransition";
 import { getAssistantCapabilitySnapshot } from "@/lib/ai/capabilities";
 import { prepareImageUpload } from "@/lib/media/image-preparation";
 import { ASSISTANT_TEMPORARILY_DISABLED } from "@/lib/ai/assistant-availability";
@@ -109,7 +110,10 @@ function getFeatureSegment(pathname: string): string {
   );
 }
 
-function getAssistantScopeLabel(pathname: string, surface: ReturnType<typeof routeToSurface>): string {
+function getAssistantScopeLabel(
+  pathname: string,
+  surface: ReturnType<typeof routeToSurface>
+): string {
   const segment = getFeatureSegment(pathname);
   const isEnterprisePath = pathname.startsWith("/enterprise/");
   if (isEnterprisePath && segment === "alumni") {
@@ -185,11 +189,7 @@ function getStarterPrompts(pathname: string, surface: ReturnType<typeof routeToS
         "Summarize our recent announcements",
       ];
     case "jobs":
-      return [
-        "Open the jobs page",
-        "Take me to create a job posting",
-        "Where do I manage jobs?",
-      ];
+      return ["Open the jobs page", "Take me to create a job posting", "Where do I manage jobs?"];
     case "forms":
       return [
         "Open the forms page",
@@ -220,11 +220,7 @@ function getStarterPrompts(pathname: string, surface: ReturnType<typeof routeToS
         "Suggest a mentor for a member",
       ];
     case "events":
-      return [
-        "What events are coming up?",
-        "Open the new event page",
-        "Show recent events",
-      ];
+      return ["What events are coming up?", "Open the new event page", "Show recent events"];
     case "analytics":
       return [
         "Show contribution trends for the last 90 days",
@@ -307,6 +303,7 @@ async function normalizeScheduleUploadFile(file: File): Promise<File> {
 
 export function AIPanel({ orgId }: AIPanelProps) {
   const { isOpen, closePanel } = useAIPanel();
+  const { mounted, visible } = useDrawerTransition(isOpen);
   const pathname = usePathname();
   const router = useRouter();
   const surface = routeToSurface(pathname);
@@ -351,50 +348,53 @@ export function AIPanel({ orgId }: AIPanelProps) {
     attachmentRef.current = attachment;
   }, [attachment]);
 
-  const deleteUploadedAttachment = useCallback(async (
-    storagePath: string,
-    options?: { keepalive?: boolean }
-  ) => {
-    try {
-      await fetch(`/api/ai/${orgId}/upload-schedule`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storagePath }),
-        keepalive: options?.keepalive ?? false,
-      });
-    } catch {
-      // Deletion failures are non-fatal — the upload is being discarded anyway.
-    }
-  }, [orgId]);
+  const deleteUploadedAttachment = useCallback(
+    async (storagePath: string, options?: { keepalive?: boolean }) => {
+      try {
+        await fetch(`/api/ai/${orgId}/upload-schedule`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ storagePath }),
+          keepalive: options?.keepalive ?? false,
+        });
+      } catch {
+        // Deletion failures are non-fatal — the upload is being discarded anyway.
+      }
+    },
+    [orgId]
+  );
 
-  const clearAttachment = useCallback((options?: {
-    deleteRemote?: boolean;
-    nextAttachment?: AIChatAttachment | null;
-  }) => {
-    const currentAttachment = attachmentRef.current;
-    const nextAttachment = options?.nextAttachment ?? null;
+  const clearAttachment = useCallback(
+    (options?: { deleteRemote?: boolean; nextAttachment?: AIChatAttachment | null }) => {
+      const currentAttachment = attachmentRef.current;
+      const nextAttachment = options?.nextAttachment ?? null;
 
-    attachmentRef.current = nextAttachment;
-    setAttachment(nextAttachment);
-    setAttachmentError(null);
+      attachmentRef.current = nextAttachment;
+      setAttachment(nextAttachment);
+      setAttachmentError(null);
 
-    if (
-      options?.deleteRemote !== false
-      && currentAttachment
-      && currentAttachment.storagePath !== nextAttachment?.storagePath
-    ) {
-      void deleteUploadedAttachment(currentAttachment.storagePath);
-    }
-  }, [deleteUploadedAttachment]);
+      if (
+        options?.deleteRemote !== false &&
+        currentAttachment &&
+        currentAttachment.storagePath !== nextAttachment?.storagePath
+      ) {
+        void deleteUploadedAttachment(currentAttachment.storagePath);
+      }
+    },
+    [deleteUploadedAttachment]
+  );
 
-  useEffect(() => () => {
-    const currentAttachment = attachmentRef.current;
-    if (!currentAttachment) {
-      return;
-    }
+  useEffect(
+    () => () => {
+      const currentAttachment = attachmentRef.current;
+      if (!currentAttachment) {
+        return;
+      }
 
-    void deleteUploadedAttachment(currentAttachment.storagePath, { keepalive: true });
-  }, [deleteUploadedAttachment]);
+      void deleteUploadedAttachment(currentAttachment.storagePath, { keepalive: true });
+    },
+    [deleteUploadedAttachment]
+  );
 
   const loadThreads = useCallback(async () => {
     setThreadsLoading(true);
@@ -468,11 +468,7 @@ export function AIPanel({ orgId }: AIPanelProps) {
   useEffect(() => {
     if (!isOpen || typeof window === "undefined") return;
 
-    const persistedThreadId = readPersistedActiveThreadId(
-      window.localStorage,
-      orgId,
-      surface
-    );
+    const persistedThreadId = readPersistedActiveThreadId(window.localStorage, orgId, surface);
 
     if (persistedThreadId) {
       setActiveThreadId((current) => current ?? persistedThreadId);
@@ -522,47 +518,50 @@ export function AIPanel({ orgId }: AIPanelProps) {
   // Track the last sent content + key so retries of the same message reuse the key
   const idempotencyRef = useRef<RetryRequestIdentity | null>(null);
 
-  const handleAttachFile = useCallback(async (file: File) => {
-    setAttachmentError(null);
-    setAttachmentUploading(true);
+  const handleAttachFile = useCallback(
+    async (file: File) => {
+      setAttachmentError(null);
+      setAttachmentUploading(true);
 
-    try {
-      const normalizedFile = await normalizeScheduleUploadFile(file);
-      const formData = new FormData();
-      formData.set("file", normalizedFile);
+      try {
+        const normalizedFile = await normalizeScheduleUploadFile(file);
+        const formData = new FormData();
+        formData.set("file", normalizedFile);
 
-      const response = await fetch(`/api/ai/${orgId}/upload-schedule`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json().catch(() => ({ error: "Upload failed" }));
+        const response = await fetch(`/api/ai/${orgId}/upload-schedule`, {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json().catch(() => ({ error: "Upload failed" }));
 
-      if (!response.ok) {
-        setAttachmentError(data.error || "Failed to upload schedule file.");
-        return;
+        if (!response.ok) {
+          setAttachmentError(data.error || "Failed to upload schedule file.");
+          return;
+        }
+
+        clearAttachment({
+          deleteRemote: true,
+          nextAttachment: {
+            storagePath: data.storagePath,
+            fileName: data.fileName,
+            mimeType: data.mimeType,
+          },
+        });
+        const defaultPrompt = CSV_MIME_TYPES.has(data.mimeType as AIChatAttachment["mimeType"])
+          ? DEFAULT_CSV_IMPORT_PROMPT
+          : DEFAULT_SCHEDULE_FILE_PROMPT;
+        setDraftInput((current) => (current.trim() ? current : defaultPrompt));
+        clearError();
+      } catch (error) {
+        setAttachmentError(
+          error instanceof Error ? error.message : "Failed to upload schedule file."
+        );
+      } finally {
+        setAttachmentUploading(false);
       }
-
-      clearAttachment({
-        deleteRemote: true,
-        nextAttachment: {
-          storagePath: data.storagePath,
-          fileName: data.fileName,
-          mimeType: data.mimeType,
-        },
-      });
-      const defaultPrompt = CSV_MIME_TYPES.has(data.mimeType as AIChatAttachment["mimeType"])
-        ? DEFAULT_CSV_IMPORT_PROMPT
-        : DEFAULT_SCHEDULE_FILE_PROMPT;
-      setDraftInput((current) => current.trim() ? current : defaultPrompt);
-      clearError();
-    } catch (error) {
-      setAttachmentError(
-        error instanceof Error ? error.message : "Failed to upload schedule file."
-      );
-    } finally {
-      setAttachmentUploading(false);
-    }
-  }, [clearAttachment, clearError, orgId]);
+    },
+    [clearAttachment, clearError, orgId]
+  );
 
   const handleRemoveAttachment = useCallback(() => {
     if (attachmentUploading || isStreaming) return;
@@ -641,60 +640,64 @@ export function AIPanel({ orgId }: AIPanelProps) {
     [activeThreadId, clearAttachment, loadMessages, loadThreads, pathname, sendMessage, surface]
   );
 
-  const handleConfirmPendingAction = useCallback(async (
-    actionId: string,
-    options: { reloadCollections?: boolean; refreshCalendar?: boolean } = {}
-  ) => {
-    const shouldReloadCollections = options.reloadCollections ?? true;
-    const shouldRefreshCalendar = options.refreshCalendar ?? true;
-    setPendingActionBusyIds((prev) => new Set(prev).add(actionId));
-    setPendingActionErrors((prev) => {
-      const next = { ...prev };
-      delete next[actionId];
-      return next;
-    });
-    try {
-      const response = await fetch(
-        `/api/ai/${orgId}/pending-actions/${actionId}/confirm`,
-        { method: "POST" }
-      );
-      const data = await response.json().catch(() => ({ error: "Request failed" }));
-      if (!response.ok) {
-        const message = getPendingActionErrorMessage(data);
-        if (data && typeof data === "object" && (data as { terminal?: unknown }).terminal === true) {
-          setPendingActions((prev) =>
-            prev.map((a) =>
-              a.actionId === actionId
-                ? { ...a, status: "failed", errorMessage: message }
-                : a
-            )
-          );
-          return;
-        }
-        setPendingActionErrors((prev) => ({
-          ...prev,
-          [actionId]: message,
-        }));
-        return;
-      }
-
-      setPendingActions((prev) => prev.filter((a) => a.actionId !== actionId));
-      if (shouldReloadCollections && activeThreadId) {
-        await Promise.all([loadMessages(activeThreadId, { silent: true }), loadThreads()]);
-      }
-      if (shouldRefreshCalendar) {
-        dispatchConfirmRefreshEvents([data]);
-        router.refresh();
-      }
-      return data;
-    } finally {
-      setPendingActionBusyIds((prev) => {
-        const next = new Set(prev);
-        next.delete(actionId);
+  const handleConfirmPendingAction = useCallback(
+    async (
+      actionId: string,
+      options: { reloadCollections?: boolean; refreshCalendar?: boolean } = {}
+    ) => {
+      const shouldReloadCollections = options.reloadCollections ?? true;
+      const shouldRefreshCalendar = options.refreshCalendar ?? true;
+      setPendingActionBusyIds((prev) => new Set(prev).add(actionId));
+      setPendingActionErrors((prev) => {
+        const next = { ...prev };
+        delete next[actionId];
         return next;
       });
-    }
-  }, [activeThreadId, loadMessages, loadThreads, orgId, router]);
+      try {
+        const response = await fetch(`/api/ai/${orgId}/pending-actions/${actionId}/confirm`, {
+          method: "POST",
+        });
+        const data = await response.json().catch(() => ({ error: "Request failed" }));
+        if (!response.ok) {
+          const message = getPendingActionErrorMessage(data);
+          if (
+            data &&
+            typeof data === "object" &&
+            (data as { terminal?: unknown }).terminal === true
+          ) {
+            setPendingActions((prev) =>
+              prev.map((a) =>
+                a.actionId === actionId ? { ...a, status: "failed", errorMessage: message } : a
+              )
+            );
+            return;
+          }
+          setPendingActionErrors((prev) => ({
+            ...prev,
+            [actionId]: message,
+          }));
+          return;
+        }
+
+        setPendingActions((prev) => prev.filter((a) => a.actionId !== actionId));
+        if (shouldReloadCollections && activeThreadId) {
+          await Promise.all([loadMessages(activeThreadId, { silent: true }), loadThreads()]);
+        }
+        if (shouldRefreshCalendar) {
+          dispatchConfirmRefreshEvents([data]);
+          router.refresh();
+        }
+        return data;
+      } finally {
+        setPendingActionBusyIds((prev) => {
+          const next = new Set(prev);
+          next.delete(actionId);
+          return next;
+        });
+      }
+    },
+    [activeThreadId, loadMessages, loadThreads, orgId, router]
+  );
 
   const handleConfirmAllPendingActions = useCallback(async () => {
     const ids = pendingActions
@@ -702,7 +705,10 @@ export function AIPanel({ orgId }: AIPanelProps) {
       .map((a) => a.actionId);
     const results: unknown[] = [];
     for (const id of ids) {
-      const result = await handleConfirmPendingAction(id, { reloadCollections: false, refreshCalendar: false });
+      const result = await handleConfirmPendingAction(id, {
+        reloadCollections: false,
+        refreshCalendar: false,
+      });
       if (result) results.push(result);
     }
     if (activeThreadId) {
@@ -711,38 +717,50 @@ export function AIPanel({ orgId }: AIPanelProps) {
     if (dispatchConfirmRefreshEvents(results)) {
       router.refresh();
     }
-  }, [activeThreadId, handleConfirmPendingAction, loadMessages, loadThreads, pendingActions, router]);
+  }, [
+    activeThreadId,
+    handleConfirmPendingAction,
+    loadMessages,
+    loadThreads,
+    pendingActions,
+    router,
+  ]);
 
-  const handleCancelPendingAction = useCallback(async (actionId: string) => {
-    setPendingActionBusyIds((prev) => new Set(prev).add(actionId));
-    setPendingActionErrors((prev) => {
-      const next = { ...prev };
-      delete next[actionId];
-      return next;
-    });
-    try {
-      const response = await fetch(
-        `/api/ai/${orgId}/pending-actions/${actionId}/cancel`,
-        { method: "POST" }
-      );
-      const data = await response.json().catch(() => ({ error: "Request failed" }));
-      if (!response.ok) {
-        setPendingActionErrors((prev) => ({ ...prev, [actionId]: data.error || "Failed to cancel" }));
-        return;
-      }
-
-      setPendingActions((prev) => prev.filter((a) => a.actionId !== actionId));
-      if (activeThreadId) {
-        await Promise.all([loadMessages(activeThreadId, { silent: true }), loadThreads()]);
-      }
-    } finally {
-      setPendingActionBusyIds((prev) => {
-        const next = new Set(prev);
-        next.delete(actionId);
+  const handleCancelPendingAction = useCallback(
+    async (actionId: string) => {
+      setPendingActionBusyIds((prev) => new Set(prev).add(actionId));
+      setPendingActionErrors((prev) => {
+        const next = { ...prev };
+        delete next[actionId];
         return next;
       });
-    }
-  }, [activeThreadId, loadMessages, loadThreads, orgId]);
+      try {
+        const response = await fetch(`/api/ai/${orgId}/pending-actions/${actionId}/cancel`, {
+          method: "POST",
+        });
+        const data = await response.json().catch(() => ({ error: "Request failed" }));
+        if (!response.ok) {
+          setPendingActionErrors((prev) => ({
+            ...prev,
+            [actionId]: data.error || "Failed to cancel",
+          }));
+          return;
+        }
+
+        setPendingActions((prev) => prev.filter((a) => a.actionId !== actionId));
+        if (activeThreadId) {
+          await Promise.all([loadMessages(activeThreadId, { silent: true }), loadThreads()]);
+        }
+      } finally {
+        setPendingActionBusyIds((prev) => {
+          const next = new Set(prev);
+          next.delete(actionId);
+          return next;
+        });
+      }
+    },
+    [activeThreadId, loadMessages, loadThreads, orgId]
+  );
 
   const handleCancelAllPendingActions = useCallback(async () => {
     const ids = pendingActions
@@ -767,19 +785,22 @@ export function AIPanel({ orgId }: AIPanelProps) {
     [activeThreadId, messages, orgId, threads]
   );
 
-  if (!isOpen || isFullPageAssistantRoute(pathname)) return null;
+  if (!mounted || isFullPageAssistantRoute(pathname)) return null;
 
   return (
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-[45] bg-black/30 backdrop-blur-sm sm:hidden"
+        className={`fixed inset-0 z-[45] bg-black/30 backdrop-blur-sm sm:hidden transition-opacity duration-300 ease-drawer motion-reduce:transition-none ${visible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         onClick={closePanel}
         aria-hidden="true"
       />
 
       {/* Panel - Gemini style */}
-      <div className="ai-panel-enter fixed top-0 right-0 bottom-0 z-[45] flex w-full flex-col border-l border-border bg-background shadow-2xl sm:w-[420px]">
+      <div
+        data-testid="ai-panel"
+        className={`fixed top-0 right-0 bottom-0 z-[45] flex w-full flex-col border-l border-border bg-background shadow-2xl sm:w-[420px] transition-transform ease-drawer motion-reduce:transition-none ${visible ? "translate-x-0 duration-300" : "translate-x-full duration-[250ms]"}`}
+      >
         {/* Header - minimal, clean */}
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
@@ -797,7 +818,11 @@ export function AIPanel({ orgId }: AIPanelProps) {
               aria-label={view === "chat" ? "Show conversations" : "Back to chat"}
               className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
             >
-              {view === "chat" ? <List className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
+              {view === "chat" ? (
+                <List className="h-4 w-4" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
             </button>
             <button
               onClick={closePanel}

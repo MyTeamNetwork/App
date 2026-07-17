@@ -54,7 +54,7 @@ export default async function MentorshipPage({ params, searchParams }: Mentorshi
   const pageLabel = resolveLabel("/mentorship", navConfig, (key: string) => tNav(key), locale);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title={pageLabel}
         description={tMentorship("editorialStrapline")}

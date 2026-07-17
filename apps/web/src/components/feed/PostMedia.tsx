@@ -19,7 +19,7 @@ export function PostMedia({ media }: PostMediaProps) {
           alt={img.fileName || "Post image"}
           width={700}
           height={438}
-          className="w-full h-auto object-cover hover:brightness-[1.02] transition-all duration-300"
+          className="w-full h-auto object-cover"
         />
       </div>
     );
@@ -35,7 +35,7 @@ export function PostMedia({ media }: PostMediaProps) {
               src={images[0].previewUrl}
               alt={images[0].fileName || "Post image"}
               fill
-              className="object-cover hover:brightness-[1.02] transition-all duration-300"
+              className="object-cover"
             />
           </div>
         )}
@@ -48,7 +48,7 @@ export function PostMedia({ media }: PostMediaProps) {
                   src={img.previewUrl}
                   alt={img.fileName || "Post image"}
                   fill
-                  className="object-cover hover:brightness-[1.02] transition-all duration-300"
+                  className="object-cover"
                 />
               </div>
             ) : null
@@ -68,7 +68,7 @@ export function PostMedia({ media }: PostMediaProps) {
               src={img.previewUrl}
               alt={img.fileName || "Post image"}
               fill
-              className="object-cover hover:brightness-[1.02] transition-all duration-300"
+              className="object-cover"
             />
           </div>
         ) : null

@@ -97,7 +97,7 @@ export function AlumniClient({ enterpriseId }: AlumniClientProps) {
           const statsData = await statsRes.json();
           setStats(statsData);
           setOrganizations(statsData.organizations || []);
-          setFilterOptions(prev => ({ ...prev, ...(statsData.filterOptions || {}) }));
+          setFilterOptions((prev) => ({ ...prev, ...(statsData.filterOptions || {}) }));
         } else {
           setStatsError(true);
         }
@@ -115,7 +115,17 @@ export function AlumniClient({ enterpriseId }: AlumniClientProps) {
       setIsLoading(true);
       try {
         const params = new URLSearchParams();
-        const filterKeys = ["org", "year", "birthYear", "industry", "company", "city", "position", "hasEmail", "hasPhone"];
+        const filterKeys = [
+          "org",
+          "year",
+          "birthYear",
+          "industry",
+          "company",
+          "city",
+          "position",
+          "hasEmail",
+          "hasPhone",
+        ];
         filterKeys.forEach((key) => {
           const value = searchParams.get(key);
           if (value) params.set(key, value);
@@ -213,10 +223,7 @@ export function AlumniClient({ enterpriseId }: AlumniClientProps) {
       <AlumniContactDrawer
         alumni={selectedAlumni}
         isOpen={isDrawerOpen}
-        onClose={() => {
-          setIsDrawerOpen(false);
-          setSelectedAlumni(null);
-        }}
+        onClose={() => setIsDrawerOpen(false)}
       />
 
       {/* Floating Action Bar for Selection */}
@@ -249,14 +256,7 @@ export function AlumniClient({ enterpriseId }: AlumniClientProps) {
 function LoadingSpinner({ className }: { className?: string }) {
   return (
     <svg className={`${className} animate-spin`} fill="none" viewBox="0 0 24 24">
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path
         className="opacity-75"
         fill="currentColor"

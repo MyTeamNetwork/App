@@ -101,7 +101,7 @@ export default async function EnterpriseLayout({ children, params }: EnterpriseL
       </div>
 
       {/* Main Content */}
-      <main className="lg:ml-[var(--sidebar-offset,3.5rem)] p-4 lg:p-8 pt-20 lg:pt-8 transition-[margin-left] duration-300 ease-in-out motion-reduce:transition-none">
+      <main className="lg:ml-[var(--sidebar-offset,3.5rem)] p-4 lg:p-8 pt-20 lg:pt-8 transition-[margin-left] duration-200 ease-in-out motion-reduce:transition-none">
         {children}
       </main>
       {aiOrgId && (

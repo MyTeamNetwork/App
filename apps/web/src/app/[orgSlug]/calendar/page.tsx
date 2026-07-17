@@ -86,7 +86,7 @@ export default async function CalendarPage({ params, searchParams }: CalendarPag
   const tCalendar = await getTranslations("calendar");
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title={pageLabel}
         description={tCalendar("description")}
@@ -133,7 +133,7 @@ export default async function CalendarPage({ params, searchParams }: CalendarPag
       <div className="space-y-6">
         <CalendarViewToggle />
 
-        <div className="animate-fade-in">
+        <div>
           {currentView === "availability" ? (
             <AvailabilityTab
               orgId={orgId}

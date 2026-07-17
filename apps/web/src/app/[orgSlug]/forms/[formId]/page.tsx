@@ -128,7 +128,7 @@ export default function FillFormPage() {
 
   if (isFetching) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader title="Loading..." backHref={`/${orgSlug}/forms`} />
         <Card className="p-6">
           <p className="text-muted-foreground">Loading form...</p>
@@ -143,7 +143,7 @@ export default function FillFormPage() {
 
   if (success) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader title={form.title} backHref={`/${orgSlug}/forms`} translateTitle />
         <Card className="p-8 text-center max-w-xl mx-auto">
           <div className="text-green-500 mb-4">
@@ -162,7 +162,7 @@ export default function FillFormPage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={form.title}
         description={form.description || undefined}

@@ -24,7 +24,7 @@ export default async function NewOrganizationPage({ params }: NewOrganizationPag
   }
 
   return (
-    <div className="animate-fade-in max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto">
       <PageHeader
         title="Create Organization"
         description="Create a new organization under this enterprise"

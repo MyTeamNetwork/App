@@ -88,7 +88,7 @@ export default async function CalendarEventDetailPage({ params, searchParams }: 
   });
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <EventOpenTracker organizationId={org.id} eventId={eventId} />
       <PageHeader
         title={event.title}

@@ -23,7 +23,7 @@ export default async function CalendarSourcesPage({ params }: SourcesPageProps) 
   const tCalendar = await getTranslations("calendar");
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title={tCalendar("manageSources")}
         description={tCalendar("manageSourcesDesc")}

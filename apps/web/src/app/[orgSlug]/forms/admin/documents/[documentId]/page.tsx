@@ -43,7 +43,7 @@ export default async function DocumentSubmissionsPage({ params }: DocumentSubmis
   const typedSubmissions = (submissions || []) as (FormDocumentSubmission & { users: Pick<User, "name" | "email"> | null })[];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title={typedDoc.title}
         description={`${typedSubmissions.length} submission${typedSubmissions.length !== 1 ? "s" : ""}`}

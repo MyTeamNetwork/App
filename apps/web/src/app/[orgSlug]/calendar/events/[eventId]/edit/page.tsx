@@ -259,7 +259,7 @@ export default function EditCalendarEventPage() {
 
   if (isFetching) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader
           title={`Edit ${singularLabel}`}
           description="Loading..."
@@ -277,7 +277,7 @@ export default function EditCalendarEventPage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={`Edit ${singularLabel}`}
         description={`Update ${singularLabel.toLowerCase()} details`}

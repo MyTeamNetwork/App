@@ -151,7 +151,7 @@ export default function EditSchedulePage() {
 
   if (loading) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader title="Edit Schedule" backHref={`/${orgSlug}/calendar`} />
         <Card className="max-w-2xl p-6">
           <p className="text-muted-foreground">Loading...</p>
@@ -161,7 +161,7 @@ export default function EditSchedulePage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Edit Schedule"
         backHref={`/${orgSlug}/calendar`}

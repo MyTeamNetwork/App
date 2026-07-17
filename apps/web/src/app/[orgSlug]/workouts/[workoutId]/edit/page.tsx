@@ -134,7 +134,7 @@ export default function EditWorkoutPage() {
 
   if (isFetching) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader
           title={`Edit ${singularLabel}`}
           description="Loading..."
@@ -152,7 +152,7 @@ export default function EditWorkoutPage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={`Edit ${singularLabel}`}
         description={`Update ${singularLabel.toLowerCase()} details`}

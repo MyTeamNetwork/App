@@ -17,7 +17,7 @@ export default async function CohortsPage({ params }: CohortsPageProps) {
   if (!orgCtx.isAdmin) redirect(`/${orgSlug}`);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title="Alumni reachability"
         description="Segment alumni by whether they can be reached, and re-invite the unclaimed cohort. Re-invites are limited to one every 14 days per alumnus."

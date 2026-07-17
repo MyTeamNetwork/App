@@ -124,7 +124,7 @@ export default async function ParentDetailPage({ params }: ParentDetailPageProps
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={`${parent.first_name} ${parent.last_name}`}
         backHref={`/${orgSlug}/parents`}

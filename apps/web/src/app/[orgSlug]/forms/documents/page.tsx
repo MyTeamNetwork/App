@@ -38,7 +38,7 @@ export default async function DocumentFormsPage({ params }: DocumentFormsPagePro
   const submittedDocIds = new Set(submissions?.map((s) => s.document_id) || []);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title="Document Forms"
         description="Download forms, fill them out, and upload your completed version"

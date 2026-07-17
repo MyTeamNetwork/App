@@ -112,7 +112,7 @@ export default async function DonationsPage({ params }: DonationsPageProps) {
   const purposeTotals = buildDonationPurposeTotals(donationRows, tDonations("generalSupport"));
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <DonationResultTracker organizationId={org.id} />
       <PageHeader
         title={pageLabel}

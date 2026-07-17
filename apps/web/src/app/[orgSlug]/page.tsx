@@ -120,7 +120,7 @@ export default async function OrgHomePage({ params, searchParams }: HomePageProp
   ];
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         {/* Main feed column */}
         <div className="mx-auto w-full max-w-3xl xl:max-w-none">

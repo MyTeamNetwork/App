@@ -100,7 +100,7 @@ export default async function OrganizationsPage({ params }: OrganizationsPagePro
   });
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Organizations"
         description={`${orgs.length} organization${orgs.length !== 1 ? "s" : ""} in this enterprise`}

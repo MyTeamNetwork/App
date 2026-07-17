@@ -27,7 +27,7 @@ export default async function AdminPairingPage({ params }: AdminPairingPageProps
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title="Assign a mentor"
         description="Pick a student to see the best available alumni mentors, why they fit, and confirm a pairing."

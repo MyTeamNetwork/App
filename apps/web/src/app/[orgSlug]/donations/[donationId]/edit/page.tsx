@@ -10,7 +10,7 @@ export default function EditDonationPage() {
   const orgSlug = params.orgSlug as string;
 
   return (
-    <div className="animate-fade-in space-y-4">
+    <div className="space-y-4">
       <PageHeader
         title="Contribution Details"
         description="Stripe now owns the source of truth for contributions. Manage refunds or edits from the Stripe Dashboard."

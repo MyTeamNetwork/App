@@ -157,7 +157,7 @@ export default async function MemberDetailPage({ params }: MemberDetailPageProps
   const statusVariant = member.status === "active" ? "success" : member.status === "pending" ? "warning" : "muted";
 
   return (
-    <div className="animate-fade-in" data-testid="member-detail">
+    <div data-testid="member-detail">
       <PageHeader
         title={`${member.first_name} ${member.last_name}`}
         backHref={`/${orgSlug}/members`}

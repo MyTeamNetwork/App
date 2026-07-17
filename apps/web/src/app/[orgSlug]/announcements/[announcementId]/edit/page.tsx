@@ -161,7 +161,7 @@ export default function EditAnnouncementPage() {
 
   if (isFetching) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader
           title="Edit Announcement"
           description="Loading..."
@@ -179,7 +179,7 @@ export default function EditAnnouncementPage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Edit Announcement"
         description="Update announcement details"

@@ -161,7 +161,7 @@ export default function NewFormPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Create Form"
         description="Build a new form for organization members"

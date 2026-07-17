@@ -35,28 +35,32 @@ export function ConfirmationDialog({
     // confirm button below.
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 text-foreground shadow-xl focus:outline-none">
-          <Dialog.Title className="text-lg font-semibold">{title}</Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
-            {description}
-          </Dialog.Description>
-          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Dialog.Close asChild>
-              <Button type="button" variant="secondary">
-                {cancelLabel}
+        <Dialog.Overlay className="modal-overlay fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
+        {/* Flex-centering wrapper (matches Modal.tsx) so the enter/exit scale
+            animation doesn't fight a translate-based centering transform. */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <Dialog.Content className="modal-content relative w-full max-w-md rounded-2xl border border-border bg-card p-6 text-foreground shadow-xl focus:outline-none">
+            <Dialog.Title className="text-lg font-semibold">{title}</Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
+              {description}
+            </Dialog.Description>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Dialog.Close asChild>
+                <Button type="button" variant="secondary">
+                  {cancelLabel}
+                </Button>
+              </Dialog.Close>
+              <Button
+                type="button"
+                variant={destructive ? "danger" : "primary"}
+                isLoading={isPending}
+                onClick={onConfirm}
+              >
+                {confirmLabel}
               </Button>
-            </Dialog.Close>
-            <Button
-              type="button"
-              variant={destructive ? "danger" : "primary"}
-              isLoading={isPending}
-              onClick={onConfirm}
-            >
-              {confirmLabel}
-            </Button>
-          </div>
-        </Dialog.Content>
+            </div>
+          </Dialog.Content>
+        </div>
       </Dialog.Portal>
     </Dialog.Root>
   );

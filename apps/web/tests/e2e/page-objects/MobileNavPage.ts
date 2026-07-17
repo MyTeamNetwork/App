@@ -40,7 +40,7 @@ export class MobileNavPage extends BasePage {
    * before interacting with the mobile nav.
    */
   private async dismissAiPanelIfPresent(): Promise<void> {
-    const panel = this.page.locator(".ai-panel-enter");
+    const panel = this.page.locator('[data-testid="ai-panel"]');
     if ((await panel.count()) === 0) return;
     const closeBtn = panel.locator('button[aria-label="Close"]').first();
     if ((await closeBtn.count()) > 0) {

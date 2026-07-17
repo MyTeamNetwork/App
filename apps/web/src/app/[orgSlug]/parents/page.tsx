@@ -114,7 +114,7 @@ export default async function ParentsPage({ params, searchParams }: ParentsPageP
   const paginationBase = filterParams.toString() ? `?${filterParams.toString()}&` : "?";
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <DirectoryViewTracker organizationId={org.id} directoryType="parents" />
       <PageHeader
         title={pageLabel}

@@ -158,7 +158,7 @@ export default function DocumentSubmitPage() {
 
   if (isFetching) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader title="Loading..." backHref={`/${orgSlug}/forms/documents`} />
         <Card className="p-6">
           <p className="text-muted-foreground">Loading document...</p>
@@ -171,7 +171,7 @@ export default function DocumentSubmitPage() {
 
   if (success) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader title={document.title} backHref={`/${orgSlug}/forms/documents`} translateTitle />
         <Card className="p-8 text-center max-w-xl mx-auto">
           <div className="text-green-500 mb-4">
@@ -188,7 +188,7 @@ export default function DocumentSubmitPage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={document.title}
         description={document.description || undefined}

@@ -340,7 +340,7 @@ export default function NewCalendarEventPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={`Create New ${singularLabel}`}
         description={`Add ${singularLabel.toLowerCase().startsWith("a") || singularLabel.toLowerCase().startsWith("e") || singularLabel.toLowerCase().startsWith("i") || singularLabel.toLowerCase().startsWith("o") || singularLabel.toLowerCase().startsWith("u") ? "an" : "a"} ${singularLabel.toLowerCase()} to your organization's calendar`}

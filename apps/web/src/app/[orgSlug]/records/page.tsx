@@ -70,7 +70,7 @@ export default async function RecordsPage({ params, searchParams }: RecordsPageP
   const actionLabel = resolveActionLabel("/records", navConfig, "Add", t, locale);
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={pageLabel}
         description={`${records?.length || 0} ${pageLabel.toLowerCase()} in ${categories.length || 1} categories`}

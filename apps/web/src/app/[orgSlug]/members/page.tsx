@@ -77,7 +77,7 @@ export default async function MembersPage({ params, searchParams }: MembersPageP
   const actionLabel = resolveActionLabel("/members", navConfig, "Add", t, locale);
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <DirectoryViewTracker organizationId={org.id} directoryType="active_members" />
       <PageHeader
         title={pageLabel}

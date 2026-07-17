@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Badge, Avatar, Button } from "@/components/ui";
+import { useDrawerTransition } from "@/hooks";
 
 interface Alumni {
   id: string;
@@ -38,6 +39,7 @@ interface AlumniContactDrawerProps {
 
 export function AlumniContactDrawer({ alumni, isOpen, onClose }: AlumniContactDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
+  const { mounted, visible } = useDrawerTransition(isOpen);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -62,15 +64,19 @@ export function AlumniContactDrawer({ alumni, isOpen, onClose }: AlumniContactDr
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen || !alumni) return null;
+  if (!mounted || !alumni) return null;
 
   const position = alumni.position_title || alumni.job_title;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm animate-fade-in">
+    <div className={`fixed inset-0 z-50 ${visible ? "" : "pointer-events-none"}`}>
+      <div
+        aria-hidden="true"
+        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ease-drawer motion-reduce:transition-none ${visible ? "opacity-100" : "opacity-0"}`}
+      />
       <div
         ref={drawerRef}
-        className="absolute right-0 top-0 h-full w-full max-w-md bg-card border-l border-border shadow-xl animate-slide-in-right"
+        className={`absolute right-0 top-0 h-full w-full max-w-md bg-card border-l border-border shadow-xl transition-transform ease-drawer motion-reduce:transition-none ${visible ? "translate-x-0 duration-300" : "translate-x-full duration-[250ms]"}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
@@ -114,10 +120,7 @@ export function AlumniContactDrawer({ alumni, isOpen, onClose }: AlumniContactDr
           {/* Contact Actions */}
           <div className="flex gap-2 mb-6">
             {alumni.email && (
-              <a
-                href={`mailto:${alumni.email}`}
-                className="flex-1"
-              >
+              <a href={`mailto:${alumni.email}`} className="flex-1">
                 <Button variant="secondary" className="w-full">
                   <MailIcon className="h-4 w-4" />
                   Email
@@ -155,12 +158,8 @@ export function AlumniContactDrawer({ alumni, isOpen, onClose }: AlumniContactDr
                 Contact Information
               </h4>
               <div className="space-y-3">
-                {alumni.email && (
-                  <DetailRow label="Email" value={alumni.email} />
-                )}
-                {alumni.phone_number && (
-                  <DetailRow label="Phone" value={alumni.phone_number} />
-                )}
+                {alumni.email && <DetailRow label="Email" value={alumni.email} />}
+                {alumni.phone_number && <DetailRow label="Phone" value={alumni.phone_number} />}
                 {alumni.linkedin_url && (
                   <DetailRow
                     label="LinkedIn"
@@ -176,9 +175,7 @@ export function AlumniContactDrawer({ alumni, isOpen, onClose }: AlumniContactDr
                     }
                   />
                 )}
-                {alumni.current_city && (
-                  <DetailRow label="Location" value={alumni.current_city} />
-                )}
+                {alumni.current_city && <DetailRow label="Location" value={alumni.current_city} />}
               </div>
             </section>
 
@@ -194,9 +191,7 @@ export function AlumniContactDrawer({ alumni, isOpen, onClose }: AlumniContactDr
                   {alumni.current_company && (
                     <DetailRow label="Company" value={alumni.current_company} />
                   )}
-                  {alumni.industry && (
-                    <DetailRow label="Industry" value={alumni.industry} />
-                  )}
+                  {alumni.industry && <DetailRow label="Industry" value={alumni.industry} />}
                 </div>
               </section>
             )}
@@ -213,7 +208,10 @@ export function AlumniContactDrawer({ alumni, isOpen, onClose }: AlumniContactDr
                     <DetailRow label="Skills" value={alumni.skills.filter(Boolean).join(", ")} />
                   ) : null}
                   {alumni.languages?.length ? (
-                    <DetailRow label="Languages" value={alumni.languages.filter(Boolean).join(", ")} />
+                    <DetailRow
+                      label="Languages"
+                      value={alumni.languages.filter(Boolean).join(", ")}
+                    />
                   ) : null}
                 </div>
               </section>
@@ -279,13 +277,7 @@ export function AlumniContactDrawer({ alumni, isOpen, onClose }: AlumniContactDr
   );
 }
 
-function DetailRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between items-start">
       <span className="text-sm text-muted-foreground">{label}</span>
@@ -296,7 +288,13 @@ function DetailRow({
 
 function XIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
   );
@@ -304,7 +302,13 @@ function XIcon({ className }: { className?: string }) {
 
 function MailIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -324,7 +328,13 @@ function LinkedInIcon({ className }: { className?: string }) {
 
 function PhoneIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -336,7 +346,13 @@ function PhoneIcon({ className }: { className?: string }) {
 
 function ArrowRightIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
     </svg>
   );

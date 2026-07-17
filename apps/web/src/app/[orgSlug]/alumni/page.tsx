@@ -187,7 +187,7 @@ export default async function AlumniPage({ params, searchParams }: AlumniPagePro
   const paginationBase = filterParams.toString() ? `?${filterParams.toString()}&` : "?";
 
   const pageContent = (
-    <div className="animate-fade-in">
+    <div>
       <DirectoryViewTracker organizationId={org.id} directoryType="alumni" />
       <PageHeader
         title={pageLabel}

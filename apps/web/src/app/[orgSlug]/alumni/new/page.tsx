@@ -139,7 +139,7 @@ export default function NewAlumniPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Add New Alumni"
         description="Add an alumni to your organization&apos;s network"

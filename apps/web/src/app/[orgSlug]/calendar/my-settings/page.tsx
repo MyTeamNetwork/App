@@ -35,7 +35,7 @@ export default async function CalendarMySettingsPage({ params }: MySettingsPageP
   const pageLabel = resolveLabel("/calendar", navConfig, t, locale);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title={tCalendar("syncSettings")}
         description={tCalendar("syncSettingsDesc")}

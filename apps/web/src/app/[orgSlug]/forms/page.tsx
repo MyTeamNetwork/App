@@ -92,7 +92,7 @@ export default async function FormsPage({ params }: FormsPageProps) {
     if (docsError) adminFetchFailures.push(tForms("documentForms").toLowerCase());
 
     return (
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-6">
         <PageHeader
           title={pageLabel}
           description={tForms("manageDescription", { label: pageLabel.toLowerCase() })}
@@ -283,7 +283,7 @@ export default async function FormsPage({ params }: FormsPageProps) {
     memberFetchFailures.push("your submission status");
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title={pageLabel}
         description={tForms("viewDescription", { label: pageLabel.toLowerCase() })}

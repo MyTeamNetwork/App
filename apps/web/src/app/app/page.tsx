@@ -3,7 +3,6 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Card, Button, Badge, EmptyState } from "@/components/ui";
-import { AppPageAnimations } from "@/components/app/AppPageAnimations";
 import { AppBackgroundEffects } from "@/components/app/AppBackgroundEffects";
 import { CheckoutSuccessBanner } from "@/components/app/CheckoutSuccessBanner";
 import { EnterpriseCard } from "@/components/enterprise";
@@ -182,17 +181,16 @@ export default async function AppHomePage({ searchParams }: AppHomePageProps) {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       <AppBackgroundEffects />
-      <AppPageAnimations />
       <header className="relative z-10 border-b border-border bg-card/80 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <h1 className="app-hero-animate flex items-center gap-2.5" style={{ opacity: 0 }}>
+          <h1 className="flex items-center gap-2.5">
             <Image src="/TeamNetwor.png" alt="" width={541} height={303}
                    className="h-7 w-auto object-contain" aria-hidden="true" />
             <span className="text-2xl font-bold text-foreground">
               <span className="text-green-500">Team</span>Network
             </span>
           </h1>
-          <div className="app-hero-animate flex items-center gap-1.5" style={{ opacity: 0 }}>
+          <div className="flex items-center gap-1.5">
             <ThemeToggle />
             <form action="/auth/signout" method="POST">
               <Button variant="ghost" size="sm" type="submit">{tAuth("signOut")}</Button>
@@ -247,12 +245,12 @@ export default async function AppHomePage({ searchParams }: AppHomePageProps) {
         )}
 
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="app-hero-animate" style={{ opacity: 0 }}>
+          <div>
             <p className="text-sm text-muted-foreground">{tApp("welcomeBack")}</p>
             <h2 className="text-2xl font-bold text-foreground">{tApp("yourOrgs")}</h2>
           </div>
           {orgs.length > 0 && (
-            <div className="app-hero-animate flex items-center gap-2" style={{ opacity: 0 }}>
+            <div className="flex items-center gap-2">
               <Link href="/app/join">
                 <Button variant="secondary" size="sm">{tApp("joinExisting")}</Button>
               </Link>
@@ -291,10 +289,10 @@ export default async function AppHomePage({ searchParams }: AppHomePageProps) {
             }
           />
         ) : (
-          <div className="orgs-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {orgs.map((org) => (
               <Link key={org.id} href={`/${org.slug}`}>
-                <Card interactive className="org-card h-full p-5 space-y-3" style={{ opacity: 0 }}>
+                <Card interactive className="org-card h-full p-5 space-y-3">
                   <div className="flex items-center gap-3">
                     {org.logo_url ? (
                       <div className="relative h-12 w-12 rounded-xl overflow-hidden bg-muted">
@@ -342,10 +340,10 @@ export default async function AppHomePage({ searchParams }: AppHomePageProps) {
         {(enterprises.length > 0 || orgs.length > 0) && (
         <section className="mt-10">
           <div className="flex items-center justify-between mb-4">
-            <div className="app-hero-animate" style={{ opacity: 0 }}>
+            <div>
               <h2 className="text-xl font-semibold text-foreground">{tApp("yourEnterprises")}</h2>
             </div>
-            <Link href="/app/create-enterprise" className="app-hero-animate text-sm text-purple-600 hover:text-purple-700" style={{ opacity: 0 }}>
+            <Link href="/app/create-enterprise" className="text-sm text-purple-600 hover:text-purple-700">
               {tApp("createEnterprise")}
             </Link>
           </div>
@@ -410,7 +408,7 @@ export default async function AppHomePage({ searchParams }: AppHomePageProps) {
                 })}
             </div>
           ) : (
-            <Card className="app-hero-animate p-6 text-center" style={{ opacity: 0 }}>
+            <Card className="p-6 text-center">
               <div className="flex flex-col items-center gap-3">
                 <div className="h-12 w-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
                   <svg className="h-6 w-6 text-purple-600 dark:text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>

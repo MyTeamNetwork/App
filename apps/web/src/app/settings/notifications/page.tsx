@@ -272,11 +272,11 @@ function NotificationSettingsContent() {
                 </div>
 
                 <div
-                  className={`overflow-hidden transition-all duration-300 ease-in-out ${
-                    form.emailEnabled ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"
+                  className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${
+                    form.emailEnabled ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
                   }`}
                 >
-                  <div className="rounded-xl bg-muted/40 border border-border p-4 space-y-0">
+                  <div className="min-h-0 rounded-xl bg-muted/40 border border-border p-4 space-y-0">
                     <p className="text-xs font-medium text-muted-foreground mb-3">{tSettings("notifications.chooseEmails")}</p>
                     {CATEGORY_KEYS.map((item, i) => (
                       <div

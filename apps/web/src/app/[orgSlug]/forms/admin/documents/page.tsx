@@ -41,7 +41,7 @@ export default async function AdminDocumentsPage({ params }: AdminDocumentsPageP
   });
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title="Document Forms"
         description="Upload PDF forms for members to download and submit"

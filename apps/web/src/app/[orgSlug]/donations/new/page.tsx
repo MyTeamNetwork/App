@@ -10,7 +10,7 @@ export default function NewDonationPage() {
   const orgSlug = params.orgSlug as string;
 
   return (
-    <div className="animate-fade-in space-y-4">
+    <div className="space-y-4">
       <PageHeader
         title="Record Contribution"
         description="Contributions are now processed via Stripe Checkout. Use the contribution form to start a payment."

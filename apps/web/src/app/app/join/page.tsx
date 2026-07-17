@@ -12,7 +12,6 @@ import { Button, Input, Card, Captcha, CaptchaRef } from "@/components/ui";
 import { FeedbackButton } from "@/components/feedback";
 import { EnterpriseOrgPicker } from "@/components/enterprise/EnterpriseOrgPicker";
 import { AppBackgroundEffects } from "@/components/app/AppBackgroundEffects";
-import { AppPageAnimations } from "@/components/app/AppPageAnimations";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { useCaptcha } from "@/hooks/useCaptcha";
 import { joinOrgSchema, type JoinOrgForm } from "@/lib/schemas/auth";
@@ -280,13 +279,12 @@ function JoinOrgFormComponent() {
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       <AppBackgroundEffects />
-      <AppPageAnimations />
 
       {/* Header */}
       <header className="relative z-10 border-b border-border bg-card/80 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/app">
-            <h1 className="app-hero-animate flex items-center gap-2.5" style={{ opacity: 0 }}>
+            <h1 className="flex items-center gap-2.5">
               <Image
                 src="/TeamNetwor.png"
                 alt=""
@@ -300,7 +298,7 @@ function JoinOrgFormComponent() {
               </span>
             </h1>
           </Link>
-          <div className="app-hero-animate flex items-center gap-2" style={{ opacity: 0 }}>
+          <div className="flex items-center gap-2">
             <ThemeToggle />
             <form action="/auth/signout" method="POST">
               <Button variant="ghost" size="sm" type="submit">
@@ -319,7 +317,7 @@ function JoinOrgFormComponent() {
 
       {/* Main Content */}
       <main className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        <div className="app-hero-animate mb-8" style={{ opacity: 0 }}>
+        <div className="mb-8">
           <Link href="/app" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 w-fit">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -329,7 +327,7 @@ function JoinOrgFormComponent() {
         </div>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(360px,480px)] lg:items-start">
-          <section className="app-hero-animate hidden lg:block pt-14" style={{ opacity: 0 }}>
+          <section className="hidden lg:block pt-14">
             <p className="text-sm text-muted-foreground mb-2">Join existing</p>
             <h2 className="text-3xl font-bold text-foreground tracking-tight">
               Use an invite code to enter the right workspace.
@@ -339,7 +337,7 @@ function JoinOrgFormComponent() {
             </p>
           </section>
 
-          <Card className="app-hero-animate p-6 sm:p-8 bg-card/80 backdrop-blur-sm shadow-none" style={{ opacity: 0 }}>
+          <Card className="p-6 sm:p-8 bg-card/80 backdrop-blur-sm shadow-none">
           {chooseOrgState ? (
             // Enterprise-wide invite: choose org
             <div>

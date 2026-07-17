@@ -34,7 +34,7 @@ export default async function ExpensesPage({ params, searchParams }: ExpensesPag
 
   if (!user || userError) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader
           title={pageLabel}
           description="Sign in to view expenses"
@@ -91,7 +91,7 @@ export default async function ExpensesPage({ params, searchParams }: ExpensesPag
 
   if (expensesError) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader
           title={pageLabel}
           description={`Unable to load ${pageLabel.toLowerCase()}`}
@@ -154,7 +154,7 @@ export default async function ExpensesPage({ params, searchParams }: ExpensesPag
   const total = expenses?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={pageLabel}
         description={`${expenses?.length || 0} ${pageLabel.toLowerCase()} totaling ${total.toFixed(2)}`}

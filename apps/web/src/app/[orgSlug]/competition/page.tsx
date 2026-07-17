@@ -91,7 +91,7 @@ export default async function CompetitionPage({ params }: CompetitionPageProps) 
   const maxPoints = Math.max(topTeam?.total_points ?? 0, 1);
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={competition?.name || "Competition"}
         description={competition?.description || "Track team standings and points"}
@@ -192,7 +192,7 @@ export default async function CompetitionPage({ params }: CompetitionPageProps) 
                           <div
                             className="standings-bar-fill"
                             style={{
-                              width: `${percentage}%`,
+                              transform: `scaleX(${percentage / 100})`,
                               background: index === 0
                                 ? "linear-gradient(90deg, #d97706, #fbbf24)"
                                 : index === 1

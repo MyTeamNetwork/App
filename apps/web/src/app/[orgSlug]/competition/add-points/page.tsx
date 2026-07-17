@@ -112,7 +112,7 @@ export default function AddPointsPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Add Points"
         description="Award points to a team"

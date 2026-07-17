@@ -88,7 +88,7 @@ export default async function DataHealthPage({ params }: DataHealthPageProps) {
         : "warn";
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title="Data health"
         description="Read-only correctness checks across the assistant's RAG index and LinkedIn enrichment. Counts show divergence between live data and each pipeline."

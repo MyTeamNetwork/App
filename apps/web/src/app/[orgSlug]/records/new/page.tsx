@@ -14,7 +14,7 @@ export default async function NewRecordPage({ params }: NewRecordPageProps) {
   if (!org || !isAdmin) return notFound();
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Add New Record"
         description="Add a record to your organization's record book"

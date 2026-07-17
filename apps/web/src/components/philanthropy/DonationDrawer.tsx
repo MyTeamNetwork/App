@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { DonationForm } from "@/components/donations";
 import type { CaptchaProvider } from "@/components/ui";
+import { useDrawerTransition } from "@/hooks";
 
 interface DonationDrawerProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export function DonationDrawer({
   captchaProvider,
 }: DonationDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
+  const { mounted, visible } = useDrawerTransition(isOpen);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -48,13 +50,17 @@ export function DonationDrawer({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!mounted) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm animate-fade-in">
+    <div className={`fixed inset-0 z-50 ${visible ? "" : "pointer-events-none"}`}>
+      <div
+        aria-hidden="true"
+        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ease-drawer motion-reduce:transition-none ${visible ? "opacity-100" : "opacity-0"}`}
+      />
       <div
         ref={drawerRef}
-        className="absolute right-0 top-0 h-full w-full max-w-lg bg-card border-l border-border shadow-xl animate-slide-in-right"
+        className={`absolute right-0 top-0 h-full w-full max-w-lg bg-card border-l border-border shadow-xl transition-transform ease-drawer motion-reduce:transition-none ${visible ? "translate-x-0 duration-300" : "translate-x-full duration-[250ms]"}`}
       >
         <div className="flex items-center justify-between p-6 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground">Support This Team</h2>
@@ -62,7 +68,13 @@ export function DonationDrawer({
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>

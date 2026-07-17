@@ -50,7 +50,7 @@ export default async function FormSubmissionsPage({ params }: FormSubmissionsPag
   const fields = (typedForm.fields || []) as unknown as FormField[];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title={typedForm.title}
         description={`${typedSubmissions.length} submission${typedSubmissions.length !== 1 ? "s" : ""}`}

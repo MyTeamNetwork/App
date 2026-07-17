@@ -24,7 +24,7 @@ export default async function BatchOrganizationsPage({ params }: BatchOrganizati
   }
 
   return (
-    <div className="animate-fade-in max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <PageHeader
         title="Create Multiple Organizations"
         description="Set up multiple organizations at once and assign members"

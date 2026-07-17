@@ -66,7 +66,7 @@ export default async function EnterpriseDashboardPage({ params }: EnterpriseDash
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title={`Welcome to ${enterprise.name}`}
         description="Enterprise dashboard overview"

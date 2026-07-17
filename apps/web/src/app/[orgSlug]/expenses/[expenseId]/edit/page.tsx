@@ -111,7 +111,7 @@ export default function EditExpensePage() {
 
   if (isFetching) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader
           title="Edit Expense"
           description="Loading..."
@@ -130,7 +130,7 @@ export default function EditExpensePage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Edit Expense"
         description="Update expense details"

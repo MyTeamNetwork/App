@@ -61,7 +61,7 @@ export default async function SubmissionDetailPage({ params }: SubmissionDetailP
   const responses = (((typedSubmission as FormSubmission & { data?: unknown }).data ?? {}) as Record<string, unknown>);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title="Submission Detail"
         description={typedForm.title}

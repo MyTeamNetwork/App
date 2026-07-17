@@ -113,7 +113,7 @@ useEffect(() => {
             }
       }
       style={sidebarScopeStyle}
-      className={`flex flex-col bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] border-r border-border overflow-hidden transition-[width] duration-300 ease-in-out motion-reduce:transition-none ${positionClass} ${widthClass} ${className}`}
+      className={`flex flex-col bg-[var(--sidebar-bg)] text-[var(--sidebar-foreground)] border-r border-border overflow-hidden transition-[width] duration-200 ease-in-out motion-reduce:transition-none ${positionClass} ${widthClass} ${className}`}
     >
       {children({ isExpanded, isPinned, togglePin })}
     </aside>

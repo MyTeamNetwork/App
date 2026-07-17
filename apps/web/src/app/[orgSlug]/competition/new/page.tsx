@@ -138,7 +138,7 @@ export default function NewCompetitionPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Create Competition"
         description="Set up a new internal competition"

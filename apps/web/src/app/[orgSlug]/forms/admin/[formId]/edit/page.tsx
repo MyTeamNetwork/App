@@ -192,7 +192,7 @@ export default function EditFormPage() {
 
   if (isFetching) {
     return (
-      <div className="animate-fade-in">
+      <div>
         <PageHeader title="Edit Form" backHref={`/${orgSlug}/forms/admin`} />
         <Card className="p-6">
           <p className="text-muted-foreground">Loading...</p>
@@ -202,7 +202,7 @@ export default function EditFormPage() {
   }
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Edit Form"
         backHref={`/${orgSlug}/forms/admin`}

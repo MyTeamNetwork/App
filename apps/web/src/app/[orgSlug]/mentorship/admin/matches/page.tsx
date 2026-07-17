@@ -28,7 +28,7 @@ export default async function AdminMatchesPage({ params }: AdminMatchesPageProps
   } catch { /* fall back */ }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
       <PageHeader
         title={title}
         description={description}

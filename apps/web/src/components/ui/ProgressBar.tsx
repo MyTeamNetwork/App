@@ -35,9 +35,10 @@ export function ProgressBar({
       aria-label={label || "Upload progress"}
       className={`w-full ${heightClass} rounded-full bg-[var(--muted)] overflow-hidden ${className}`}
     >
+      {/* scaleX instead of width so progress updates stay compositor-only */}
       <div
-        className={`h-full rounded-full transition-[width] duration-200 ease-out ${variantClasses[variant] || variantClasses.default} ${animated ? "progress-stripe-animated" : ""}`}
-        style={{ width: `${clamped}%` }}
+        className={`h-full w-full origin-left rounded-full transition-transform duration-200 ease-out motion-reduce:transition-none ${variantClasses[variant] || variantClasses.default} ${animated ? "progress-stripe-animated" : ""}`}
+        style={{ transform: `scaleX(${clamped / 100})` }}
       />
     </div>
   );

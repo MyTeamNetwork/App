@@ -77,7 +77,7 @@ export default function AddTeamPage() {
   };
 
   return (
-    <div className="animate-fade-in">
+    <div>
       <PageHeader
         title="Add Team"
         description="Create a team for this competition"

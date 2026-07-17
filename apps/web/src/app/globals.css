@@ -23,14 +23,19 @@
 
   /* Base theme */
   --background: #fafbfc;
-  --foreground: #1A1F36;
+  --foreground: #1a1f36;
   --card: #ffffff;
-  --card-foreground: #1A1F36;
+  --card-foreground: #1a1f36;
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
   --border: #e2e8f0;
   --ring: var(--color-org-primary);
   --selection: var(--color-org-secondary-light);
+
+  /* Motion tokens — shared easing vocabulary (also exposed as Tailwind
+     `ease-out-strong` / `ease-drawer` via tailwind.config.ts) */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
   /* Accent colors */
   --success: #10b981;
@@ -110,7 +115,9 @@ body {
 /* Card styles */
 .card {
   @apply bg-[var(--card)] rounded-2xl border border-[var(--border)] shadow-sm;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
 }
 
 .card:hover {
@@ -124,13 +131,19 @@ body {
 
 /* Button base styles */
 .btn {
-  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200;
-  @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium;
+  @apply transition-[background-color,border-color,color,opacity,transform,box-shadow] duration-150 active:scale-[0.98];
+  @apply motion-reduce:transition-none motion-reduce:active:scale-100;
+  @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
 }
 
 .btn-primary {
   background: var(--color-org-primary);
-  @apply text-white hover:opacity-90;
+  @apply text-white;
+}
+
+.btn-primary:hover {
+  background: var(--color-org-primary-dark);
 }
 
 .btn-secondary {
@@ -215,63 +228,96 @@ body {
   animation: slideIn 0.3s ease-out forwards;
 }
 
-/* Stagger children animation */
-.stagger-children>* {
+/* Stagger children animation. Delays are capped so content is never held
+   invisible for more than ~200ms — stagger must not gate reading data. */
+.stagger-children > * {
   opacity: 0;
-  animation: fadeIn 0.4s ease-out forwards;
+  animation: fadeIn 0.25s ease-out forwards;
 }
 
-.stagger-children>*:nth-child(1) {
+.stagger-children > *:nth-child(1) {
   animation-delay: 0.05s;
 }
 
-.stagger-children>*:nth-child(2) {
+.stagger-children > *:nth-child(2) {
   animation-delay: 0.1s;
 }
 
-.stagger-children>*:nth-child(3) {
+.stagger-children > *:nth-child(3) {
   animation-delay: 0.15s;
 }
 
-.stagger-children>*:nth-child(4) {
+.stagger-children > *:nth-child(n + 4) {
   animation-delay: 0.2s;
 }
 
-.stagger-children>*:nth-child(5) {
-  animation-delay: 0.25s;
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-slide-in,
+  .stagger-children > * {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
-.stagger-children>*:nth-child(6) {
-  animation-delay: 0.3s;
+/* Modal enter/exit — driven by Radix Dialog's data-state attribute.
+   Exits run faster than enters; content scales from 0.97, never from 0. */
+@keyframes modalOverlayIn {
+  from {
+    opacity: 0;
+  }
 }
 
-.stagger-children>*:nth-child(7) {
-  animation-delay: 0.35s;
+@keyframes modalOverlayOut {
+  to {
+    opacity: 0;
+  }
 }
 
-.stagger-children>*:nth-child(8) {
-  animation-delay: 0.4s;
+@keyframes modalContentIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
 }
 
-.stagger-children>*:nth-child(n+9) {
-  animation-delay: 0.45s;
+@keyframes modalContentOut {
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.modal-overlay[data-state="open"] {
+  animation: modalOverlayIn 150ms var(--ease-out-strong);
+}
+
+.modal-overlay[data-state="closed"] {
+  animation: modalOverlayOut 150ms var(--ease-out-strong) forwards;
+}
+
+.modal-content[data-state="open"] {
+  animation: modalContentIn 200ms var(--ease-out-strong);
+}
+
+.modal-content[data-state="closed"] {
+  animation: modalContentOut 150ms var(--ease-out-strong) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-content[data-state="open"] {
+    animation: modalOverlayIn 150ms ease-out;
+  }
+
+  .modal-content[data-state="closed"] {
+    animation: modalOverlayOut 150ms ease-out forwards;
+  }
 }
 
 /* Mono font for stats/numbers */
 .font-mono {
   font-family: var(--font-mono), monospace;
-}
-
-/* Page transitions */
-.page-enter {
-  opacity: 0;
-  transform: translateY(20px);
-}
-
-.page-enter-active {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 /* Auth pages - match landing page palette */
@@ -291,7 +337,6 @@ body {
 
 /* App Page Animations */
 @keyframes orbFloat {
-
   0%,
   100% {
     transform: translate(0, 0) scale(1);
@@ -317,8 +362,12 @@ body {
 }
 
 @keyframes stripeScroll {
-  0%   { background-position: 0 0; }
-  100% { background-position: 100px 100px; }
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 100px 100px;
+  }
 }
 
 .app-stripe-pattern {
@@ -334,7 +383,9 @@ body {
 
 /* Org card enhanced hover effect */
 .org-card {
-  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    transform 200ms var(--ease-out-strong),
+    box-shadow 200ms var(--ease-out-strong);
 }
 
 .org-card:hover {
@@ -357,15 +408,14 @@ body {
    by the browser for transform/opacity transitions. */
 
 @media (prefers-reduced-motion: reduce) {
-
-  .app-hero-animate,
-  .app-scroll-reveal,
-  .org-card {
-    opacity: 1 !important;
-    transform: none !important;
+  .app-gradient-orb,
+  .app-stripe-pattern {
+    animation: none;
   }
 
+  .org-card,
   .org-card:hover {
+    transition: none;
     transform: none;
   }
 }
@@ -376,8 +426,13 @@ body {
 
 /* Live indicator pulse */
 @keyframes livePulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .live-indicator {
@@ -386,7 +441,9 @@ body {
 
 /* Leaderboard row hover */
 .leaderboard-row {
-  transition: background-color 0.2s ease, transform 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
 }
 
 .leaderboard-row:hover {
@@ -410,9 +467,11 @@ body {
 
 .standings-bar-fill {
   height: 100%;
+  width: 100%;
   border-radius: 4px;
   background: linear-gradient(90deg, var(--color-org-secondary), var(--color-org-secondary-light));
-  transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: left;
+  transition: transform 200ms var(--ease-out-strong);
 }
 
 /* Rank glow effects */
@@ -437,7 +496,9 @@ body {
   bottom: 1.5rem;
   right: 1.5rem;
   z-index: 50;
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    transform 200ms var(--ease-out-strong),
+    box-shadow 200ms var(--ease-out-strong);
 }
 
 .fab:hover {
@@ -466,7 +527,8 @@ body {
 
 /* Hero leader card glow */
 @keyframes heroGlow {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow:
       inset 0 1px 0 rgba(251, 191, 36, 0.12),
       0 0 40px rgba(251, 191, 36, 0.07),
@@ -521,8 +583,15 @@ body {
    ======================================== */
 
 @keyframes timeLinePulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.4); opacity: 0.7; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.7;
+  }
 }
 
 .time-line-dot {
@@ -540,8 +609,12 @@ body {
    ======================================== */
 
 @keyframes progressStripe {
-  0% { background-position: 0 0; }
-  100% { background-position: 20px 0; }
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 20px 0;
+  }
 }
 
 .progress-stripe-animated {
@@ -591,30 +664,11 @@ body {
 }
 
 /* ========================================
-   AI Panel Slide-In
+   AI Panel
    ======================================== */
-
-@keyframes panelSlideIn {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-.ai-panel-enter {
-  animation: panelSlideIn 200ms ease-out;
-}
 
 .ai-edge-tab:hover {
   transform: translateX(-2px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ai-panel-enter {
-    animation: fadeIn 200ms ease-out;
-  }
 }
 
 /* Scoreboard — used by org-scoped /[orgSlug]/competition */
@@ -630,7 +684,7 @@ body {
 }
 
 .scoreboard::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;
@@ -644,21 +698,25 @@ body {
 .scoreboard-number {
   font-family: var(--font-mono), monospace;
   color: #22c55e;
-  text-shadow: 0 0 20px rgba(34, 197, 94, 0.7),
+  text-shadow:
+    0 0 20px rgba(34, 197, 94, 0.7),
     0 0 40px rgba(34, 197, 94, 0.3);
 }
 
 @keyframes trophyBounce {
   0% {
-    transform: scale(0) rotate(-10deg);
+    transform: scale(0.5) rotate(-10deg);
+    opacity: 0;
   }
 
   50% {
     transform: scale(1.2) rotate(5deg);
+    opacity: 1;
   }
 
   100% {
     transform: scale(1) rotate(0);
+    opacity: 1;
   }
 }
 
@@ -692,24 +750,4 @@ body {
 /* Tabular numbers for financial data */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
-}
-
-/* Slide-in-right drawer animation (promoted from inline styles) */
-@keyframes slideInFromRight {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
-.animate-slide-in-right {
-  animation: slideInFromRight 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-slide-in-right {
-    animation: fadeIn 200ms ease-out;
-  }
 }
