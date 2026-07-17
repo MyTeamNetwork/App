@@ -15,7 +15,7 @@ import { useEffect, useState } from "react";
  */
 export function useDrawerTransition(open: boolean, exitDurationMs = 250) {
   const [mounted, setMounted] = useState(open);
-  const [visible, setVisible] = useState(open);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (open) {

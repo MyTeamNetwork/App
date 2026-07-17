@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { lazy, Suspense } from "react";
+import { useDrawerTransition } from "@/hooks/useDrawerTransition";
 import { useAIPanel } from "./AIPanelContext";
 import { isFullPageAssistantRoute } from "./route-surface";
 
@@ -17,8 +18,10 @@ interface DeferredAIPanelProps {
 export function DeferredAIPanel({ orgId }: DeferredAIPanelProps) {
   const { isOpen } = useAIPanel();
   const pathname = usePathname();
+  const shouldShowPanel = isOpen && !isFullPageAssistantRoute(pathname);
+  const { mounted } = useDrawerTransition(shouldShowPanel);
 
-  if (!isOpen || isFullPageAssistantRoute(pathname)) return null;
+  if (!mounted) return null;
 
   return (
     <Suspense fallback={null}>
