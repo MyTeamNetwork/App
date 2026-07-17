@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useNavigation, useRouter } from "expo-router";
 import { X, ImagePlus, BarChart2 } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useMediaUpload } from "@/hooks/useMediaUpload";
@@ -33,8 +33,17 @@ const MAX_IMAGES = 4;
 
 type ComposerMode = "text" | "poll";
 
+interface TransitionNavigation {
+  addListener: (
+    eventName: "transitionEnd",
+    listener: (event: { data: { closing: boolean } }) => void,
+  ) => () => void;
+}
+
 export default function NewPostScreen() {
   const router = useRouter();
+  const navigation = useNavigation<TransitionNavigation>();
+  const bodyInputRef = useRef<TextInput>(null);
   const { orgId } = useOrg();
   const { user } = useAuth();
   const { isAdmin, isActiveMember } = useOrgRole();
@@ -167,6 +176,24 @@ export default function NewPostScreen() {
     setMountedRef(true);
     return () => setMountedRef(false);
   }, [setMountedRef]);
+
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = navigation.addListener("transitionEnd", (event) => {
+      if (!event.data.closing && active) {
+        active = false;
+        unsubscribe();
+        bodyInputRef.current?.focus();
+      }
+    });
+
+    return () => {
+      if (active) {
+        active = false;
+        unsubscribe();
+      }
+    };
+  }, [navigation]);
 
   const trimmedPollOptions = useMemo(
     () => pollOptions.map((o) => o.trim()).filter((o) => o.length > 0),
@@ -381,11 +408,11 @@ export default function NewPostScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <TextInput
+            ref={bodyInputRef}
             style={styles.bodyInput}
             placeholder={mode === "poll" ? "Ask a question..." : "What's on your mind?"}
             placeholderTextColor={neutral.placeholder}
             multiline
-            autoFocus
             value={body}
             onChangeText={setBody}
             maxLength={MAX_BODY_LENGTH}
