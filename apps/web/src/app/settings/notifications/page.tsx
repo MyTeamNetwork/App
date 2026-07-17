@@ -275,32 +275,36 @@ function NotificationSettingsContent() {
                   className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${
                     form.emailEnabled ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
                   }`}
+                  inert={!form.emailEnabled}
+                  aria-hidden={!form.emailEnabled}
                 >
-                  <div className="min-h-0 rounded-xl bg-muted/40 border border-border p-4 space-y-0">
-                    <p className="text-xs font-medium text-muted-foreground mb-3">{tSettings("notifications.chooseEmails")}</p>
-                    {CATEGORY_KEYS.map((item, i) => (
-                      <div
-                        key={item.key}
-                        className={`flex items-center justify-between gap-3 py-3 ${
-                          i < CATEGORY_KEYS.length - 1 ? "border-b border-border" : ""
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          {item.icon}
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{tSettings(`notifications.categories.${item.catKey}.label`)}</p>
-                            <p className="text-xs text-muted-foreground">{tSettings(`notifications.categories.${item.catKey}.desc`)}</p>
+                  <div className="min-h-0 overflow-hidden">
+                    <div className="rounded-xl bg-muted/40 border border-border p-4 space-y-0">
+                      <p className="text-xs font-medium text-muted-foreground mb-3">{tSettings("notifications.chooseEmails")}</p>
+                      {CATEGORY_KEYS.map((item, i) => (
+                        <div
+                          key={item.key}
+                          className={`flex items-center justify-between gap-3 py-3 ${
+                            i < CATEGORY_KEYS.length - 1 ? "border-b border-border" : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            {item.icon}
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{tSettings(`notifications.categories.${item.catKey}.label`)}</p>
+                              <p className="text-xs text-muted-foreground">{tSettings(`notifications.categories.${item.catKey}.desc`)}</p>
+                            </div>
                           </div>
+                          <ToggleSwitch
+                            size="sm"
+                            checked={form[item.key]}
+                            onChange={(v) =>
+                              updateForm(form.orgId, (f) => ({ ...f, [item.key]: v, success: null }))
+                            }
+                          />
                         </div>
-                        <ToggleSwitch
-                          size="sm"
-                          checked={form[item.key]}
-                          onChange={(v) =>
-                            updateForm(form.orgId, (f) => ({ ...f, [item.key]: v, success: null }))
-                          }
-                        />
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
